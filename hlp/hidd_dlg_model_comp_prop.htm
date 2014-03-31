@@ -1,0 +1,93 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+<P><STRONG><FONT size=4>Computing properties dialog box.</FONT></STRONG> </P>
+<P><STRONG>Computation</STRONG></P>
+<UL type=disc>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level1 lfo21; tab-stops: list 36.0pt">If 
+  <STRONG><SPAN style="COLOR: #000099">Spherical computing</SPAN> </STRONG>is 
+  checked, the whole computation is done on spherical Earth. It needs additional 
+  transformations, which slow down computation speed. </LI>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level1 lfo21; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Extend edges</SPAN></STRONG> to avoid boundary effects. 
+  The model continues further in the same manner as it is defined on the edge 
+  profile. Give the distance of extension in <EM>m.</EM> </LI>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level1 lfo21; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Real-time Computation</SPAN></STRONG> can be performed 
+  in three modes. </LI>
+  <UL type=circle>
+    <LI class=MsoNormal 
+    style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level2 lfo21; tab-stops: list 72.0pt"><STRONG><SPAN 
+    style="COLOR: #000099">None</SPAN></STRONG><SPAN 
+    style="COLOR: #000099">:</SPAN> real-time computation is not active. The 
+    field must be recomputed manually. This mode is efficient in initial stages 
+    of model creation. Model creation is not slowed down with re-computing. 
+</LI>
+    <LI class=MsoNormal 
+    style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level2 lfo21; tab-stops: list 72.0pt"><STRONG><SPAN 
+    style="COLOR: #000099">Real-time</SPAN></STRONG><SPAN 
+    style="COLOR: #000099">:</SPAN> field update is performed simultaneously as 
+    the mouse is moving. All active grids are updated. All views are updated. 
+    Can be slow for large models, or slow computers. Doesn't work for whole body 
+    motion! See <STRONG><SPAN style="COLOR: #006600">Efficient 
+    computing</SPAN></STRONG> for details, how to achieve the best computation 
+    efficiency. </LI>
+    <LI class=MsoNormal 
+    style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level2 lfo21; tab-stops: list 72.0pt"><STRONG><SPAN 
+    style="COLOR: #000099">After Mouse Click:</SPAN></STRONG> the fields are 
+    updated after mouse button is released. All active grids are updated. All 
+    views are updated. See <STRONG><SPAN style="COLOR: #006600">Efficient 
+    computing</SPAN></STRONG> for details, how to achieve the best computation 
+    efficiency. Doesn't work for whole body motion!</LI></UL>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level1 lfo21; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Window:</SPAN></STRONG> set the area, which is 
+  recomputed. Only grid points within the computing window are recomputed. 
+  <STRONG><SPAN style="COLOR: #ff0033">Attention! </SPAN></STRONG><SPAN 
+  style="COLOR: #ff0033">You need to re-compute the whole model after the window 
+  change.</SPAN></LI></UL>
+<P style="MARGIN: 0cm 0cm 0pt"><STRONG><SPAN 
+style="COLOR: black">Gravity</SPAN></STRONG></P>
+<UL type=disc>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Units:</SPAN><SPAN style="COLOR: black"> 
+  </SPAN></STRONG><SPAN style="COLOR: black">Choose units you want to 
+  use.&nbsp;</SPAN> </LI>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Reference density:</SPAN></STRONG> If you want to use 
+  absolute density for bodies (2700 kg/m3) set the reference density - 
+  <STRONG>recommended</STRONG>. The density is used for computation 
+  is&nbsp;then: <EM>DensComputation = DensityBody - 
+  RefererenceDensity</EM>.&nbsp;If reference density is 0.0 then is ignored, you 
+  can use relative densities. Reference density can be also linearly increasing. 
+  Then set the density gradient and origin. If all the components of density 
+  gradient vector are 0.0, linearly increasing density is ignored.&nbsp;The 
+  reference density is applied to the bodies itself&nbsp;(not to the whole 
+  volume). </LI>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Gradients tensor:</SPAN></STRONG> Set either constant 
+  flight elevation or height over relief where the field is to be 
+computed.</LI></UL>
+<P style="MARGIN: 0cm 0cm 0pt"><STRONG>Magnetics</STRONG></P>
+<UL type=disc>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l7 level1 lfo23; tab-stops: list 36.0pt"><STRONG><SPAN 
+  style="COLOR: #000099">Sensor over relief:</SPAN></STRONG> set the sensor 
+  height over relief for magnetic field computation. </LI>
+  <LI class=MsoNormal 
+  style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l7 level1 lfo23; tab-stops: list 36.0pt">Set 
+  <STRONG><SPAN style="COLOR: #000099">Inducing Field</SPAN></STRONG> for 
+  magnetic field computation.</LI></UL>
+<P class=MsoNormal>&nbsp;</>
+<o:p></o:p></P>
+	</BODY>
+</HTML>

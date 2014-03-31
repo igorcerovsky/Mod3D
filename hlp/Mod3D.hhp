@@ -1,0 +1,255 @@
+[OPTIONS]
+Auto Index=Yes
+Binary TOC=Yes
+Compatibility=1.1 or later
+Compiled file=Mod3D.chm
+Contents file=Mod3D.hhc
+Default topic=main_index.htm
+Display compile progress=No
+Full-text search=Yes
+Index file=Mod3D.hhk
+Language=0x409 English (United States)
+Title=Mod3D Help
+
+
+[FILES]
+afx_hidd_color.htm
+afx_hidd_fileopen.htm
+afx_hidd_filesave.htm
+afx_hidd_find.htm
+afx_hidd_font.htm
+afx_hidd_newtypedlg.htm
+afx_hidd_replace.htm
+afx_hidp_default.htm
+afx_hidw_dockbar_top.htm
+afx_hidw_status_bar.htm
+afx_hidw_toolbar.htm
+hidr_doc1type.htm
+hid_app_about.htm
+hid_app_exit.htm
+hid_context_help.htm
+hid_edit_redo.htm
+hid_edit_undo.htm
+hid_file_close.htm
+hid_file_mru_file1.htm
+hid_file_new.htm
+hid_file_open.htm
+hid_file_save.htm
+hid_file_save_as.htm
+hid_file_send_mail.htm
+hid_help_index.htm
+hid_help_using.htm
+hid_ht_caption.htm
+hid_ht_nowhere.htm
+hid_sc_close.htm
+hid_sc_maximize.htm
+hid_sc_minimize.htm
+hid_sc_move.htm
+hid_sc_nextwindow.htm
+hid_sc_prevwindow.htm
+hid_sc_restore.htm
+hid_sc_size.htm
+hid_sc_tasklist.htm
+hid_view_status_bar.htm
+hid_view_toolbar.htm
+hid_window_all.htm
+hid_window_arrange.htm
+hid_window_cascade.htm
+hid_window_new.htm
+hid_window_tile_horz.htm
+hid_window_tile_vert.htm
+main_index.htm
+menu_edit.htm
+menu_file.htm
+menu_help.htm
+menu_view.htm
+menu_window.htm
+scrollbars.htm
+afx_hidd_print.htm
+afx_hidd_printdlg.htm
+afx_hidd_printsetup.htm
+afx_hidw_preview_bar.htm
+hid_file_page_setup.htm
+hid_file_print.htm
+hid_file_print_preview.htm
+hid_file_print_setup.htm
+hidd_dlg_view_map.htm
+hidd_dlg_body_creation.htm
+hidd_dlg_body_description.htm
+hidd_dlg_body_drawing.htm
+hidd_dlg_body_export.htm
+hidd_dlg_body_import.htm
+hidd_dlg_body_physprop.htm
+hidd_dlg_body_select.htm
+hidd_dlg_model_def_obs.htm
+hidd_dlg_model_edit_bodies.htm
+hidd_dlg_model_fld_export.htm
+hidd_dlg_model_fld_indicator.htm
+hidd_dlg_model_grd_active.htm
+hidd_dlg_model_import_field.htm
+hidd_dlg_model_import_picture.htm
+hidd_dlg_model_inducing_field.htm
+hidd_dlg_model_ins_exist_body.htm
+hidd_dlg_model_picture_manager.htm
+hidd_dlg_model_range_z.htm
+hidd_dlg_3dview.htm
+HIDD_DLG_BODY_GRAV.htm
+HIDD_DLG_BODY_MAG.htm
+HIDD_DLG_3DVIEW_DRAW.htm
+HIDD_DLG_BODY_DRAW.htm
+HIDD_DLG_PEN.htm
+HIDR_PROFTYPE.htm
+HIDR_3DVIEW.htm
+HIDD_DLG_COMPUTE_MAG.htm
+HIDD_DLG_COMPUTE_GRAV.htm
+HIDD_DLG_COMPUTE_COMP.htm
+HIDD_DLG_FIT_1D.htm
+HIDD_DLG_OBJECT_MANAGER.htm
+HIDD_DLG_MODEL.htm
+HIDD_DLG_MODEL_GUIDELINE.htm
+HIDD_DLG_BODY_COMPUTATION.htm
+HIDD_DLG_WELL.htm
+HIDD_DLG_3DVIEW_SETTINGS.htm
+HIDD_DLG_3DVIEW_MODEL.htm
+
+[ALIAS]
+afx_hidd_color						= afx_hidd_color.htm
+afx_hidd_fileopen					= afx_hidd_fileopen.htm
+afx_hidd_filesave					= afx_hidd_filesave.htm
+afx_hidd_find						= afx_hidd_find.htm
+afx_hidd_font						= afx_hidd_font.htm
+afx_hidd_newtypedlg					= afx_hidd_newtypedlg.htm
+afx_hidd_print						= afx_hidd_print.htm
+afx_hidd_printdlg					= afx_hidd_printdlg.htm
+afx_hidd_printsetup					= afx_hidd_printsetup.htm
+afx_hidd_replace					= afx_hidd_replace.htm
+AFX_HIDP_ASK_TO_SAVE				= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_ASK_TO_UPDATE				= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_BAD_VERB					= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_COMMAND_FAILURE			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_DEFAULT					= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_ACCESS_READ			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_ACCESS_WRITE		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_DISK_FULL			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_INVALID_FORMAT		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_INVALID_PATH		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_IO_ERROR_READ		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_IO_ERROR_WRITE		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_MEMORY_ALLOC		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_AUTO_REGISTER	= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_CONNECT			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_CREATE_DOC		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_LAUNCH			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_LAUNCH_HELP		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_NOTIFY			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_OPEN_DOC			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_REGISTER			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_SAVE_DOC			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_START_PRINT		= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FAILED_TO_UPDATE			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_FILE_TOO_LARGE				= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_INTERNAL_FAILURE			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_INVALID_FILENAME			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_PARSE_INT					= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_PARSE_INT_RANGE			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_PARSE_REAL					= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_PARSE_REAL_RANGE			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_PARSE_STRING_SIZE			= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_SERVER_BUSY				= AFX_HIDP_DEFAULT.htm
+AFX_HIDP_STATIC_OBJECT				= AFX_HIDP_DEFAULT.htm
+AFX_HIDW_DOCKBAR_BOTTOM				= AFX_HIDW_DOCKBAR_TOP.HTM ; Same topic, 4 different possible hit tests
+AFX_HIDW_DOCKBAR_LEFT				= AFX_HIDW_DOCKBAR_TOP.HTM ; Same topic, 4 different possible hit tests
+AFX_HIDW_DOCKBAR_RIGHT				= AFX_HIDW_DOCKBAR_TOP.HTM ; Same topic, 4 different possible hit tests
+afx_hidw_dockbar_top				= afx_hidw_dockbar_top.htm
+afx_hidw_preview_bar				= afx_hidw_preview_bar.htm
+afx_hidw_status_bar					= afx_hidw_status_bar.htm
+afx_hidw_toolbar					= afx_hidw_toolbar.htm
+hid_app_about						= hid_app_about.htm
+hid_app_exit						= hid_app_exit.htm
+hid_context_help					= hid_context_help.htm
+hid_edit_redo						= hid_edit_redo.htm
+hid_edit_undo						= hid_edit_undo.htm
+hid_file_close						= hid_file_close.htm
+hid_file_mru_file1					= hid_file_mru_file1.htm
+hid_file_new						= hid_file_new.htm
+hid_file_open						= hid_file_open.htm
+hid_file_page_setup					= hid_file_page_setup.htm
+hid_file_print						= hid_file_print.htm
+hid_file_print_preview				= hid_file_print_preview.htm
+hid_file_print_setup				= hid_file_print_setup.htm
+hid_file_save						= hid_file_save.htm
+hid_file_save_as					= hid_file_save_as.htm
+hid_file_send_mail					= hid_file_send_mail.htm
+hid_help_index						= hid_help_index.htm
+hid_help_using						= hid_help_using.htm
+hid_ht_caption						= hid_ht_caption.htm
+HID_HT_HSCROLL						= scrollbars.htm
+HID_HT_MAXBUTTON					= HID_SC_MAXIMIZE.htm
+HID_HT_MINBUTTON					= HID_SC_MINIMIZE.htm
+hid_ht_nowhere						= hid_ht_nowhere.htm
+HID_HT_SIZE							= HID_SC_SIZE.htm
+HID_HT_VSCROLL						= scrollbars.htm
+hid_view_status_bar					= hid_view_status_bar.htm
+hid_view_toolbar					= hid_view_toolbar.htm
+hid_window_all						= hid_window_all.htm
+hid_window_arrange					= hid_window_arrange.htm
+hid_window_cascade					= hid_window_cascade.htm
+hid_window_new						= hid_window_new.htm
+hid_window_tile_horz				= hid_window_tile_horz.htm
+hid_window_tile_vert				= hid_window_tile_vert.htm
+HIDD_ABOUTBOX						= HID_APP_ABOUT.htm
+HIDD_DLG_3DVIEW						= hidd_dlg_3dview.htm
+HIDD_DLG_BODY_COMPUTATION=HIDD_DLG_BODY_COMPUTATION.htm
+HIDD_DLG_BODY_CREATION				= hidd_dlg_body_creation.htm
+HIDD_DLG_BODY_DESCRIPTION			= hidd_dlg_body_description.htm
+HIDD_DLG_BODY_DRAWING				= hidd_dlg_body_drawing.htm
+HIDD_DLG_BODY_EXPORT				= hidd_dlg_body_export.htm
+HIDD_DLG_BODY_GRAV=HIDD_DLG_BODY_GRAV.htm ; gravity physical properties page
+HIDD_DLG_BODY_IMPORT				= hidd_dlg_body_import.htm
+HIDD_DLG_BODY_MAG=HIDD_DLG_BODY_MAG.htm
+HIDD_DLG_BODY_PHYSPROP				= hidd_dlg_body_physprop.htm
+HIDD_DLG_BODY_SELECT				= hidd_dlg_body_select.htm
+HIDD_DLG_COMPUTE_COMP=HIDD_DLG_COMPUTE_COMP.htm
+HIDD_DLG_COMPUTE_GRAV=HIDD_DLG_COMPUTE_GRAV.htm ; compute gravity property page
+HIDD_DLG_COMPUTE_MAG=HIDD_DLG_COMPUTE_MAG.htm
+HIDD_DLG_FIT_1D=HIDD_DLG_FIT_1D.htm
+HIDD_DLG_MODEL_DEF_OBS				= hidd_dlg_model_def_obs.htm
+HIDD_DLG_MODEL_EDIT_BODIES			= hidd_dlg_model_edit_bodies.htm
+HIDD_DLG_MODEL_EDIT_CHECK_MARK		= hidd_dlg_model_edit_check_marks.htm
+HIDD_DLG_MODEL_FLD_EXPORT			= hidd_dlg_model_fld_export.htm
+HIDD_DLG_MODEL_FLD_INDICATOR		= hidd_dlg_model_fld_indicator.htm
+HIDD_DLG_MODEL_GRD_ACTIVE			= hidd_dlg_model_grd_active.htm
+HIDD_DLG_MODEL_GRIDLINES			= hidd_dlg_model_gridlines.htm
+HIDD_DLG_MODEL_GUIDELINE=HIDD_DLG_MODEL_GUIDELINE.htm ; Guideline
+HIDD_DLG_MODEL_IMPORT_FIELD			= hidd_dlg_model_import_field.htm
+HIDD_DLG_MODEL_IMPORT_PICTURE		= hidd_dlg_model_import_picture.htm
+HIDD_DLG_MODEL_INDUCING_FIELD		= hidd_dlg_model_inducing_field.htm
+HIDD_DLG_MODEL_INSERT_EXISTING_BODY	= hidd_dlg_model_ins_exist_body.htm
+HIDD_DLG_MODEL_PICTURE_MANAGER		= hidd_dlg_model_picture_manager.htm
+HIDD_DLG_MODEL_RANGE_Z				= hidd_dlg_model_range_z.htm
+HIDD_DLG_MODEL=HIDD_DLG_MODEL.htm
+HIDD_DLG_OBJECT_MANAGER=HIDD_DLG_OBJECT_MANAGER.htm
+HIDD_DLG_PEN=HIDD_DLG_PEN.htm ; pen dialog box
+HIDD_DLG_VIEW_MAP					= hidd_dlg_view_map.htm
+HIDD_DLG_WELL=HIDD_DLG_WELL.htm ; well dialog
+HIDR_3DVIEW=HIDR_3DVIEW.htm
+hidr_doc1type						= hidr_doc1type.htm
+HIDR_MAINFRAME = main_index.htm
+HIDR_Mod3DTYPE = HIDR_DOC1TYPE.htm
+HIDR_PROFTYPE=HIDR_PROFTYPE.htm ; Profile View
+main_index							= main_index.htm
+menu_edit							= menu_edit.htm
+menu_file							= menu_file.htm
+menu_help							= menu_help.htm
+menu_view							= menu_view.htm
+menu_window							= menu_window.htm
+scrollbars							= scrollbars.htm
+
+[MAP]
+#include HTMLDefines.h
+
+[TEXT POPUPS]
+HTMLDefines.h
+
+[INFOTYPES]
+

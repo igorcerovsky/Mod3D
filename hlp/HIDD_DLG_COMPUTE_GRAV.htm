@@ -1,0 +1,35 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P style="MARGIN: 0cm 0cm 0pt"><STRONG><SPAN style="COLOR: black"><FONT size="4"><STRONG>Computing 
+							properties: </STRONG>Gravity</FONT></SPAN></STRONG></P>
+		<P class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><SPAN style="COLOR: #000099"><STRONG>Sensor 
+					over relief [m]:</STRONG><FONT color="#000000"> Specify the sensor height over 
+					relief in meters. </FONT><FONT color="#990033"><FONT color="#ff0033">MUST NOT</FONT><FONT color="#ff0033">
+						be negative</FONT>.</FONT></SPAN></P>
+		<P class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><STRONG><SPAN style="COLOR: #000099">Units:</SPAN><SPAN style="COLOR: black"></SPAN></STRONG><SPAN style="COLOR: black">Choose units you want to 
+use.&nbsp;</SPAN>
+			If custom units are used, the resulting field is multiplied by the supplied 
+			value, which <FONT color="#ff0033">MUST NOT</FONT> <FONT color="#ff0033">be zero 
+				(0.0)</FONT>.</P>
+		<P class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><STRONG><SPAN style="COLOR: #000099">Reference density:</SPAN></STRONG>
+			If you want to use absolute density for bodies (2700 kg/m3) set the reference 
+			density - <STRONG>recommended</STRONG>. The density used for computation 
+			is&nbsp;then: <EM>DensComputation = DensityBody - RefererenceDensity</EM>.&nbsp;If 
+			reference density is 0.0 then reference density is ignored, you can use 
+			relative densities. Reference density can be also linearly increasing. Then set 
+			the density gradient and origin. If all the components of density gradient 
+			vector are 0.0, linearly increasing density is ignored.&nbsp;<BR>
+			<FONT color="#000099">Note:</FONT> <EM>The reference density is applied to the 
+				bodies itself&nbsp;(not to the whole model volume). </EM>
+		</P>
+		<P class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo22; tab-stops: list 36.0pt"><STRONG><SPAN style="COLOR: #000099">Gradients tensor:</SPAN></STRONG>
+			Set either constant flight elevation or height over relief where the field is 
+			to be computed. <FONT color="#000099"><STRONG>Multiply resulting field by</STRONG></FONT>
+			supplied value (i.e. displaying purposes, unit conversion...), which <FONT color="#ff0033">
+				MUST NOT</FONT> <FONT color="#ff0033">be zero (0.0)</FONT>.</P>
+	</BODY>
+</HTML>

@@ -1,0 +1,40 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG><FONT size="4">Computation properties: Computation</FONT></STRONG></P>
+		<P>&nbsp;If <STRONG>
+				<SPAN style="COLOR: #000099">Spherical computing</SPAN>
+			</STRONG>is checked, the whole computation is done on spherical Earth. It needs 
+			additional transformations, which slow down computation speed.
+		</P>
+		<P class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level1 lfo21; tab-stops: list 36.0pt"><STRONG><SPAN style="COLOR: #000099">Real-time Computation</SPAN></STRONG>
+			can be performed in modes.
+		</P>
+		<UL>
+			<LI>
+				<DIV class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level2 lfo21; tab-stops: list 72.0pt"><STRONG><SPAN style="COLOR: #000099">None</SPAN></STRONG><SPAN style="COLOR: #000099">:</SPAN>
+					real-time computation is not active. The field must be recomputed manually. 
+					This mode is efficient in initial stages of model creation. Model creation is 
+					not slowed down with re-computing.
+				</DIV>
+			</LI>
+			<LI>
+				<DIV class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level2 lfo21; tab-stops: list 72.0pt"><STRONG><SPAN style="COLOR: #000099">Real-time</SPAN></STRONG><SPAN style="COLOR: #000099">:</SPAN>
+					field update is performed simultaneously as the mouse is moving. All active 
+					grids are updated. All views are updated. Can be slow for large models, or slow 
+					computers. Doesn't work for whole body motion! See <STRONG>
+						<SPAN style="COLOR: #006600">Efficient 
+  computing</SPAN></STRONG> for details, how to achieve the best computation efficiency.
+				</DIV>
+			</LI>
+		</UL>
+		<P class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l3 level1 lfo21; tab-stops: list 36.0pt"><STRONG><SPAN style="COLOR: #000099">Window:</SPAN></STRONG>
+			select grid window&nbsp;used in computation. Only grid points within the 
+			computation window are recomputed. <STRONG>
+				<SPAN style="COLOR: #ff0033">Attention! </SPAN></STRONG><SPAN style="COLOR: #ff0033">You need to re-compute the whole model after the window 
+change.</SPAN></P>
+	</BODY>
+</HTML>

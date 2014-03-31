@@ -1,0 +1,42 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG><FONT size="4">1D Fit Properties</FONT></STRONG></P>
+		<P><STRONG><FONT color="#000099">Fitting Field:</FONT></STRONG> Select field used 
+			for fitting. <FONT color="#ff0033">MUST be difference field.</FONT>
+		</P>
+		<P><STRONG><FONT color="#000099">Method:</FONT></STRONG>&nbsp;Select fitting 
+			method. Brent method uses parabolic interpolation and should converge faster. <EM>Further 
+				reading: i.e. Press et al., Numerical Recipes in C.</EM>
+		</P>
+		<P><STRONG><FONT color="#000099">Log File:</FONT></STRONG> Choose, whether you want 
+			to create log file. Click the <FONT color="#000099">Browse</FONT> button, to 
+			specify the&nbsp;file name.&nbsp;</P>
+		<P><STRONG><FONT color="#000099">Characteristic:</FONT></STRONG>&nbsp; Specify the 
+			characteristic used in fitting algorithm.
+			<BR>
+			<FONT color="#000099">RMS</FONT> - Root Mean Square&nbsp;of the difference 
+			grid.<BR>
+			<FONT color="#000099">Derivative</FONT> of the difference field grid.<BR>
+			<FONT color="#000099">Local Derivative</FONT> is the derivative of the 
+			difference grid in fitting point. In density fitting ignored.
+		</P>
+		<P><STRONG><FONT color="#000099">Bracketing epsilon:</FONT></STRONG> Starting guess 
+			interval for bracketing the minimum.
+		</P>
+		<P><STRONG><FONT color="#000099">Tolerance &lt; 3.0e-8:</FONT></STRONG> Set the 
+			fitting tolerance. This value should be less then square root of the machine's 
+			floating point precision (for <EM>double </EM>type 15 valid decimal digits 
+			=&gt; minimum meaningful value is 3.0e-8).
+		</P>
+		<P><STRONG><FONT color="#000099">Maximum iterations:</FONT>&nbsp; </STRONG>Specify 
+			maximum number of&nbsp;iterations for <STRONG><FONT color="#000099">Brent's</FONT> </STRONG>
+			method.</P>
+		<P><FONT color="#000099"><STRONG>Auto bracketing:</STRONG></FONT> Available only 
+			for vertex fitting. When checked system computes "optimal" bracketing epsilon. 
+			Specify the percent of value of maximum available fit interval.</P>
+	</BODY>
+</HTML>

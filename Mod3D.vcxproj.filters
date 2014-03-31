@@ -1,0 +1,1407 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{b2dbe975-b176-4710-b9db-8e8e3e8495eb}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="Source Files\Dialogs">
+      <UniqueIdentifier>{c7b435d1-a5e9-4619-9411-2f34711630d2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{17e7cc7d-f13f-4483-806d-42ab49ba3c61}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Header Files\Dialogs">
+      <UniqueIdentifier>{68be5db1-8ea6-4336-b7aa-fe25fd038777}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{48813b5a-d73b-4a1a-93f9-175075e110cc}</UniqueIdentifier>
+      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe</Extensions>
+    </Filter>
+    <Filter Include="HTML Help Files">
+      <UniqueIdentifier>{d63f6fe6-3b95-4634-b6e9-a5748dedf504}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="HTML Help Files\Images">
+      <UniqueIdentifier>{deb29694-bf0c-4314-9350-c133e4e9b7ce}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="HTML Help Files\HTML Help Topics">
+      <UniqueIdentifier>{1ceec941-6f1b-419a-9340-a2a2872f33e5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="HTML Help Files\HtmlHlpSystem">
+      <UniqueIdentifier>{2e9c6af1-d8e2-4efc-81eb-80d1bb63b796}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="HTML Help Files\HtmlHlpDialogs">
+      <UniqueIdentifier>{9a8a65a2-179f-4914-9136-cee8bf782bd0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="AboutDemo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="AboutDlg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="BmpReferenced.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Body.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="CheckPoint.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ChildFrm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ClmnPt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ColorButton.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ColourPopup.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Data3D.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgAxis.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgBodyMove.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgColorGrad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgData3D.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgFit1D.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgFldSelect.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgGridProperties.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgImpExpFld.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgModGrids.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgModelImportBody.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgModelProperties.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgObjGrd.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgObservations.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPp3DAxes.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPp3dDraw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPp3dField.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPp3dModel.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPp3dSaveLoad.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPp3dSetings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpBodyComp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpBodyDescr.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpBodyGrav.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpBodyMag.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpBodydraw.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpCompComp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpCompGrav.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPpCompMag.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgProfileSettings.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgSelGridProp.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgStart.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgWell.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Facet3Pt.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GlBitmap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GlSurface.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ClrGrad\Gradient.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ClrGrad\GradientCtrl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ClrGrad\GradientCtrlImpl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Grid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\GridCell.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\GridCellBase.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\GridCtrl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\GridDropTarget.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridObj.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\InPlaceEdit.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MainFrm.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod3D.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod3DDoc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod3DDocComputing.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod3DDocFit.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod3DSerialize.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Mod3dDocFitDens.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Model.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="MyObject.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Point3D.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="PotField.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ScaleAxis.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="StdAfx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\TitleTip.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="View3dSheet.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ViewGL3D.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ViewGrid.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ViewMap.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ViewProf.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Well.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgBodyExport.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgBodyImport.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgBodyModf.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgCheckMark.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgDefineObs.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgEditBodies.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgEditCheckMarks.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgHtmlAbout.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgImportPicture.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgInducingField.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgInsExistBoby.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgModelActiveGrd.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgModelFldIndicator.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPen.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgPictureManager.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgSelectBody.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgVerticalRange.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="DlgViewMapProperties.cpp">
+      <Filter>Source Files\Dialogs</Filter>
+    </ClCompile>
+    <ClCompile Include="Arrays.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GlBitmap.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="GlSurface.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hlp\HTMLDefines.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Messages.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Routines.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+    <ClCompile Include="VersionType.h">
+      <Filter>Header Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Mod3D.rc">
+      <Filter>Source Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="AboutDemo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="AboutDlg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BmpReferenced.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Body.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\CellRange.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="CheckPoint.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ChildFrm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ClmnPt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ColorButton.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ColourPopup.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Data3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgAxis.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgBodyMove.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgColorGrad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgData3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgFit1D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgFldSelect.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgGridProperties.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgImpExpFld.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgModGrids.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgModelImportBody.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgModelProperties.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgObjGrd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgObservations.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPp3DAxes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPp3dDraw.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPp3dField.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPp3dModel.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPp3dSaveLoad.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPp3dSetings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpBodyComp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpBodyDescr.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpBodyGrav.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpBodyMag.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpBodydraw.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpCompComp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpCompGrav.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPpCompMag.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgProfileSettings.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgSelGridProp.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgStart.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgWell.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Facet3Pt.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ClrGrad\Gradient.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ClrGrad\GradientCtrlImpl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Grid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\GridCell.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\GridCellBase.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\GridCtrl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\GridDropTarget.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridObj.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\InPlaceEdit.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MainFrm.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\MemDC.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Mod3DDoc.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Model.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="MyObject.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Point3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="PotField.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ScaleAxis.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="StdAfx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="GridCtrl_src\TitleTip.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="View3dSheet.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ViewGL3D.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ViewGrid.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ViewMap.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ViewProf.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Well.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ClrGrad\gradientctrl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgBodyExport.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgBodyImport.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgBodyModf.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgCheckMark.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgDefineObs.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgEditBodies.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgEditCheckMarks.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgHtmlAbout.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgImportPicture.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgInducingField.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgInsExistBoby.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgModelActiveGrd.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgModelFldIndicator.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPen.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgPictureManager.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgSelectBody.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgVerticalRange.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+    <ClInclude Include="DlgViewMapProperties.h">
+      <Filter>Header Files\Dialogs</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\3dview.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\DlgBk.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\DlgBk_BW.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\HScBarAct.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\HScBarPas.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Mod3D.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Mod3DDoc.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="Pictures\Mod3D_small.gif">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TbBmp.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TlbFld.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TlbFldGrd.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TlbFldSc.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TlbFldView.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TlbPrfView.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\TlbProfView.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ToolBarFldCnt.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\Toolbar.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\b1.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\b2.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bitmap1.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bitmap2.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bitmap3.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bmp00001.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bmp00002.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bmp00003.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bmp00004.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\bmp00005.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\crs_body.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00001.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00002.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00003.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00004.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00005.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00006.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\ico00007.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\icoOpen.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\icon1.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\icon2.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\idc_vert.ico">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\modPrpo.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\slov.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\toolbar1.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\toolbar_.bmp">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="hlp\Images\Bullet.gif">
+      <Filter>HTML Help Files</Filter>
+    </Image>
+    <Image Include="hlp\Images\MenuProfViewBody.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\MenuProfViewBodyNew.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\MenuProfViewVrtx.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\Mod3D.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\ProfViewFloatMenu.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\crs_crsOverBdLine.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\crs_crsOverLine.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\crs_crsOverVrtx.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\cursor_e.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\cursor_v.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_activefld.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_body_descr.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_body_drawcomp.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_body_physprop.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_bodyexport.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_bodyimport.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_compprop.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\dlg_creationprop.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\statusbar.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\titlebar.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_axis.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_bmp.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_cnt.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_dif.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_g.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_gx.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_gy.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_gz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_m.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_mes.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_mod.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_mx.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_my.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_mz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_txx.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_txy.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_txz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_tyy.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_tyz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_fld_tzz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_compute.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_digitize.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_new.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_open.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_print.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_redraw.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_save.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_scale.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_view3d.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_view_tileh.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_view_tilev.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_viewmap.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_viewprof.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_wnd_prof.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_zoom.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_zoomin.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_zoomout.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_main_zoompage.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_bdcntr.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_obj.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_obspt.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_pic.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_profs.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_relbmp.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_map_relcntr.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_EW.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_SN.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_grdhrz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_grdvrt.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_movebody.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_next.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prev.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfcopynext.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfcopyprev.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfdel.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfhrz.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfnext.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfprev.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_prfvrt.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_show_glvrt.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_show_next.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_show_prev.bmp">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_shownext.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+    <Image Include="hlp\Images\toolbar_prof_showprev.gif">
+      <Filter>HTML Help Files\Images</Filter>
+    </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\CrsBdLine.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsBody.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsLine.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsNormal.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsPoint.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsSbHrz.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsSbVrt.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\CrsWndDiv.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\Mod3D.rc2">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cell.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00001.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00002.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00003.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00004.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00005.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00006.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cur00007.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\curBodyMove.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\curDivVrt.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cursor1.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cursor_e.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cursor_h.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cursor_v.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cursor_z.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\cursorzo.cur">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="hlp\DlgHtmlAbout.htm">
+      <Filter>HTML Help Files</Filter>
+    </None>
+    <None Include="hlp\Mod3D.hhc">
+      <Filter>HTML Help Files</Filter>
+    </None>
+    <None Include="hlp\Mod3D.hhk">
+      <Filter>HTML Help Files</Filter>
+    </None>
+    <None Include="hlp\HIDR_3DVIEW.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\HIDR_PROFTYPE.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\main_index.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_body.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_compute.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_file.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_help.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_model.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_view.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\menu_window.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\scrollbars.htm">
+      <Filter>HTML Help Files\HTML Help Topics</Filter>
+    </None>
+    <None Include="hlp\Hlp_how_to.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\How_to_begin.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_color.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_fileopen.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_filesave.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_find.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_font.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_print.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_printdlg.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidd_printsetup.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidp_default.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidw_dockbar_top.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidw_preview_bar.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidw_status_bar.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\afx_hidw_toolbar.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_app_about.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_app_exit.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_context_help.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_close.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_import.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_mru_file1.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_new.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_open.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_page_setup.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_print.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_print_preview.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_print_setup.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_save.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_save_as.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_file_send_mail.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_help_index.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_help_using.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_ht_caption.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_ht_nowhere.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_import_bitmap.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_import_body.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_import_guide_line.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_import_measured_field.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_close.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_maximize.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_minimize.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_move.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_nextwindow.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_prevwindow.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_restore.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_size.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_sc_tasklist.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_view_status_bar.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_view_toolbar.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_window_all.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_window_new.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_window_tile.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_window_tile_horz.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hid_window_tile_vert.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hidr_doc1type.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hlp_mod3d.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hlp_model_create_modf.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hlp_toolbar_fld.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hlp_toolbar_map.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hlp_toolbar_prof.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\hlp_toolbars.htm">
+      <Filter>HTML Help Files\HtmlHlpSystem</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_3DVIEW_DRAW.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_3DVIEW_MODEL.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_3DVIEW_SETTINGS.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_COMPUTATION.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_DRAW.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_GRAV.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_MAG.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_COMPUTE_COMP.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_COMPUTE_GRAV.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_COMPUTE_MAG.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_FIT_1D.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_MODEL.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_MODEL_GUIDELINE.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_OBJECT_MANAGER.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_PEN.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\HIDD_DLG_WELL.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_body_creation.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_body_description.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_body_export.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_body_import.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_body_select.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_def_obs.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_edit_bodies.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_fld_indicator.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_grd_active.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_inducing_field.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_ins_exist_body.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_model_range_z.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="hlp\hidd_dlg_view_map.htm">
+      <Filter>HTML Help Files\HtmlHlpDialogs</Filter>
+    </None>
+    <None Include="Mod3D.reg" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="Resource.h">
+      <Filter>Header Files</Filter>
+    </CustomBuild>
+    <CustomBuild Include="hlp\Mod3D.hhp">
+      <Filter>HTML Help Files</Filter>
+    </CustomBuild>
+  </ItemGroup>
+</Project>

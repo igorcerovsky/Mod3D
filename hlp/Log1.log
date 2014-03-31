@@ -1,0 +1,16 @@
+Microsoft HTML Help Compiler 4.74.8702
+
+Compiling d:\! Projects\Model3D\hlp\Mod3D.chm
+
+HHC4006: Warning: The file "hidd_dlg_model_comp_prop.htm" is already listed in the [FILES] section of the project file.
+HHC3015: Warning: An alias has been created to "" but the file does not exist
+
+Compile time: 0 minutes, 1 second
+105	Topics
+60	Local links
+0	Internet links
+1	Graphic
+
+
+Created d:\! Projects\Model3D\hlp\Mod3D.chm, 43,081 bytes
+Compression decreased file by 39,587 bytes.

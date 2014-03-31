@@ -1,0 +1,41 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG>Body Properties: Gravity</STRONG></P>
+		<P>Set the physical properties used for the gravitational field computation.</P>
+		<P><FONT color="#000099"><STRONG>Density:</STRONG></FONT> specify the density of a 
+			body -&nbsp;<EM>ro<SUB>body</SUB></EM>&nbsp;in<EM> [</EM><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><EM>kg·m<SUP>-3</SUP>].
+				</EM>Gravitational field is computed using the reference density 
+<EM>ro<SUB>ref&nbsp;</SUB></EM>, if the reference density is nonzero. The 
+density used for computation is:&nbsp;<I><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">ro 
+= ro<SUB>body</SUB>-ro<SUB>ref&nbsp;</SUB><SPAN style="mso-spacerun: yes">&nbsp;.</SPAN></SPAN></I></SPAN></P>
+		<P><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><SPAN style="mso-spacerun: yes"><FONT color="#000099"><STRONG>Gradient:
+							</STRONG></FONT><FONT color="#000000">specify the density gradient 
+							components&nbsp;of a body in
+							<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><EM>
+									kg·m<SUP>-4</SUP>. </EM> Take into account, that right-handed coordinate system with positive 
+<EM>z-</EM>axis <SPAN style="FONT-SIZE: 12pt; COLOR: black; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">pointing 
+</SPAN>  upward is used (for increasing density with the depth 
+<EM>z</EM> component of the gradient is 
+negative).</SPAN></FONT></SPAN> The <EM>z</EM> density gradient 
+component&nbsp;can be computed as follows: g<EM>z = (roH0-roH)/(h0-h)</EM>, 
+where <EM>roH0, roH&nbsp;</EM>is the density&nbsp;at 
+depth&nbsp;<EM>&nbsp;h0,&nbsp;h&nbsp;</EM>respectively.
+				</SPAN>
+			</SPAN></P>
+		<P><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"></SPAN>
+			</SPAN><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><SPAN style="mso-spacerun: yes"><FONT color="#000000"><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><FONT color="#000099"><STRONG>Origin:</STRONG></FONT> Specify an origin for the density 
+gradient computation. In the origin the density equals to the density of a body. 
+The density in point <STRONG><EM>P</EM></STRONG> is computed as follows: <SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><EM>ro<STRONG><SUB>P</SUB>
+											=&nbsp; </STRONG>ro<SUB>body</SUB><STRONG>+ r·g</STRONG></EM>, 
+where&nbsp;<EM><STRONG>g </STRONG></EM>is the density gradient 
+and&nbsp;<STRONG><EM>r</EM></STRONG> is the radius vector 
+from&nbsp;point&nbsp;<EM><STRONG>P </STRONG></EM>to the gradient 
+origin.</SPAN></SPAN></FONT></SPAN>
+				</SPAN>
+			</SPAN></P>
+	</BODY>
+</HTML>

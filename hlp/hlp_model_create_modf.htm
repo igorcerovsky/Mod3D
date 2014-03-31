@@ -1,0 +1,142 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG><FONT size="4">How to Create / Modify the model?</FONT></STRONG></P>
+		<P><FONT size="4"><STRONG>NOTE: </STRONG>Most of described operations are performed in 
+				the&nbsp;<EM><FONT color="#006600"><STRONG>Profile View</STRONG></FONT></EM>! 
+				Only vertex motion can be additionally used in <STRONG><EM><FONT color="#006600">3D View</FONT></EM></STRONG>.</FONT></P>
+		<P>Conventions in following description:</P>
+		<P><STRONG>Actions.</STRONG></P>
+		<UL>
+			<LI>
+				<EM><FONT color="#990000">left mouse button click</FONT></EM>–&gt; click 
+			with left mouse button&nbsp;
+			<LI>
+				<FONT color="#990000"><EM>left mouse button down</EM></FONT>
+			–&gt; left mouse button is down
+			<LI>
+				<FONT color="#990000"><EM>right mouse button click</EM></FONT>–&gt; click 
+			with right mouse button
+			<LI>
+				<FONT color="#990000"><EM>right mouse button down</EM></FONT>
+			–&gt; right mouse button is down
+			<LI>
+				<EM><FONT color="#990000">mouse double click</FONT></EM>
+			-&gt; double click with left mouse button
+			<LI>
+				<FONT color="#990000"><EM>mouse move</EM></FONT>
+			-&gt; mouse is moving
+			<LI>
+				<FONT color="#990000"><EM>CTRL</EM></FONT>
+			– Ctrl button on keyboard is down
+			<LI>
+				<FONT color="#990000"><EM>SHIFT</EM></FONT> – Shift button on keyboard is down
+			</LI>
+		</UL>
+		<P>Use Model toolbar buttons or keyboard arrows to move across the observation area 
+			and move to the profile where you would like to create a body .
+		</P>
+		<P><STRONG>Create new body.
+				<BR>
+			</STRONG>To create a new body use <FONT color="#990000"><EM>right mouse button click</EM></FONT>&nbsp;at 
+			position in&nbsp;<EM>Profile View</EM>&nbsp;where you want to insert a body. 
+			You MUST click inside the "model area", what is an area inbetween relief and 
+			bottom boundary of the model vertical&nbsp;range, when the cursor changes to <IMG alt="" src="Images\crs_crsOverLine.bmp">
+			. <EM><FONT color="#990000">Right mouse button click</FONT></EM> opens floating 
+			menu, where choose <FONT color="#000099">Insert New Body</FONT> command.&nbsp;<FONT color="#990033"><EM>Right 
+					mouse button click</EM></FONT>&nbsp;on the&nbsp;newly created body 
+			opens the floatin menu, where choose <FONT color="#330099">Properties</FONT> .&nbsp;In 
+			the&nbsp;<FONT color="#006600">Body Properties</FONT> property page, modify the 
+			physical properties, drawing parameters and description of the body. The "body" 
+			is created at given position.&nbsp;The way how the body will be further 
+			extended is&nbsp;given by&nbsp;<FONT color="#006600">Body Creation Properties</FONT>. 
+			To extend the body to the sides follow <STRONG>Body extending to the side </STRONG>
+			below<STRONG>.</STRONG>
+		</P>
+		<P><STRONG>Creating a new separated&nbsp;part of an existing body.</STRONG>&nbsp;<BR>
+			Use the same steps as described in the&nbsp;<STRONG>Create new body</STRONG> section, 
+			but choose <FONT color="#000099">Insert Existing Body</FONT> from floating 
+			menu. In <FONT color="#006600">Insert Existing Body</FONT>&nbsp;dialog select 
+			the body you want to create. The initial body width is by default 1/10 of the 
+			model vertical range. In a case that you may want to change the body properties 
+			of the separate part of some body&nbsp;in the future, better create new body.</P>
+		<P><STRONG>Moving body vertices.<BR>
+			</STRONG>Cursor changes to <IMG alt="" src="Images\crs_crsOverVrtx.bmp">&nbsp;if 
+			the vertex is movable in vertical direction.&nbsp;Catch the vertext with <EM><FONT color="#990033">
+					left mouse button click</FONT></EM> .&nbsp;Use <FONT color="#990000"><EM>left 
+					mouse button down</EM></FONT>&nbsp;+ <EM><FONT color="#990000">move mouse</FONT></EM>
+			in vertical direction along the <FONT color="#006600">grid lines</FONT>. The 
+			limits where the vertex can move are defined by the geometry of the model. Body 
+			vertex can not move inside to another body or cross another vertex of the same 
+			body. Also cannot move above the relief or below the model range minimum. If 
+			you would like to extent the body deeper then change vertical model range 
+			minimum. Use&nbsp;from menu&nbsp;<FONT color="#000099">Model&nbsp;\ Change Vertical </FONT>
+			<FONT color="#000099">Range</FONT> command, though. If real-time computation 
+			mode in on, the modeled field is gonna be updated.</P>
+		<P><STRONG>Body extending to the side.</STRONG><BR>
+			Body can be extended to the sides after the cursor changes to&nbsp;<IMG alt="" src="Images\crs_crsOverBdLine.bmp">&nbsp; 
+			when moving with mouse cursor over&nbsp;the vertical&nbsp;body outer or inner 
+			edge.&nbsp;<EM><FONT color="#990033">Click left mouse button</FONT></EM> and&nbsp;extend 
+			the body to the side using <FONT color="#990000"><EM>left mouse button down</EM></FONT>&nbsp;+
+			<FONT color="#990000"><EM>move mouse</EM></FONT>. If you are moving towards 
+			outside&nbsp;from the body new parts are created. Moving towards inside the 
+			body will remove the last edge. One MUST&nbsp;point with the cursor over next 
+			(previous) vertical line in order to create new part of the body.&nbsp;Rules 
+			how new part of a body is created is&nbsp;defined in menu <FONT color="#000099">Body&nbsp;\ 
+				Creation Properties</FONT>. In the case of moving towards the edge of 
+			separate part of the same body, the two parts will be merged. One cannot enter 
+			to another body. In that case operation will be stopped. If real-time 
+			computation mode in on, the modeled field is gonna be updated.
+		</P>
+		<P><STRONG>Modifying shape of the body.<BR>
+			</STRONG>Simply&nbsp;<EM><FONT color="#990000">left mouse button</FONT><FONT color="#990033">
+					click</FONT></EM> on the body vertex and use <FONT color="#990000"><EM>left 
+					mouse button</EM> </FONT><EM><FONT color="#cc0000">down </FONT><FONT color="#cc0000">
+					+</FONT></EM> <FONT color="#990000"><EM>mouse move</EM> </FONT>and 
+			modify the shape. You can modify vertical vertex position moving along the 
+			vertical grid line. To modify next vertex keep the mouse capture and move to 
+			the&nbsp;next grid line.&nbsp;This is something like imitation of the boundary 
+			drawing. If two bodies have common boundary, it is modified automatically. 
+			Upper and lower boundary of a body&nbsp;MUST be modified separately. If 
+			real-time computation mode in on, the modeled field is gonna be updated.
+		</P>
+		<P><STRONG>Connect vertices</STRONG>.<BR>
+			In most cases the&nbsp;two neighboring bodies have common boundary. To connect 
+			vertices of two neighbouring bodies in vertical direction together drive the 
+			body vertex towards the body which is to be connected using <EM><FONT color="#990000">left 
+					mouse button down + mouse move</FONT></EM>. If the cursor&nbsp;passes 
+			over&nbsp;neighbouring body, the vertices are joined together. You can also 
+			apply above rules to join body to relief. In cases when two vertices are close 
+			to each other&nbsp;(in screen coordinates) they will be connected automatically 
+			after clicking on one of the vertices. There is no limitation for how many 
+			bodies could be connected ogether.&nbsp;If real-time computation mode in on, 
+			the modeled field is gonna be updated.
+		</P>
+		<P><STRONG>Disconnect vertices.<BR>
+			</STRONG>&nbsp;To disconnect common vertex of two or more&nbsp;bodies use <FONT color="#990000">
+				<EM>CTRL + left mouse button down + mouse move</EM></FONT>. Continue to 
+			move mouse (like Modifying shape of a body) to disconnect another vertices. The 
+			vertices of two bodies can be disconnected only in one direction, depending on 
+			the internal storage&nbsp;order of the bodies.</P>
+		<P><STRONG>Connect end of a body into one vertex.<BR>
+			</STRONG>Use <FONT color="#990000"><EM>left mouse button down + mouse move</EM></FONT>
+			and connect the vertices together.
+		</P>
+		<P><STRONG>Move body in vertical direction.<BR>
+			</STRONG>Use <FONT color="#990000"><EM>SHIFT +</EM></FONT> <FONT color="#990000"><EM>left 
+					mouse <FONT color="#990000">button</FONT> down + mouse move</EM></FONT> 
+			to move the&nbsp;&nbsp;body in vertical direction.&nbsp;Cursor&nbsp;MUST be 
+			of&nbsp;'over body'&nbsp;&nbsp; <IMG alt="" src="Images\crs_body.bmp">&nbsp;type. 
+			To controll body motion manually, use fom floating body menu command <FONT color="#000099">
+				Move Body</FONT>.</P>
+		<P><FONT size="4"><STRONG>Complex model.<BR>
+				</STRONG><FONT color="#ff0033"><FONT color="#000000">In a&nbsp;complex model </FONT>
+					<STRONG><FONT color="#ff0033">common </FONT>vertical</STRONG> <STRONG>boubaries are 
+						NOT supported!</STRONG></FONT><FONT color="#000000"> You always <STRONG>MUST </STRONG>
+					connect the termination of a body from each side on a&nbsp;given profile into 
+					one common vertex!</FONT></FONT></P>
+	</BODY>
+</HTML>

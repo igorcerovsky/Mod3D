@@ -1,0 +1,46 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG>Import Guideline command</STRONG></P>
+		<P>Use this command to import guideline. Guideline is an object, which sipmlifies 
+			the orientation over the observation area. Guideline is shown on both <EM>Map View</EM>
+			and <EM>Profile View</EM>. In <EM>Profile View</EM>&nbsp;is shown the 
+			intersection of the current profile with guideline(s). Guideline can be 
+			imported from text filewith format described below.</P>
+		<P><STRONG>Gudeline file format:<BR>
+			</STRONG>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; keywords: <FONT color="#ff0000"><EM>line [name]</EM><FONT color="#000000">&nbsp;describes 
+					the begining of guideline; name parameter is optional but recomended and is 
+					string shown on <EM>Profile View </EM>as a description of guideline.
+					<BR>
+					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; After line<FONT color="#ff0000"><EM>line [name]</EM><FONT color="#000000"><EM>
+							</EM>keyword follows data section. Data section can contain <EM>n</EM> floating 
+							point numbers in on line. First coordinate is <EM>x </EM>followed by <EM>y</EM> 
+							and&nbsp;<EM>z</EM> coordinates.&nbsp;&nbsp;First two are necassary for valid 
+							piont. Third, <EM>z</EM> coordinate can be omited.</FONT></FONT></FONT><BR>
+			</FONT>
+		</P>
+		<P><FONT color="#000066">***&nbsp; file "guideline.dat" *******<BR>
+				line sampleGL<BR>
+				100 100 10<BR>
+				150.1 200.5 8.6<BR>
+				....<BR>
+				....<BR>
+				....<BR>
+				line anotherGL<BR>
+				10 20<BR>
+				25 30<BR>
+				35 40<BR>
+				...<BR>
+				...<BR>
+				...<BR>
+				...<BR>
+				*** end of file "gudeline.dat" ****</FONT></P>
+		<P><FONT color="#ff0000"><FONT color="#000000">Gudelines can be edited in guideline editor. 
+					To edit guideline choose from menu </FONT><FONT color="#000066">Edit&nbsp;\ 
+					Edit Guideline.</FONT></P>
+		</FONT>
+	</BODY>
+</HTML>

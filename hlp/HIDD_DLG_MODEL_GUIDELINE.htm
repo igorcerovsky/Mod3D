@@ -1,0 +1,50 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG><FONT size="4">Guideline Properties Dialog</FONT></STRONG></P>
+		<P>Set guideline properties.</P>
+		<P><STRONG><FONT color="#000099">Type:</FONT></STRONG> Not Used.</P>
+		<P><FONT color="#000099"><STRONG>Display: </STRONG><FONT color="#000000">Active&nbsp;in <EM>Profile 
+						View</EM></FONT><FONT color="#000000"><BR>
+					<FONT color="#000099">Visible:</FONT>&nbsp;Show or hide guideline arrow 
+					indicators.<BR>
+					<FONT color="#000099">Show Text:</FONT> Show or hide guideline text.</FONT></FONT></P>
+		<P><FONT color="#000099"><STRONG>Description:</STRONG></FONT> Set description for <EM>Profile 
+				View</EM>.</P>
+		<P><STRONG><FONT color="#000099">Pen:</FONT></STRONG> Click <FONT color="#000099">Pen</FONT>
+			button to adjust pen properties.</P>
+		<P>&nbsp;</P>
+		<P><STRONG><FONT size="4">Gudeline file format:</FONT><BR>
+			</STRONG>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; keywords: <FONT color="#ff0000"><EM>line [name]</EM><FONT color="#000000">&nbsp;describes 
+					the begining of a guideline; name parameter is optional but recomended and is 
+					string shown in <EM>Profile View </EM>as a description of guideline.
+					<BR>
+					&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; After <FONT color="#ff0000"><EM>line [name]</EM><FONT color="#000000"><EM>
+							</EM>keyword follows data section. Data section can contain <EM>n</EM> floating 
+							point numbers in on line. First coordinate is <EM>x </EM>followed by <EM>y</EM> 
+							and&nbsp;<EM>z</EM> coordinates.&nbsp;&nbsp;First two are necassary for a valid 
+							piont. Third, <EM>z</EM> coordinate can be omited.</FONT></FONT></FONT><BR>
+			</FONT>
+		</P>
+		<P><FONT color="#000066">***&nbsp; file "guideline.dat" *******<BR>
+				line sampleGL<BR>
+				100 100 10<BR>
+				150.1 200.5 8.6<BR>
+				....<BR>
+				....<BR>
+				....<BR>
+				line anotherGL<BR>
+				10 20<BR>
+				25 30<BR>
+				35 40<BR>
+				...<BR>
+				...<BR>
+				...<BR>
+				...<BR>
+				*** end of file "gudeline.dat" ****</FONT><FONT color="#ff0000"></P>
+		</FONT>
+	</BODY>
+</HTML>

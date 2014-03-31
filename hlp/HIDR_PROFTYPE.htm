@@ -1,0 +1,240 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG><FONT size="4">Profile View</FONT></STRONG></P>
+		<P align="justify">The <EM><STRONG><FONT color="#000099">Profile View</FONT></STRONG></EM>
+			provides an interface, where the polyhedral bodies are defined in sets of 
+			perpendicular cross sections running through the grid nodes. More profiles can 
+			be opened simultaneously, to get better overview over the geometry in both 
+			south-north and west-east directions respectively. Copying of the bodies or the 
+			whole cross section to the next or previous profile followed up by reshaping of 
+			the geometry speeds up the process of model creation. <EM><FONT color="#000099"><STRONG>Profile 
+						View</STRONG></FONT></EM> also shows curves of computed and/or 
+			measured and/or difference fields. More fields can be drawn 
+			transparently.&nbsp;Geo-referenced bitmaps could be imported into Mod3D, and 
+			drawn transparently to the <EM><FONT color="#000099"><STRONG>Map View</STRONG></FONT></EM>
+			or <EM><STRONG><FONT color="#000099">Profile View</FONT></STRONG></EM>. An 
+			example would be a geological map shown in <EM><STRONG><FONT color="#000099">Map View</FONT></STRONG></EM>, 
+			or a seismic section displayed in a selected <EM><FONT color="#000099"><STRONG>Profile View</STRONG></FONT></EM>. 
+			Main geological units could be digitized in <EM><FONT color="#000099"><STRONG>Map View</STRONG></FONT></EM>, 
+			which are shown as check marks to achieve better orientation in the <EM>Profile 
+				View</EM>. The model definition system controls internally the consistency 
+			of the polyhedra geometries, or their topology in other words. The controlling 
+			system prevents overlapping or crossing of the polyhedra, simplifies reshaping 
+			of the existing bodies and reduces time needed for model creation.</FONT>
+		</P>
+		<P align="justify"><FONT color="#000099"><STRONG>Model Modification<BR>
+				</STRONG></FONT><FONT color="#000000">See<A href="hlp_model_create_modf.htm">How 
+					to Create / Modify the model?</A>&nbsp;for detailed description.</FONT></P>
+		<P align="justify">
+			<FONT color="#000099"><STRONG>Field Curves<BR>
+				</STRONG></FONT><FONT color="#000000">Field curves on current
+				<SPAN style="FONT-SIZE: 12pt; COLOR: black; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">profile 
+</SPAN>
+				are shown by default in following manner:<BR>
+				Modeled field for gravity and magnetics&nbsp;- solid line.<BR>
+				Modeled field for gravity tensor components - dashed line.</FONT><FONT color="#000000"><BR>
+				Measured field - cross symbols.<BR>
+				Difference field - dashed line.<BR>
+				See <A href="hlp_toolbar_fld.htm">Field 
+					Toolbar</A> for details how to show / hide field curves.</FONT></P>
+		<P><FONT color="#000099"><STRONG>RMS &amp; DRV Indicators<BR>
+					RMS </STRONG></FONT><FONT color="#000000">indicator shows the Root Mean 
+				Square error of&nbsp; the currently selected difference field(s). To show or 
+				hide the&nbsp;RMS indicator use command from menu <FONT color="#000099">Profile \ 
+					Show RMS</FONT>.<BR>
+				DRV <FONT color="#000000">indicator shows the "fake derivative"&nbsp; of&nbsp; the 
+					currently selected difference field(s). To show or hide DRV indicator use 
+					command from menu <FONT color="#000099">Profile \ Show Derivative</FONT>. Fake 
+					derivative is an approximation of the exact derivative and is computed as <FONT color="#006600">
+						<EM>sum(dFld / dx + dFld / dy)</EM></FONT> over all points, where <FONT color="#006600">
+						<EM>dFld=(Fld(i)-Fld(i-1))</EM></FONT><FONT color="#000000"> and </FONT><FONT color="#006600">
+						<EM>F</EM></FONT><FONT color="#006600"><EM>ld(i) </EM></FONT>is the 
+					selected field in the&nbsp;<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"><EM>i<SUP>th</SUP></EM></SPAN>
+					grid&nbsp;point.</FONT></FONT></P>
+		<P><STRONG><FONT color="#000099"><EM>Profile View</EM> floating menus.</FONT><BR>
+			</STRONG>Depending on where the user clicks the&nbsp;<EM><FONT color="#cc0033">left 
+					mouse button</FONT></EM>, one can open following floating menus:</P>
+		<UL>
+			<LI>
+				<STRONG>Profile View menu. </STRONG>The default menu displayed, when user click 
+				out of any object.<BR>
+				<IMG alt="" src="Images\ProfViewFloatMenu.gif">&nbsp;<BR>
+				<TABLE id="Table2" cellSpacing="1" cellPadding="1" width="500" border="1">
+					<TR>
+						<TD width="108">Menu Item</TD>
+						<TD width="54">Shortcut</TD>
+						<TD>Description</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">Next</FONT></TD>
+						<TD width="54">N</TD>
+						<TD>Moves to the next profile.</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">Previous</FONT></TD>
+						<TD width="54">P</TD>
+						<TD>Moves to the previous profile.<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">E-W Profile</FONT></TD>
+						<TD width="54">H</TD>
+						<TD>Changes the profile orientation to East-West.<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">S-N Profile</FONT></TD>
+						<TD width="54">V</TD>
+						<TD>Changes the
+							<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">profile 
+        </SPAN>
+							orientation to South-North.</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">Show
+								<SPAN style="FONT-SIZE: 12pt; COLOR: #000099; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">Previous</SPAN></FONT></TD>
+						<TD width="54">&nbsp;</TD>
+						<TD>Shows bodies from prom previous profile on the current profile.</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">Show Next</FONT></TD>
+						<TD width="54">&nbsp;</TD>
+						<TD>Shows bodies from next profile on the current profile.</TD>
+					</TR>
+					<TR>
+						<TD width="108"><FONT color="#000099">Jump to E<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">xtreme 
+        </SPAN>, Min, Max</FONT></TD>
+						<TD width="54">
+							<P>E<BR>
+								I<BR>
+								A</P>
+						</TD>
+						<TD>Goes to the profile, where the
+							<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">extreme 
+        </SPAN>of the selected extreme field is located. To set the
+							<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">extreme 
+        </SPAN>
+							field use command <FONT color="#000099">Profile \ Set E<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">xtreme 
+        </SPAN>
+								Field.</FONT></TD>
+					</TR>
+				</TABLE>
+				<BR>
+				<FONT color="#000000">
+					<BR>
+				</FONT><STRONG>Body menu. </STRONG>Is displayed when user clicks over the body.<BR>
+				<IMG alt="" src="Images\MenuProfViewBody.gif"><BR>
+				<TABLE id="Table1" height="113" cellSpacing="1" cellPadding="1" width="500" border="1">
+					<TR>
+						<TD width="120">Menu Item</TD>
+						<TD>Description</TD>
+					</TR>
+					<TR>
+						<TD width="120"><FONT color="#000099">Properties</FONT></TD>
+						<TD>Shows current body properties.<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD width="120">&nbsp;<FONT color="#000099">Fill</FONT></TD>
+						<TD>Sets the fill tag.</TD>
+					</TR>
+					<TR>
+						<TD width="120"><FONT color="#000099">Copy to Previous Profile</FONT></TD>
+						<TD>&nbsp;Use this command to copy the body from current profile to the previous 
+							profile. In case of conflict, the problematic vertex is ignored.<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD width="120"><FONT color="#000099">Copy to&nbsp;Next Profile</FONT></TD>
+						<TD>Use this command to copy the body from current profile to the next profile. In 
+							case of conflict, the problematic vertex is ignored.<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD width="126"><FONT color="#000099">Remove</FONT></TD>
+						<TD>&nbsp;Active only if the cursor is over edge (either boundary edge or inner 
+							edge).<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD width="126"><FONT color="#000099">Remove from Profile</FONT></TD>
+						<TD>&nbsp;Removes the body from the current profile.</TD>
+					</TR>
+					<TR>
+						<TD width="126"><FONT color="#000099">Edit Bodies</FONT></TD>
+						<TD>Activates Edit Bodies dialog.</TD>
+					</TR>
+					<TR>
+						<TD width="126"><FONT color="#000099">Body Creation Properties:</FONT></TD>
+						<TD>Use this command to set the body creation properties.</TD>
+					</TR>
+					<TR>
+						<TD width="126"><FONT color="#000099">Invert Density</FONT></TD>
+						<TD>&nbsp;Use this command to invert the density of the current body. From more 
+							details see: Invert Density Properties dialog.</TD>
+					</TR>
+					<TR>
+						<TD width="126"><FONT color="#000099">Density Inversion Properties</FONT></TD>
+						<TD>Set the settings for density inversion.</TD>
+					</TR>
+				</TABLE>
+				<BR>
+			<LI>
+				<STRONG>Body Vertex menu. </STRONG>Is displayed, when user clicks over body 
+				vertex.<BR>
+				<IMG alt="" src="Images\MenuProfViewVrtx.gif"><BR>
+				<TABLE id="Table3" cellSpacing="1" cellPadding="1" width="500" border="1">
+					<TR>
+						<TD><FONT color="#000099">Fit</FONT></TD>
+						<TD>Start the vertex fitting.</TD>
+					</TR>
+					<TR>
+						<TD><FONT color="#000099">1D Fit Properties</FONT></TD>
+						<TD>Adjust the settings for 1D vertex fitting.</TD>
+					</TR>
+				</TABLE>
+				<BR>
+				<STRONG></STRONG>
+			<LI>
+				<STRONG>Body Edge. </STRONG>Is the same as <STRONG>Body menu.<BR>
+				</STRONG>
+			<LI>
+				<STRONG>Insert Body menu. </STRONG>Is displayed, when the user clicks over 
+				vertical line, where the body can be inserted.<BR>
+				<IMG alt="" src="Images\MenuProfViewBodyNew.gif"><BR>
+				<TABLE id="Table4" cellSpacing="1" cellPadding="1" width="500" border="1">
+					<TR>
+						<TD><FONT color="#000099">Insert New Body</FONT></TD>
+						<TD>Inserts new body to the specified position.</TD>
+					</TR>
+					<TR>
+						<TD><FONT color="#000099">Insert Existing Body</FONT></TD>
+						<TD>Inserts existing body to the spefied position.<BR>
+						</TD>
+					</TR>
+					<TR>
+						<TD><FONT color="#000099">Edit Bodies</FONT></TD>
+						<TD>Activates Edit Bodies dialog.</TD>
+					</TR>
+					<TR>
+						<TD><FONT color="#000099">Body Creation Properties</FONT></TD>
+						<TD>Use this command to set the body creation properties.</TD>
+					</TR>
+				</TABLE>
+				<FONT color="#000099"><STRONG></STRONG></FONT>
+			</LI>
+		</UL>
+		<P><FONT color="#000099"><STRONG>Axes<BR>
+				</STRONG></FONT><FONT color="#000000"><FONT color="#990033"><EM>Right mouse button 
+						click</EM></FONT> on the axis activates the axis properties.<BR>
+				Use </FONT><FONT color="#990033"><EM>left button down + mouse move </EM><FONT color="#000000">
+					to scale the axis interactively.</FONT></FONT></P>
+		<P><STRONG><FONT color="#000099"><STRONG><SPAN style="FONT-SIZE: 12pt; COLOR: #000099; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">Shortcuts</SPAN></STRONG></FONT></STRONG><BR>
+			Use <EM><FONT color="#990033">mouse wheel</FONT></EM> or <EM><FONT color="#990033">arrow 
+					keys</FONT></EM> to move over the model.</P>
+	</BODY>
+</HTML>

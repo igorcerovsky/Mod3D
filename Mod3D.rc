@@ -1,0 +1,3588 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// Slovak resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_SKY)
+#ifdef _WIN32
+LANGUAGE LANG_SLOVAK, SUBLANG_DEFAULT
+#pragma code_page(1250)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Cursor
+//
+
+IDC_CURSOR_DIGITIZE     CURSOR                  "res\\cursor1.cur"
+IDC_CURSOR_MAPVIEW      CURSOR                  "res\\cur00003.cur"
+IDC_CURSOR_RESIZE       CURSOR                  "res\\cur00004.cur"
+IDC_CURSOR_BODY_MOVE    CURSOR                  "res\\curBodyMove.cur"
+IDC_CURSOR_LINE         CURSOR                  "res\\CrsLine.cur"
+IDC_CURSOR_SB_HRZ       CURSOR                  "res\\CrsSbHrz.cur"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DLG_MODEL_GRD_ACTIVE DIALOGEX 0, 0, 242, 159
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Set Active Field"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Modeled Field",IDC_STATIC,7,6,71,126
+    GROUPBOX        "Difference Field",IDC_STATIC,84,6,71,126
+    GROUPBOX        "Measured Field",IDC_STATIC,162,6,71,126
+    CONTROL         "Gx",IDC_FLD_GX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,
+                    19,25,10
+    CONTROL         "Gy",IDC_FLD_GY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,
+                    30,25,10
+    CONTROL         "Gz",IDC_FLD_GZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,
+                    41,25,10
+    CONTROL         "G",IDC_FLD_G,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,15,
+                    52,25,10
+    CONTROL         "Gxx",IDC_FLD_GXX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    15,63,25,10
+    CONTROL         "Gyy",IDC_FLD_GYY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    15,74,25,10
+    CONTROL         "Gzz",IDC_FLD_GZZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    15,85,25,10
+    CONTROL         "Gxy",IDC_FLD_GXY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    15,96,25,10
+    CONTROL         "Gxz",IDC_FLD_GXZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    15,107,25,10
+    CONTROL         "Gyz",IDC_FLD_GYZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    15,118,25,10
+    CONTROL         "Mx",IDC_FLD_MX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,47,
+                    19,25,10
+    CONTROL         "My",IDC_FLD_MY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,47,
+                    30,25,10
+    CONTROL         "Mz",IDC_FLD_MZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,47,
+                    41,25,10
+    CONTROL         "M",IDC_FLD_M,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,47,
+                    52,25,10
+    CONTROL         "Mxx",IDC_FLD_MXX,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,47,63,25,10
+    CONTROL         "Myy",IDC_FLD_MYY,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,47,74,25,10
+    CONTROL         "Mzz",IDC_FLD_MZZ,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,47,85,25,10
+    CONTROL         "Mxy",IDC_FLD_MXY,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,47,96,25,10
+    CONTROL         "Mxz",IDC_FLD_MXZ,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,47,107,25,10
+    CONTROL         "Myz",IDC_FLD_MYZ,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,47,118,25,10
+    CONTROL         "Gx",IDC_FLD_DGX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,19,25,10
+    CONTROL         "Gy",IDC_FLD_DGY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,30,25,10
+    CONTROL         "Gz",IDC_FLD_DGZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,41,25,10
+    CONTROL         "G",IDC_FLD_DG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,92,
+                    52,25,10
+    CONTROL         "Gxx",IDC_FLD_DGXX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,63,25,10
+    CONTROL         "Gyy",IDC_FLD_DGYY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,74,25,10
+    CONTROL         "Gzz",IDC_FLD_DGZZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,85,25,10
+    CONTROL         "Gxy",IDC_FLD_DGXY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,96,25,10
+    CONTROL         "Gxz",IDC_FLD_DGXZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,107,25,10
+    CONTROL         "Gyz",IDC_FLD_DGYZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    92,118,25,10
+    CONTROL         "Mx",IDC_FLD_DMX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    124,19,25,10
+    CONTROL         "My",IDC_FLD_DMY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    124,30,25,10
+    CONTROL         "Mz",IDC_FLD_DMZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    124,41,25,10
+    CONTROL         "M",IDC_FLD_DM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,124,
+                    52,25,10
+    CONTROL         "Mxx",IDC_FLD_DMXX,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,124,63,25,10
+    CONTROL         "Myy",IDC_FLD_DMYY,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,124,74,25,10
+    CONTROL         "Mzz",IDC_FLD_DMZZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,124,85,25,10
+    CONTROL         "Mxy",IDC_FLD_DMXY,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,124,96,25,10
+    CONTROL         "Mxz",IDC_FLD_DMXZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,124,107,25,10
+    CONTROL         "Myz",IDC_FLD_DMYZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,124,118,25,10
+    CONTROL         "Gx",IDC_FLD_MGX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,19,25,10
+    CONTROL         "Gy",IDC_FLD_MGY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,30,25,10
+    CONTROL         "Gz",IDC_FLD_MGZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,41,25,10
+    CONTROL         "G",IDC_FLD_MG,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,169,
+                    52,25,10
+    CONTROL         "Gxx",IDC_FLD_MGXX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,63,25,10
+    CONTROL         "Gyy",IDC_FLD_MGYY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,74,25,10
+    CONTROL         "Gzz",IDC_FLD_MGZZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,85,25,10
+    CONTROL         "Gxy",IDC_FLD_MGXY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,96,25,10
+    CONTROL         "Gxz",IDC_FLD_MGXZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,107,25,10
+    CONTROL         "Gyz",IDC_FLD_MGYZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    169,118,25,10
+    CONTROL         "Mx",IDC_FLD_MMX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    201,19,25,10
+    CONTROL         "My",IDC_FLD_MMY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    201,30,25,10
+    CONTROL         "Mz",IDC_FLD_MMZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    201,41,25,10
+    CONTROL         "M",IDC_FLD_MM,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,201,
+                    51,25,10
+    CONTROL         "Mxx",IDC_FLD_MMXX,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,201,63,25,10
+    CONTROL         "Myy",IDC_FLD_MMYY,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,201,74,25,10
+    CONTROL         "Mzz",IDC_FLD_MMZZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,201,85,25,10
+    CONTROL         "Mxy",IDC_FLD_MMXY,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,201,96,25,10
+    CONTROL         "Mxz",IDC_FLD_MMXZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,201,107,25,10
+    CONTROL         "Myz",IDC_FLD_MMYZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_DISABLED | WS_TABSTOP,201,118,25,10
+    DEFPUSHBUTTON   "OK",IDOK,15,137,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,94,137,50,14
+    LTEXT           "For Help, press F1",IDC_STATIC,169,139,60,8
+END
+
+IDD_DLG_MODEL_FLD_INDICATOR DIALOGEX 0, 0, 139, 46
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Set Field Indicator"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,82,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,82,25,50,14
+    COMBOBOX        IDC_COMBO_FLD_INDICATOR,7,7,70,191,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "For Help, press F1",IDC_STATIC,7,31,60,8
+END
+
+IDD_OBJ_GRD DIALOGEX 0, 0, 149, 122
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Grid Object"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_FILE_NAME,7,7,113,14,ES_AUTOHSCROLL | WS_DISABLED
+    PUSHBUTTON      "",IDC_BROWSE,123,7,19,15,BS_BITMAP | BS_FLAT,
+                    WS_EX_TRANSPARENT
+    GROUPBOX        "Type",IDC_STATIC,7,74,79,24
+    CONTROL         "Leading horizon",IDC_RADIO_TYPE,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,15,85,66,10
+    DEFPUSHBUTTON   "OK",IDOK,95,103,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,103,50,14
+    EDITTEXT        IDC_NAME,29,37,91,14,ES_AUTOHSCROLL
+    LTEXT           "Name",IDC_STATIC,7,43,19,8
+    LTEXT           "ID",IDC_STATIC,7,24,8,8
+    EDITTEXT        IDC_STR_ID,29,22,91,14,ES_AUTOHSCROLL | WS_DISABLED
+    PUSHBUTTON      " Profile Pen",IDC_PEN,71,57,50,14
+    PUSHBUTTON      "Grid Properties",IDC_GRID,7,57,55,14
+END
+
+IDD_DLG_FIELD_SELECT DIALOGEX 0, 0, 131, 31
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Select Active Field"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,74,7,50,14
+    COMBOBOX        IDC_COMBO_FLD,7,7,64,89,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+END
+
+IDD_DLG_BODY_COMPUTATION DIALOGEX 0, 0, 145, 71
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Computation"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Active",IDC_CHECK_ACTIVE,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,7,36,10
+    CONTROL         "Locked",IDC_CHECK_LOCK,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,18,38,10
+END
+
+IDD_DLG_3DVIEW_SAVE_LOAD DIALOGEX 0, 0, 176, 98
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LISTBOX         IDC_LIST,7,23,109,68,LBS_SORT | LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_EDIT_NAME,7,7,109,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "Save",IDC_BUTTON_SAVE,119,7,50,14
+    PUSHBUTTON      "Load",IDC_BUTTON_LOAD,119,31,50,14
+    PUSHBUTTON      "Remove",IDC_BUTTON_REMOVE,119,47,50,14
+    PUSHBUTTON      "Remove All",IDC_BUTTON_REMOVE_ALL,119,63,50,14
+END
+
+IDD_DLG_COMPUTE_MAG DIALOGEX 0, 0, 172, 122
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Magnetics"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Intensity [nT]",IDC_STATIC,13,47,45,8
+    EDITTEXT        IDC_EDIT_I_TOT2,79,45,49,14,ES_AUTOHSCROLL
+    LTEXT           "Inclination [deg]",IDC_STATIC,13,62,53,8
+    EDITTEXT        IDC_EDIT_I_INCL2,79,60,49,14,ES_AUTOHSCROLL
+    LTEXT           "Declination [deg]",IDC_STATIC,13,77,55,8
+    EDITTEXT        IDC_EDIT_I_DECL2,79,74,49,14,ES_AUTOHSCROLL
+    GROUPBOX        "Inducing field",IDC_STATIC,7,31,129,65
+    LTEXT           "Units multiply by",IDC_STATIC,7,10,53,8
+    EDITTEXT        IDC_EDIT_UNITS_MAG,79,7,49,14,ES_AUTOHSCROLL
+    CONTROL         "Remove difference field mean from mod. field",
+                    IDC_MAG_REM_MEAN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    102,161,10
+END
+
+IDD_DLG_BODY_MOVE DIALOGEX 0, 0, 209, 101
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Move Body"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,152,80,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,80,50,14
+    EDITTEXT        IDC_SHIFT_BODY_TOP,93,41,54,14,ES_AUTOHSCROLL
+    CONTROL         "Top boundary [m]",IDC_MOVETOP,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,45,73,10
+    CONTROL         "Bottom boundary [m]",IDC_MOVEBOT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,61,84,10
+    EDITTEXT        IDC_SHIFT_BODY_BOT,93,57,54,14,ES_AUTOHSCROLL
+    CONTROL         "Shift body - use relative depth values for each point",
+                    IDC_MOVE_TAG,"Button",BS_AUTORADIOBUTTON | WS_GROUP,7,7,
+                    183,10
+    CONTROL         "Move body - use absolute depth values for each point",
+                    IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,7,19,189,10
+END
+
+IDD_DIALOG1 DIALOGEX 0, 0, 286, 287
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Plane"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Motion",IDC_STATIC,7,7,59,60
+    LTEXT           "dX:",IDC_STATIC,12,20,12,8
+    EDITTEXT        IDC_EDIT_MOTION_X,26,18,32,14,ES_AUTOHSCROLL
+    LTEXT           "dY:",IDC_STATIC,12,36,12,8
+    EDITTEXT        IDC_EDIT_MOTION_Y,26,33,32,14,ES_AUTOHSCROLL
+    LTEXT           "dZ:",IDC_STATIC,12,50,12,8
+    EDITTEXT        IDC_EDIT_MOTION_Z,26,47,32,14,ES_AUTOHSCROLL
+    GROUPBOX        "Rotation [deg]",IDC_STATIC,73,7,59,60
+    LTEXT           "dX:",IDC_STATIC,79,20,12,8
+    EDITTEXT        IDC_EDIT_ROTATION_X,93,18,32,14,ES_AUTOHSCROLL
+    LTEXT           "dY:",IDC_STATIC,79,36,12,8
+    EDITTEXT        IDC_EDIT_ROTATION_Y,93,33,32,14,ES_AUTOHSCROLL
+    LTEXT           "dZ:",IDC_STATIC,79,50,12,8
+    EDITTEXT        IDC_EDIT_ROTATION_Z,93,47,32,14,ES_AUTOHSCROLL
+    GROUPBOX        "Position",IDC_STATIC,140,7,59,60
+    LTEXT           "x",IDC_STATIC,146,20,8,8
+    EDITTEXT        IDC_EDIT_ROTATION_X2,160,18,32,14,ES_AUTOHSCROLL
+    LTEXT           "y",IDC_STATIC,146,36,8,8
+    EDITTEXT        IDC_EDIT_ROTATION_Y2,160,33,32,14,ES_AUTOHSCROLL
+    LTEXT           "z",IDC_STATIC,146,50,8,8
+    EDITTEXT        IDC_EDIT_ROTATION_Z2,160,47,32,14,ES_AUTOHSCROLL
+    GROUPBOX        "Mode",IDC_STATIC,7,103,126,26
+    CONTROL         "Rendering",IDC_RADIO_MODE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,13,113,49,10
+    CONTROL         "Selection",IDC_RADIO7,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,75,113,45,10
+    LTEXT           "Projection angle [deg]",IDC_STATIC,15,164,75,8
+    EDITTEXT        IDC_EDIT_PROJ_ANGLE,93,161,32,14,ES_AUTOHSCROLL
+    GROUPBOX        "Projection",IDC_STATIC,7,134,126,47
+    CONTROL         "Othographic",IDC_RADIO1,"Button",BS_AUTORADIOBUTTON,13,
+                    146,55,10
+    CONTROL         "Perspective",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,75,
+                    147,53,10
+    GROUPBOX        "Look from",IDC_STATIC,138,103,73,78
+    PUSHBUTTON      "S -> N",IDC_BUT_SN,145,115,26,14
+    PUSHBUTTON      "N -> S",IDC_BUT_NS,178,115,26,14
+    PUSHBUTTON      "E -> W",IDC_BUT_EW,145,138,26,14
+    PUSHBUTTON      "W -> E",IDC_BUT_WE,178,138,26,14
+    PUSHBUTTON      "Map",IDC_BUT_MAP,161,161,26,14
+    GROUPBOX        "Static",IDC_STATIC,72,184,59,60
+    EDITTEXT        IDC_SC3D_X,92,196,32,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC__SC3D_Y,92,211,32,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC__SC3D_Z,92,226,32,14,ES_AUTOHSCROLL
+    LTEXT           "x",IDC_STATIC,78,199,8,8
+    LTEXT           "y",IDC_STATIC,78,214,8,8
+    LTEXT           "z",IDC_STATIC,78,229,8,8
+    GROUPBOX        "Rotation [deg]",IDC_STATIC,7,184,59,60
+    LTEXT           "x",IDC_STATIC,13,199,8,8
+    EDITTEXT        IDC_EDIT_ROTATION_X3,27,196,32,14,ES_AUTOHSCROLL
+    LTEXT           "y",IDC_STATIC,13,214,8,8
+    EDITTEXT        IDC_EDIT_ROTATION_Y3,27,211,32,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    LTEXT           "z",IDC_STATIC,13,229,8,8
+    EDITTEXT        IDC_EDIT_ROTATION_Z3,27,226,32,14,ES_AUTOHSCROLL
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_DLG_MODEL_GRD_ACTIVE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 240
+        TOPMARGIN, 6
+        BOTTOMMARGIN, 151
+    END
+
+    IDD_DLG_MODEL_FLD_INDICATOR, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 132
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 39
+    END
+
+    IDD_OBJ_GRD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 145
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 117
+    END
+
+    IDD_DLG_FIELD_SELECT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 124
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 24
+    END
+
+    IDD_DLG_BODY_COMPUTATION, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 138
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 64
+    END
+
+    IDD_DLG_3DVIEW_SAVE_LOAD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 169
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 91
+    END
+
+    IDD_DLG_COMPUTE_MAG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 168
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 115
+    END
+
+    IDD_DLG_BODY_MOVE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 202
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 94
+    END
+
+    IDD_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 279
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 280
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_DLG_MODEL_FLD_INDICATOR DLGINIT
+BEGIN
+    IDC_COMBO_FLD_INDICATOR, 0x403, 3, 0
+0x7847, "\000" 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 3, 0
+0x7947, "\000" 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 3, 0
+0x7a47, "\000" 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 2, 0
+0x0047, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7847, 0x0078, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7947, 0x0079, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7a47, 0x007a, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7847, 0x0079, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7847, 0x007a, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7947, 0x007a, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 3, 0
+0x784d, "\000" 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 3, 0
+0x794d, "\000" 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 3, 0
+0x7a4d, "\000" 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 2, 0
+0x004d, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x784d, 0x0078, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x794d, 0x0079, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x7a4d, 0x007a, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x784d, 0x0079, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x784d, 0x007a, 
+    IDC_COMBO_FLD_INDICATOR, 0x403, 4, 0
+0x794d, 0x007a, 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_WELL                BITMAP                  "res\\bitmap2.bmp"
+IDB_BITMAP2             BITMAP                  "res\\crs_body.bmp"
+IDB_NAPOLI              BITMAP                  "res\\bitmap3.bmp"
+IDB_DEMO_PIC            BITMAP                  "res\\bmp00004.bmp"
+IDB_BMP_MOD3D           BITMAP                  "res\\bmp00005.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ICON_OK             ICON                    "res\\icon1.ico"
+IDI_ICON_BAD            ICON                    "res\\ico00002.ico"
+IDI_OPEN                ICON                    "res\\icoOpen.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// HTML
+//
+
+IDR_HTML_DLGHTMLABOUT   HTML                    "hlp\\DlgHtmlAbout.htm"
+#endif    // Slovak resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+// Neutral resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_NEU)
+#ifdef _WIN32
+LANGUAGE LANG_NEUTRAL, SUBLANG_NEUTRAL
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Cursor
+//
+
+IDC_CURSOR_EDGE         CURSOR                  "res\\cursor_e.cur"
+IDC_CURSOR_ZOOM         CURSOR                  "res\\cursorzo.cur"
+IDC_CURSOR_HSCROLL      CURSOR                  "res\\cursor_h.cur"
+IDC_CURSOR_VSCROLL      CURSOR                  "res\\cur00001.cur"
+IDC_CURSOR_ZOOM_IN      CURSOR                  "res\\cur00002.cur"
+IDC_CURSOR_ZOOM_OUT     CURSOR                  "res\\cursor_z.cur"
+IDC_CURSOR_BD_LINE      CURSOR                  "res\\CrsBdLine.cur"
+IDC_CURSOR_BD           CURSOR                  "res\\CrsBody.cur"
+IDC_CURSOR_SB_VRT       CURSOR                  "res\\CrsSbVrt.cur"
+IDC_CURSOR_PT           CURSOR                  "res\\CrsPoint.cur"
+IDC_CURSOR_NORMAL       CURSOR                  "res\\CrsNormal.cur"
+IDC_CURSOR_DIV          CURSOR                  "res\\CrsWndDiv.cur"
+IDC_CURSOR_OBJECT       CURSOR                  "res\\cur00005.cur"
+IDC_CURSOR_DIV_VRT      CURSOR                  "res\\curDivVrt.cur"
+IDC_CURSOR_VRTX_LOCK    CURSOR                  "res\\cur00006.cur"
+IDC_CURSOR_3D           CURSOR                  "res\\cur00007.cur"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DLG_AXIS DIALOGEX 0, 0, 217, 253
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Axis Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Automatic Ticks && Labels",IDC_CHECK_AUTOMATIC_TL,
+                    "Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,7,94,10
+    GROUPBOX        "Major Ticks && Labels",IDC_STATIC,7,25,109,131
+    CONTROL         "Show Ticks",IDC_CHECK_MAJOR_TICK,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,14,35,51,10
+    CONTROL         "Show Labels",IDC_CHECK_MAJOR_LABEL,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,14,48,55,10
+    PUSHBUTTON      "Font",IDC_BUTTON_FONT_MAJOR_LBL,68,47,40,14
+    LTEXT           "Start",IDC_STATIC,15,69,17,8
+    EDITTEXT        IDC_EDIT_MAJOR_START,68,66,40,14,ES_AUTOHSCROLL
+    LTEXT           "Increment",IDC_STATIC,15,83,34,8
+    EDITTEXT        IDC_EDIT_MAJOR_INCREMENT,68,81,40,14,ES_AUTOHSCROLL
+    LTEXT           "Decimals",IDC_STATIC,15,98,28,8
+    EDITTEXT        IDC_EDIT_MAJOR_DECIMALS,68,96,40,14,ES_AUTOHSCROLL
+    LTEXT           "Number of ticks",IDC_STATIC,15,114,50,8
+    EDITTEXT        IDC_EDIT_MAJOR_NUMBER,68,111,40,14,ES_AUTOHSCROLL
+    GROUPBOX        "Minor Ticks && Labels",IDC_STATIC,7,164,109,76
+    CONTROL         "Show Ticks",IDC_CHECK_MINOR_TICK,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,175,51,10
+    CONTROL         "Show Labels",IDC_CHECK_MINOR_LABEL,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,188,55,10
+    PUSHBUTTON      "Font",IDC_BUTTON_FONT_MINOR,68,186,40,14
+    LTEXT           "Decimals",IDC_STATIC,13,206,28,8
+    EDITTEXT        IDC_EDIT_MINOR_DECIMALS,68,203,40,14,ES_AUTOHSCROLL
+    GROUPBOX        "Axis Type",IDC_STATIC,123,25,83,42
+    CONTROL         "Horizontal",IDC_RADIO_TYPE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_DISABLED | WS_GROUP,130,39,48,10
+    CONTROL         "Vertical",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON | 
+                    WS_DISABLED,130,51,39,10
+    GROUPBOX        "Data",IDC_STATIC,125,73,82,83
+    LTEXT           "min",IDC_STATIC,132,85,12,8
+    EDITTEXT        IDC_EDIT_DATA_MIN,162,81,38,14,ES_AUTOHSCROLL
+    LTEXT           "max",IDC_STATIC,132,102,14,8
+    EDITTEXT        IDC_EDIT_DATA_MAX,162,96,38,14,ES_AUTOHSCROLL
+    LTEXT           "axis min",IDC_STATIC,132,125,26,8
+    EDITTEXT        IDC_EDIT_DATALMITS_MIN,162,119,38,14,ES_AUTOHSCROLL
+    LTEXT           "axis max",IDC_STATIC,132,139,29,8
+    EDITTEXT        IDC_EDITDATALIMITS_MAX,162,134,38,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,138,186,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,138,205,50,14
+    CONTROL         "Grid Lines",IDC_CHECK_GL_MAJOR,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,14,138,47,10
+    CONTROL         "Grid Lines",IDC_CHECK_GL_MINOR,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,15,224,47,10
+END
+
+IDD_DLG_VIEW_MAP DIALOGEX 0, 0, 196, 186
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Map View Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Observation points",IDC_CHECK_OBS_POINTS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,53,77,10
+    CONTROL         "Observation bitmap",IDC_CHECK_OBS_CONTOURS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,67,79,10
+    CONTROL         "Observation contours",IDC_CHECK_OBS_BITMAP,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,81,85,10
+    CONTROL         "Imported objects",IDC_CHECK_OBJECTS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,95,71,10
+    CONTROL         "Equal scale for both axes",IDC_CHECK_SCALE_EQUAL,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,117,97,10
+    DEFPUSHBUTTON   "OK",IDOK,7,165,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,139,165,50,14
+    CONTROL         "Horizontal grid lines",IDC_CHECK_GRID_HRZ,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,109,67,78,10
+    CONTROL         "Vertical grid lines",IDC_CHECK_GRD_VRT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,109,81,69,10
+    LTEXT           "For Help, press F1",IDC_STATIC,69,171,60,8
+    GROUPBOX        "Image Quality",IDC_STATIC,7,7,181,26
+    CONTROL         "",IDC_SLIDER_IMG_QUALITY,"msctls_trackbar32",TBS_TOP | 
+                    TBS_NOTICKS | WS_TABSTOP,15,18,167,11,WS_EX_TRANSPARENT
+    GROUPBOX        "Show",IDC_STATIC,7,42,181,70
+    CONTROL         "Profiles",IDC_CHECK_PROFILES,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,109,53,39,10
+    CONTROL         "Bodies boundaries",IDC_CHECK_BODIES,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,109,95,74,10
+    EDITTEXT        IDC_ALPHA_FLD,109,130,40,14,ES_AUTOHSCROLL
+    LTEXT           "Field transparency <0,1>",IDC_STATIC,15,133,84,8
+    EDITTEXT        IDC_ALPHA_REL,109,145,40,14,ES_AUTOHSCROLL
+    LTEXT           "Relief transparency <0,1>",IDC_STATIC,15,148,87,8
+END
+
+IDD_DLG_PEN DIALOGEX 0, 0, 129, 63
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Pen Dialog"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Width",IDC_STATIC,7,9,20,8
+    EDITTEXT        IDC_EDIT_WIDTH,27,7,40,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_WIDTH,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_HOTTRACK,67,7,10,14
+    PUSHBUTTON      "Color",IDC_BUTTON_COLOR,27,22,50,14
+    LTEXT           "Style",IDC_STATIC,7,39,17,8
+    COMBOBOX        IDC_COMBO_STYLE,27,39,51,78,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK",IDOK,83,22,39,14
+    PUSHBUTTON      "Cancel",IDCANCEL,83,37,39,14
+    LTEXT           "* 1/100 mm",IDC_STATIC,83,9,38,8
+END
+
+IDD_DLG_MODEL DIALOGEX 0, 0, 257, 234
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Model Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Observations",IDC_STATIC,7,7,151,97
+    LTEXT           "Minimum",IDC_STATIC,16,31,28,8
+    LTEXT           "Maximum",IDC_STATIC,16,46,30,8
+    LTEXT           "Cell Size",IDC_STATIC,16,61,32,8
+    LTEXT           "Top",IDC_STATIC,16,75,13,8
+    LTEXT           "Bottom",IDC_STATIC,16,91,24,8
+    LTEXT           "x [m]",IDC_STATIC,68,14,15,8
+    LTEXT           "y",IDC_STATIC,121,14,17,8
+    EDITTEXT        IDC_EDIT_MIN_X,51,25,46,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_EDIT_MIN_Y,105,25,46,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_EDIT_MAX_X,51,40,46,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_EDIT_MAX_Y,105,40,46,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_EDIT_INCR_X,51,55,46,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_EDIT_INCR_Y,105,55,46,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    EDITTEXT        IDC_EDIT_MAX_Z,51,70,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MIN_Z,51,85,46,14,ES_AUTOHSCROLL
+    GROUPBOX        "Extension",IDC_STATIC,165,7,85,97
+    CONTROL         "Extend Boundaries",IDC_CHECK_EXTEND_BOUNDARIES,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,172,23,76,10
+    LTEXT           "North",IDC_STATIC,172,46,19,8
+    EDITTEXT        IDC_EDIT_EXTEND_NORTH,195,40,49,14,ES_AUTOHSCROLL
+    LTEXT           "South",IDC_STATIC,172,61,20,8
+    EDITTEXT        IDC_EDIT_EXTEND_SOUTH,195,55,49,14,ES_AUTOHSCROLL
+    LTEXT           "East",IDC_STATIC,172,76,15,8
+    EDITTEXT        IDC_EDIT_EXTEND_EAST,195,70,49,14,ES_AUTOHSCROLL
+    LTEXT           "West",IDC_STATIC,172,91,18,8
+    EDITTEXT        IDC_EDIT_EXTEND_WEST,195,85,49,14,ES_AUTOHSCROLL
+    LTEXT           "Model Description",IDC_STATIC,16,109,60,8
+    DEFPUSHBUTTON   "OK",IDOK,200,213,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,213,50,14
+    EDITTEXT        IDC_EDIT_DESCRIPTION,7,120,243,89,ES_MULTILINE | 
+                    ES_AUTOHSCROLL
+END
+
+IDD_DLG_PROFILE_SETTINGS DIALOGEX 0, 0, 178, 113
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Profile Settings"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    PUSHBUTTON      "Close",IDOK,37,92,50,14
+    LISTBOX         IDC_LIST,7,23,109,68,LBS_SORT | LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_TABSTOP
+    EDITTEXT        IDC_EDIT_NAME,7,7,109,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "Save",IDC_BUTTON_SAVE,119,7,50,14
+    PUSHBUTTON      "Load",IDC_BUTTON_LOAD,119,23,50,14
+    PUSHBUTTON      "Remove",IDC_BUTTON_REMOVE,119,39,50,14
+    PUSHBUTTON      "Remove All",IDC_BUTTON_REMOVE_ALL,119,55,50,14
+    PUSHBUTTON      "Apply",IDC_BUTTON_APPLY,121,92,50,14
+END
+
+IDD_DLG_FIT_1D DIALOGEX 0, 0, 241, 134
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "1D Fit Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Fitting Field",IDC_STATIC,7,10,38,8
+    COMBOBOX        IDC_COMBO_FLD,52,7,66,57,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+    GROUPBOX        "Method",IDC_STATIC,7,26,111,26
+    CONTROL         "Golden Section",IDC_RADIO_METHOD,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,53,36,60,10
+    CONTROL         "Brent",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,12,36,33,
+                    10
+    GROUPBOX        "Log File",IDC_STATIC,7,57,111,47
+    CONTROL         "Create",IDC_CHECK_LOG_FILE,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,14,68,38,10
+    PUSHBUTTON      "Browse",IDC_BUT_LOG_BROWSE,62,66,50,14
+    EDITTEXT        IDC_EDIT_LOG,14,83,98,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "Bracketing epsilon",IDC_STATIC,127,9,58,8
+    EDITTEXT        IDC_EDIT_BRAK_EPS,194,7,40,14,ES_AUTOHSCROLL
+    LTEXT           "Tolerance < 3.0e-8",IDC_STATIC,127,23,63,8
+    EDITTEXT        IDC_EDIT_TOL,194,21,40,14,ES_AUTOHSCROLL
+    LTEXT           "Maximum iterations",IDC_STATIC,127,37,62,8
+    EDITTEXT        IDC_EDIT_ITER,194,35,40,14,ES_AUTOHSCROLL
+    CONTROL         "Auto bracketing",IDC_CHECK_AUTO_BRACKET,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,127,52,67,10
+    EDITTEXT        IDC_EDIT_AUTO_BRACKET,194,50,40,14,ES_AUTOHSCROLL
+    GROUPBOX        "Characteristic",IDC_STATIC,127,66,107,61
+    CONTROL         "RMS",IDC_RADIO_FIT,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,132,75,30,10
+    CONTROL         "Derivative",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,132,
+                    87,49,10
+    CONTROL         "Local Derivative",IDC_RADIO5,"Button",
+                    BS_AUTORADIOBUTTON,132,99,67,10
+    CONTROL         "Second Derivative",IDC_RADIO8,"Button",
+                    BS_AUTORADIOBUTTON | WS_DISABLED,132,111,74,10
+    PUSHBUTTON      "Cancel",IDCANCEL,7,112,50,14
+    DEFPUSHBUTTON   "OK",IDOK,69,112,50,14
+END
+
+IDD_DLG_3DVIEW_MODEL DIALOGEX 0, 0, 221, 134
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Model"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "! Transparent",IDC_CHECK_TRANSPARENT_MODEL,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,9,60,10
+    CONTROL         "Solid",IDC_CHECK_SOLID_MODEL,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,24,31,10
+    CONTROL         "Vertical facets",IDC_CHECK_VRT_FACETS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,39,61,10
+    CONTROL         "Outer facets",IDC_CHECK_OUTFCT,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,54,57,10
+    CONTROL         "Darken inside of boby",IDC_CHECK_DARKEN_INSIDE,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,83,85,10
+    GROUPBOX        "Cull facets",IDC_STATIC,161,74,53,53
+    CONTROL         "Apply",IDC_CHECK_CULL_FACET,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,172,85,34,10
+    CONTROL         "Back",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,172,101,31,
+                    10
+    CONTROL         "Front",IDC_RADIO_CULL_FACE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,172,111,33,10
+    GROUPBOX        "Constrain model",IDC_STATIC,98,6,116,61
+    LTEXT           "row",IDC_STATIC,124,17,13,8
+    PUSHBUTTON      "All",IDC_BUT_ALL_ROWS,150,17,11,12
+    LTEXT           "column",IDC_STATIC,172,17,23,8
+    PUSHBUTTON      "All",IDC_BUT_ALL_COLS,198,17,11,12
+    LTEXT           "Start",IDC_STATIC,104,33,17,8
+    EDITTEXT        IDC_ROW_START,122,30,28,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ROW_START,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_AUTOBUDDY | UDS_ARROWKEYS,150,30,11,14
+    EDITTEXT        IDC_COL_START,170,30,28,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_COL_START,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_AUTOBUDDY | UDS_ARROWKEYS,198,30,11,14
+    LTEXT           "End",IDC_STATIC,104,48,13,8
+    EDITTEXT        IDC_ROW_END,122,46,28,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ROW_END,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_AUTOBUDDY | UDS_ARROWKEYS,150,46,11,14
+    EDITTEXT        IDC_COL_END,170,46,28,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_COL_END,"msctls_updown32",UDS_SETBUDDYINT | 
+                    UDS_AUTOBUDDY | UDS_ARROWKEYS,198,46,11,14
+    EDITTEXT        IDC_EDIT_DARKEN_INSIDE,98,82,40,14,ES_AUTOHSCROLL
+    CONTROL         "Draw model bottom",IDC_3D_DRAW_BOTTOM,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,68,78,10
+    LTEXT           "Selection point radius [m]",IDC_STATIC,7,100,82,8
+    EDITTEXT        IDC_EDIT_SEL_SENSITIVITY2,98,97,40,14,ES_AUTOHSCROLL
+END
+
+IDD_DLG_3DVIEW_SETTINGS DIALOGEX 0, 0, 216, 138
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "3D"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Mode",IDC_STATIC,7,7,126,26
+    CONTROL         "Rendering",IDC_RADIO_MODE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,13,17,49,10
+    CONTROL         "Selection",IDC_RADIO7,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,75,17,45,10
+    LTEXT           "Projection angle [deg]",IDC_STATIC,8,102,75,8
+    EDITTEXT        IDC_EDIT_PROJ_ANGLE,99,99,32,14,ES_AUTOHSCROLL
+    LTEXT           "Selection point radius [m]",IDC_STATIC,9,118,82,8
+    EDITTEXT        IDC_EDIT_SEL_SENSITIVITY,99,114,32,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_ROTATION_Z,93,76,32,14,ES_AUTOHSCROLL
+    LTEXT           "dZ:",IDC_STATIC,79,79,12,8
+    EDITTEXT        IDC_EDIT_ROTATION_Y,93,61,32,14,ES_AUTOHSCROLL
+    LTEXT           "dY:",IDC_STATIC,79,64,12,8
+    EDITTEXT        IDC_EDIT_ROTATION_X,93,46,32,14,ES_AUTOHSCROLL
+    LTEXT           "dX:",IDC_STATIC,79,49,12,8
+    EDITTEXT        IDC_EDIT_MOTION_Z,26,76,32,14,ES_AUTOHSCROLL
+    GROUPBOX        "Rotation [deg]",IDC_STATIC,73,35,59,60
+    LTEXT           "dZ:",IDC_STATIC,12,79,12,8
+    EDITTEXT        IDC_EDIT_MOTION_Y,26,61,32,14,ES_AUTOHSCROLL
+    LTEXT           "dY:",IDC_STATIC,12,64,12,8
+    EDITTEXT        IDC_EDIT_MOTION_X,26,46,32,14,ES_AUTOHSCROLL
+    LTEXT           "dX:",IDC_STATIC,12,49,12,8
+    GROUPBOX        "Motion",IDC_STATIC,7,35,59,60
+    LTEXT           "z",IDC_STATIC,144,118,8,8
+    LTEXT           "y",IDC_STATIC,144,103,8,8
+    LTEXT           "x",IDC_STATIC,144,88,8,8
+    EDITTEXT        IDC__SC3D_Z,152,112,32,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC__SC3D_Y,152,97,32,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_SC3D_X,152,82,32,14,ES_AUTOHSCROLL | ES_READONLY
+    GROUPBOX        "Scale",IDC_STATIC,138,71,73,63
+    PUSHBUTTON      "Map",IDC_BUT_MAP,160,51,26,14
+    PUSHBUTTON      "W -> E",IDC_BUT_WE,177,35,26,14
+    PUSHBUTTON      "E -> W",IDC_BUT_EW,144,35,26,14
+    PUSHBUTTON      "N -> S",IDC_BUT_NS,177,19,26,14
+    GROUPBOX        "Look from",IDC_STATIC,137,7,73,63
+    PUSHBUTTON      "S -> N",IDC_BUT_SN,144,19,26,14
+END
+
+IDD_DLG_3DVIEW_FIELD DIALOGEX 0, 0, 145, 122
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Field"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Show Field",IDC_CHECK_FIELD,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,14,7,50,10
+    CONTROL         "Solid",IDC_CHECK_SRF_SOLID,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,14,18,31,10
+    LTEXT           "Field",IDC_STATIC,14,33,16,8
+    COMBOBOX        IDC_COMBO1,67,30,53,68,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+    LTEXT           "Alpha <0, 1>",IDC_STATIC,14,48,44,8
+    EDITTEXT        IDC_EDIT_ALPHA_FIELD,67,45,42,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ALPHA_FLD,"msctls_updown32",UDS_AUTOBUDDY | 
+                    UDS_ARROWKEYS,110,45,11,14
+    GROUPBOX        "Display Options",IDC_STATIC,7,64,86,51
+    CONTROL         "On relief",IDC_SRF_TYPE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,14,77,43,10
+    CONTROL         "Floating Surface",IDC_RADIO2,"Button",
+                    BS_AUTORADIOBUTTON,14,87,68,10
+    CONTROL         "Floating Flat",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,
+                    14,97,55,10
+END
+
+IDD_DLG_3DVIEW_AXES DIALOGEX 0, 0, 149, 111
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Axes"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Axis Labels",IDC_STATIC,7,7,131,31
+    CONTROL         "None",IDC_RADIO_AXIS_LABELS,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,12,19,33,10
+    CONTROL         "2D Text",IDC_RADIO5,"Button",BS_AUTORADIOBUTTON,46,19,
+                    41,10
+    CONTROL         "3D Text",IDC_RADIO6,"Button",BS_AUTORADIOBUTTON,89,19,
+                    41,10
+    GROUPBOX        "Grid Lines",IDC_STATIC,7,39,85,52
+    CONTROL         "Up x",IDC_CHECK_GRD_UP_X,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,12,49,31,10
+    CONTROL         "Up y",IDC_CHECK_GRD_UP_Y,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,51,49,31,10
+    CONTROL         "Down x",IDC_CHECK_GRD_DWN_X,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,12,63,40,10
+    CONTROL         "Down y",IDC_CHECK_GRD_DWN_Y,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,51,63,40,10
+    CONTROL         "Vertical",IDC_CHECK_GRD_LINE_VRT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,12,77,39,10
+END
+
+IDD_DLG_3DVIEW_DRAW DIALOGEX 0, 0, 223, 114
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Draw"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Bitmaps",IDC_CHECK_DRAW_BITMAPS,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,7,41,10
+    GROUPBOX        "Relief",IDC_STATIC,7,21,101,41
+    CONTROL         "Show",IDC_CHECK_RELIEF,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,32,33,10
+    LTEXT           "Alpha <0, 1>",IDC_STATIC,61,31,44,8
+    CONTROL         "Solid",IDC_CHECK_SOLID_RELIEF,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,46,31,10
+    EDITTEXT        IDC_EDIT_ALPHA_REL,62,42,32,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ALPHA_REL,"msctls_updown32",UDS_AUTOBUDDY | 
+                    UDS_ARROWKEYS,94,43,11,14
+    GROUPBOX        "Profile planes",IDC_STATIC,7,66,101,41
+    CONTROL         "Show",IDC_CHECK_PROFILE_PLANES,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,78,33,10
+    LTEXT           "Alpha <0, 1>",IDC_STATIC,61,77,44,8
+    CONTROL         "Solid",IDC_CHECK_SOLID_RELIEF3,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,91,31,10
+    EDITTEXT        IDC_EDIT_ALPHA_PROF,61,87,32,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ALPHA_PROF,"msctls_updown32",UDS_AUTOBUDDY | 
+                    UDS_ARROWKEYS,93,87,11,14
+    GROUPBOX        "Leading horizon",IDC_STATIC,115,21,101,41
+    CONTROL         "Show",IDC_CHECK_LEADING_HRZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,121,35,33,10
+    LTEXT           "Alpha <0, 1>",IDC_STATIC,167,33,44,8
+    CONTROL         "Solid",IDC_CHECK_SOLID_LEADHRZ,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,121,47,31,10
+    EDITTEXT        IDC_EDIT_ALPHA_LEADHRZ,168,44,32,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ALPHA_LEADHRZ,"msctls_updown32",
+                    UDS_AUTOBUDDY | UDS_ARROWKEYS,200,45,11,14
+END
+
+IDD_DLG_BODY_GRAV DIALOGEX 0, 0, 205, 117
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Gravity"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Density [kg/m3]",IDC_STATIC,15,9,51,8
+    EDITTEXT        IDC_EDIT_DENSITY,83,7,40,14,ES_AUTOHSCROLL
+    GROUPBOX        "Variable Density",IDC_STATIC,7,35,166,75
+    LTEXT           "right  handed coordinate system\n    ! z axis pointing upward !",
+                    IDC_STATIC,49,44,107,19
+    LTEXT           "x",IDC_STATIC,69,65,8,8
+    LTEXT           "y",IDC_STATIC,101,65,8,8
+    LTEXT           "z",IDC_STATIC,137,65,8,8
+    LTEXT           "Gradient",IDC_STATIC,15,78,28,8
+    EDITTEXT        IDC_EDIT_GRD_X,45,75,38,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_GRD_Y,85,75,38,14,ES_AUTOHSCROLL
+    LTEXT           "Origin [m]",IDC_STATIC,15,94,30,8
+    EDITTEXT        IDC_EDIT_DO_X,45,90,38,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_DO_Y,85,90,38,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_DO_Z,123,90,38,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_GRD_Z,123,75,38,14,ES_AUTOHSCROLL
+END
+
+IDD_DLG_BODY_MAG DIALOGEX 0, 0, 153, 101
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Magnetics"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Susceptibility [SI]",IDC_STATIC,15,9,54,8
+    EDITTEXT        IDC_EDIT_SUSCEPTIBILITY,86,7,40,14,ES_AUTOHSCROLL
+    GROUPBOX        "Remanent Magnetization",IDC_STATIC,7,26,131,64
+    LTEXT           "Intensity [nT]",IDC_STATIC,15,41,42,8
+    EDITTEXT        IDC_EDIT_R_INCL,86,55,40,14,ES_AUTOHSCROLL
+    LTEXT           "Inclination [deg]",IDC_STATIC,15,57,51,8
+    EDITTEXT        IDC_EDIT_R_DECL,86,71,40,14,ES_AUTOHSCROLL
+    LTEXT           "Declination [deg]",IDC_STATIC,15,73,54,8
+    EDITTEXT        IDC_EDIT_R_TOT,86,39,40,14,ES_AUTOHSCROLL
+END
+
+IDD_DLG_BODY_DRAW DIALOGEX 0, 0, 182, 98
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Drawing"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    PUSHBUTTON      "Line",IDC_BUTTON_PEN,7,7,38,14
+    PUSHBUTTON      "Line Next",IDC_BUTTON_PEN_NEXT,47,7,41,14
+    PUSHBUTTON      "Line Prev",IDC_BUTTON_PEN_PREV,93,7,41,14
+    PUSHBUTTON      "Fill",IDC_BUTTON_BRUSH,7,24,38,14
+    COMBOBOX        IDC_COMBO_BRUSH_STYLE,47,25,54,64,CBS_DROPDOWN | 
+                    WS_VSCROLL | WS_TABSTOP
+    COMBOBOX        IDC_COMBO_BRUSH,103,25,54,97,CBS_DROPDOWN | WS_VSCROLL | 
+                    WS_TABSTOP
+    CONTROL         "Transparent <0, 1>",IDC_CHECK_TRASPARENT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,49,76,10
+    EDITTEXT        IDC_EDIT_ALPHA,103,48,40,14,ES_AUTOHSCROLL
+    CONTROL         "",IDC_SPIN_ALPHA,"msctls_updown32",UDS_AUTOBUDDY | 
+                    UDS_ARROWKEYS,143,48,11,14
+    CONTROL         "Filled",IDC_CHECK_FILLED,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,15,62,32,10
+    CONTROL         "Visible in 3D",IDC_CHECK_VISIBLE_3D,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,15,75,55,10
+END
+
+IDD_DLG_COMPUTE_COMP DIALOGEX 0, 0, 132, 77
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Computation"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Spherical computing",IDC_CHECK_SPHER_COMP,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,7,7,82,10
+    GROUPBOX        "Realtime Computation",IDC_STATIC,7,21,113,43
+    CONTROL         "None",IDC_RADIO_COMP_TYPE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,13,33,33,10
+    CONTROL         "Realtime",IDC_RADIO6,"Button",BS_AUTORADIOBUTTON,13,48,
+                    43,10
+END
+
+IDD_DLG_COMPUTE_GRAV DIALOGEX 0, 0, 211, 169
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_CAPTION | WS_SYSMENU
+CAPTION "Gravity"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Units",IDC_STATIC,7,7,186,44
+    CONTROL         "micro m*s",IDC_RADIO_UNITS,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP | WS_TABSTOP,13,20,44,10,WS_EX_TRANSPARENT
+    CONTROL         "mGal",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,70,20,32,10
+    CONTROL         "*",IDC_RADIO4,"Button",BS_AUTORADIOBUTTON | WS_TABSTOP,
+                    104,20,15,10
+    LTEXT           "-2",IDC_STATIC,57,18,8,8
+    EDITTEXT        IDC_UNITS,122,16,45,14,ES_AUTOHSCROLL
+    LTEXT           "m*s",IDC_STATIC,170,18,13,8
+    LTEXT           "-2",IDC_STATIC,183,15,8,8
+    GROUPBOX        "Reference density",IDC_STATIC,7,57,186,75
+    LTEXT           "Density [kg*m3]",IDC_STATIC,13,73,53,8
+    EDITTEXT        IDC_EDIT_DENSITY,93,71,45,14,ES_AUTOHSCROLL
+    LTEXT           "x",IDC_STATIC,63,87,8,8
+    LTEXT           "y",IDC_STATIC,113,87,8,8
+    LTEXT           "z",IDC_STATIC,165,87,8,8
+    LTEXT           "Gradient",IDC_STATIC,13,100,28,8
+    EDITTEXT        IDC_EDIT_GRD_X,43,97,45,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_GRD_Y,93,97,45,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_GRD_Z,143,97,45,14,ES_AUTOHSCROLL
+    LTEXT           "Origin",IDC_STATIC,13,113,19,8
+    EDITTEXT        IDC_EDIT_DO_X,43,111,45,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_DO_Y,93,111,45,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_DO_Z,143,111,45,14,ES_AUTOHSCROLL
+    LTEXT           "Multiply gravity tensor units by",IDC_STATIC,15,34,100,
+                    8
+    EDITTEXT        IDC_EDIT_TENS_UNITS,122,31,66,14,ES_AUTOHSCROLL
+    CONTROL         "Remove gravity difference field mean from mod. field",
+                    IDC_GRV_REM_MEAN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    139,186,10
+    CONTROL         "Remove tensor difference field mean from mod. field",
+                    IDC_TNS_REM_MEAN,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    153,184,10
+END
+
+IDD_DLG_OBSERVATIONS DIALOGEX 0, 0, 200, 143
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Observation Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Gravity",IDC_RADIO_FIELD,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,7,7,39,10
+    CONTROL         "Magnetics",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,65,7,
+                    48,10
+    CONTROL         "Gravity Tensor",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON,
+                    130,7,63,10
+    GROUPBOX        "",IDC_STATIC,7,24,186,90
+    EDITTEXT        IDC_EDIT_SENSOR_HEIGHT,121,32,60,14,ES_AUTOHSCROLL
+    CONTROL         "Sensor height over relief",IDC_RADIO_OBS_TYPE,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,18,36,95,10
+    EDITTEXT        IDC_EDIT_SENSOR_CONST,121,46,60,14,ES_AUTOHSCROLL
+    CONTROL         "Constant sensor elevation",IDC_RADIO5,"Button",
+                    BS_AUTORADIOBUTTON,18,50,100,10
+    EDITTEXT        IDC_EDIT_GRD_ELEV_FILE,92,60,89,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    CONTROL         "Elevation grid file",IDC_RADIO6,"Button",
+                    BS_AUTORADIOBUTTON,18,64,71,10
+    PUSHBUTTON      "Blank",IDC_BUTTON_BLANK,18,93,22,14
+    EDITTEXT        IDC_EDIT_BLANK_FILE,43,93,138,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    DEFPUSHBUTTON   "Close",IDOK,143,122,50,14
+    PUSHBUTTON      "Proceed",IDC_BUT_PROCEED,7,122,50,14
+END
+
+IDD_DLG_ABOUT DIALOGEX 0, 0, 224, 114
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "About Mod3D"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Close",IDOK,167,93,50,14
+    LTEXT           "Copyright  2001-2004 Igor Cerovsky.\n3D Graphics by Igor Cerovsky && Branislav Goga ",
+                    IDC_STATIC,7,20,160,24
+    LTEXT           "This product is licensed  to:\n   Istituto Nazionale di Oceanografia e di Geofisica Sperimentale\n   Borgo Grotta Gigante 442/c 34010 - Sgonico\n   Trieste, ITALY",
+                    IDC_STATIC,7,48,207,35
+    LTEXT           "Mod3D  2.1.1",IDC_STATIC,96,7,44,8
+END
+
+IDD_DLG_START DIALOGEX 0, 0, 125, 65
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Start"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Continue",IDOK,39,44,50,14
+    CONTROL         "Define observation area",IDC_RADIO1,"Button",
+                    BS_AUTORADIOBUTTON | WS_GROUP,7,7,93,10
+    CONTROL         "Import observation area grid",IDC_RADIO2,"Button",
+                    BS_AUTORADIOBUTTON,7,20,108,10
+END
+
+IDD_DLG_DOC_INIT_FIELD DIALOGEX 0, 0, 89, 173
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Create Field Grids"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "Gx",IDC_FLD_GX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    7,25,10
+    CONTROL         "Gy",IDC_FLD_GY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    17,25,10
+    CONTROL         "Gz",IDC_FLD_GZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,
+                    27,25,10
+    CONTROL         "G",IDC_FLD_G,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,7,37,
+                    25,10
+    CONTROL         "Gxx",IDC_FLD_GXX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    7,47,25,10
+    CONTROL         "Gyy",IDC_FLD_GYY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    7,57,25,10
+    CONTROL         "Gzz",IDC_FLD_GZZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    7,67,25,10
+    CONTROL         "Gxy",IDC_FLD_GXY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    7,77,25,10
+    CONTROL         "Gxz",IDC_FLD_GXZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    7,87,25,10
+    CONTROL         "Gyz",IDC_FLD_GYZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,
+                    7,97,25,10
+    CONTROL         "Mx",IDC_FLD_MX,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,50,
+                    7,25,10
+    CONTROL         "My",IDC_FLD_MY,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,50,
+                    17,25,10
+    CONTROL         "Mz",IDC_FLD_MZ,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,50,
+                    27,25,10
+    CONTROL         "M",IDC_FLD_M,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,50,
+                    37,25,10
+    CONTROL         "Mxx",IDC_FLD_MXX,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,50,47,25,10
+    CONTROL         "Myy",IDC_FLD_MYY,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,50,57,25,10
+    CONTROL         "Mzz",IDC_FLD_MZZ,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,50,67,25,10
+    CONTROL         "Mxy",IDC_FLD_MXY,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,50,77,25,10
+    CONTROL         "Mxz",IDC_FLD_MXZ,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,50,87,25,10
+    CONTROL         "Myz",IDC_FLD_MYZ,"Button",BS_AUTOCHECKBOX | WS_DISABLED | 
+                    WS_TABSTOP,50,97,25,10
+    DEFPUSHBUTTON   "Close",IDOK,20,152,50,14
+    PUSHBUTTON      "Create",IDC_BUT_CREATE,19,113,50,14
+    PUSHBUTTON      "Close Unused",IDC_BUT_CLOSE,19,128,50,14
+END
+
+IDD_DLG_WELL DIALOGEX 0, 0, 434, 303
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Well Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Well Data",IDC_STATIC,6,6,32,8
+    CONTROL         "",IDC_LIST_WELL,"SysListView32",LVS_REPORT | 
+                    LVS_SINGLESEL | LVS_ALIGNLEFT | LVS_NOSORTHEADER | 
+                    WS_BORDER | WS_TABSTOP,6,18,282,198
+    LTEXT           "Lithology",IDC_STATIC,300,7,30,8
+    CONTROL         "",IDC_LIST_LITHOLOGY,"SysListView32",LVS_REPORT | 
+                    LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_ALIGNLEFT | 
+                    LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP,300,18,126,90
+    LTEXT           "Draw Channel",IDC_STATIC,300,120,46,8
+    CONTROL         "",IDC_LIST_DRAW_CHAN,"SysListView32",LVS_LIST | 
+                    LVS_SINGLESEL | LVS_ALIGNLEFT | LVS_NOSORTHEADER | 
+                    WS_BORDER | WS_TABSTOP,300,132,126,84
+    GROUPBOX        "Drawing to Profile View",IDC_STATIC,7,221,111,74
+    LTEXT           "Display radius [m]",IDC_STATIC,14,235,58,8
+    EDITTEXT        IDC_RADIUS,74,231,40,14,ES_AUTOHSCROLL
+    LTEXT           "Log radius [m]",IDC_STATIC,14,251,46,8
+    EDITTEXT        IDC_RADIUS_LOG,74,246,40,14,ES_AUTOHSCROLL
+    LTEXT           "Well width [pixels]",IDC_STATIC,14,267,59,8
+    EDITTEXT        IDC_DRAW_WIDTH,74,261,40,14,ES_AUTOHSCROLL
+    LTEXT           "Align to well",IDC_STATIC,14,282,39,8
+    COMBOBOX        IDC_COMBO_DRAW_SIDE,74,278,40,54,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "3D drawing",IDC_STATIC,125,221,207,74
+    CONTROL         "Solid",IDC_CHECK_SOLID_3D,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,130,235,31,10
+    LTEXT           "Log radius [m]",IDC_STATIC,130,252,46,8
+    EDITTEXT        IDC_RADIUS_LOG_3D,190,246,40,14,ES_AUTOHSCROLL
+    LTEXT           "Well width [pixels]",IDC_STATIC,130,267,59,8
+    EDITTEXT        IDC_DRAW_WIDTH_3D,190,261,40,14,ES_AUTOHSCROLL
+    LTEXT           "Ring sampling",IDC_STATIC,130,282,44,8
+    EDITTEXT        IDC_SAMPLING_RING,190,276,40,14,ES_AUTOHSCROLL
+    LTEXT           "Pie start [deg]",IDC_STATIC,239,237,47,8
+    EDITTEXT        IDC_PIE_START,287,231,40,14,ES_AUTOHSCROLL
+    LTEXT           "Pie end [deg]",IDC_STATIC,239,252,44,8
+    EDITTEXT        IDC_PIE_END,287,246,40,14,ES_AUTOHSCROLL
+    LTEXT           "Log Sampling",IDC_STATIC,343,234,42,8
+    EDITTEXT        IDC_LOG_SAMPLING,387,228,39,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "Cancel",IDCANCEL,338,281,37,14
+    DEFPUSHBUTTON   "OK",IDOK,389,281,37,14
+END
+
+IDD_OBJECT_MANAGER DIALOGEX 0, 0, 114, 116
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD | WS_SYSMENU
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_TREE,"SysTreeView32",TVS_HASBUTTONS | 
+                    TVS_HASLINES | TVS_LINESATROOT | TVS_DISABLEDRAGDROP | 
+                    TVS_SHOWSELALWAYS | TVS_CHECKBOXES | WS_BORDER | 
+                    WS_TABSTOP | 0x4800,0,0,113,116,WS_EX_CLIENTEDGE
+END
+
+IDD_COLOR_GRAD DIALOGEX 0, 0, 364, 210
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Color Gradient"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Close",IDOK,309,163,41,14
+    GROUPBOX        "Add new peg at",IDC_STATIC,223,7,131,32
+    PUSHBUTTON      "Add",IDC_ADD_PEG,309,19,41,14
+    EDITTEXT        IDC_NEWPEG_POSITION,229,19,32,14,ES_AUTOHSCROLL | 
+                    ES_NUMBER
+    PUSHBUTTON      "Color...",IDC_NEWPEG_COLOUR,265,19,41,14
+    GROUPBOX        "Edit peg at",IDC_SELPEG,223,43,132,46
+    EDITTEXT        IDC_SELPEG_POSITION,229,55,32,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "Color...",IDC_SELPEG_COLOUR,265,55,41,14
+    PUSHBUTTON      "Delete",IDC_DEL_PEG,309,55,41,14
+    CONTROL         "Gradient",IDC_GRADIENT,"MFCGradientCtrl",WS_TABSTOP,7,7,
+                    212,177,WS_EX_CLIENTEDGE
+    COMBOBOX        IDC_METHOD_COMBO,229,105,68,108,CBS_DROPDOWNLIST | 
+                    WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Interpolation method",IDC_STATIC,229,94,68,8
+    CONTROL         "Show Tips",IDC_SHOWTOOLTIPS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,305,105,48,10
+    PUSHBUTTON      "Save",IDC_SAVE,309,123,41,14
+    PUSHBUTTON      "Load",IDC_LOAD,309,138,41,14
+    LTEXT           "Thanks to Joel Holdsworth for this nice gradient controll!\nwww.codeproject.com",
+                    IDC_STATIC,231,179,126,29
+    EDITTEXT        IDC_VALUE,229,71,78,14,ES_AUTOHSCROLL
+    LTEXT           "Grid value",IDC_STATIC,229,128,33,8
+END
+
+IDD_GRID_SEL_PROP DIALOGEX 0, 0, 147, 34
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Field Grid Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    PUSHBUTTON      "Close",IDOK,90,7,50,14
+    COMBOBOX        IDC_COMBO_FLD,7,7,78,89,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+END
+
+IDD_GRID_PROPERTIES DIALOGEX 0, 0, 216, 191
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Grid Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    EDITTEXT        IDC_NAME,7,6,203,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "x",IDC_STATIC,48,25,8,8
+    LTEXT           "y",IDC_STATIC,122,25,8,8
+    LTEXT           "z",IDC_STATIC,181,25,8,8
+    LTEXT           "min",IDC_STATIC,20,44,12,8
+    EDITTEXT        IDC_MIN_X,36,37,52,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_MIN_Y,96,36,52,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_MIN_Z,158,37,52,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "max",IDC_STATIC,18,58,14,8
+    EDITTEXT        IDC_MAX_X,36,52,52,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_MAX_Y,96,52,52,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_MAX_Z,158,52,52,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "cell size",IDC_STATIC,7,73,25,8
+    EDITTEXT        IDC_CS_X,36,67,52,14,ES_AUTOHSCROLL | ES_READONLY
+    EDITTEXT        IDC_CS_Y,96,66,52,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "File",IDC_STATIC,20,92,12,8
+    EDITTEXT        IDC_FILE_PATH,36,87,137,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "Save",IDC_BROWSE,182,87,28,14
+    PUSHBUTTON      "Color Table",IDC_COLOR_TABLE,36,106,50,14
+    CONTROL         "Histogram color distribution",IDC_HST_EQ,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,89,108,103,10
+    GROUPBOX        "Custom Data Range",IDC_STATIC,7,126,150,48
+    CONTROL         "Enabled",IDC_CUSTOM_ENABLE,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,14,138,41,10
+    LTEXT           "Min",IDC_STATIC,81,143,12,8
+    EDITTEXT        IDC_CUSTOM_MIN,96,137,52,14,ES_AUTOHSCROLL
+    LTEXT           "Max",IDC_STATIC,79,159,14,8
+    EDITTEXT        IDC_CUSTOM_MAX,96,153,52,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "Close",IDOK,160,160,50,14
+END
+
+IDD_ABOUT_DEMO DIALOGEX 0, 0, 510, 295
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "About Mod3D DEMO"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,7,274,50,14
+    LTEXT           "Copyright  2001-2004 Igor Cerovsky.\n3D Graphics by Igor Cerovsky && Branislav Goga ",
+                    IDC_STATIC,10,21,160,24
+    LTEXT           "Mod3D  2.1.2 DEMO",IDC_STATIC,99,7,66,8
+    LTEXT           "Using this software you accept the license agreement.\n\nemail: igor.cerovsky@uni-tuebingen.de\nwww: http://homepages.uni-tuebingen.de/igor.cerovsky/index.html ",
+                    IDC_STATIC,7,73,225,37
+    LTEXT           "Unauthorized duplication or distribution of this program, or any portion of it, may result in severe civil or criminal penalties, and will be prosecuted to the maximum extent possible under the law. ",
+                    IDC_STATIC,7,140,225,30
+    LTEXT           "To present any portion of Mod3D or data created with Mod3D written permission of the copyright holder is essential.\n\nThanks for your interest in Mod3D!\n\nigor, March 2004",
+                    IDC_STATIC,7,194,225,53
+    CONTROL         456,IDC_STATIC,"Static",SS_BITMAP,238,7,265,282
+END
+
+IDD_ABOUT_TRIESTE DIALOGEX 0, 0, 245, 306
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "About Mod3D"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Close",IDOK,188,285,50,14
+    LTEXT           "Copyright  2001-2004 Igor Cerovsky.\n3D Graphics by Igor Cerovsky && Branislav Goga ",
+                    IDC_STATIC,7,20,160,24
+    LTEXT           "This product is licensed  to:\n   Istituto Nazionale di Oceanografia e di Geofisica Sperimentale\n   Borgo Grotta Gigante 442/c 34010 - Sgonico\n   Trieste, ITALY",
+                    IDC_STATIC,7,50,207,36
+    LTEXT           "Mod3D  2.1.1",IDC_STATIC,96,7,44,8
+    CONTROL         459,IDC_STATIC,"Static",SS_BITMAP,7,94,231,188
+END
+
+IDD_ABOUT_NAPOLI DIALOGEX 0, 0, 285, 311
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "About Mod3D"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Close",IDOK,228,7,50,14
+    CONTROL         455,IDC_STATIC,"Static",SS_BITMAP,7,89,271,215
+    LTEXT           "Copyright  2001-2004 Igor Cerovsky.\n3D Graphics by Igor Cerovsky && Branislav Goga ",
+                    IDC_STATIC,7,7,160,24
+    LTEXT           "This product is licensed  to:\n   Universita di Napoli Federico II\n   Dipartimento di Scienze della Terra\n   Largo San Marcellino, 10\n   80138  Napoli - ITALY",
+                    IDC_STATIC,7,36,124,44
+END
+
+IDD_DATA3D DIALOGEX 0, 0, 194, 254
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "3D Data Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    PUSHBUTTON      "Browse",IDC_BROWSE,7,7,50,14,WS_DISABLED
+    EDITTEXT        IDC_FILE_PATH,61,7,126,14,ES_AUTOHSCROLL | ES_READONLY | 
+                    WS_DISABLED
+    LTEXT           "Name",IDC_STATIC,7,29,19,8
+    EDITTEXT        IDC_NAME_D3D,61,23,126,14,ES_AUTOHSCROLL
+    GROUPBOX        "Index channel data range",IDC_STATIC,7,166,180,60
+    LTEXT           "Custom",IDC_STATIC,58,177,25,8
+    LTEXT           "Data",IDC_STATIC,129,177,16,8
+    LTEXT           "Minimum",IDC_STATIC,14,196,28,8
+    EDITTEXT        IDC_MIN,55,190,50,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_D3D_MINDATA,129,190,50,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    LTEXT           "Maximum",IDC_STATIC,14,209,30,8
+    EDITTEXT        IDC_MAX,55,206,50,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_D3D_MAXDATA,129,206,50,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    GROUPBOX        "Drawing",IDC_STATIC,7,46,180,114
+    LTEXT           "Symbol Radius",IDC_STATIC,14,62,47,8
+    EDITTEXT        IDC_D3D_SYMBOLR,85,59,40,14,ES_AUTOHSCROLL
+    CONTROL         "Draw Points",IDC_D3D_PTS,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,16,96,54,10
+    LTEXT           "Slices",IDC_STATIC,85,82,18,8
+    EDITTEXT        IDC_D3D_SLICES,85,92,40,14,ES_AUTOHSCROLL
+    LTEXT           "Stacks",IDC_STATIC,139,82,22,8
+    EDITTEXT        IDC_D3D_STACKS,139,92,40,14,ES_AUTOHSCROLL
+    CONTROL         "Connect points",IDC_CHECK3,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,16,111,64,10
+    CONTROL         "Custom data range",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,16,125,77,10
+    CONTROL         "Use color distribution",IDC_D3D_COLORDITRIBUTIN,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,16,140,83,10
+    PUSHBUTTON      "Pen",IDC_COLORBUT,98,121,62,14
+    PUSHBUTTON      "Color Gradient",IDC_D3D_COLORGRAD,98,136,62,14
+    DEFPUSHBUTTON   "OK",IDOK,137,233,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,233,50,14
+END
+
+IDD_ABOUT_WIEN DIALOGEX 0, 0, 245, 316
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "About Mod3D"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Close",IDOK,188,295,50,14
+    LTEXT           "Copyright  2001-2004 Igor Cerovsky.\n3D Graphics by Igor Cerovsky && Branislav Goga ",
+                    IDC_STATIC,17,29,160,24
+    LTEXT           "This product is licensed  to:\n   University of Vienna\n   Institute of Meteorology and Geophysics\n   Althanstrasse 14\n   A - 1090 Wien, Austria",
+                    IDC_STATIC,17,54,207,43
+    LTEXT           "Mod3D  2.1.1",IDC_STATIC,105,15,44,8
+    CONTROL         459,IDC_STATIC,"Static",SS_BITMAP,7,102,231,188
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_DLG_AXIS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 212
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 247
+    END
+
+    IDD_DLG_VIEW_MAP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 189
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 179
+    END
+
+    IDD_DLG_PEN, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 122
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 56
+    END
+
+    IDD_DLG_MODEL, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 250
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 227
+    END
+
+    IDD_DLG_PROFILE_SETTINGS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 171
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 106
+    END
+
+    IDD_DLG_FIT_1D, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 237
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 129
+    END
+
+    IDD_DLG_3DVIEW_MODEL, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 214
+        TOPMARGIN, 6
+        BOTTOMMARGIN, 127
+    END
+
+    IDD_DLG_3DVIEW_SETTINGS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 211
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 133
+    END
+
+    IDD_DLG_3DVIEW_FIELD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 138
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 115
+    END
+
+    IDD_DLG_3DVIEW_AXES, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 142
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 104
+    END
+
+    IDD_DLG_3DVIEW_DRAW, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 216
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 107
+    END
+
+    IDD_DLG_BODY_GRAV, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 198
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 110
+    END
+
+    IDD_DLG_BODY_MAG, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 146
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 94
+    END
+
+    IDD_DLG_BODY_DRAW, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 175
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 91
+    END
+
+    IDD_DLG_COMPUTE_COMP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 125
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 70
+    END
+
+    IDD_DLG_COMPUTE_GRAV, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 204
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 162
+    END
+
+    IDD_DLG_OBSERVATIONS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 193
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 136
+    END
+
+    IDD_DLG_ABOUT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 217
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 107
+    END
+
+    IDD_DLG_START, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 118
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 58
+    END
+
+    IDD_DLG_DOC_INIT_FIELD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 82
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 166
+    END
+
+    IDD_DLG_WELL, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 429
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 298
+    END
+
+    IDD_COLOR_GRAD, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 363
+        TOPMARGIN, 7
+    END
+
+    IDD_GRID_SEL_PROP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 140
+        VERTGUIDE, 90
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 27
+    END
+
+    IDD_GRID_PROPERTIES, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        VERTGUIDE, 32
+        VERTGUIDE, 36
+        VERTGUIDE, 96
+        VERTGUIDE, 210
+        TOPMARGIN, 6
+        BOTTOMMARGIN, 182
+    END
+
+    IDD_ABOUT_DEMO, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 503
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 288
+    END
+
+    IDD_ABOUT_TRIESTE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 238
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 299
+    END
+
+    IDD_ABOUT_NAPOLI, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 278
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 304
+    END
+
+    IDD_DATA3D, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 187
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 247
+    END
+
+    IDD_ABOUT_WIEN, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 238
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 309
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_DLG_PEN DLGINIT
+BEGIN
+    IDC_COMBO_STYLE, 0x403, 6, 0
+0x6f53, 0x696c, 0x0064, 
+    IDC_COMBO_STYLE, 0x403, 4, 0
+0x6f44, 0x0074, 
+    IDC_COMBO_STYLE, 0x403, 5, 0
+0x6144, 0x6873, "\000" 
+    IDC_COMBO_STYLE, 0x403, 9, 0
+0x6144, 0x6873, 0x442d, 0x746f, "\000" 
+    IDC_COMBO_STYLE, 0x403, 13, 0
+0x6144, 0x6873, 0x442d, 0x746f, 0x442d, 0x746f, "\000" 
+    0
+END
+
+IDD_DLG_BODY_DRAW DLGINIT
+BEGIN
+    IDC_COMBO_BRUSH_STYLE, 0x403, 6, 0
+0x6f53, 0x696c, 0x0064, 
+    IDC_COMBO_BRUSH_STYLE, 0x403, 8, 0
+0x6148, 0x6374, 0x6568, 0x0064, 
+    IDC_COMBO_BRUSH_STYLE, 0x403, 7, 0
+0x6f48, 0x6c6c, 0x776f, "\000" 
+    IDC_COMBO_BRUSH, 0x403, 6, 0
+0x7243, 0x736f, 0x0073, 
+    IDC_COMBO_BRUSH, 0x403, 11, 0
+0x6944, 0x6761, 0x6e6f, 0x6c61, 0x2f20, "\000" 
+    IDC_COMBO_BRUSH, 0x403, 11, 0
+0x6944, 0x6761, 0x6e6f, 0x6c61, 0x5c20, "\000" 
+    IDC_COMBO_BRUSH, 0x403, 15, 0
+0x6944, 0x6761, 0x6e6f, 0x6c61, 0x4320, 0x6f72, 0x7373, "\000" 
+    IDC_COMBO_BRUSH, 0x403, 11, 0
+0x6f48, 0x6972, 0x6f7a, 0x746e, 0x6c61, "\000" 
+    IDC_COMBO_BRUSH, 0x403, 9, 0
+0x6556, 0x7472, 0x6369, 0x6c61, "\000" 
+    0
+END
+
+IDD_COLOR_GRAD DLGINIT
+BEGIN
+    IDC_METHOD_COMBO, 0x403, 7, 0
+0x694c, 0x656e, 0x7261, "\000" 
+    IDC_METHOD_COMBO, 0x403, 11, 0
+0x6c46, 0x7461, 0x5320, 0x6174, 0x7472, "\000" 
+    IDC_METHOD_COMBO, 0x403, 12, 0
+0x6c46, 0x7461, 0x4d20, 0x6469, 0x6c64, 0x0065, 
+    IDC_METHOD_COMBO, 0x403, 9, 0
+0x6c46, 0x7461, 0x4520, 0x646e, "\000" 
+    IDC_METHOD_COMBO, 0x403, 7, 0
+0x6f43, 0x6973, 0x656e, "\000" 
+    IDC_METHOD_COMBO, 0x403, 14, 0
+0x5348, 0x204c, 0x6c43, 0x636f, 0x776b, 0x7369, 0x0065, 
+    IDC_METHOD_COMBO, 0x403, 19, 0
+0x5348, 0x204c, 0x6e41, 0x6974, 0x432d, 0x6f6c, 0x6b63, 0x6977, 0x6573, 
+"\000" 
+    IDC_METHOD_COMBO, 0x403, 13, 0
+0x5348, 0x204c, 0x6853, 0x726f, 0x6574, 0x7473, "\000" 
+    IDC_METHOD_COMBO, 0x403, 12, 0
+0x5348, 0x204c, 0x6f4c, 0x676e, 0x7365, 0x0074, 
+    IDC_METHOD_COMBO, 0x403, 8, 0
+0x6552, 0x6576, 0x7372, 0x0065, 
+    0
+END
+
+IDD_DLG_WELL DLGINIT
+BEGIN
+    IDC_COMBO_DRAW_SIDE, 0x403, 6, 0
+0x654c, 0x6674, 0x0074, 
+    IDC_COMBO_DRAW_SIDE, 0x403, 6, 0
+0x6952, 0x6867, 0x0074, 
+    IDC_COMBO_DRAW_SIDE, 0x403, 7, 0
+0x694d, 0x6464, 0x656c, "\000" 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Menu
+//
+
+IDR_PROFTYPE MENU 
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New\tCtrl+N",                57600
+        MENUITEM "&Open...\tCtrl+O",            57601
+        MENUITEM "&Close",                      57602
+        MENUITEM "&Save\tCtrl+S",               57603
+        MENUITEM "Save &As...",                 57604
+        MENUITEM SEPARATOR
+        POPUP "Import"
+        BEGIN
+            MENUITEM "Field",                       ID_IMPORT_MEASURED_FIELD
+            MENUITEM "Grid",                        359
+            MENUITEM "Bitmap",                      ID_IMPORT_BITMAP
+            MENUITEM "Guide Line",                  ID_IMPORT_GUIDE_LINE
+            MENUITEM "Body",                        ID_IMPORT_BODY
+            MENUITEM "Well",                        ID_IMPORT_WELL
+            MENUITEM "3D Data",                     457
+        END
+        POPUP "Export"
+        BEGIN
+            MENUITEM "Modeled Field",               336
+            MENUITEM "Bitmap",                      337
+            MENUITEM "Guide Line",                  338
+            MENUITEM "Body",                        ID_EXPORT_BODY
+        END
+        MENUITEM SEPARATOR
+        MENUITEM "&Print...\tCtrl+P",           57607, GRAYED
+        MENUITEM "Print Pre&view",              57609
+        MENUITEM "P&rint Setup...",             57606, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "Auto Open Last Document",     443
+        MENUITEM SEPARATOR
+        MENUITEM "Recent File",                 57616, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                       57665
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "Redraw",                      210
+        MENUITEM SEPARATOR
+        MENUITEM "Fit to Window",               32849
+        MENUITEM "Zoom",                        32848
+        MENUITEM "Zoom In",                     32851
+        MENUITEM "Zoom Out",                    32852
+        MENUITEM "Equal Scale",                 212
+        MENUITEM SEPARATOR
+        MENUITEM "Modeled Field",               287
+        MENUITEM "Measured Field",              288
+        MENUITEM "Difference field",            289
+        MENUITEM "Axis Field",                  290
+        MENUITEM "Extend Range",                ID_VIEW_EXTENDRANGE
+        POPUP "Field"
+        BEGIN
+            MENUITEM "Gx",                          32928
+            MENUITEM "Gy",                          32929
+            MENUITEM "Gz",                          32930
+            MENUITEM "G",                           32931
+            MENUITEM SEPARATOR
+            MENUITEM "Mx",                          32932
+            MENUITEM "My",                          32933
+            MENUITEM "Mz",                          32934
+            MENUITEM "M",                           32935
+            MENUITEM SEPARATOR
+            MENUITEM "Txx",                         281
+            MENUITEM "Tyy",                         282
+            MENUITEM "Tzz",                         283
+            MENUITEM "Txy",                         284
+            MENUITEM "Txz",                         285
+            MENUITEM "Tyz",                         286
+        END
+        MENUITEM SEPARATOR
+        MENUITEM "Mod3D &Toolbar",              59392
+        MENUITEM "Profile Toolbar",             32875
+        MENUITEM "Map Toolbar",                 32897
+        MENUITEM "Field Toolbar",               32845
+        MENUITEM SEPARATOR
+        MENUITEM "Set Field Indicator",         294
+        MENUITEM "Show Tooltip",                ID_PROFILE_SHOW_TOOLTIP
+    END
+    POPUP "&Edit"
+    BEGIN
+        MENUITEM "Object Manager",              ID_OBJECT_MANAGER
+        MENUITEM "Field Grid",                  434
+    END
+    POPUP "&Profile"
+    BEGIN
+        MENUITEM "E-W Profile\tH",              ID_PROFILE_EW
+        MENUITEM "S-N Profile\tV",              ID_PROFILE_SN
+        MENUITEM SEPARATOR
+        MENUITEM "Show Previous",               ID_PROFILE_PREVIOUS_SHOW
+        MENUITEM "Show Next",                   ID_PROFILE_NEXT_SHOW
+        MENUITEM SEPARATOR
+        MENUITEM "Move to Previous\tP",         272
+        MENUITEM "Move to Next\tN",             273
+        MENUITEM SEPARATOR
+        MENUITEM "Set Extrem Field",            ID_PROFILE_SET_EXTREM_FIELD
+        MENUITEM "Jump to Extrem\tE",           ID_PROFILE_EXTREM
+        MENUITEM "Jump to Min\tI",              ID_PROFILE_JUMPTOMIN
+        MENUITEM "Jump to Max\tA",              ID_PROFILE_JUMPTOMAX
+        MENUITEM SEPARATOR
+        MENUITEM "Show Model Guideline",        ID_PROFILE_SHOW_MODEL_GUIDELINE
+
+        MENUITEM SEPARATOR
+        MENUITEM "Profile Settings\tS",         ID_PROFILE_SAVE_CURRENT_SETTINGS
+
+        MENUITEM "Show Tooltip",                ID_PROFILE_SHOW_TOOLTIP
+        MENUITEM "Show RMS",                    ID_PROFILE_SHOW_RMS
+        MENUITEM "Show Derivative",             ID_PROFILE_SHOW_DRV
+    END
+    POPUP "&Model"
+    BEGIN
+        MENUITEM "Properties",                  ID_MODEL_PROPERTIES
+        MENUITEM SEPARATOR
+        MENUITEM "Import Observation",          32816
+        MENUITEM "Define Observation",          32813
+        MENUITEM "Change Vertical Range",       32881
+        MENUITEM SEPARATOR
+        MENUITEM "Inducing Field",              32876
+    END
+    POPUP "Body"
+    BEGIN
+        MENUITEM "New Body",                    32815
+        MENUITEM "Edit",                        32879
+        MENUITEM SEPARATOR
+        MENUITEM "Import",                      ID_IMPORT_BODY
+        MENUITEM "Export",                      ID_EXPORT_BODY
+        MENUITEM SEPARATOR
+        MENUITEM "Copy profile",                32880
+        MENUITEM "Move Body Vertical",          230
+        MENUITEM SEPARATOR
+        MENUITEM "Creation Properties",         32866
+    END
+    POPUP "&Compute"
+    BEGIN
+        MENUITEM "Properties",                  32976
+        MENUITEM "Observation Properties",      421
+        MENUITEM "Active Field",                293
+        MENUITEM "Activate/Deactivate Grids",   463
+        MENUITEM SEPARATOR
+        MENUITEM "Compute",                     32775
+        MENUITEM "Compute Real-Time",           ID_COMPUTE_REAL_TIME
+        MENUITEM SEPARATOR
+        MENUITEM "Vertex Fit Properties",       386
+        MENUITEM "Density Inversion Properties", 409
+    END
+    POPUP "&Window"
+    BEGIN
+        MENUITEM "&New Profile Window",         57648
+        MENUITEM "New Map Window",              32791
+        MENUITEM "New 3D Window",               32801
+        MENUITEM "! New Spreadsheet Window",    451
+        MENUITEM SEPARATOR
+        MENUITEM "&Cascade",                    57650
+        MENUITEM "&Tile Horizontaly",           57651
+        MENUITEM "&Tile Verticaly",             57652
+        MENUITEM "&Arrange Icons",              57649
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Help Topics",                57667
+        MENUITEM SEPARATOR
+        MENUITEM "&About Mod3D...",             57664
+    END
+END
+
+IDR_MENU_FLOAT_PROF MENU 
+BEGIN
+    POPUP "Profile View"
+    BEGIN
+        MENUITEM "Next\tN",                     273
+        MENUITEM "Previous\tP",                 272
+        MENUITEM SEPARATOR
+        MENUITEM "E-W Profile\tH",              32799
+        MENUITEM "S-N Profile\tV",              32800
+        MENUITEM SEPARATOR
+        MENUITEM "Show Previous",               351
+        MENUITEM "Show Next",                   350
+        MENUITEM SEPARATOR
+        MENUITEM "Jump to Extreme\tE",          ID_PROFILE_EXTREM
+        MENUITEM "Jump to Min\tI",              376
+        MENUITEM "Jump to Max\tA",              377
+    END
+END
+
+IDR_MENU_OBJMNG MENU 
+BEGIN
+    POPUP "ObjMng"
+    BEGIN
+        MENUITEM "Properties",                  ID_OBJMNG_PROPERTIES
+        MENUITEM SEPARATOR
+        MENUITEM "Delete",                      ID_OBJMNG_DELETE
+    END
+END
+
+IDR_MAINFRAME MENU 
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&New\tCtrl+N",                ID_FILE_NEW
+        MENUITEM "&Open...\tCtrl+O",            ID_FILE_OPEN
+        MENUITEM SEPARATOR
+        MENUITEM "P&rint Setup...",             ID_FILE_PRINT_SETUP
+        MENUITEM SEPARATOR
+        MENUITEM "Auto Open Last Document",     443
+        MENUITEM SEPARATOR
+        MENUITEM "Recent File",                 ID_FILE_MRU_FILE1, GRAYED
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",                       ID_APP_EXIT
+    END
+    POPUP "&View"
+    BEGIN
+        MENUITEM "&Toolbar",                    ID_VIEW_TOOLBAR
+        MENUITEM "&Status Bar",                 ID_VIEW_STATUS_BAR
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Help Topics",                ID_HELP_FINDER
+        MENUITEM SEPARATOR
+        MENUITEM "&About Mod3D...",             ID_APP_ABOUT
+    END
+END
+
+IDR_MOD3DTYPE MENUEX 
+BEGIN
+    POPUP "&File",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "&New\tCtrl+N",                57600,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Open...\tCtrl+O",            57601,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Close",                      57602,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Save\tCtrl+S",               57603,MFT_STRING,MFS_ENABLED
+        MENUITEM "Save &As...",                 57604,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        POPUP "Import",                         65535,MFT_STRING,MFS_ENABLED
+        BEGIN
+            MENUITEM "Field",                       326,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Grid",                        359,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Bitmap",                      327,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Guideline",                   328,
+            MFT_STRING | MFT_RIGHTJUSTIFY,MFS_ENABLED
+            MENUITEM "Body",                        340,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Well",                        426,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "3D Data",                     457,MFT_STRING,
+            MFS_ENABLED
+        END
+        POPUP "Export",                         65535,MFT_STRING,MFS_ENABLED
+        BEGIN
+            MENUITEM "Modeled Field",               336,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Bitmap",                      337,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Guideline",                   338,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Body",                        339,MFT_STRING,
+            MFS_ENABLED
+        END
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "&Print...\tCtrl+P",           57607,MFT_STRING,MFS_GRAYED
+        MENUITEM "Print Pre&view",              57609,MFT_STRING,MFS_ENABLED
+        MENUITEM "P&rint Setup...",             57606,MFT_STRING,MFS_GRAYED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Auto Open Last Document",     443,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Recent File",                 57616,MFT_STRING,MFS_GRAYED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "E&xit",                       57665,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&View",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Redraw",                      210,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Fit to Window",               32849,MFT_STRING,MFS_ENABLED
+        MENUITEM "Zoom",                        32848,MFT_STRING,MFS_ENABLED
+        MENUITEM "Zoom In",                     32851,MFT_STRING,MFS_ENABLED
+        MENUITEM "Zoom Out",                    32852,MFT_STRING,MFS_ENABLED
+        MENUITEM "Equal Scale",                 212,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Field Image",                 318,MFT_STRING,MFS_ENABLED
+        MENUITEM "Field Contours",              319,MFT_STRING,MFS_ENABLED
+        MENUITEM "Modeled Field",               287,MFT_STRING,MFS_ENABLED
+        MENUITEM "Measured Field",              288,MFT_STRING,MFS_ENABLED
+        MENUITEM "Difference field",            289,MFT_STRING,MFS_ENABLED
+        POPUP "Field",                          65535,MFT_STRING,MFS_ENABLED
+        BEGIN
+            MENUITEM "Gx",                          32928,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Gy",                          32929,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Gz",                          32930,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "G",                           32931,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM MFT_SEPARATOR
+            MENUITEM "Mx",                          32932,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "My",                          32933,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Mz",                          32934,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "M",                           32935,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM MFT_SEPARATOR
+            MENUITEM "Txx",                         281,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Tyy",                         282,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Tzz",                         283,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Txy",                         284,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Txz",                         285,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Tyz",                         286,MFT_STRING,
+            MFS_ENABLED
+        END
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Show Objects",                347,MFT_STRING,MFS_ENABLED
+        MENUITEM "Observation Contours",        345,MFT_STRING,MFS_ENABLED
+        MENUITEM "Observation Image",           346,MFT_STRING,MFS_ENABLED
+        MENUITEM "Observation Points",          348,MFT_STRING,MFS_ENABLED
+        MENUITEM "Body Boundaries",             349,MFT_STRING,MFS_ENABLED
+        MENUITEM "Profiles",                    355,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Mod3D &Toolbar",              59392,MFT_STRING,MFS_ENABLED
+        MENUITEM "Profile Toolbar",             32875,MFT_STRING,MFS_ENABLED
+        MENUITEM "Map Toolbar",                 32897,MFT_STRING,MFS_ENABLED
+        MENUITEM "Field Toolbar",               32845,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Set Field Indicator",         294,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Edit",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Object Manger",               331,MFT_STRING,MFS_ENABLED
+        MENUITEM "Field Grid",                  434,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Model",                         65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Properties",                  330,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Import Observation",          32816,MFT_STRING,MFS_ENABLED
+        MENUITEM "Define Observation",          32813,MFT_STRING,MFS_ENABLED
+        MENUITEM "Change Vertical Range",       32881,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Inducing Field",              32876,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Blank Grid",                  418,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Compute",                       65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Properties",                  32976,MFT_STRING,MFS_ENABLED
+        MENUITEM "Observation Properties",      421,MFT_STRING,MFS_ENABLED
+        MENUITEM "Active Field",                293,MFT_STRING,MFS_ENABLED
+        MENUITEM "Activate/Deactivate Grids",   ID_COMPUTE_ACTIVATE_GRID,
+        MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Compute",                     32775,MFT_STRING,MFS_ENABLED
+        MENUITEM "Compute Real-Time",           323,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Vertex Fit Properties",       386,MFT_STRING,MFS_ENABLED
+        MENUITEM "Density Inversion Properties", 409,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Window",                        65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "&New Profile Window",         57648,MFT_STRING,MFS_ENABLED
+        MENUITEM "New Map Window",              32791,MFT_STRING,MFS_ENABLED
+        MENUITEM "New 3D Window",               32801,MFT_STRING,MFS_ENABLED
+        MENUITEM "! New Spreadsheet Window",    451,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "&Cascade",                    57650,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Tile Horizontaly",           57651,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Tile Verticaly",             57652,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Arrange Icons",              57649,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Help",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "&Help Topics",                57667,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "&About Mod3D...",             57664,MFT_STRING,MFS_ENABLED
+    END
+END
+
+IDR_MENU_FLOAT_BODY MENU 
+BEGIN
+    POPUP "Body"
+    BEGIN
+        MENUITEM "Properties",                  ID_BODY_PROPERTIES
+        MENUITEM SEPARATOR
+        MENUITEM "Fill",                        ID_BODY_FILL
+        MENUITEM SEPARATOR
+        MENUITEM "Copy to Previous Profile\tCtrl+Shift+P", 
+                                                ID_BODY_COPY_TO_PREVIOUS_PROFILE
+
+        MENUITEM "Copy to Next Profile\t Ctrl+Shift+N", 
+                                                ID_BODY_COPY_TO_NEXT_PROFILE
+        MENUITEM SEPARATOR
+        MENUITEM "Remove",                      313
+        MENUITEM "Remove from Profile",         ID_BODY_REMOVE_FROM_PROFILE
+        MENUITEM "Move Body",                   ID_BODY_MOVEBOBY
+        MENUITEM SEPARATOR
+        MENUITEM "Edit Bodies",                 ID_BODY_EDIT
+        MENUITEM "Body Creation Properties",    ID_MODEL_BODY_CREATION_PROPERTIES
+
+        MENUITEM SEPARATOR
+        MENUITEM "Invert Density",              ID_BODY_INVERT_DENSITY
+        MENUITEM "Density Inversion Properties", 
+                                                ID_BODY_DENSITY_INVERSION_PROPERTIES
+
+    END
+END
+
+IDR_MENU_FLOAT_BODY_LINE MENU 
+BEGIN
+    POPUP "Body"
+    BEGIN
+        MENUITEM "Insert New Body",             ID_BODY_INSERT_NEW
+        MENUITEM "Insert Existing Body",        ID_BODY_INSERT_EXISTING
+        MENUITEM SEPARATOR
+        MENUITEM "Edit Bodies",                 ID_BODY_EDIT
+        MENUITEM "Body Creation Properties",    ID_MODEL_BODY_CREATION_PROPERTIES
+
+    END
+END
+
+IDR_MENU_FLOAT_VERTEX MENU 
+BEGIN
+    POPUP "Vertex"
+    BEGIN
+        MENUITEM "Fit",                         ID_VERTEX_FIT
+        MENUITEM "1D Fit Properties",           386
+    END
+END
+
+IDR_3DVIEW MENUEX 
+BEGIN
+    POPUP "&File",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "&New\tCtrl+N",                57600,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Open...\tCtrl+O",            57601,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Close",                      57602,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Save\tCtrl+S",               57603,MFT_STRING,MFS_ENABLED
+        MENUITEM "Save &As...",                 57604,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        POPUP "Import",                         65535,MFT_STRING,MFS_ENABLED
+        BEGIN
+            MENUITEM "Field",                       326,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Grid",                        359,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Bitmap",                      327,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Guideline",                   328,
+            MFT_STRING | MFT_RIGHTJUSTIFY,MFS_ENABLED
+            MENUITEM "Body",                        340,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Well",                        426,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "3D Data",                     457,MFT_STRING,
+            MFS_ENABLED
+        END
+        POPUP "Export",                         65535,MFT_STRING,MFS_ENABLED
+        BEGIN
+            MENUITEM "Modeled Field",               336,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Bitmap",                      337,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Guideline",                   338,MFT_STRING,
+            MFS_ENABLED
+            MENUITEM "Body",                        339,MFT_STRING,
+            MFS_ENABLED
+        END
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "&Print...\tCtrl+P",           57607,MFT_STRING,MFS_GRAYED
+        MENUITEM "Print Pre&view",              57609,MFT_STRING,MFS_ENABLED
+        MENUITEM "P&rint Setup...",             57606,MFT_STRING,MFS_GRAYED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Auto Open Last Document",     443,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Recent File",                 57616,MFT_STRING,MFS_GRAYED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "E&xit",                       57665,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&View",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Plane Simulator",             450,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Mod3D &Toolbar",              59392,MFT_STRING,MFS_ENABLED
+        MENUITEM "Profile Toolbar",             32875,MFT_STRING,MFS_ENABLED
+        MENUITEM "Map Toolbar",                 32897,MFT_STRING,MFS_ENABLED
+        MENUITEM "Field Toolbar",               32845,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Set Field Indicator",         294,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Edit",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Object Manger",               331,MFT_STRING,MFS_ENABLED
+        MENUITEM "Field Grid",                  434,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Model",                         65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Properties",                  330,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Import Observation",          32816,MFT_STRING,MFS_ENABLED
+        MENUITEM "Define Observation",          32813,MFT_STRING,MFS_ENABLED
+        MENUITEM "Change Vertical Range",       32881,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Inducing Field",              32876,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Compute",                       65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "Properties",                  32976,MFT_STRING,MFS_ENABLED
+        MENUITEM "Observation Properties",      421,MFT_STRING,MFS_ENABLED
+        MENUITEM "Active Field",                293,MFT_STRING,MFS_ENABLED
+        MENUITEM "Activate/Deactivate Grids",   463,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Compute",                     32775,MFT_STRING,MFS_ENABLED
+        MENUITEM "Compute Real-Time",           323,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "Vertex Fit Properties",       386,MFT_STRING,MFS_ENABLED
+        MENUITEM "Density Inversion Properties", 409,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Window",                        65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "&New Profile Window",         57648,MFT_STRING,MFS_ENABLED
+        MENUITEM "New Map Window",              32791,MFT_STRING,MFS_ENABLED
+        MENUITEM "New 3D Window",               32801,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Cascade",                    57650,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Tile Horizontaly",           57651,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Tile Verticaly",             57652,MFT_STRING,MFS_ENABLED
+        MENUITEM "&Arrange Icons",              57649,MFT_STRING,MFS_ENABLED
+    END
+    POPUP "&Help",                          65535,MFT_STRING,MFS_ENABLED
+    BEGIN
+        MENUITEM "&Help Topics",                57667,MFT_STRING,MFS_ENABLED
+        MENUITEM MFT_SEPARATOR
+        MENUITEM "&About Mod3D...",             57664,MFT_STRING,MFS_ENABLED
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDB_BMP_OPEN            BITMAP                  "res\\bitmap1.bmp"
+IDB_BMP_VIEW3D_MAP      BITMAP                  "res\\bmp00001.bmp"
+IDB_BMP_SN              BITMAP                  "res\\bmp00002.bmp"
+IDB_BMP_EW              BITMAP                  "res\\bmp00003.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDI_ICON_IMG_UNCHECKED  ICON                    "res\\ico00003.ico"
+IDI_ICON_IMG_CHECKED    ICON                    "res\\ico00004.ico"
+IDI_ICON_IMG_NONE       ICON                    "res\\ico00005.ico"
+IDR_MAPTYPE             ICON                    "res\\ico00006.ico"
+IDR_MOD3D               ICON                    "res\\Mod3D.ico"
+IDR_GRIDTYPE            ICON                    "res\\ico00007.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    336                     "Export modeled field to grid file\nExport Modeled Field"
+    337                     "Export bitmap image\nExport Bitmap"
+    338                     "Export guideline to the text fle\nExport Guideline"
+    339                     "Export body to file\nExport Body"
+    340                     "Import body\nImport Body"
+    ID_PROFILE_NEXT_SHOW    "Move to next profile\nNext Profile"
+    ID_PROFILE_PREVIOUS_SHOW "Move to previous profile\nPrevious Profile"
+END
+
+STRINGTABLE 
+BEGIN
+    323                     "Set real-time computation mode\nCompute Real-Time"
+    326                     "Import measured field grid\nImport Field"
+    327                     "Import bitmap picture\nImport Bitmap"
+    ID_IMPORT_GUIDE_LINE    "Import guideline from txt file\nImport Guideline"
+    ID_MODEL_PROPERTIES     "Edit model properties\nModel Properties"
+    ID_OBJECT_MANAGER       "Dislpay object manager\nObject Manager"
+END
+
+STRINGTABLE 
+BEGIN
+    359                     "Import leading horizon grid\nImport Grid"
+    ID_PROFILE_SHOW_MODEL_GUIDELINE 
+                            "Show vertical model guideline\nShow Model Guideline"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_PROFILE_EXTREM       "Jump to extrem of selected field\nJump to Extrem"
+    ID_PROFILE_SET_EXTREM_FIELD "Sets extrem field"
+    ID_PROFILE_JUMPTOMIN    "Jump to minimum of selected field\nJump to Minimum"
+    ID_PROFILE_JUMPTOMAX    "Jump to maximum of selected field\nJump to Maximum"
+    ID_PROFILE_SAVE_CURRENT_SETTINGS 
+                            "Save/Load profile view settings\nProfile Settings"
+    ID_PROFILE_LOAD_SETTINGS "Load previously saved settings\nLoad Settings"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_PREVIOUS_PROFILE "Move to previous profile\nPrevious Profile"
+    273                     "Move to next profile\nNext Profile"
+END
+
+STRINGTABLE 
+BEGIN
+    386                     "Adjust properties for vertex-fitting\nVertex Fit Properties"
+    ID_VERTEX_FIT           "Fit vertex"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_PROFILE_SHOW_TOOLTIP "Activates or deactivates tooltips\nShow Tooltips"
+    ID_PROFILE_SHOW_RMS     "Show RMS value\nShow RMS"
+    ID_PROFILE_SHOW_DRV     "Shows derivative value\nShow derivative"
+    ID_BODY_INVERT_DENSITY  "Inverts density of current body"
+    ID_COMPUTE_DENSITY_INVERSION_PROPERTIES 
+                            "Adjust density inversion properties\nDensity Inversion Properties"
+END
+
+STRINGTABLE 
+BEGIN
+    32775                   "Start modeled field computation\nCompute"
+END
+
+STRINGTABLE 
+BEGIN
+    32976                   "Adjust computation properties"
+END
+
+STRINGTABLE 
+BEGIN
+    293                     "Set active fied(s)\nActive Field"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_MODEL_BLANK_GRID     "Blanks Grid\nBlank Grid"
+    ID_MODEL_OBSERVATION_PROPERTIES 
+                            "Edit observation properties\nObservation Properties"
+    ID_IMPORT_WELL          "Import well data\nImport Well"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_EDIT_FIELD_GRID      "Field grid properties\nEdit Field Grid"
+    ID_FILE_OPEN_LAST_DOCUMENT "Open last document at start"
+    ID_VIEW_EXTENDRANGE     "Extend range to fit the entire interval of measured & modeled field\nExtend Range"
+    ID_BODY_MOVEBOBY        "Move entire body in vertical direction\nMove Body"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_PLANESIMULATOR  "Switch on/of plane simulator mode\nPlane Simulator"
+    ID_WINDOW_NEWGRIDWINDOW "Open worksheet view\nGrid Window"
+    ID_IMPORT_3DDATA        "Import 3D x, y, z, v data\n Import 3D Data"
+    ID_COMPUTE_ACTIVATE_GRID 
+                            "Open or close field grids\nActivate/Deactivate Grids"
+END
+
+#endif    // Neutral resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+// German (Germany) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_DEU)
+#ifdef _WIN32
+LANGUAGE LANG_GERMAN, SUBLANG_GERMAN
+#pragma code_page(1252)
+#endif //_WIN32
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 9, 1\r\n"
+    "#pragma code_page(1252)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\Mod3D.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""afxres.rc""         // Standard components\r\n"
+    "#include ""afxprint.rc""       // printing/print preview resources\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+#endif    // German (Germany) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+/////////////////////////////////////////////////////////////////////////////
+// English (U.S.) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+#endif //_WIN32
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DLG_MODEL_IMPORT_PICTURE DIALOGEX 0, 0, 159, 239
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Set Picture Coordinates"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "File",IDC_STATIC,7,8,12,8
+    EDITTEXT        IDC_EDIT_FILE_PATH,21,6,93,14,ES_AUTOHSCROLL | 
+                    ES_READONLY
+    PUSHBUTTON      "Browse",IDC_BUTTON_BROWSE,117,6,29,14
+    LTEXT           "Description",IDC_STATIC,7,40,36,8
+    EDITTEXT        IDC_EDIT1,45,37,101,14,ES_AUTOHSCROLL
+    LTEXT           "Opacity <0, 255>",IDC_STATIC,7,54,59,8
+    EDITTEXT        IDC_EDIT_OPACITY,72,52,40,14,ES_AUTOHSCROLL
+    GROUPBOX        "Image Type",IDC_STATIC,7,65,139,27
+    CONTROL         "Map",IDC_RADIO_PIC_TYPE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,13,76,36,10
+    CONTROL         "Section",IDC_RADIO_PIC_TYPE_PRF,"Button",
+                    BS_AUTORADIOBUTTON | WS_TABSTOP,60,76,39,10
+    CONTROL         "Other",IDC_RADIO_PIC_TYPE_OTHHER,"Button",
+                    BS_AUTORADIOBUTTON | WS_DISABLED | WS_TABSTOP,105,76,36,
+                    10
+    GROUPBOX        "Enter coordinates",IDC_STATIC,7,95,139,85
+    LTEXT           "start",IDC_STATIC,39,106,16,8
+    LTEXT           "x1",IDC_STATIC,16,118,8,8
+    EDITTEXT        IDC_EDIT_XT,26,117,44,14,ES_AUTOHSCROLL
+    LTEXT           "y1",IDC_STATIC,16,134,8,8
+    EDITTEXT        IDC_EDIT_YT,26,132,44,14,ES_AUTOHSCROLL
+    LTEXT           "z1",IDC_STATIC,16,149,8,8
+    EDITTEXT        IDC_EDIT_ZT,26,147,44,14,ES_AUTOHSCROLL
+    LTEXT           "end",IDC_STATIC,104,106,13,8
+    LTEXT           "x2",IDC_STATIC,80,118,8,8
+    EDITTEXT        IDC_EDIT_XB,90,117,44,14,ES_AUTOHSCROLL
+    LTEXT           "y2",IDC_STATIC,80,134,8,8
+    EDITTEXT        IDC_EDIT_YB,90,132,44,14,ES_AUTOHSCROLL
+    LTEXT           "z2",IDC_STATIC,80,149,8,8
+    EDITTEXT        IDC_EDIT_ZB,90,147,44,14,ES_AUTOHSCROLL
+    LTEXT           "Note: Map type z-coordinate is ignored",IDC_STATIC,11,
+                    166,126,8
+    GROUPBOX        "Show on profile",IDC_STATIC,7,185,66,44
+    CONTROL         "East-West",IDC_CHECK_SHOW_ROW,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,13,198,49,10
+    CONTROL         "South-North",IDC_CHECK_SHOW_COL,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,13,211,55,10
+    DEFPUSHBUTTON   "OK",IDOK,85,193,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,85,212,50,14
+    CONTROL         "Visible",IDC_CHECK_VISIBLE,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,7,24,35,10
+    PUSHBUTTON      "Pen",IDC_BUTTON_PEN,45,22,37,14
+END
+
+IDD_DLGHTML_ABOUT DIALOGEX 0, 0, 299, 276
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About Mod3D"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+END
+
+IDD_DLG_OBJECT_MANAGER DIALOGEX 0, 0, 137, 150
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU | 
+    WS_THICKFRAME
+EXSTYLE WS_EX_TOOLWINDOW
+CAPTION "Object Manager"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_TREE,"SysTreeView32",TVS_HASBUTTONS | 
+                    TVS_HASLINES | TVS_LINESATROOT | TVS_DISABLEDRAGDROP | 
+                    TVS_SHOWSELALWAYS | TVS_CHECKBOXES | WS_BORDER | 
+                    WS_TABSTOP | 0x4800,0,0,137,150,WS_EX_CLIENTEDGE
+END
+
+IDD_DLG_MODEL_GUIDELINE DIALOGEX 0, 0, 198, 130
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Guideline Properties"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Type",IDC_STATIC,7,7,71,24
+    CONTROL         "Point",IDC_CHM_TYPE,"Button",BS_AUTORADIOBUTTON | 
+                    WS_DISABLED | WS_GROUP,13,16,29,10
+    CONTROL         "Line",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON | 
+                    WS_DISABLED,46,16,29,10
+    GROUPBOX        "Display",IDC_STATIC,87,7,104,24
+    CONTROL         "Visible",IDC_CHECK_VISIBLE,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,92,16,35,10
+    CONTROL         "Show Text",IDC_CHECK_TEXT,"Button",BS_AUTOCHECKBOX | 
+                    WS_TABSTOP,137,16,50,10
+    LTEXT           "Description",IDC_STATIC,17,39,36,8
+    EDITTEXT        IDC_EDIT_DESCRIPTION,55,36,135,14,ES_AUTOHSCROLL
+    LTEXT           "Row",IDC_STATIC,17,58,15,8
+    EDITTEXT        IDC_EDIT_ROW,55,55,50,14,ES_AUTOHSCROLL
+    LTEXT           "Column",IDC_STATIC,17,74,24,8
+    EDITTEXT        IDC_EDIT_COLUMN,55,71,50,14,ES_AUTOHSCROLL
+    LTEXT           "x",IDC_STATIC,127,60,8,8
+    EDITTEXT        IDC_EDIT_X,141,55,50,14,ES_AUTOHSCROLL
+    LTEXT           "y",IDC_STATIC,127,74,8,8
+    EDITTEXT        IDC_EDIT_Y,141,71,50,14,ES_AUTOHSCROLL
+    LTEXT           "z",IDC_STATIC,127,89,8,8
+    EDITTEXT        IDC_EDIT_z,141,87,50,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,7,109,46,14
+    PUSHBUTTON      "Cancel",IDCANCEL,71,109,46,14
+    LTEXT           "For Help, press F1",IDC_STATIC,127,115,60,8
+    PUSHBUTTON      "Pen",IDC_BUTTON_PEN,55,88,50,14
+END
+
+IDD_DLG_MODEL_RANGE_Z DIALOGEX 0, 0, 160, 122
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Model Vertical Range"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    LTEXT           "min x",IDC_STATIC,7,12,17,8
+    LTEXT           "Static",IDC_MIN_X,28,12,40,8
+    LTEXT           "max x",IDC_STATIC,83,12,19,8
+    LTEXT           "Static",IDC_MAX_X,108,12,40,8
+    LTEXT           "min y",IDC_STATIC,7,25,17,8
+    LTEXT           "Static",IDC_MIN_Y,28,25,40,8
+    LTEXT           "max y",IDC_STATIC,83,25,19,8
+    LTEXT           "Static",IDC_MAX_Y,108,25,40,8
+    LTEXT           "Maximum z coordinate [m]",IDC_STATIC,8,45,88,8
+    EDITTEXT        IDC_EDIT_MAX_Z,100,43,40,14,ES_AUTOHSCROLL
+    LTEXT           "Minimum z coordinate [m]",IDC_STATIC,8,61,88,8
+    EDITTEXT        IDC_EDIT_MIN_Z,100,58,40,14,ES_AUTOHSCROLL
+    PUSHBUTTON      "OK",IDOK,7,101,35,14
+    PUSHBUTTON      "Cancel",IDCANCEL,53,101,35,14
+    EDITTEXT        IDC_EDIT_SC,68,78,25,14,ES_AUTOHSCROLL
+    LTEXT           "Horizontal scale = ",IDC_STATIC,8,80,59,8
+    LTEXT           "* Vertical scale",IDC_STATIC,98,80,48,8
+    LTEXT           "For Help, press F1",IDC_STATIC,95,107,58,8
+END
+
+IDD_DLG_MODEL_INSERT_EXISTING_BODY DIALOG  0, 0, 132, 141
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Insert existing body"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LISTBOX         IDC_LIST_BODIES,11,13,106,84,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_HSCROLL | WS_TABSTOP
+    LTEXT           "Width",IDC_STATIC,21,104,20,8
+    EDITTEXT        IDC_EDIT_WIDTH,44,101,40,14,ES_AUTOHSCROLL
+    LTEXT           "[m]",IDC_STATIC,87,104,10,8
+    DEFPUSHBUTTON   "OK",IDOK,13,119,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,67,119,50,14
+END
+
+IDD_DLG_BODY_DESCRIPTION DIALOGEX 0, 0, 197, 111
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Description"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    LTEXT           "ID",IDC_STATIC,7,9,8,8
+    EDITTEXT        IDC_EDIT_ID,35,7,155,14,ES_AUTOHSCROLL | WS_DISABLED
+    LTEXT           "Name",IDC_STATIC,7,24,20,8
+    EDITTEXT        IDC_EDIT_NAME,35,22,155,14,ES_AUTOHSCROLL
+    LTEXT           "Description",IDC_STATIC,7,42,36,8
+    EDITTEXT        IDC_EDIT_DESC,7,54,183,47,ES_MULTILINE | ES_AUTOHSCROLL | 
+                    WS_VSCROLL | WS_HSCROLL
+END
+
+IDD_DLG_BODY_SELECT DIALOGEX 0, 0, 219, 134
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Select Body"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    LISTBOX         IDC_LIST_BODIES,6,7,208,108,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_HSCROLL | WS_TABSTOP
+    DEFPUSHBUTTON   "OK",IDOK,51,117,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,117,117,50,14
+END
+
+IDD_DLG_BODY_CREATION DIALOGEX 0, 0, 161, 165
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Body Creation Properties"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    GROUPBOX        "Creation",IDC_STATIC,9,4,143,81
+    GROUPBOX        "Join",IDC_STATIC,14,13,66,53
+    CONTROL         "None",IDC_RADIO_JOIN,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP | WS_TABSTOP,19,24,33,10
+    CONTROL         "Top",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,19,34,29,10
+    CONTROL         "Bottom",IDC_RADIO3,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,19,44,38,10
+    CONTROL         "Top && Bottom",IDC_RADIO4,"Button",BS_AUTORADIOBUTTON,
+                    19,54,57,10
+    CONTROL         "Const top [m]",IDC_CHECK_CONST_TOP,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,84,17,57,10
+    EDITTEXT        IDC_EDIT_CONST_TOP,84,27,63,14,ES_AUTOHSCROLL
+    CONTROL         "Const bottom [m]",IDC_CHECK_CONST_BOT,"Button",
+                    BS_AUTOCHECKBOX | WS_TABSTOP,84,43,69,10
+    EDITTEXT        IDC_EDIT_CONST_BOT,84,52,63,14,ES_AUTOHSCROLL
+    LTEXT           "Body creation ratio ",IDC_STATIC,21,70,62,8
+    EDITTEXT        IDC_EDIT_CREATION_FACTOR,84,68,63,14,ES_AUTOHSCROLL
+    GROUPBOX        "Motion",IDC_STATIC,10,87,98,61,WS_DISABLED
+    CONTROL         "Move on current profile",IDC_CHECK_MOVE_PROFILE,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,97,89,10
+    CONTROL         "Move top boundary",IDC_CHECK_MOVE_TOP,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,107,80,10
+    CONTROL         "Move bottom boundary",IDC_CHECK_MOVE_BOT,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,117,87,10
+    CONTROL         "Fix relief",IDC_CHECK_FIX_RELIEF,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,126,43,10
+    CONTROL         "Fix  bottom",IDC_CHECK_FIX_BOTTOM,"Button",
+                    BS_AUTOCHECKBOX | WS_DISABLED | WS_TABSTOP,16,136,52,10
+    PUSHBUTTON      "OK",IDOK,112,102,41,14
+    PUSHBUTTON      "Cancel",IDCANCEL,112,126,41,14
+    LTEXT           "For Help, press F1",IDC_STATIC,51,152,58,8
+END
+
+IDD_DLG_MODEL_INDUCING_FIELD DIALOGEX 0, 0, 111, 82
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Inducing Field"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    LTEXT           "Intensity [nT]",IDC_STATIC,7,9,58,8
+    EDITTEXT        IDC_EDIT_I_TOT,65,7,36,14,ES_AUTOHSCROLL
+    LTEXT           "Inclination [deg]",IDC_STATIC,7,24,58,8
+    EDITTEXT        IDC_EDIT_I_INCL,65,22,36,14,ES_AUTOHSCROLL
+    LTEXT           "Declination [deg]",IDC_STATIC,7,40,58,8
+    EDITTEXT        IDC_EDIT_I_DECL,65,37,36,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,12,60,40,14
+    PUSHBUTTON      "Cancel",IDCANCEL,59,60,40,14
+END
+
+IDD_DLG_MODEL_EDIT_BODIES DIALOGEX 0, 0, 182, 138
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "Edit Bodies"
+FONT 8, "MS Shell Dlg", 0, 0, 0x0
+BEGIN
+    LISTBOX         IDC_LIST_BODIES,12,11,109,102,LBS_NOINTEGRALHEIGHT | 
+                    WS_VSCROLL | WS_HSCROLL | WS_TABSTOP
+    PUSHBUTTON      "Add New",IDC_ADD_NEW,127,13,45,14
+    PUSHBUTTON      "Delete",IDC_DELETE,127,28,45,14
+    PUSHBUTTON      "Properties",IDC_PROPRTIES,127,44,45,14
+    PUSHBUTTON      "Show / Hide",IDC_SHOW,127,69,45,14
+    PUSHBUTTON      "Import",IDC_IMPORT,127,84,45,14,WS_DISABLED
+    PUSHBUTTON      "Export",IDC_EXPORT,127,99,45,14,WS_DISABLED
+    DEFPUSHBUTTON   "Close",IDOK,49,120,38,14
+END
+
+IDD_DLG_MODEL_DEF_OBS DIALOGEX 0, 0, 210, 111
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Define Observations"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    LTEXT           "x [m]",IDC_STATIC,59,7,15,8
+    LTEXT           "y [m]",IDC_STATIC,115,7,17,8
+    LTEXT           "z [m]",IDC_STATIC,170,7,17,8
+    LTEXT           "Minimum",IDC_STATIC,7,20,28,8
+    LTEXT           "Maximum",IDC_STATIC,7,35,30,8
+    LTEXT           "Increment",IDC_STATIC,7,50,32,8
+    EDITTEXT        IDC_EDIT_MIN_X,42,17,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_X,42,32,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INCR_X,42,47,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MIN_Y,99,17,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_Y,99,32,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_INCR_Y,99,47,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MIN_Z,155,17,46,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_MAX_Z,155,32,46,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,167,90,38,14,0,WS_EX_TRANSPARENT
+    PUSHBUTTON      "Cancel",IDCANCEL,7,90,38,14
+    PUSHBUTTON      "Get From Grid File",IDC_GTF_FROM_GRID,7,66,61,14
+    EDITTEXT        IDC_GRID_FILE,72,66,133,14,ES_AUTOHSCROLL | ES_READONLY
+END
+
+IDD_DLG_FIELD_IMPEXP DIALOGEX 0, 0, 143, 49
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Export/Import Field Grid"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    CONTROL         "Export",IDC_RADIO_EXPIMP,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP,7,7,36,10
+    CONTROL         "Import",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON,57,7,35,
+                    10
+    COMBOBOX        IDC_COMBO_FLD,7,25,84,100,CBS_DROPDOWNLIST | WS_VSCROLL | 
+                    WS_TABSTOP
+    PUSHBUTTON      "Close",IDOK,94,7,42,14
+    PUSHBUTTON      "Proceed",IDC_BUTTON_PROCEED,93,25,42,14
+END
+
+IDD_DLG_MODEL_BODY_IMPORT DIALOGEX 0, 0, 164, 226
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Import Body"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    GROUPBOX        "Upper  Boundary",IDC_STATIC,7,7,153,74
+    CONTROL         "Grid",IDC_RADIO_UB,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP | WS_TABSTOP,13,22,28,10
+    EDITTEXT        IDC_EDIT_UB_STR,43,20,85,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "Browse",IDC_BUTTON_UB,129,20,28,14
+    CONTROL         "Const value [m]",IDC_RADIO2,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,13,37,65,10
+    CONTROL         "Copy lower boundary [m]",IDC_RADIO4,"Button",
+                    BS_AUTORADIOBUTTON,13,51,93,10
+    CONTROL         "Join to top",IDC_RADIO6,"Button",BS_AUTORADIOBUTTON,13,
+                    66,49,10
+    EDITTEXT        IDC_EDIT_UB_VAL,110,50,47,14,ES_AUTOHSCROLL
+    GROUPBOX        "Lower Boundary",IDC_STATIC,7,85,153,74
+    CONTROL         "Grid",IDC_RADIO_LB,"Button",BS_AUTORADIOBUTTON | 
+                    WS_GROUP | WS_TABSTOP,13,100,27,10
+    EDITTEXT        IDC_EDIT_LB_STR,43,98,85,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "Browse",IDC_BUTTON_LB,129,98,28,14
+    CONTROL         "Const value [m]",IDC_RADIO5,"Button",BS_AUTORADIOBUTTON | 
+                    WS_TABSTOP,13,115,65,10
+    CONTROL         "Copy upper boundary [m]",IDC_RADIO3,"Button",
+                    BS_AUTORADIOBUTTON,13,129,95,10
+    CONTROL         "Join to bottom",IDC_RADIO7,"Button",BS_AUTORADIOBUTTON,
+                    13,143,60,10
+    EDITTEXT        IDC_EDIT_LB_VAL,110,128,47,14,ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,123,205,37,14
+    PUSHBUTTON      "Cancel",IDCANCEL,7,205,37,14
+    LTEXT           "For Help, press F1",IDC_STATIC,53,206,58,8
+    GROUPBOX        "Detect Dummy Values Outside Interval",IDC_STATIC,7,161,
+                    153,38
+    EDITTEXT        IDC_EDIT_DUMMY_MIN,14,180,54,14,ES_AUTOHSCROLL
+    LTEXT           "min",IDC_STATIC,35,171,12,8
+    EDITTEXT        IDC_EDIT_DUMMY_MAX,100,180,54,14,ES_AUTOHSCROLL
+    LTEXT           "max",IDC_STATIC,120,171,14,8
+    EDITTEXT        IDC_EDIT_LB_CONST,110,113,47,14,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_UB_CONST,110,35,47,14,ES_AUTOHSCROLL
+END
+
+IDD_DLG_BODY_EXPORT DIALOGEX 0, 0, 168, 97
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Export Body"
+FONT 8, "MS Sans Serif", 0, 0, 0x0
+BEGIN
+    GROUPBOX        "Export to grid file",IDC_STATIC,7,25,154,48
+    DEFPUSHBUTTON   "Close",IDOK,66,76,34,14
+    PUSHBUTTON      "Go!",IDC_BUT_BDY,69,7,18,14,WS_DISABLED
+    LTEXT           "Export to *.bdy file",IDC_STATIC,13,10,54,8,WS_DISABLED
+    LTEXT           "Top boundary",IDC_STATIC,13,41,44,8
+    LTEXT           "Bottom boundary",IDC_STATIC,13,55,52,8
+    PUSHBUTTON      "Go!",IDC_BUT_TOP,69,37,18,14
+    PUSHBUTTON      "Go!",IDC_BUT_BOT,69,52,18,14
+    LTEXT           "Not Exported",IDC_STATIC,88,10,64,8,WS_DISABLED
+    LTEXT           "Not Exported",IDC_STATIC,92,55,56,8
+    LTEXT           "Not Exported",IDC_STATIC,92,41,54,8
+END
+
+IDD_ABOUT_ROMAN DIALOGEX 0, 0, 286, 303
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | 
+    WS_SYSMENU
+CAPTION "About Mod3D"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "Close",IDOK,188,280,50,14
+    LTEXT           "Copyright  2001-2004 Igor Cerovsky.\n3D Graphics by Igor Cerovsky && Branislav Goga ",
+                    IDC_STATIC,17,14,160,21
+    LTEXT           "This product is licensed  to:\n   Roman Pasteka\n   Faculty of Natural Sciences, Comenius University\n   Department of applied and environmental geophysics\n   Mlynska dol., 842 15 Bratislava, Slovak Republic",
+                    IDC_STATIC,17,39,262,43
+    LTEXT           "Mod3D  2.1.1",IDC_STATIC,105,0,44,8
+    CONTROL         459,IDC_STATIC,"Static",SS_BITMAP,7,87,231,188
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO 
+BEGIN
+    IDD_DLG_MODEL_IMPORT_PICTURE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 146
+        TOPMARGIN, 6
+        BOTTOMMARGIN, 234
+    END
+
+    IDD_DLGHTML_ABOUT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 292
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 269
+    END
+
+    IDD_DLG_OBJECT_MANAGER, DIALOG
+    BEGIN
+        RIGHTMARGIN, 124
+    END
+
+    IDD_DLG_MODEL_GUIDELINE, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 191
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 123
+    END
+
+    IDD_DLG_MODEL_RANGE_Z, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 153
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 115
+    END
+
+    IDD_DLG_BODY_DESCRIPTION, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 190
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 104
+    END
+
+    IDD_DLG_BODY_CREATION, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 154
+    END
+
+    IDD_DLG_MODEL_EDIT_BODIES, DIALOG
+    BEGIN
+        LEFTMARGIN, 2
+        RIGHTMARGIN, 178
+        TOPMARGIN, 1
+        BOTTOMMARGIN, 134
+    END
+
+    IDD_DLG_MODEL_DEF_OBS, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 205
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 104
+    END
+
+    IDD_DLG_FIELD_IMPEXP, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 136
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 42
+    END
+
+    IDD_DLG_MODEL_BODY_IMPORT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 160
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 219
+    END
+
+    IDD_DLG_BODY_EXPORT, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 161
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 90
+    END
+
+    IDD_ABOUT_ROMAN, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 279
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 296
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_DLG_FIELD_IMPEXP DLGINIT
+BEGIN
+    IDC_COMBO_FLD, 0x403, 3, 0
+0x7847, "\000" 
+    IDC_COMBO_FLD, 0x403, 3, 0
+0x7947, "\000" 
+    IDC_COMBO_FLD, 0x403, 3, 0
+0x7a47, "\000" 
+    IDC_COMBO_FLD, 0x403, 2, 0
+0x0047, 
+    IDC_COMBO_FLD, 0x403, 3, 0
+0x784d, "\000" 
+    IDC_COMBO_FLD, 0x403, 3, 0
+0x794d, "\000" 
+    IDC_COMBO_FLD, 0x403, 3, 0
+0x7a4d, "\000" 
+    IDC_COMBO_FLD, 0x403, 2, 0
+0x004d, 
+    IDC_COMBO_FLD, 0x403, 4, 0
+0x7847, 0x0078, 
+    IDC_COMBO_FLD, 0x403, 4, 0
+0x7947, 0x0079, 
+    IDC_COMBO_FLD, 0x403, 4, 0
+0x7a47, 0x007a, 
+    IDC_COMBO_FLD, 0x403, 4, 0
+0x7847, 0x0079, 
+    IDC_COMBO_FLD, 0x403, 4, 0
+0x7847, 0x007a, 
+    IDC_COMBO_FLD, 0x403, 4, 0
+0x7947, 0x007a, 
+    0
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Bitmap
+//
+
+IDR_TOOLBAR_MAP_VIEW    BITMAP                  "res\\ToolBarFldCnt.bmp"
+IDR_MAINFRAME           BITMAP                  "res\\Toolbar.bmp"
+IDR_TOOLBAR_PROF_VIEW   BITMAP                  "res\\toolbar_.bmp"
+IDR_TOOLBAR_FLD_VIEW    BITMAP                  "res\\TlbFldGrd.bmp"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\ico00001.ico"
+IDR_MOD3DTYPE           ICON                    "res\\Mod3DDoc.ico"
+IDR_PROFTYPE            ICON                    "res\\icon2.ico"
+IDR_3DVIEW              ICON                    "res\\3dview.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Toolbar
+//
+
+IDR_TOOLBAR_MAP_VIEW TOOLBAR  16, 16
+BEGIN
+    BUTTON      ID_VIEW_OBSERVATION_POINTS
+    BUTTON      ID_VIEW_PROFILES
+    SEPARATOR
+    BUTTON      ID_VIEW_OBSERVATION_CONTOURS
+    BUTTON      ID_VIEW_OBSERVATION_IMAGE
+    SEPARATOR
+    BUTTON      ID_VIEW_SHOW_OBJECTS
+    BUTTON      ID_VIEW_BODY_BOUNDARIES
+END
+
+IDR_MAINFRAME TOOLBAR  16, 15
+BEGIN
+    BUTTON      ID_FILE_NEW
+    BUTTON      ID_FILE_OPEN
+    BUTTON      ID_FILE_SAVE
+    SEPARATOR
+    BUTTON      ID_FILE_PRINT
+    SEPARATOR
+    BUTTON      ID_VIEW_ZOOM_IN
+    BUTTON      ID_VIEW_ZOOM_OUT
+    BUTTON      ID_VIEW_ZOOM
+    BUTTON      ID_VIEW_ZOOM_PAGE
+    SEPARATOR
+    BUTTON      ID_WINDOW_MAP
+    BUTTON      ID_WINDOW_NEW
+    BUTTON      ID_WINDOW_3D
+    BUTTON      ID_VIEW_EQUAL_SCALE
+    SEPARATOR
+    BUTTON      ID_WINDOW_TILE_VERT
+    BUTTON      ID_WINDOW_TILE_HORZ
+    SEPARATOR
+    BUTTON      ID_COMPUTE_COMPUTE
+    BUTTON      ID_COMPUTE_REAL_TIME
+END
+
+IDR_TOOLBAR_PROF_VIEW TOOLBAR  16, 16
+BEGIN
+    BUTTON      ID_PROFILE_SN
+    BUTTON      ID_PROFILE_EW
+    BUTTON      ID_VIEW_PREVIOUS_PROFILE
+    BUTTON      ID_VIEW_NEXT_PROFILE
+    SEPARATOR
+    BUTTON      ID_PROFILE_PREVIOUS_SHOW
+    BUTTON      ID_PROFILE_NEXT_SHOW
+    SEPARATOR
+    BUTTON      ID_PROFILE_SHOW_MODEL_GUIDELINE
+END
+
+IDR_TOOLBAR_FLD_VIEW TOOLBAR  16, 16
+BEGIN
+    BUTTON      ID_VIEW_FIELD_CONTOURS
+    BUTTON      ID_VIEW_FIELD_IMAGE
+    SEPARATOR
+    BUTTON      ID_VIEW_MODELED_FIELD
+    BUTTON      ID_VIEW_MEASURED_FIELD
+    BUTTON      ID_VIEW_DIFFERENCE_FIELD
+    SEPARATOR
+    BUTTON      ID_VIEW_AXIS_FIELD
+    BUTTON      ID_VIEW_EXTENDRANGE
+    SEPARATOR
+    BUTTON      ID_VIEW_FIELD_MODEL_GX
+    BUTTON      ID_VIEW_FIELD_MODEL_GY
+    BUTTON      ID_VIEW_FIELD_MODEL_GZ
+    BUTTON      ID_VIEW_FIELD_MODEL_G
+    SEPARATOR
+    BUTTON      ID_VIEW_FIELD_MODEL_MX
+    BUTTON      ID_VIEW_FIELD_MODEL_MY
+    BUTTON      ID_VIEW_FIELD_MODEL_MZ
+    BUTTON      ID_VIEW_FIELD_MODEL_M
+    SEPARATOR
+    BUTTON      ID_MODEL_TXX
+    BUTTON      ID_MODEL_TYY
+    BUTTON      ID_MODEL_TZZ
+    BUTTON      ID_MODEL_TXY
+    BUTTON      ID_MODEL_TYZ
+    BUTTON      ID_MODEL_TXZ
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Accelerator
+//
+
+IDR_MAINFRAME ACCELERATORS 
+BEGIN
+    "P",            ID_BODY_COPY_TO_PREVIOUS_PROFILE, VIRTKEY, SHIFT, 
+                                                    CONTROL, NOINVERT
+    VK_F1,          ID_CONTEXT_HELP,        VIRTKEY, SHIFT, NOINVERT
+    "N",            ID_BODY_COPY_TO_NEXT_PROFILE, VIRTKEY, SHIFT, CONTROL, 
+                                                    NOINVERT
+    "C",            ID_EDIT_COPY,           VIRTKEY, CONTROL, NOINVERT
+    VK_INSERT,      ID_EDIT_COPY,           VIRTKEY, CONTROL, NOINVERT
+    VK_DELETE,      ID_EDIT_CUT,            VIRTKEY, SHIFT, NOINVERT
+    "X",            ID_EDIT_CUT,            VIRTKEY, CONTROL, NOINVERT
+    "V",            ID_EDIT_PASTE,          VIRTKEY, CONTROL, NOINVERT
+    VK_INSERT,      ID_EDIT_PASTE,          VIRTKEY, SHIFT, NOINVERT
+    VK_BACK,        ID_EDIT_UNDO,           VIRTKEY, ALT, NOINVERT
+    "Z",            ID_EDIT_UNDO,           VIRTKEY, CONTROL, NOINVERT
+    "N",            ID_FILE_NEW,            VIRTKEY, CONTROL, NOINVERT
+    "O",            ID_FILE_OPEN,           VIRTKEY, CONTROL, NOINVERT
+    "P",            ID_FILE_PRINT,          VIRTKEY, CONTROL, NOINVERT
+    "S",            ID_FILE_SAVE,           VIRTKEY, CONTROL, NOINVERT
+    VK_F1,          ID_HELP,                VIRTKEY, NOINVERT
+    VK_F6,          ID_NEXT_PANE,           VIRTKEY, NOINVERT
+    VK_F6,          ID_PREV_PANE,           VIRTKEY, SHIFT, NOINVERT
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "FileDescription", "Mod3D MFC Application"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "Mod3D"
+            VALUE "LegalCopyright", "Copyright Igor Cerovsky (C) 2001"
+            VALUE "OriginalFilename", "Mod3D.EXE"
+            VALUE "ProductName", "Mod3D Application"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// String Table
+//
+
+STRINGTABLE 
+BEGIN
+    IDR_MAINFRAME           "Mod3D"
+    IDR_MOD3DTYPE           "Mod3D\nMod3D\nMod3D\nMod3D Files (*.m3d)\n.m3d\nMod3D.Document\nMod3D Document"
+    IDR_PROFTYPE            "Mod3D\nMod3D\nMod3D\nMod3D Files (*.m3d)\n.m3d\nMod3D.Document\nMod3D Document"
+    ID_THREAD_FINISHED      "Computing thread finished"
+    ID_INDICATOR_FLD        "Field Indicator"
+    IDR_GRIDTYPE            "Mod3D\nMod3D\nMod3D\nMod3D Files (*.m3d)\n.m3d\nMod3D.Document\nMod3D Document"
+END
+
+STRINGTABLE 
+BEGIN
+    AFX_IDS_APP_TITLE       "Mod3D"
+    AFX_IDS_IDLEMESSAGE     "For Help, press F1"
+    AFX_IDS_HELPMODEMESSAGE "Select an object on which to get Help"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_INDICATOR_CAPS       "CAP"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_FILE_NEW             "Create a new document\nNew"
+    ID_FILE_OPEN            "Open an existing document\nOpen"
+    ID_FILE_CLOSE           "Close the active document\nClose"
+    ID_FILE_SAVE            "Save the active document\nSave"
+    ID_FILE_SAVE_AS         "Save the active document with a new name\nSave As"
+    ID_FILE_PAGE_SETUP      "Change the printing options\nPage Setup"
+    ID_FILE_PRINT_SETUP     "Change the printer and printing options\nPrint Setup"
+    ID_FILE_PRINT           "Print the active document\nPrint"
+    ID_FILE_PRINT_PREVIEW   "Display full pages\nPrint Preview"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_APP_ABOUT            "Display program information, version number and copyright\nAbout"
+    ID_APP_EXIT             "Quit the application; prompts to save documents\nExit"
+    ID_HELP_INDEX           "Opens Help\nHelp Topics"
+    ID_HELP_FINDER          "List Help topics\nHelp Topics"
+    ID_HELP_USING           "Display instructions about how to use help\nHelp"
+    ID_CONTEXT_HELP         "Display help for clicked on buttons, menus and windows\nHelp"
+    ID_HELP                 "Display help for current task or command\nHelp"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_FILE_MRU_FILE1       "Open this document"
+    ID_FILE_MRU_FILE2       "Open this document"
+    ID_FILE_MRU_FILE3       "Open this document"
+    ID_FILE_MRU_FILE4       "Open this document"
+    ID_FILE_MRU_FILE5       "Open this document"
+    ID_FILE_MRU_FILE6       "Open this document"
+    ID_FILE_MRU_FILE7       "Open this document"
+    ID_FILE_MRU_FILE8       "Open this document"
+    ID_FILE_MRU_FILE9       "Open this document"
+    ID_FILE_MRU_FILE10      "Open this document"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_NEXT_PANE            "Switch to the next window pane\nNext Pane"
+    ID_PREV_PANE            "Switch back to the previous window pane\nPrevious Pane"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_WINDOW_NEW           "Open another Profile View window for the active document\nNew Profile Window"
+    ID_WINDOW_ARRANGE       "Arrange icons at the bottom of the window\nArrange Icons"
+    ID_WINDOW_CASCADE       "Arrange windows so they overlap\nCascade Windows"
+    ID_WINDOW_TILE_HORZ     "Arrange windows as non-overlapping horizontal tiles\nTile Horizontal"
+    ID_WINDOW_TILE_VERT     "Arrange windows as non-overlapping vertical tiles\nTile Vertical"
+    ID_WINDOW_SPLIT         "Split the active window into panes\nSplit"
+    ID_WINDOW_TILE_HORZ2    "Arrange windows in horizontal tiles\nTiles Horizontal"
+    ID_WINDOW_TILE_VERT2    "Tiles vertical\nTiles Vertical"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_EDIT_UNDO            "Undo the last action\nUndo"
+    ID_EDIT_REDO            "Redo the previously undone action\nRedo"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_TOOLBAR         "Show or hide the toolbar\nToggle ToolBar"
+    ID_VIEW_STATUS_BAR      "Show or hide the status bar\nToggle StatusBar"
+END
+
+STRINGTABLE 
+BEGIN
+    AFX_IDS_SCSIZE          "Change the window size"
+    AFX_IDS_SCMOVE          "Change the window position"
+    AFX_IDS_SCMINIMIZE      "Reduce the window to an icon"
+    AFX_IDS_SCMAXIMIZE      "Enlarge the window to full size"
+    AFX_IDS_SCNEXTWINDOW    "Switch to the next document window"
+    AFX_IDS_SCPREVWINDOW    "Switch to the previous document window"
+    AFX_IDS_SCCLOSE         "Close the active window and prompts to save the documents"
+END
+
+STRINGTABLE 
+BEGIN
+    AFX_IDS_SCRESTORE       "Restore the window to normal size"
+    AFX_IDS_SCTASKLIST      "Activate Task List"
+    AFX_IDS_MDICHILD        "Activate this window"
+END
+
+STRINGTABLE 
+BEGIN
+    AFX_IDS_PREVIEW_CLOSE   "Close print preview mode\nCancel Preview"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_COMPUTE_COMPUTE      "Compute Model Field\n Compute"
+    ID_GRID_DEFINE_PROF     "Define grid profile north - east"
+    ID_GRID_DEFINE_PROF_EW  "Change profile to east - west\nChange profile orientation"
+    ID_COMPUTE_COMPUTE2     "Compute modelled field\nCompute modelled field"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_GRID_DEFINE_PROF_NS  "Change profile north - south\nChange profile orientation"
+    ID_WINDOW_MAP           "Open another Map View window for the active document\nNew Map View"
+    ID_MOVE_PROFILE_WEST    "Select next profile to the west\n Select western profile"
+    ID_ID_MOVE_PROFILE_OST  "Select next profile to the ost"
+    ID_MOVE_PROFILE_NORTH   "Select next profile to the north\n Select northern profile"
+    ID_MOVE_PROFILE_SOUTH   "Select next profile to the south\n Select southern profile"
+    ID_MOVE_PROFILE_OST     "Select next profile to the east\n Select eastern profile"
+    ID_PROFILE_EW           "Show East-West profile\nE-W Profile"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_PROFILE_SN           "Show North-South profile\nN-S Profile"
+    ID_WINDOW_3D            "Open another 3D view for the active document\nNew 3D View"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_COPY_PREVIOUS_PROFILE 
+                            "Copy previous profile to this profile\nCopy previous profile"
+    ID_COPY_NEXT_PROFILE    "Copy next profile to this profile\nCopy next profile"
+    ID_DELETE_PROFILE       "Erase all bodies on current profile\n Erase profile"
+    ID_ERASE_PROFILE        "Erase this profile\n Erase Profile"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_SMALLSEPARATOR       "   "
+    ID_INDICATOR_COMP       "                "
+END
+
+STRINGTABLE 
+BEGIN
+    ID_INDICATOR_X          "x coordinate"
+    ID_INDICATOR_Y          "y coordinate"
+    ID_INDICATOR_Z          "z coordinate"
+    ID_INDICATOR_GZ         "Gz                  "
+    ID_INDICATOR_M          "M                   "
+    ID_INDICATOR_MX         "mx"
+    ID_INDICATOR_MY         "my"
+    ID_INDICATOR_MZ         "mz"
+    ID_INDICATOR_ROW        "row          "
+    ID_INDICATOR_COL        "col          "
+END
+
+STRINGTABLE 
+BEGIN
+    ID_MODEL_PROPERTIES_GY  "Show gy field component/nShow gy"
+    ID_MODEL_PROPERTIES_GZ  "Show gz field component/nShow gz"
+    ID_MODEL_PROPERTIES_MX  "Show mx field component/nShow mx"
+    ID_MODEL_PROPERTIES_MY  "Show my field component/nShow my"
+    ID_MODEL_PROPERTIES_MZ  "Show mz field component/nShow mz"
+    ID_MODEL_PROPERTIES_M   "Show m field component/nShow m"
+    ID_MODEL_PROPERTIES_G   "Show g field component/nShow g"
+    ID_MODEL_PROPERTIES_DYNAMIC_COMPUTING 
+                            "Dynamic field computing/nDynamic Computing"
+    ID_MODEL_PROPERTIES_GX  "Show gx field component/nShow gx"
+    ID_VIEW_MODEL_TOOLBAR   "Show or hide the model  toolbar\nToggle ModelToolBar"
+    ID_VIEW_FIELD_TOOLBAR   "Show or hide the field toolbar\nToggle FieldToolBar"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_ZOOM            "Zoom\nZoom"
+    ID_VIEW_ZOOM_PAGE       "Fit to window\nFit to window"
+    ID_VIEW_ZOOM_IN         "Zoom In\nZoom In"
+    ID_VIEW_ZOOM_OUT        "Zoom Out\nZoom Out"
+    ID_VIEW_MAP_GEOLOGY     "Show Map Bitmaps\nShow Map Bitmaps"
+    ID_VIEW_MAP_TOPO_CONTOUR "Show topo contours\nShow Topo Contours"
+    ID_VIEW_MAP_OBSERVATIONS "Show observations points\n Show Observations"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_MODEL_BODY_CREATION_PROPERTIES 
+                            "Set how to create new body\n Body Creation Properties"
+    ID_VIEW_PROF_GRID       "View grid lines\nView grid lines"
+    ID_VIEW_PROF_NEXT_PROFILE "Show next profile\nShow next profile"
+    ID_VIEW_PROF_PREV_PROFILE "Show previous profile\nShow previous profile"
+    ID_BODY_IMPORT          "Import body from file\n Import Body"
+    ID_BODY_EXPORT          "Export body to file\nExport Body"
+    ID_BODY_EDIT            "Edit all bodies\n Edit Bodies"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_MODEL_EXPORTFIELD    "Export modeled field\n Export Field"
+    ID_BUT_FLD_CONTUR_GX    "Show contour\nShow Contour"
+    ID_VIEW_MAP_FLD_CONTUR_GY "View field Contours\nView Field Contours"
+    ID_VIEW_MAP_FLD_CONTUR_GZ "View field Contours\nView Field Contours"
+    ID_VIEW_MAP_FLD_CONTUR_G "View field Contours\nView Field Contours"
+    ID_VIEW_MAP_FLD_CONTUR_MX "View field Contours\nView Field Contours"
+    ID_VIEW_MAP_FLD_CONTUR_MY "View field Contours\nView Field Contours"
+    ID_VIEW_MAP_FLD_CONTUR_MZ "View field Contours\nView Field Contours"
+    ID_VIEW_MAP_FLD_CONTUR_M "View field Contours\nView Field Contours"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_CONTOURTOOLBAR  "Show or hide the contour toolbar\nToggle Contour Toolbar"
+    ID_VIEW_TOOLBAR_MAP_VIEW "View map view toolbar\n Map View Toolbar"
+    ID_BUT_PROF_VIEW_FLD_GX "Show Profile Gx\nShow Profile Gx"
+    ID_BUT_PROF_VIEW_FLD_GY "Show Profile Gy\nShow Profile Gy"
+    ID_BUT_PROF_VIEW_FLD_GZ "Show Profile Gz\nShow Profile Gz"
+    ID_BUT_PROF_VIEW_FLD_G  "Show Profile G\nShow Profile G"
+    ID_BUT_PROF_VIEW_FLD_M  "Show Profile Mx\nShow Profile Mx"
+    ID_BUT_PROF_VIEW_FLD_MZ "Show Profile Mz\nShow Profile Mz"
+    ID_BUT_PROF_VIEW_FLD_MY "Show Profile My\nShow Profile My"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_MAP_FLD_CONTUR_GX "View field Contours\nView Field Contours"
+    ID_MODEL_IMPORTMEASUREDFIELD 
+                            "Import Measred Fied Grid\n ImportMeasured field"
+    ID_VIEW_MOD_FLD_GX      "Show modeled field Gx\\Modeled Field Gx"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_FIELD_SCALE_TOOLBAR 
+                            "Show or hide the field scale toolbar\nToggle ScaleToolBar"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_COMPUTE_PROPERTIES   "Computing properties\n Computing Properties"
+    ID_VIEW_FIELD_BMP_MEASURED_M "Show measured field M\n Measured Field M"
+    ID_VIEW_FIELD_CONTOUR   "View field contours\nContours"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_FIELD_MODEL_GX  "Show Active field Gx\nShow Gx"
+    ID_VIEW_FIELD_MODEL_GY  "Show field Gy\n Show Gy "
+    ID_VIEW_FIELD_MODEL_GZ  "Show field Gz\n Show Gz"
+    ID_VIEW_FIELD_MODEL_G   "Show field G\n Show G"
+    ID_VIEW_FIELD_MODEL_MX  "Show field Mx\nShow Mx"
+    ID_VIEW_FIELD_MODEL_MY  "Show field My\n Show My"
+    ID_VIEW_FIELD_MODEL_MZ  "Show field Mz\n Show Mz"
+    ID_VIEW_FIELD_MODEL_M   "Show field M\n Show M"
+    ID_VIEW_FIELD_MEASURED_GZ "Show measured field Gz\n Measured Field Gz"
+    ID_VIEW_FIELD_MEASURED_MX "Show measured field Mx\n Measured Field Mx"
+    ID_VIEW_FIELD_MEASURED_MY "Show measured field My\n Measured Field My"
+    ID_VIEW_FIELD_MEASURED_MZ "Show measured field Mz\n Measured Field Mz"
+    ID_VIEW_FIELD_MEASURED_M "Show measured field M\n Measured Field M"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_FIELD_SCALE_GX  "Field axis labels Gx\nAxis Labels Gx"
+    ID_VIEW_FIELD_SCALE_GY  "Field axis labels Gy\nAxis Labels Gy"
+    ID_VIEW_FIELD_SCALE_GZ  "Field axis labels Gz\nAxis Labels Gz"
+    ID_VIEW_FIELD_SCALE_G   "Field axis labels G\nAxis Labels G"
+    ID_VIEW_FIELD_SCALE_MX  "Field axis labels Mx\nAxis Labels Mx"
+    ID_VIEW_FIELD_SCALE_MY  "Field axis labels My\nAxis Labels My"
+    ID_VIEW_FIELD_SCALE_MZ  "Field axis labels Mz\nAxis Labels Mz"
+    ID_VIEW_FIELD_SCALE_M   "Field axis labels M\nAxis Labels M"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_MAP_TOPO_BMP    "Show Topo Bitmap\nShow Topo Bitmap"
+    ID_VIEW_FIELD_BMP       "View field bitmap\nBitmap"
+    ID_VIEW_PROF_VGRID      "View Vertical Grid\nVertical Grid"
+    ID_VIEW_PROF_HGRID      "View horizontal grid lines\nHorizontal grid lines"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_BODY_LOCK            "Disables moving with vertices\nDisables moving with vertices"
+    ID_VIEW_REDRAW          "Redraw All Views\nReadraw All Views"
+    ID_VIEW_EQUAL_SCALE     "The scales for x and y axes are equal\nEqual Scale"
+    ID_MODEL_DIGITIZE       "Digitize boundary\nDigitize boundary"
+    ID_GRIDLINES_HORIZONTAL "Show horizontal grid lines\nHorizontal grid lines"
+    ID_GRIDLINES_VERTICAL   "Show vertical grid lines\n Vertical grid lines"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_EDITCHECKMARKS  "Edit check marks\nEdit Check Marks"
+    ID_BODY_MOVE_VERTICAL   "Enable vertical motion of bodies\nMove Body Vertical"
+    ID_MODEL_CONTROL        "Control if the modelis compact\n Control Model"
+    ID_VIEW_SET_VERTICAL_RANGE 
+                            "Set vertical limits for this view\nSet Vertical Range"
+    ID_BODY_FILL            "Fill\nFill body"
+    ID_BODY_ACTIVE          "Enables body fo computation\nEnables body fo computation"
+END
+
+STRINGTABLE 
+BEGIN
+    IDR_3DVIEW              "3D View\n3D View\nMod3D\nMod3D Files (*.m3d)\n.m3d\nMod3D.Document\nMod3D Document"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_MOVE_PROFILE_NEXT    "Move to the next profile"
+    ID_MOVE_PROFILE_PREV    "Move to the previous profile"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_PREVIOUS_PROFILE "Move to the previous profile\nPrevious Profile"
+    ID_VIEW_NEXT_PROFILE    "Move to the next profile\nNext Profile"
+    ID_MODEL_TXX            "Show gravity tensor component Txx\n Show Txx"
+    ID_MODEL_TYY            "Show gravity tensor component Tyy\n Show Tyy"
+    ID_MODEL_TZZ            "Show gravity tensor component Tzz\n Show Tzzy"
+    ID_MODEL_TXY            "Show gravity tensor component Txy\n Show Txy"
+    ID_MODEL_TXZ            "Show gravity tensor component Txz\n Show Txz"
+    ID_MODEL_TYZ            "Show gravity tensor component Tyz\n Show Tyz"
+    ID_VIEW_MODELED_FIELD   "Activate modeled field\n Modeled Field"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_MEASURED_FIELD  "Activate meassured field\n Measured Field"
+    ID_VIEW_DIFFERENCE_FIELD "Activate difference field\n Difference Field"
+    ID_VIEW_AXIS_FIELD      "Activate axis field\n Axis Field"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_FIELD_IMAGE     "iew field image\nImage"
+    ID_VIEW_FIELD_CONTOURS  "View field contours\nContours"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_COMPUTE_REAL_TIME    "Activate real-time computation\n Real-Time Computation"
+    ID_EDIT_BITMAPS         "Edit bitmaps\nEdit Bitmaps"
+    ID_EDIT_GUIDELINES      "Edit guide lines\n Edit Guide Lines"
+    ID_IMPORT_MEASURED_FIELD 
+                            "Import measured field from grid file\n Import Measured Field"
+    ID_IMPORT_BITMAP        "Import bitmap image\nImport Bitmap"
+    ID_EDIT_DIGITIZE        "Digitize guide line\nDigitize"
+    ID_IMPORT_MEASURED_FIELD2 
+                            "Import measured field grid\nImport Measured Field"
+    ID_MODEL_PROPERTIES2    "Edit model properties\nModel Properties"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_EXPORT_MODELED_FIELD "Export modeled field to grid file\nExport Modeled Field"
+    ID_EXPORT_BITMAP        "Export bitmap Image\nExport Bitmap"
+    ID_EXPORT_GUIDE_LINE    "Export gudide line to file\nExport Guide Line"
+    ID_EXPORT_BODY          "Export body from grid File\nExport Body"
+    ID_IMPORT_BODY          "Import body from grid file\nImport Body"
+    ID_VIEW_OBSERVATION_CONTOURS 
+                            "Show observation altitue contours\n Observation Contours"
+    ID_VIEW_OBSERVATION_IMAGE 
+                            "Show observation altitue Image\n Observation Image"
+    ID_VIEW_SHOW_OBJECTS    "Show objects in this view\nShow Objects"
+    ID_VIEW_OBSERVATION_POINTS "Show observation points\nObservation Points"
+    ID_VIEW_BODY_BOUNDARIES "Show projected body boundaries\nBody Boundaries"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_VIEW_PROFILES        "View open profiles location\nView Profiles"
+    ID_IMPORT_GUIDELINES_MULTIPLE 
+                            "Import more guidelines from file\nMultiple guidelines"
+    ID_IMPORT_GRID          "Import grid for variuos purposes\nImport Grid"
+END
+
+STRINGTABLE 
+BEGIN
+    ID_COMPUTE_FIT_1D       "Set 1D fit properties\n1D Fit Properties"
+END
+
+#endif    // English (U.S.) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+#ifdef _WIN32
+LANGUAGE 9, 1
+#pragma code_page(1252)
+#endif //_WIN32
+#include "res\Mod3D.rc2"  // non-Microsoft Visual C++ edited resources
+#include "afxres.rc"         // Standard components
+#include "afxprint.rc"       // printing/print preview resources
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

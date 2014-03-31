@@ -1,0 +1,85 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG>Body Creation Properties</STRONG></>
+			<o:p></o:p></P>
+		<P><STRONG>Creation</STRONG> group defines how a new part of a body will be 
+			created.
+			<o:p></o:p></P>
+		<UL type="disc">
+			<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo1; tab-stops: list 36.0pt">
+				<STRONG>Join </STRONG>group defines how new part of&nbsp;the
+				<SPAN style="mso-spacerun: yes">&nbsp;</SPAN>body will interacts with its 
+				neighbours.
+				<o:p></o:p></LI>
+			<UL type="circle">
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">None:</SPAN></STRONG> means that there will be 
+					no interaction with neighboring bodies. Exception is that the system will not 
+					allow body intersections.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Top:</SPAN></STRONG> the body will be 
+					connected to the closest upper body or relief (if there is no body present).
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Bottom:</SPAN></STRONG> the body is going to 
+					be connected to the closest underlying body, or bottom model boundary.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Const top:</SPAN>
+					</STRONG>the top boundary has constant depth value if this is not in 
+					contradiction with another body. Set the depth value.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Const bottom:</SPAN>
+					</STRONG>the bottom boundary has constant depth value if this is not in 
+					contradiction with another body. Set the depth value.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Body creation ratio:</SPAN></STRONG> defines 
+					how new part of a body is created. If the value is smaller then 1.0 the body is 
+					shrinking. <EM>
+						<SPAN style="COLOR: #006600">NewThickness = 
+    BodyCrationRatio*OldThickness</SPAN></EM>.&nbsp;New body edge is&nbsp;centered over the mouse 
+					position.
+					<o:p></o:p></LI></UL>
+			<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level1 lfo1; tab-stops: list 36.0pt">
+				<STRONG>Motion</STRONG> group defines how the body is moving.
+				<o:p></o:p></LI>
+			<UL type="circle">
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Move on current profile:</SPAN>
+					</STRONG>the body is movable only on current profile.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Move top boundary:</SPAN></STRONG> top 
+					boundary is movable.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Move bottom boundary:</SPAN></STRONG> only 
+					bottom boundary is movable.
+					<o:p></o:p></LI>
+				<LI class="MsoNormal" style="mso-margin-top-alt: auto; mso-margin-bottom-alt: auto; mso-list: l0 level2 lfo1; tab-stops: list 72.0pt">
+					<STRONG>
+						<SPAN style="COLOR: #000099">Fix relief:</SPAN></STRONG> the top-most body 
+					is fixed to the relief.
+					<o:p></o:p></LI></UL>
+		</UL>
+		<P><STRONG><SPAN style="FONT-SIZE: 12pt; COLOR: #000099; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">Fix 
+bottom:</SPAN></STRONG><SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA"> 
+the bottom-most body is fixed to the bottom</SPAN></P>
+	</BODY>
+</HTML>

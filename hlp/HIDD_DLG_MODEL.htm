@@ -1,0 +1,106 @@
+<HTML>
+	<HEAD>
+		<TITLE></TITLE>
+		<META NAME="GENERATOR" Content="Microsoft Visual Studio 7.0">
+	</HEAD>
+	<BODY>
+		<P><STRONG><FONT size="4">Model Properties</FONT></STRONG></P>
+		<P><STRONG>Observations</STRONG></P>
+		<UL>
+			<LI>
+				<STRONG><FONT color="#000099">Minimum:</FONT> </STRONG>
+			Read only. Minimum observation grid coordinates.
+			<LI>
+				<STRONG><FONT color="#000099">Maximum:</FONT> </STRONG>Read only. Maximum 
+				observation grid coordinates.<STRONG> </STRONG>
+			<LI>
+				<STRONG><FONT color="#000099">Increment:</FONT> </STRONG>
+			Read only. Observation grid cell size.
+			<LI>
+				<STRONG><FONT color="#000099">Top:</FONT> </STRONG>
+			Model vertical range.
+			<LI>
+				<STRONG><FONT color="#000099">Bottom:</FONT> </STRONG>Model vertical range.</LI></UL>
+		<P dir="ltr" style="MARGIN-RIGHT: 0px"><STRONG>Creation Properties - Creation </STRONG>
+			group defines how a new part of a body will be created.</P>
+		<UL>
+			<LI>
+				<STRONG>Join </STRONG>group defines how new part of&nbsp;the body will 
+				interacts with its
+				<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">neighbors</SPAN>.
+				<UL>
+					<LI>
+						<STRONG><FONT color="#000099">None:</FONT></STRONG> means that there will be no 
+						interaction with
+						<SPAN style="FONT-SIZE: 12pt; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">neighboring 
+    </SPAN>bodies. Except of&nbsp;the system will not allow body intersections.
+					<LI>
+						<STRONG><FONT color="#000099">Top:</FONT></STRONG>
+					the body will be connected to the closest upper body or relief (if there is no 
+					body present).
+					<LI>
+						<STRONG><FONT color="#000099">Bottom:</FONT></STRONG>
+					the body is going to be connected to the closest underlying body, or bottom 
+					model boundary.
+					<LI>
+						<STRONG><FONT color="#000099">Const top:</FONT> </STRONG>
+					the top boundary has constant depth value if this is not in contradiction with 
+					another body. Set the depth value.
+					<LI>
+						<STRONG><FONT color="#000099">Const bottom:</FONT> </STRONG>
+					the bottom boundary has constant depth value if this is not in contradiction 
+					with another body. Set the depth value.
+					<LI>
+						<STRONG><FONT color="#000099">Body <STRONG>
+									<SPAN style="FONT-SIZE: 12pt; COLOR: #000099; FONT-FAMILY: 'Times New Roman'; mso-fareast-font-family: 'Times New Roman'; mso-ansi-language: EN-US; mso-fareast-language: EN-US; mso-bidi-language: AR-SA">creation 
+    </SPAN></STRONG>ratio:</FONT></STRONG> defines how new part of a body is created. If the value is 
+						smaller then 1.0 the body is shrinking. <EM><FONT color="#006600">NewThickness = 
+								BodyCrationRatio*OldThickness</FONT></EM>.&nbsp;New body edge 
+						is&nbsp;centered over the mouse position.</LI></UL>
+			<LI>
+				<STRONG>Motion</STRONG> group defines how the body is moving.
+				<UL>
+					<LI>
+						<STRONG><FONT color="#000099">Move on current profile:</FONT> </STRONG>
+					the body is movable only on current profile.
+					<LI>
+						<STRONG><FONT color="#000099">Move top boundary:</FONT></STRONG>
+					top boundary is movable.
+					<LI>
+						<STRONG><FONT color="#000099">Move bottom boundary:</FONT></STRONG>
+					only bottom boundary is movable.
+					<LI>
+						<STRONG><FONT color="#000099">Fix relief:</FONT></STRONG>
+					the top-most body is fixed to the relief.
+					<LI>
+						<STRONG><FONT color="#000099">Fix bottom:</FONT></STRONG> the bottom-most body 
+						is fixed to the bottom.</LI></UL>
+			</LI>
+		</UL>
+		<P>&nbsp;</P>
+		<P><STRONG><FONT color="#000099">Extension</FONT></STRONG></P>
+		<UL>
+			<LI>
+				<FONT color="#000099"><STRONG>Extend boundaries </STRONG></FONT><FONT color="#000000">
+					to the sides to avoid boundary effects. If not checked extension is not 
+					assumed.</FONT>
+			<LI>
+				<FONT color="#000099"><STRONG>North: </STRONG></FONT><FONT color="#000000">specify 
+					extension length. Must be positive value.</FONT>
+			<LI>
+				<STRONG><FONT color="#000099">South:</FONT></STRONG> <FONT color="#000000">specify 
+					extension length. Must be positive value.</FONT>
+			<LI>
+				<STRONG><FONT color="#000099">East:</FONT></STRONG> <FONT color="#000000">specify 
+					extension length. Must be positive value.</FONT>
+			<LI>
+				<STRONG><FONT color="#000099">West:</FONT> </STRONG><FONT color="#000000">specify 
+					extension length. Must be positive value.</FONT></LI></UL>
+		<P>&nbsp;</P>
+		<P><FONT color="#000099"><STRONG>Model Description<BR>
+				</STRONG></FONT><FONT color="#000000">Enter description of the model. New line 
+				- <EM><FONT color="#990033">CTRL + ENTER</FONT></EM>.</FONT><FONT color="#000099"><BR>
+		</P>
+		</FONT>
+	</BODY>
+</HTML>

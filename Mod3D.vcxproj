@@ -1,0 +1,927 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <SccProjectName />
+    <SccLocalPath />
+    <Keyword>MFCProj</Keyword>
+    <ProjectGuid>{B429D739-2153-416C-B0E7-0ADEB7892982}</ProjectGuid>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v110</PlatformToolset>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <UseOfAtl>false</UseOfAtl>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v110</PlatformToolset>
+    <UseOfMfc>Dynamic</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>11.0.61030.0</_ProjectFileVersion>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <OutDir>.\Release\</OutDir>
+    <IntDir>.\Release\</IntDir>
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <OutDir>.\Debug\</OutDir>
+    <IntDir>.\Debug\</IntDir>
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <InlineFunctionExpansion>AnySuitable</InlineFunctionExpansion>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
+      <EnableFiberSafeOptimizations>true</EnableFiberSafeOptimizations>
+      <AdditionalIncludeDirectories>D:\! Projects\Mod3D\Mod3D\ClrGrad;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeader>Use</PrecompiledHeader>
+      <PrecompiledHeaderFile>stdafx.h</PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>.\Release/Mod3D.pch</PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\Release/</AssemblerListingLocation>
+      <ObjectFileName>.\Release/</ObjectFileName>
+      <ProgramDataBaseFileName>.\Release/</ProgramDataBaseFileName>
+      <BrowseInformation>true</BrowseInformation>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+    </ClCompile>
+    <Link>
+      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>.\Release/Mod3D.exe</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <ProgramDatabaseFile>.\Release/Mod3D.pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+    </Link>
+    <Midl>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <TypeLibraryName>.\Release/Mod3D.tlb</TypeLibraryName>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_AFXDLL;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>D:\! Projects\Mod3D\Mod3D\GridCtrl_src;D:\! Projects\Mod3D\Mod3D\ClrGrad;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebugDLL</RuntimeLibrary>
+      <PrecompiledHeader />
+      <PrecompiledHeaderOutputFile>.\Debug/Mod3D.pch</PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>.\Debug/</AssemblerListingLocation>
+      <ObjectFileName>.\Debug/</ObjectFileName>
+      <ProgramDataBaseFileName>.\Debug/</ProgramDataBaseFileName>
+      <BrowseInformation>true</BrowseInformation>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>false</SuppressStartupBanner>
+      <DebugInformationFormat>EditAndContinue</DebugInformationFormat>
+    </ClCompile>
+    <Link>
+      <AdditionalOptions>/MACHINE:I386 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>opengl32.lib;glu32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>.\Debug/Mod3D.exe</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>.\Debug/Mod3D.pdb</ProgramDatabaseFile>
+      <SubSystem>Windows</SubSystem>
+      <SupportUnloadOfDelayLoadedDLL>true</SupportUnloadOfDelayLoadedDLL>
+    </Link>
+    <Midl>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <TypeLibraryName>.\Debug/Mod3D.tlb</TypeLibraryName>
+    </Midl>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_AFXDLL;_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+    </ResourceCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="AboutDemo.cpp" />
+    <ClCompile Include="AboutDlg.cpp" />
+    <ClCompile Include="BmpReferenced.cpp" />
+    <ClCompile Include="Body.cpp" />
+    <ClCompile Include="CheckPoint.cpp" />
+    <ClCompile Include="ChildFrm.cpp" />
+    <ClCompile Include="ClmnPt.cpp" />
+    <ClCompile Include="ColorButton.cpp" />
+    <ClCompile Include="ColourPopup.cpp" />
+    <ClCompile Include="Data3D.cpp" />
+    <ClCompile Include="DlgAxis.cpp" />
+    <ClCompile Include="DlgBodyMove.cpp" />
+    <ClCompile Include="DlgColorGrad.cpp" />
+    <ClCompile Include="DlgData3D.cpp" />
+    <ClCompile Include="DlgFit1D.cpp" />
+    <ClCompile Include="DlgFldSelect.cpp" />
+    <ClCompile Include="DlgGridProperties.cpp" />
+    <ClCompile Include="DlgImpExpFld.cpp" />
+    <ClCompile Include="DlgModGrids.cpp" />
+    <ClCompile Include="DlgModelImportBody.cpp" />
+    <ClCompile Include="DlgModelProperties.cpp" />
+    <ClCompile Include="DlgObjGrd.cpp" />
+    <ClCompile Include="DlgObservations.cpp" />
+    <ClCompile Include="DlgPp3DAxes.cpp" />
+    <ClCompile Include="DlgPp3dDraw.cpp" />
+    <ClCompile Include="DlgPp3dField.cpp" />
+    <ClCompile Include="DlgPp3dModel.cpp" />
+    <ClCompile Include="DlgPp3dSaveLoad.cpp" />
+    <ClCompile Include="DlgPp3dSetings.cpp" />
+    <ClCompile Include="DlgPpBodyComp.cpp" />
+    <ClCompile Include="DlgPpBodyDescr.cpp" />
+    <ClCompile Include="DlgPpBodyGrav.cpp" />
+    <ClCompile Include="DlgPpBodyMag.cpp" />
+    <ClCompile Include="DlgPpBodydraw.cpp" />
+    <ClCompile Include="DlgPpCompComp.cpp" />
+    <ClCompile Include="DlgPpCompGrav.cpp" />
+    <ClCompile Include="DlgPpCompMag.cpp" />
+    <ClCompile Include="DlgProfileSettings.cpp" />
+    <ClCompile Include="DlgSelGridProp.cpp" />
+    <ClCompile Include="DlgStart.cpp" />
+    <ClCompile Include="DlgWell.cpp" />
+    <ClCompile Include="Facet3Pt.cpp" />
+    <ClCompile Include="GlBitmap.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="GlSurface.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+      <ObjectFileName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(IntDir)%(Filename)1.obj</ObjectFileName>
+    </ClCompile>
+    <ClCompile Include="ClrGrad\Gradient.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ClrGrad\GradientCtrl.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ClrGrad\GradientCtrlImpl.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="Grid.cpp" />
+    <ClCompile Include="GridCtrl_src\GridCell.cpp" />
+    <ClCompile Include="GridCtrl_src\GridCellBase.cpp" />
+    <ClCompile Include="GridCtrl_src\GridCtrl.cpp" />
+    <ClCompile Include="GridCtrl_src\GridDropTarget.cpp" />
+    <ClCompile Include="GridObj.cpp" />
+    <ClCompile Include="GridCtrl_src\InPlaceEdit.cpp" />
+    <ClCompile Include="MainFrm.cpp" />
+    <ClCompile Include="Mod3D.cpp" />
+    <ClCompile Include="Mod3DDoc.cpp" />
+    <ClCompile Include="Mod3DDocComputing.cpp" />
+    <ClCompile Include="Mod3DDocFit.cpp" />
+    <ClCompile Include="Mod3DSerialize.cpp" />
+    <ClCompile Include="Mod3dDocFitDens.cpp" />
+    <ClCompile Include="Model.cpp" />
+    <ClCompile Include="MyObject.cpp" />
+    <ClCompile Include="Point3D.cpp" />
+    <ClCompile Include="PotField.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="ScaleAxis.cpp" />
+    <ClCompile Include="StdAfx.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">stdafx.h</PrecompiledHeaderFile>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Create</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="GridCtrl_src\TitleTip.cpp" />
+    <ClCompile Include="View3dSheet.cpp" />
+    <ClCompile Include="ViewGL3D.cpp" />
+    <ClCompile Include="ViewGrid.cpp" />
+    <ClCompile Include="ViewMap.cpp" />
+    <ClCompile Include="ViewProf.cpp" />
+    <ClCompile Include="Well.cpp" />
+    <ClCompile Include="DlgBodyExport.cpp" />
+    <ClCompile Include="DlgBodyImport.cpp" />
+    <ClCompile Include="DlgBodyModf.cpp" />
+    <ClCompile Include="DlgCheckMark.cpp" />
+    <ClCompile Include="DlgDefineObs.cpp" />
+    <ClCompile Include="DlgEditBodies.cpp" />
+    <ClCompile Include="DlgEditCheckMarks.cpp" />
+    <ClCompile Include="DlgHtmlAbout.cpp" />
+    <ClCompile Include="DlgImportPicture.cpp" />
+    <ClCompile Include="DlgInducingField.cpp" />
+    <ClCompile Include="DlgInsExistBoby.cpp" />
+    <ClCompile Include="DlgModelActiveGrd.cpp" />
+    <ClCompile Include="DlgModelFldIndicator.cpp" />
+    <ClCompile Include="DlgPen.cpp" />
+    <ClCompile Include="DlgPictureManager.cpp" />
+    <ClCompile Include="DlgSelectBody.cpp" />
+    <ClCompile Include="DlgVerticalRange.cpp" />
+    <ClCompile Include="DlgViewMapProperties.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Mod3D.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="AboutDemo.h" />
+    <ClInclude Include="AboutDlg.h" />
+    <ClCompile Include="Arrays.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClInclude Include="BmpReferenced.h" />
+    <ClInclude Include="Body.h" />
+    <ClInclude Include="GridCtrl_src\CellRange.h" />
+    <ClInclude Include="CheckPoint.h" />
+    <ClInclude Include="ChildFrm.h" />
+    <ClInclude Include="ClmnPt.h" />
+    <ClInclude Include="ColorButton.h" />
+    <ClInclude Include="ColourPopup.h" />
+    <ClInclude Include="Data3D.h" />
+    <ClInclude Include="DlgAxis.h" />
+    <ClInclude Include="DlgBodyMove.h" />
+    <ClInclude Include="DlgColorGrad.h" />
+    <ClInclude Include="DlgData3D.h" />
+    <ClInclude Include="DlgFit1D.h" />
+    <ClInclude Include="DlgFldSelect.h" />
+    <ClInclude Include="DlgGridProperties.h" />
+    <ClInclude Include="DlgImpExpFld.h" />
+    <ClInclude Include="DlgModGrids.h" />
+    <ClInclude Include="DlgModelImportBody.h" />
+    <ClInclude Include="DlgModelProperties.h" />
+    <ClInclude Include="DlgObjGrd.h" />
+    <ClInclude Include="DlgObservations.h" />
+    <ClInclude Include="DlgPp3DAxes.h" />
+    <ClInclude Include="DlgPp3dDraw.h" />
+    <ClInclude Include="DlgPp3dField.h" />
+    <ClInclude Include="DlgPp3dModel.h" />
+    <ClInclude Include="DlgPp3dSaveLoad.h" />
+    <ClInclude Include="DlgPp3dSetings.h" />
+    <ClInclude Include="DlgPpBodyComp.h" />
+    <ClInclude Include="DlgPpBodyDescr.h" />
+    <ClInclude Include="DlgPpBodyGrav.h" />
+    <ClInclude Include="DlgPpBodyMag.h" />
+    <ClInclude Include="DlgPpBodydraw.h" />
+    <ClInclude Include="DlgPpCompComp.h" />
+    <ClInclude Include="DlgPpCompGrav.h" />
+    <ClInclude Include="DlgPpCompMag.h" />
+    <ClInclude Include="DlgProfileSettings.h" />
+    <ClInclude Include="DlgSelGridProp.h" />
+    <ClInclude Include="DlgStart.h" />
+    <ClInclude Include="DlgWell.h" />
+    <ClInclude Include="Facet3Pt.h" />
+    <ClCompile Include="GlBitmap.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="GlSurface.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+      </PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClInclude Include="ClrGrad\Gradient.h" />
+    <ClInclude Include="ClrGrad\GradientCtrlImpl.h" />
+    <ClInclude Include="Grid.h" />
+    <ClInclude Include="GridCtrl_src\GridCell.h" />
+    <ClInclude Include="GridCtrl_src\GridCellBase.h" />
+    <ClInclude Include="GridCtrl_src\GridCtrl.h" />
+    <ClInclude Include="GridCtrl_src\GridDropTarget.h" />
+    <ClInclude Include="GridObj.h" />
+    <ClCompile Include="hlp\HTMLDefines.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClInclude Include="GridCtrl_src\InPlaceEdit.h" />
+    <ClInclude Include="MainFrm.h" />
+    <ClInclude Include="GridCtrl_src\MemDC.h" />
+    <ClCompile Include="Messages.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClInclude Include="Mod3D.h" />
+    <ClInclude Include="Mod3DDoc.h" />
+    <ClInclude Include="Model.h" />
+    <ClInclude Include="MyObject.h" />
+    <ClInclude Include="Point3D.h" />
+    <ClInclude Include="PotField.h" />
+    <CustomBuild Include="Resource.h">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Generating map file for help compiler...</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">echo // Generated Help Map file.  Used by HasHelp.HHP. &gt; "hlp\HTMLDefines.h"
+echo. &gt; "hlp\HTMLDefines.h"
+echo // Commands (ID_* and IDM_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h ID_,HID_,0x10000 IDM_,HIDM_,0x10000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Prompts (IDP_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h IDP_,HIDP_,0x30000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Resources (IDR_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h IDR_,HIDR_,0x20000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Dialogs (IDD_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h IDD_,HIDD_,0x20000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Frame Controls (IDW_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h /a afxhh.h IDW_,HIDW_,0x50000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">hlp\HTMLDefines.h;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Generating map file for help compiler...</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">echo // Generated Help Map file.  Used by HasHelp.HHP. &gt; "hlp\HTMLDefines.h"
+echo. &gt; "hlp\HTMLDefines.h"
+echo // Commands (ID_* and IDM_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h ID_,HID_,0x10000 IDM_,HIDM_,0x10000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Prompts (IDP_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h IDP_,HIDP_,0x30000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Resources (IDR_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h IDR_,HIDR_,0x20000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Dialogs (IDD_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h IDD_,HIDD_,0x20000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+echo. &gt;&gt; "hlp\HTMLDefines.h"
+echo // Frame Controls (IDW_*) &gt;&gt; "hlp\HTMLDefines.h"
+makehm /h /a afxhh.h IDW_,HIDW_,0x50000 "%(Filename)%(Extension)" &gt;&gt; "hlp\HTMLDefines.h"
+</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">hlp\HTMLDefines.h;%(Outputs)</Outputs>
+    </CustomBuild>
+    <ClCompile Include="Routines.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClInclude Include="ScaleAxis.h" />
+    <ClInclude Include="StdAfx.h" />
+    <ClInclude Include="GridCtrl_src\TitleTip.h" />
+    <ClCompile Include="VersionType.h">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+      </PrecompiledHeader>
+    </ClCompile>
+    <ClInclude Include="View3dSheet.h" />
+    <ClInclude Include="ViewGL3D.h" />
+    <ClInclude Include="ViewGrid.h" />
+    <ClInclude Include="ViewMap.h" />
+    <ClInclude Include="ViewProf.h" />
+    <ClInclude Include="Well.h" />
+    <ClInclude Include="ClrGrad\gradientctrl.h" />
+    <ClInclude Include="DlgBodyExport.h" />
+    <ClInclude Include="DlgBodyImport.h" />
+    <ClInclude Include="DlgBodyModf.h" />
+    <ClInclude Include="DlgCheckMark.h" />
+    <ClInclude Include="DlgDefineObs.h" />
+    <ClInclude Include="DlgEditBodies.h" />
+    <ClInclude Include="DlgEditCheckMarks.h" />
+    <ClInclude Include="DlgHtmlAbout.h" />
+    <ClInclude Include="DlgImportPicture.h" />
+    <ClInclude Include="DlgInducingField.h" />
+    <ClInclude Include="DlgInsExistBoby.h" />
+    <ClInclude Include="DlgModelActiveGrd.h" />
+    <ClInclude Include="DlgModelFldIndicator.h" />
+    <ClInclude Include="DlgPen.h" />
+    <ClInclude Include="DlgPictureManager.h" />
+    <ClInclude Include="DlgSelectBody.h" />
+    <ClInclude Include="DlgVerticalRange.h" />
+    <ClInclude Include="DlgViewMapProperties.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <Image Include="res\3dview.ico" />
+    <Image Include="res\DlgBk.bmp" />
+    <Image Include="res\DlgBk_BW.bmp" />
+    <Image Include="res\HScBarAct.bmp" />
+    <Image Include="res\HScBarPas.bmp" />
+    <Image Include="res\Mod3D.ico" />
+    <Image Include="res\Mod3DDoc.ico" />
+    <Image Include="Pictures\Mod3D_small.gif" />
+    <Image Include="res\TbBmp.bmp" />
+    <Image Include="res\TlbFld.bmp" />
+    <Image Include="res\TlbFldGrd.bmp" />
+    <Image Include="res\TlbFldSc.bmp" />
+    <Image Include="res\TlbFldView.bmp" />
+    <Image Include="res\TlbPrfView.bmp" />
+    <Image Include="res\TlbProfView.bmp" />
+    <Image Include="res\ToolBarFldCnt.bmp" />
+    <Image Include="res\Toolbar.bmp" />
+    <Image Include="res\b1.bmp" />
+    <Image Include="res\b2.bmp" />
+    <Image Include="res\bitmap1.bmp" />
+    <Image Include="res\bitmap2.bmp" />
+    <Image Include="res\bitmap3.bmp" />
+    <Image Include="res\bmp00001.bmp" />
+    <Image Include="res\bmp00002.bmp" />
+    <Image Include="res\bmp00003.bmp" />
+    <Image Include="res\bmp00004.bmp" />
+    <Image Include="res\bmp00005.bmp" />
+    <Image Include="res\crs_body.bmp" />
+    <Image Include="res\ico00001.ico" />
+    <Image Include="res\ico00002.ico" />
+    <Image Include="res\ico00003.ico" />
+    <Image Include="res\ico00004.ico" />
+    <Image Include="res\ico00005.ico" />
+    <Image Include="res\ico00006.ico" />
+    <Image Include="res\ico00007.ico" />
+    <Image Include="res\icoOpen.ico" />
+    <Image Include="res\icon1.ico" />
+    <Image Include="res\icon2.ico" />
+    <Image Include="res\idc_vert.ico" />
+    <Image Include="res\modPrpo.bmp" />
+    <Image Include="res\slov.bmp" />
+    <Image Include="res\toolbar1.bmp" />
+    <Image Include="res\toolbar_.bmp" />
+    <Image Include="hlp\Images\Bullet.gif" />
+    <Image Include="hlp\Images\MenuProfViewBody.gif" />
+    <Image Include="hlp\Images\MenuProfViewBodyNew.gif" />
+    <Image Include="hlp\Images\MenuProfViewVrtx.gif" />
+    <Image Include="hlp\Images\Mod3D.gif" />
+    <Image Include="hlp\Images\ProfViewFloatMenu.gif" />
+    <Image Include="hlp\Images\crs_crsOverBdLine.bmp" />
+    <Image Include="hlp\Images\crs_crsOverLine.bmp" />
+    <Image Include="hlp\Images\crs_crsOverVrtx.bmp" />
+    <Image Include="hlp\Images\cursor_e.gif" />
+    <Image Include="hlp\Images\cursor_v.gif" />
+    <Image Include="hlp\Images\dlg_activefld.gif" />
+    <Image Include="hlp\Images\dlg_body_descr.gif" />
+    <Image Include="hlp\Images\dlg_body_drawcomp.gif" />
+    <Image Include="hlp\Images\dlg_body_physprop.gif" />
+    <Image Include="hlp\Images\dlg_bodyexport.gif" />
+    <Image Include="hlp\Images\dlg_bodyimport.gif" />
+    <Image Include="hlp\Images\dlg_compprop.gif" />
+    <Image Include="hlp\Images\dlg_creationprop.gif" />
+    <Image Include="hlp\Images\statusbar.gif" />
+    <Image Include="hlp\Images\titlebar.gif" />
+    <Image Include="hlp\Images\toolbar_fld.gif" />
+    <Image Include="hlp\Images\toolbar_fld_axis.gif" />
+    <Image Include="hlp\Images\toolbar_fld_bmp.gif" />
+    <Image Include="hlp\Images\toolbar_fld_cnt.gif" />
+    <Image Include="hlp\Images\toolbar_fld_dif.gif" />
+    <Image Include="hlp\Images\toolbar_fld_g.gif" />
+    <Image Include="hlp\Images\toolbar_fld_gx.gif" />
+    <Image Include="hlp\Images\toolbar_fld_gy.gif" />
+    <Image Include="hlp\Images\toolbar_fld_gz.gif" />
+    <Image Include="hlp\Images\toolbar_fld_m.gif" />
+    <Image Include="hlp\Images\toolbar_fld_mes.gif" />
+    <Image Include="hlp\Images\toolbar_fld_mod.gif" />
+    <Image Include="hlp\Images\toolbar_fld_mx.gif" />
+    <Image Include="hlp\Images\toolbar_fld_my.gif" />
+    <Image Include="hlp\Images\toolbar_fld_mz.gif" />
+    <Image Include="hlp\Images\toolbar_fld_txx.gif" />
+    <Image Include="hlp\Images\toolbar_fld_txy.gif" />
+    <Image Include="hlp\Images\toolbar_fld_txz.gif" />
+    <Image Include="hlp\Images\toolbar_fld_tyy.gif" />
+    <Image Include="hlp\Images\toolbar_fld_tyz.gif" />
+    <Image Include="hlp\Images\toolbar_fld_tzz.gif" />
+    <Image Include="hlp\Images\toolbar_main.gif" />
+    <Image Include="hlp\Images\toolbar_main_compute.gif" />
+    <Image Include="hlp\Images\toolbar_main_digitize.gif" />
+    <Image Include="hlp\Images\toolbar_main_new.gif" />
+    <Image Include="hlp\Images\toolbar_main_open.gif" />
+    <Image Include="hlp\Images\toolbar_main_print.gif" />
+    <Image Include="hlp\Images\toolbar_main_redraw.gif" />
+    <Image Include="hlp\Images\toolbar_main_save.gif" />
+    <Image Include="hlp\Images\toolbar_main_scale.gif" />
+    <Image Include="hlp\Images\toolbar_main_view3d.gif" />
+    <Image Include="hlp\Images\toolbar_main_view_tileh.gif" />
+    <Image Include="hlp\Images\toolbar_main_view_tilev.gif" />
+    <Image Include="hlp\Images\toolbar_main_viewmap.gif" />
+    <Image Include="hlp\Images\toolbar_main_viewprof.gif" />
+    <Image Include="hlp\Images\toolbar_main_wnd_prof.gif" />
+    <Image Include="hlp\Images\toolbar_main_zoom.gif" />
+    <Image Include="hlp\Images\toolbar_main_zoomin.gif" />
+    <Image Include="hlp\Images\toolbar_main_zoomout.gif" />
+    <Image Include="hlp\Images\toolbar_main_zoompage.gif" />
+    <Image Include="hlp\Images\toolbar_map.gif" />
+    <Image Include="hlp\Images\toolbar_map_bdcntr.gif" />
+    <Image Include="hlp\Images\toolbar_map_obj.gif" />
+    <Image Include="hlp\Images\toolbar_map_obspt.gif" />
+    <Image Include="hlp\Images\toolbar_map_pic.gif" />
+    <Image Include="hlp\Images\toolbar_map_profs.gif" />
+    <Image Include="hlp\Images\toolbar_map_relbmp.gif" />
+    <Image Include="hlp\Images\toolbar_map_relcntr.gif" />
+    <Image Include="hlp\Images\toolbar_prof.gif" />
+    <Image Include="hlp\Images\toolbar_prof_EW.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_SN.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_grdhrz.gif" />
+    <Image Include="hlp\Images\toolbar_prof_grdvrt.gif" />
+    <Image Include="hlp\Images\toolbar_prof_movebody.gif" />
+    <Image Include="hlp\Images\toolbar_prof_next.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_prev.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_prfcopynext.gif" />
+    <Image Include="hlp\Images\toolbar_prof_prfcopyprev.gif" />
+    <Image Include="hlp\Images\toolbar_prof_prfdel.gif" />
+    <Image Include="hlp\Images\toolbar_prof_prfhrz.gif" />
+    <Image Include="hlp\Images\toolbar_prof_prfnext.gif" />
+    <Image Include="hlp\Images\toolbar_prof_prfprev.gif" />
+    <Image Include="hlp\Images\toolbar_prof_prfvrt.gif" />
+    <Image Include="hlp\Images\toolbar_prof_show_glvrt.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_show_next.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_show_prev.bmp" />
+    <Image Include="hlp\Images\toolbar_prof_shownext.gif" />
+    <Image Include="hlp\Images\toolbar_prof_showprev.gif" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\CrsBdLine.cur" />
+    <None Include="res\CrsBody.cur" />
+    <None Include="res\CrsLine.cur" />
+    <None Include="res\CrsNormal.cur" />
+    <None Include="res\CrsPoint.cur" />
+    <None Include="res\CrsSbHrz.cur" />
+    <None Include="res\CrsSbVrt.cur" />
+    <None Include="res\CrsWndDiv.cur" />
+    <None Include="res\Mod3D.rc2" />
+    <None Include="res\cell.cur" />
+    <None Include="res\cur00001.cur" />
+    <None Include="res\cur00002.cur" />
+    <None Include="res\cur00003.cur" />
+    <None Include="res\cur00004.cur" />
+    <None Include="res\cur00005.cur" />
+    <None Include="res\cur00006.cur" />
+    <None Include="res\cur00007.cur" />
+    <None Include="res\curBodyMove.cur" />
+    <None Include="res\curDivVrt.cur" />
+    <None Include="res\cursor1.cur" />
+    <None Include="res\cursor_e.cur" />
+    <None Include="res\cursor_h.cur" />
+    <None Include="res\cursor_v.cur" />
+    <None Include="res\cursor_z.cur" />
+    <None Include="res\cursorzo.cur" />
+    <None Include="hlp\DlgHtmlAbout.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\Mod3D.hhc" />
+    <None Include="hlp\Mod3D.hhk" />
+    <CustomBuild Include="hlp\Mod3D.hhp">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Making HTML help...</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">start /wait hhc "hlp\Mod3D.hhp"
+if not exist "hlp\Mod3D.chm" goto :HelpError
+copy "hlp\Mod3D.chm" "$(OutDir)Mod3D.chm"
+goto :HelpDone
+:HelpError
+echo hlp\Mod3D.hhp(1) : error:Problem encountered creating help file
+echo.
+:HelpDone
+echo.
+</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">hlp\HTMLDefines.h;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(OutDir)$(ProjectName).chm;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Making HTML help...</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">start /wait hhc "hlp\Mod3D.hhp"
+if not exist "hlp\Mod3D.chm" goto :HelpError
+copy "hlp\Mod3D.chm" "$(OutDir)Mod3D.chm"
+goto :HelpDone
+:HelpError
+echo hlp\Mod3D.hhp(1) : error:Problem encountered creating help file
+echo.
+:HelpDone
+echo.
+</Command>
+      <AdditionalInputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">hlp\HTMLDefines.h;%(AdditionalInputs)</AdditionalInputs>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)$(ProjectName).chm;%(Outputs)</Outputs>
+    </CustomBuild>
+    <None Include="hlp\HIDR_3DVIEW.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDR_PROFTYPE.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\main_index.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_body.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_compute.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_file.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_help.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_model.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_view.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\menu_window.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\scrollbars.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\Hlp_how_to.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\How_to_begin.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_color.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_fileopen.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_filesave.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_find.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_font.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_print.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_printdlg.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidd_printsetup.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidp_default.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidw_dockbar_top.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidw_preview_bar.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidw_status_bar.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\afx_hidw_toolbar.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_app_about.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_app_exit.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_context_help.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_close.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_import.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_mru_file1.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_new.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_open.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_page_setup.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_print.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_print_preview.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_print_setup.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_save.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_save_as.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_file_send_mail.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_help_index.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_help_using.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_ht_caption.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_ht_nowhere.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_import_bitmap.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_import_body.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_import_guide_line.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_import_measured_field.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_close.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_maximize.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_minimize.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_move.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_nextwindow.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_prevwindow.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_restore.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_size.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_sc_tasklist.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_view_status_bar.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_view_toolbar.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_window_all.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_window_new.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_window_tile.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_window_tile_horz.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hid_window_tile_vert.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidr_doc1type.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hlp_mod3d.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hlp_model_create_modf.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hlp_toolbar_fld.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hlp_toolbar_map.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hlp_toolbar_prof.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hlp_toolbars.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_3DVIEW_DRAW.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_3DVIEW_MODEL.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_3DVIEW_SETTINGS.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_COMPUTATION.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_DRAW.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_GRAV.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_BODY_MAG.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_COMPUTE_COMP.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_COMPUTE_GRAV.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_COMPUTE_MAG.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_FIT_1D.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_MODEL.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_MODEL_GUIDELINE.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_OBJECT_MANAGER.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_PEN.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\HIDD_DLG_WELL.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_body_creation.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_body_description.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_body_export.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_body_import.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_body_select.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_def_obs.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_edit_bodies.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_fld_indicator.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_grd_active.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_inducing_field.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_ins_exist_body.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_model_range_z.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="hlp\hidd_dlg_view_map.htm">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="Mod3D.reg" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>
