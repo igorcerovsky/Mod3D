@@ -300,3 +300,125 @@ TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
             << "), Centroid=(" << cntr.x << "," << cntr.y << "," << cntr.z << ")";
     }
 }
+
+// ============================================================================
+// Edge Cases: Topography Relief Grid, Constrained/Split Moves, and DeleteBody
+// ============================================================================
+
+TEST(ModelEdgeCasesTest, InitWithVariedReliefGrid) {
+    // Create a 3x3 Grid with non-uniform topographic relief
+    Grid relief(3, 3, 1000.0, 2000.0, 100.0, 100.0, 0.0);
+    for (size_t r = 0; r < 3; ++r) {
+        for (size_t c = 0; c < 3; ++c) {
+            relief(r, c) = 200.0 + static_cast<double>(r * 50 + c * 30);
+        }
+    }
+
+    Model model;
+    const double zMin = -3000.0;
+    const double zMax = 1000.0;
+    EXPECT_TRUE(model.init(relief, zMin, zMax));
+    EXPECT_TRUE(model.isInitialized());
+
+    // Internal model dimensions are (3+2) x (3+2) = 5 x 5
+    EXPECT_EQ(model.getRows(), 5);
+    EXPECT_EQ(model.getCols(), 5);
+
+    // Inner cell (r=2, c=2) corresponds to relief grid cell (1, 1)
+    // Value should be 200 + 1*50 + 1*30 = 280.0
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 0), 280.0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), zMin);
+
+    // Border cell (r=0, c=0) clamps to relief cell (0, 0) = 200.0
+    EXPECT_DOUBLE_EQ(model.getZ(0, 0, 0), 200.0);
+    EXPECT_DOUBLE_EQ(model.getZ(0, 0, 1), zMin);
+}
+
+TEST(ModelEdgeCasesTest, MoveVertexConstrainedAndSplit) {
+    Model model;
+    model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert body at column (2, 2):
+    // Index 0: relief (0.0)
+    // Index 1: body top (-400.0)
+    // Index 2: body bot (-600.0)
+    // Index 3: hell (-2000.0)
+    int idx = model.insertBody(2, 2, -500.0, 100.0, true);
+    ASSERT_EQ(idx, 1);
+
+    // 1. Constrained Move: valid within (-600.0, 0.0)
+    int vIdx = 1;
+    int res = model.moveVertex(vIdx, 2, 2, -300.0, BodyMoveType::Constrained);
+    EXPECT_EQ(res, 0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -300.0);
+
+    // Constrained Move: violating upper bound (z >= 0.0) must be rejected
+    res = model.moveVertex(vIdx, 2, 2, 50.0, BodyMoveType::Constrained);
+    EXPECT_EQ(res, 2); // Error code 2 = constraint violated
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -300.0); // Z unchanged
+
+    // Constrained Move: violating lower bound (z <= -600.0) must be rejected
+    res = model.moveVertex(vIdx, 2, 2, -650.0, BodyMoveType::Constrained);
+    EXPECT_EQ(res, 2);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -300.0); // Z unchanged
+
+    // 2. Split Move
+    // Moving top vertex up towards relief:
+    res = model.moveVertex(vIdx, 2, 2, -200.0, BodyMoveType::Split);
+    EXPECT_EQ(res, 0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -200.0);
+}
+
+TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
+    Model model;
+    model.init(3, 3, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
+
+    Body *b1 = model.newBody();
+    b1->SetDensity(2500.0);
+    int bId1 = b1->GetID();
+
+    Body *b2 = model.newBody();
+    b2->SetDensity(2900.0);
+    int bId2 = b2->GetID();
+
+    EXPECT_EQ(model.getBodies().size(), 2u);
+
+    // Insert body 1 at column (1, 1) and (1, 2)
+    model.insertBody(1, 1, -400.0, 50.0, false, bId1);
+    model.insertBody(1, 2, -400.0, 50.0, false, bId1);
+
+    // Insert body 2 at column (2, 1) and (2, 2)
+    model.insertBody(2, 1, -700.0, 50.0, false, bId2);
+    model.insertBody(2, 2, -700.0, 50.0, false, bId2);
+
+    model.initFacetList();
+
+    std::vector<Facet3Pt> initialFacets;
+    int initialCount = model.getFacetsComputation(initialFacets);
+    EXPECT_GT(initialCount, 0);
+
+    // Delete Body 1
+    int delRes = model.deleteBody(bId1);
+    EXPECT_EQ(delRes, 1);
+    EXPECT_EQ(model.getBodies().size(), 1u);
+    EXPECT_EQ(model.getBodies()[0]->GetID(), bId2);
+
+    // Column (1, 1) must now only have 2 points (relief and hell), body 1 points removed
+    EXPECT_EQ(model.getCount(1, 1), 2u);
+
+    // Column (2, 1) must still contain body 2
+    EXPECT_EQ(model.getCount(2, 1), 4u);
+
+    // Meshed facets after deletion should only reference body 2
+    std::vector<Facet3Pt> updatedFacets;
+    model.getFacetsComputation(updatedFacets);
+    for (const auto &fct : updatedFacets) {
+        if (fct.pBody) {
+            EXPECT_EQ(fct.pBody->GetID(), bId2);
+        }
+        if (fct.pBodyOpos) {
+            EXPECT_EQ(fct.pBodyOpos->GetID(), bId2);
+        }
+    }
+}
+
