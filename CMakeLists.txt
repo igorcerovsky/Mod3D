@@ -30,6 +30,8 @@ add_library(mod3d_core STATIC
     src/ColumnPoint.cpp
     src/Grid.cpp
     src/Model.cpp
+    src/Inversion.cpp
+    src/Observation.cpp
 )
 
 target_link_libraries(mod3d_core PUBLIC Threads::Threads)

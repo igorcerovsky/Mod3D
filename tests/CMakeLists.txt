@@ -51,4 +51,10 @@ add_executable(test_potential_tensor test_potential_tensor.cpp)
 target_link_libraries(test_potential_tensor PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_potential_tensor)
 
+# Test Observation Space & Inversion (Gate 3 density/vertex recovery, elevation modes, 1D optimization)
+add_executable(test_observation_inversion test_observation_inversion.cpp)
+target_link_libraries(test_observation_inversion PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_observation_inversion)
+
+
 

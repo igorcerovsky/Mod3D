@@ -62,6 +62,7 @@ public:
 
     void fill(double val);
     void zero() { fill(0.0); }
+    void zeroData() { zero(); }
 
     // Statistics
     double getMin() const;

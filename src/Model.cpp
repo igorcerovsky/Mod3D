@@ -811,8 +811,17 @@ void Model::updateFacetColumn(int row, int col)
 
     if (m_computeRealTime) {
         for (auto &fct : *pFctLst) {
-            fct.SetSign(-1.0);
-            m_fctLstUpdate.push_back(fct);
+            Facet3Pt fCopy = fct;
+            fCopy.SetSign(-1.0);
+            if (fCopy.pBody) {
+                fCopy.density = fCopy.pBody->GetDensity();
+                fCopy.v_densGrad = fCopy.pBody->GetDensityGradient();
+            }
+            if (fCopy.pBodyOpos) {
+                fCopy.densityOpos = fCopy.pBodyOpos->GetDensity();
+                fCopy.v_densGradOpos = fCopy.pBodyOpos->GetDensityGradient();
+            }
+            m_fctLstUpdate.push_back(fCopy);
         }
     }
 
@@ -823,6 +832,14 @@ void Model::updateFacetColumn(int row, int col)
         for (const auto &fct : *pFctLst) {
             Facet3Pt fCopy = fct;
             fCopy.SetSign(1.0);
+            if (fCopy.pBody) {
+                fCopy.density = fCopy.pBody->GetDensity();
+                fCopy.v_densGrad = fCopy.pBody->GetDensityGradient();
+            }
+            if (fCopy.pBodyOpos) {
+                fCopy.densityOpos = fCopy.pBodyOpos->GetDensity();
+                fCopy.v_densGradOpos = fCopy.pBodyOpos->GetDensityGradient();
+            }
             m_fctLstUpdate.push_back(fCopy);
         }
     }
@@ -861,6 +878,14 @@ int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
                 for (const auto &fct : *lst) {
                     Facet3Pt copy = fct;
                     copy.SetSign(1.0);
+                    if (copy.pBody) {
+                        copy.density = copy.pBody->GetDensity();
+                        copy.v_densGrad = copy.pBody->GetDensityGradient();
+                    }
+                    if (copy.pBodyOpos) {
+                        copy.densityOpos = copy.pBodyOpos->GetDensity();
+                        copy.v_densGradOpos = copy.pBodyOpos->GetDensityGradient();
+                    }
                     outList.push_back(copy);
                 }
             }
