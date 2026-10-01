@@ -10,7 +10,7 @@
 
 #include "pfld/facet.hpp"
 #include "pfld/pfld_compute.hpp"
-#include "pfld/pfld_test_io.h"
+#include "pfld_test_io.h"
 
 namespace {
 
@@ -191,6 +191,124 @@ TEST(PfldTest, Test_Facet_Lin)
 	double gz = 0.0;
 	fctGz.Fld_Gz(r, ro, ro0, gz);
 	EXPECT_TRUE(almost_equal(gz, result.z, 2));
+}
+
+TEST(PfldTest, Test_Facet_ModernAPI)
+{
+	using point = pfld::Point3D<double>;
+	const auto eps = 1.0e-15;
+
+	// 1. Move semantics test
+	static_assert(std::is_nothrow_move_constructible_v<pfld::facet>);
+	static_assert(std::is_nothrow_move_assignable_v<pfld::facet>);
+
+	// 2. Direct construction with initializer_list and auto_init
+	const pfld::facet const_fct({ point(0, 0, -1000), point(1000, 0, 0), point(0, 1000, 0) }, true);
+	EXPECT_TRUE(const_fct.is_initialized());
+	EXPECT_EQ(const_fct.size(), 3u);
+	EXPECT_FALSE(const_fct.empty());
+
+	// 3. Const-correctness and value-returning methods
+	const point r(0, 0, 1);
+	const point g_val = const_fct.field_g(r);
+	const double gz_val = const_fct.field_gz(r);
+	const double resval = 4.8207079871718046e-008;
+	const point expected(-resval, -resval, resval);
+	AssertPoints(g_val, expected, eps);
+	EXPECT_NEAR(gz_val, expected.z, eps);
+
+	// 4. Functor call operator
+	const point g_functor = const_fct(r);
+	AssertPoints(g_functor, expected, eps);
+
+	// 5. Value-returning linear density methods
+	const double ro0 = 1000.0;
+	const point ro(0, 0, 1);
+	const point g_lin = const_fct.field_g(r, ro, ro0);
+	const double gz_lin = const_fct.field_gz(r, ro, ro0);
+	const point exp_lin(-3.2142476436014269e-005, -3.2142476436014269e-005, 5.6270119911809142e-005);
+	AssertPoints(g_lin, exp_lin, eps);
+	EXPECT_NEAR(gz_lin, exp_lin.z, eps);
+
+	// 6. Guptasarma-Singh value-returning methods on const facet
+	const point M(1, 10, 100);
+	const point mag = const_fct.field_gs_m(r, M);
+	const point g_gs = const_fct.field_gs_g(r);
+	const double gz_gs = const_fct.field_gs_gz(r);
+	EXPECT_NEAR(g_gs.z, gz_gs, eps);
+	EXPECT_NE(mag.norm(), 0.0);
+
+	// 7. Move constructor & assignment
+	pfld::facet moved_src = const_fct;
+	pfld::facet moved_dst(std::move(moved_src));
+	EXPECT_TRUE(moved_dst.is_initialized());
+	AssertPoints(moved_dst(r), expected, eps);
+
+	pfld::facet assigned_dst;
+	assigned_dst = std::move(moved_dst);
+	EXPECT_TRUE(assigned_dst.is_initialized());
+	AssertPoints(assigned_dst(r), expected, eps);
+
+	// 8. Re-initialization bug fix test: initializing with new points
+	pfld::facet reinit_fct({ point(0, 0, -1000), point(1000, 0, 0), point(0, 1000, 0) }, true);
+	EXPECT_TRUE(reinit_fct.is_initialized());
+	// Now reinit with horizontal facet at z = -500
+	reinit_fct.Init(std::vector<point>{ point(0, 0, -500), point(1000, 0, -500), point(0, 1000, -500) });
+	EXPECT_TRUE(reinit_fct.is_initialized());
+	// The normal should now be vertical (0, 0, 1)
+	AssertPoints(reinit_fct.normal(), point(0, 0, 1), 1e-12);
+
+	// 9. Degenerate facet handling (fewer than 3 vertices)
+	pfld::facet degenerate({ point(0, 0, 0), point(1, 0, 0) }, true);
+	EXPECT_FALSE(degenerate.is_initialized());
+	EXPECT_EQ(degenerate.field_g(r), point(0, 0, 0));
+	EXPECT_EQ(degenerate.field_gz(r), 0.0);
+}
+
+TEST(PfldTest, Test_FieldCompute_ModernAPI)
+{
+	using point = pfld::Point3D<double>;
+	const auto eps = 1.0e-15;
+
+	pfld::facetvec facets{
+		pfld::facet({ point(0, 0, -1000), point(1000, 0, 0), point(0, 1000, 0) }, true)
+	};
+	pfld::ptvec pts{
+		point(0, 0, 1),
+		point(100, 100, 50),
+		point(-50, 200, 10)
+	};
+
+	// 1. Value-returning Field_Gz
+	pfld::valvec gz_res = pfld::Field_Gz(facets, pts);
+	ASSERT_EQ(gz_res.size(), pts.size());
+
+	// 2. Pre-allocated Field_Gz
+	pfld::valvec gz_prealloc(pts.size(), 0.0);
+	pfld::Field_Gz(facets, pts, gz_prealloc);
+	for (size_t i = 0; i < pts.size(); ++i) {
+		EXPECT_NEAR(gz_res[i], gz_prealloc[i], eps);
+	}
+
+	// 3. Span-based Field_Gz
+	pfld::valvec gz_span(pts.size(), 0.0);
+	pfld::Field_Gz(std::span<const pfld::facet>(facets),
+	               std::span<const point>(pts),
+	               std::span<double>(gz_span));
+	for (size_t i = 0; i < pts.size(); ++i) {
+		EXPECT_NEAR(gz_span[i], gz_prealloc[i], eps);
+	}
+
+	// 4. Value-returning Field_G vs Serial Field_G
+	pfld::ptvec g_res = pfld::Field_G(facets, pts);
+	ASSERT_EQ(g_res.size(), pts.size());
+
+	pfld::ptvec g_serial(pts.size());
+	pfld::Field_G(facets, pts, g_serial);
+	for (size_t i = 0; i < pts.size(); ++i) {
+		AssertPoints(g_res[i], g_serial[i], eps);
+		EXPECT_NEAR(g_res[i].z, gz_res[i], eps);
+	}
 }
 
 TEST(PfldTest, Test_Facet_Parallell)

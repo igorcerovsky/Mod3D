@@ -1,10 +1,9 @@
 // pfld_app.cpp : Defines the entry point for the console application.
 //
 
-#include "facet.hpp"
-#include "pfld_compute.hpp"
+#include "pfld/facet.hpp"
+#include "pfld/pfld_compute.hpp"
 #include "pfld_test_io.h"
-#include "pfld_test_io.cpp"
 #include <iostream>
 #include <fstream>
 #include <string>

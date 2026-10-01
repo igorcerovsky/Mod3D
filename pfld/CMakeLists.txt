@@ -20,38 +20,31 @@ endif()
 
 find_package(Threads REQUIRED)
 
-# Core static library
-add_library(pfld STATIC
-    src/facet.cpp
-    src/pfld.cpp
-    src/pfld_compute.cpp
-    src/pfld_test_io.cpp
-)
+# Header-only library
+add_library(pfld INTERFACE)
 
-target_link_libraries(pfld PUBLIC Threads::Threads)
+target_link_libraries(pfld INTERFACE Threads::Threads)
 
-target_include_directories(pfld PUBLIC
+target_include_directories(pfld INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/pfld>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
     $<INSTALL_INTERFACE:include>
 )
 
 # Standalone application
 add_executable(pfld_app
     app/pfld_app.cpp
-    src/facet.cpp
-    src/pfld_compute.cpp
+    tests/pfld_test_io.cpp
 )
 
 target_include_directories(pfld_app PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/app
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/include/pfld
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests
 )
 
-target_link_libraries(pfld_app PRIVATE Threads::Threads)
+target_link_libraries(pfld_app PRIVATE pfld Threads::Threads)
 
 # Copy data files for pfld_app to current binary directory
 configure_file(tests/test_data/pfld_facets.txt ${CMAKE_CURRENT_BINARY_DIR}/pfld_facets.txt COPYONLY)

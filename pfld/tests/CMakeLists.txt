@@ -14,12 +14,11 @@ file(GLOB TEST_DATA_FILES "${CMAKE_CURRENT_SOURCE_DIR}/test_data/*")
 file(COPY ${TEST_DATA_FILES} DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/test_data")
 
 # test_pfld
-add_executable(test_pfld unittest_pfld.cpp)
+add_executable(test_pfld unittest_pfld.cpp pfld_test_io.cpp)
 target_include_directories(test_pfld PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/../include
     ${CMAKE_CURRENT_SOURCE_DIR}/../include/pfld
-    ${CMAKE_CURRENT_SOURCE_DIR}/../src
 )
 target_compile_definitions(test_pfld PRIVATE
     PFLD_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/test_data"
