@@ -11,8 +11,8 @@ include(GoogleTest)
 
 # Define reference data path for tests
 add_compile_definitions(
-    PFLD_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld_UnitTest/test_data"
-    PFLD_APP_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld_app"
+    PFLD_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld/tests/test_data"
+    PFLD_APP_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld/tests/test_data"
     LEGACY_SAMPLE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../legacy/sample_data"
 )
 

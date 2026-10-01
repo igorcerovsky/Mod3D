@@ -184,8 +184,8 @@ TEST(PfldGroundTruthTest, Test_Facet_Lin) {
 
 // 5. Ground truth dataset comparison against pfld_UnitTest (100 facets, 100 points)
 TEST(PfldGroundTruthTest, Test_DatasetComparison_UnitTest100) {
-    std::string facetsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_facets.txt";
-    std::string pointsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_points.txt";
+    std::string facetsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_facets.txt";
+    std::string pointsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_points.txt";
     std::string resultsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_results.txt";
 
     const int maxFacets = 100;

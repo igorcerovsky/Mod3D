@@ -82,8 +82,8 @@ bool LoadResults(const std::string &path, std::vector<double> &results, int maxC
 } // anonymous namespace
 
 TEST(FieldComputeTest, ParallelMatchesSerial_AndGroundTruthUnitTest) {
-    std::string facetsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_facets.txt";
-    std::string pointsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_points.txt";
+    std::string facetsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_facets.txt";
+    std::string pointsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_points.txt";
     std::string resultsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_results.txt";
 
     const int maxFacets = 100;
@@ -152,8 +152,8 @@ TEST(FieldComputeTest, ParallelMatchesGroundTruthApp1000) {
 }
 
 TEST(FieldComputeTest, ComputeG_VectorMatchesParallelAndSerial) {
-    std::string facetsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_facets.txt";
-    std::string pointsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_test_points.txt";
+    std::string facetsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_facets.txt";
+    std::string pointsFile = std::string(PFLD_TEST_DATA_DIR) + "/pfld_points.txt";
 
     const int maxFacets = 50;
     const int maxPoints = 100;
