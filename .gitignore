@@ -1,5 +1,40 @@
-release/*.*
-debug/*.*
-*.opensdf
-ipch/*.*
+# Build outputs
+build/
+.cache/
+compile_commands.json
+bin/
+lib/
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.a
+*.so
+
+# Visual Studio / MSVC artifacts
+Debug/
+Release/
+x64/
+Win32/
+ipch/
+.vs/
 *.sdf
+*.opensdf
+*.suo
+*.v11.suo
+*.user
+*.ncb
+*.opt
+*.plg
+*.aps
+UpgradeLog*.htm
+UpgradeLog*.XML
+_UpgradeReport_Files/
+
+# macOS artifacts
+.DS_Store
+._*
+
+# External standalone test repo
+pfld_UnitTest/
