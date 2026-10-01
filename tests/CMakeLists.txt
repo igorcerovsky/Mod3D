@@ -40,3 +40,9 @@ gtest_discover_tests(test_model)
 add_executable(test_primitives test_primitives.cpp)
 target_link_libraries(test_primitives PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_primitives)
+
+# Test Grid (rotations, statistics, operators, Surfer binary)
+add_executable(test_grid test_grid.cpp)
+target_link_libraries(test_grid PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_grid)
+
