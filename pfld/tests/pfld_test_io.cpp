@@ -1,4 +1,5 @@
 #include "pfld_test_io.h"
+
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -7,6 +8,7 @@
 #include <limits>
 #include <filesystem>
 #include <vector>
+#include <iterator>
 
 namespace pfld {
 
@@ -41,7 +43,7 @@ void GetFieldPoints(pfld::ptvec& points, const fs::path& sfile, const int n, boo
 {
 	if (bGenerate)
 	{
-		std::cout << "creating random points..." << "\n";
+		std::cout << "creating random points...\n";
 		std::srand(100);
 		for (int i = 0; i < n; ++i)
 		{
@@ -50,16 +52,16 @@ void GetFieldPoints(pfld::ptvec& points, const fs::path& sfile, const int n, boo
 		std::ofstream file(sfile, std::ios::out);
 		if (file.is_open())
 		{
-			for (auto it = points.begin(); it != points.end(); ++it)
+			for (const auto& pt : points)
 			{
-				file << it->x << " " << it->y << " " << it->z << "\n";
+				file << pt.x << " " << pt.y << " " << pt.z << "\n";
 			}
 			file.close();
 		}
 	}
 	else
 	{
-		std::cout << "loading points..." << "\n";
+		std::cout << "loading points...\n";
 		std::ifstream file(resolve_path(sfile), std::ios_base::in);
 		if (file.is_open())
 		{
@@ -70,14 +72,16 @@ void GetFieldPoints(pfld::ptvec& points, const fs::path& sfile, const int n, boo
 				std::istringstream buffer(stmp);
 				std::vector<double> vln{ std::istream_iterator<double>(buffer),
 					std::istream_iterator<double>() };
-				points.emplace_back(pfld::point(vln[0], vln[1], vln[2]));
-				i++;
-				if (i >= n)
-					break;
+				if (vln.size() >= 3) {
+					points.emplace_back(pfld::point(vln[0], vln[1], vln[2]));
+					i++;
+					if (i >= n)
+						break;
+				}
 			}
 			file.close();
 		}
-		std::cout << "loaded " << points.size() << " points." << "\n";
+		std::cout << "loaded " << points.size() << " points.\n";
 	}
 }
 
@@ -85,7 +89,7 @@ void GetFacets(pfld::facet_vec& facets, const fs::path& sfile, const int n, bool
 {
 	if (bGenerate)
 	{
-		std::cout << "creating random facets..." << "\n";
+		std::cout << "creating random facets...\n";
 		std::srand(1);
 		for (int i = 0; i < n; ++i)
 		{
@@ -99,12 +103,12 @@ void GetFacets(pfld::facet_vec& facets, const fs::path& sfile, const int n, bool
 		if (file.is_open())
 		{
 			int i = 0;
-			for (auto it = facets.begin(); it != facets.end(); ++it)
+			for (auto& fct : facets)
 			{
-				ptvec& fpts = it->Data();
+				const ptvec& fpts = fct.Data();
 				file << "Facet " << i << " " << fpts.size() << "\n";
-				for (auto itp = fpts.begin(); itp != fpts.end(); ++itp)
-					file << itp->x << " " << itp->y << " " << itp->z << " ";
+				for (const auto& pt : fpts)
+					file << pt.x << " " << pt.y << " " << pt.z << " ";
 				file << "\n";
 				i++;
 			}
@@ -113,7 +117,7 @@ void GetFacets(pfld::facet_vec& facets, const fs::path& sfile, const int n, bool
 	}
 	else
 	{
-		std::cout << "loading facets..." << "\n";
+		std::cout << "loading facets...\n";
 		std::ifstream file(resolve_path(sfile), std::ios_base::in);
 		if (file.is_open())
 		{
@@ -125,24 +129,26 @@ void GetFacets(pfld::facet_vec& facets, const fs::path& sfile, const int n, bool
 				std::istringstream buffer(stmp);
 				if (stmp.find("Facet") != std::string::npos)
 				{
-					// facet data
+					// facet header
 				}
 				else
 				{
 					std::vector<double> vln{ std::istream_iterator<double>(buffer),
 						std::istream_iterator<double>() };
-					for (unsigned i = 0; i < vln.size() / 3; ++i)	{
-						v[i] = point(vln[i * 3 + 0], vln[i * 3 + 1], vln[i * 3 + 2]);
+					if (vln.size() >= 9) {
+						for (unsigned i = 0; i < vln.size() / 3 && i < 3; ++i) {
+							v[i] = point(vln[i * 3 + 0], vln[i * 3 + 1], vln[i * 3 + 2]);
+						}
+						facets.emplace_back(Facet(v));
+						loadedFacets++;
+						if (loadedFacets >= n)
+							break;
 					}
-					facets.emplace_back(Facet(v));
-					loadedFacets++;
-					if (loadedFacets >= n)
-						break;
 				}
 			}
 			file.close();
 		}
-		std::cout << "loaded " << facets.size() << " facets." << "\n";
+		std::cout << "loaded " << facets.size() << " facets.\n";
 	}
 }
 
@@ -152,10 +158,10 @@ void SaveResults(const pfld::valvec& res, const fs::path& sfile)
 	std::ofstream file(sfile, std::ios::out);
 	if (file.is_open())
 	{
-		for (auto it = res.begin(); it != res.end(); ++it)
+		for (const auto val : res)
 		{
 			file << std::setprecision(std::numeric_limits<long double>::digits10 + 1)
-				<< *it << "\n";
+				<< val << "\n";
 		}
 		file.close();
 	}
