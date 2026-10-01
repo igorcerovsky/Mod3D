@@ -46,3 +46,9 @@ add_executable(test_grid test_grid.cpp)
 target_link_libraries(test_grid PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_grid)
 
+# Test Potential Field Tensor & Magnetics (Laplace invariance, AmbientField, Magnetization, Linear parallel)
+add_executable(test_potential_tensor test_potential_tensor.cpp)
+target_link_libraries(test_potential_tensor PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_potential_tensor)
+
+
