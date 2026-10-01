@@ -94,6 +94,7 @@ public:
     Point3D Centroid() const;
     const Point3D *ContainsVertex(const Point3D *pt) const;
     void Reverse();
+    const Point3D &Normal() const { return v_n; }
 
     // High-level field calculation with reference model and body interaction
     void Compute(

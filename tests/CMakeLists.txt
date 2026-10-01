@@ -30,3 +30,8 @@ gtest_discover_tests(test_pfld_groundtruth)
 add_executable(test_field_compute test_field_compute.cpp)
 target_link_libraries(test_field_compute PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_field_compute)
+
+# Test Model, ColumnPoint, Grid
+add_executable(test_model test_model.cpp)
+target_link_libraries(test_model PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_model)

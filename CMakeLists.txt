@@ -27,6 +27,9 @@ add_library(mod3d_core STATIC
     src/Body.cpp
     src/Facet3Pt.cpp
     src/FieldCompute.cpp
+    src/ColumnPoint.cpp
+    src/Grid.cpp
+    src/Model.cpp
 )
 
 target_link_libraries(mod3d_core PUBLIC Threads::Threads)
