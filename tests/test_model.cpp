@@ -208,3 +208,95 @@ TEST(ModelGate2Test, LoadAndVerifyLegacySampleFacetList) {
     EXPECT_TRUE(std::isfinite(gz));
     EXPECT_NE(gz, 0.0);
 }
+
+TEST(FacetOrientationTest, WindingOrderAndNormalDirection) {
+    // 1. Horizontal top-facing facet (vertices wound CCW in XY plane)
+    // Looking from above (+Z): (0,0,0) -> (1000,0,0) -> (0,1000,0)
+    Point3D top0(0.0, 0.0, 0.0);
+    Point3D top1(1000.0, 0.0, 0.0);
+    Point3D top2(0.0, 1000.0, 0.0);
+    Facet3Pt fctTop(top0, top1, top2);
+
+    Point3D nTop = fctTop.Normal();
+    EXPECT_NEAR(nTop.x, 0.0, 1e-12);
+    EXPECT_NEAR(nTop.y, 0.0, 1e-12);
+    EXPECT_NEAR(nTop.z, 1.0, 1e-12); // Must point UPWARD (+Z)
+
+    // 2. Horizontal bottom-facing facet (swapping vertex 1 and 2 to invert winding)
+    // Looking from below (-Z): (0,0,-1000) -> (0,1000,-1000) -> (1000,0,-1000)
+    Point3D bot0(0.0, 0.0, -1000.0);
+    Point3D bot1(1000.0, 0.0, -1000.0);
+    Point3D bot2(0.0, 1000.0, -1000.0);
+    Facet3Pt fctBot(bot0, bot2, bot1); // swapped
+
+    Point3D nBot = fctBot.Normal();
+    EXPECT_NEAR(nBot.x, 0.0, 1e-12);
+    EXPECT_NEAR(nBot.y, 0.0, 1e-12);
+    EXPECT_NEAR(nBot.z, -1.0, 1e-12); // Must point DOWNWARD (-Z)
+
+    // 3. Facet reversal test
+    Facet3Pt fctReversed = fctTop;
+    fctReversed.Reverse();
+    Point3D nRev = fctReversed.Normal();
+    EXPECT_NEAR(nRev.x, -nTop.x, 1e-12);
+    EXPECT_NEAR(nRev.y, -nTop.y, 1e-12);
+    EXPECT_NEAR(nRev.z, -nTop.z, 1e-12); // Exactly inverted
+
+    // 4. Potential field integral sensitivity to facet orientation
+    Point3D obsPt(500.0, 500.0, 100.0);
+    Point3D gOriginal(0, 0, 0);
+    Point3D gReversed(0, 0, 0);
+
+    fctTop.Fld_G(obsPt, gOriginal);
+    fctReversed.Fld_G(obsPt, gReversed);
+
+    // The field integral from the reversed facet is the exact negative of the original
+    EXPECT_NEAR(gOriginal.x, -gReversed.x, 1e-15);
+    EXPECT_NEAR(gOriginal.y, -gReversed.y, 1e-15);
+    EXPECT_NEAR(gOriginal.z, -gReversed.z, 1e-15);
+}
+
+TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
+    Model model;
+    model.init(3, 3, 0.0, 0.0, 500.0, 500.0, -2000.0, 0.0);
+
+    Body *body = model.newBody();
+    body->SetDensity(2670.0);
+    const int bId = body->GetID();
+
+    // Create a 2x2 column prism from z = -400 to z = -800
+    for (int r = 1; r <= 2; ++r) {
+        for (int c = 1; c <= 2; ++c) {
+            model.insertBody(r, c, -600.0, 200.0, false, bId);
+        }
+    }
+
+    model.initFacetList();
+
+    std::vector<Facet3Pt> facets;
+    model.getFacetsComputation(facets);
+    ASSERT_GT(facets.size(), 0u);
+
+    // Center of mass of the modeled body: columns (1,1) to (2,2) span [0, 500] in X and Y
+    const Point3D bodyCenter(250.0, 250.0, -600.0);
+
+    // For every facet belonging to this body:
+    // The outward normal must point AWAY from the body center: (centroid - center) * normal >= 0
+    for (const auto &fct : facets) {
+        Point3D n = fct.Normal();
+        EXPECT_NEAR(n.Abs(), 1.0, 1e-9);
+
+        Point3D cntr(
+            (fct.pts[0].x + fct.pts[1].x + fct.pts[2].x) / 3.0,
+            (fct.pts[0].y + fct.pts[1].y + fct.pts[2].y) / 3.0,
+            (fct.pts[0].z + fct.pts[1].z + fct.pts[2].z) / 3.0
+        );
+
+        Point3D outwardDir = cntr - bodyCenter;
+        double dot = outwardDir * n;
+        // Direction vector dotted with normal must be non-negative (pointing outward)
+        EXPECT_GE(dot, -1e-6)
+            << "Facet normal points inward! Normal=(" << n.x << "," << n.y << "," << n.z
+            << "), Centroid=(" << cntr.x << "," << cntr.y << "," << cntr.z << ")";
+    }
+}
