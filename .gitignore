@@ -36,5 +36,7 @@ _UpgradeReport_Files/
 .DS_Store
 ._*
 
-# External standalone test repo
+# External standalone test repos
 pfld_UnitTest/
+pfld_app/
+pfld/

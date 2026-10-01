@@ -12,6 +12,7 @@ include(GoogleTest)
 # Define reference data path for tests
 add_compile_definitions(
     PFLD_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld_UnitTest/test_data"
+    PFLD_APP_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld_app"
     LEGACY_SAMPLE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../legacy/sample_data"
 )
 
@@ -19,3 +20,13 @@ add_compile_definitions(
 add_executable(test_point3d test_point3d.cpp)
 target_link_libraries(test_point3d PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_point3d)
+
+# Test pfld ground truth
+add_executable(test_pfld_groundtruth test_pfld_groundtruth.cpp)
+target_link_libraries(test_pfld_groundtruth PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_pfld_groundtruth)
+
+# Test FieldCompute (Parallel / Serial Engine)
+add_executable(test_field_compute test_field_compute.cpp)
+target_link_libraries(test_field_compute PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_field_compute)

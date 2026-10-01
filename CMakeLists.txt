@@ -18,10 +18,18 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
 endif()
 
+find_package(Threads REQUIRED)
+
 # Core static library
 add_library(mod3d_core STATIC
     src/Point3D.cpp
+    src/PotField.cpp
+    src/Body.cpp
+    src/Facet3Pt.cpp
+    src/FieldCompute.cpp
 )
+
+target_link_libraries(mod3d_core PUBLIC Threads::Threads)
 
 target_include_directories(mod3d_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
