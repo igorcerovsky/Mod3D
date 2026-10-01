@@ -145,6 +145,14 @@ public:
         return 0.0;
     }
 
+    // Euclidean distance to another point
+    double Distance(const Point3D& other) const {
+        return (*this - other).Abs();
+    }
+    double distance(const Point3D& other) const {
+        return (*this - other).Abs();
+    }
+
     // Angle of vector with Z axis
     double AngleZ() const {
         double l = Abs();

@@ -35,3 +35,8 @@ gtest_discover_tests(test_field_compute)
 add_executable(test_model test_model.cpp)
 target_link_libraries(test_model PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_model)
+
+# Test Primitives (Point3D edge cases, Body, ColumnPoint)
+add_executable(test_primitives test_primitives.cpp)
+target_link_libraries(test_primitives PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_primitives)
