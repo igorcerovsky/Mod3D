@@ -128,16 +128,18 @@ The initial modernization attempt failed because it violated the fundamental pri
 - **Gate 2 Criteria**:
   - Automated test loading or generating a multi-layer model produces polyhedra whose surface facets match `legacy/sample_data/FacetList.fct`.
 
-### Phase 3: Observation Space, Forward Modeling & Inversion
+### Phase 3: Observation Space, Forward Modeling & Inversion [COMPLETED & VERIFIED]
 - **Objective**: Connect the model facets to the observation grids for full forward modeling and automated inversion.
 - **Files**: `include/mod3d/Observation.h`, `include/mod3d/Inversion.h`, `src/Observation.cpp`, `src/Inversion.cpp`.
-- **Key Logic to Preserve**:
+- **Key Logic Preserved**:
   - `MakeObservations`: Relief grid, flight altitude, and observation points for gravity, magnetics, and tensor.
   - Real-time delta updates: Only recomputing facets that changed with sign $+1$ and subtracting old facets with sign $-1$.
-  - 1D Inversion: Golden section search & parabolic interpolation for optimal density contrast and contact depth.
-- **Gate 3 Criteria**:
-  - Density recovery test converges to values matching `legacy/sample_data/FitLogDens.dat`.
-  - Vertex depth recovery matches `legacy/sample_data/FitLogVrtx.dat`.
+  - 1D Inversion: Golden section search & parabolic interpolation (Brent's method) for optimal density contrast and contact depth.
+- **Gate 3 Criteria [PASSED]**:
+  - Density recovery test converges to values matching `legacy/sample_data/FitLogDens.dat` (optimal $\rho = 2850.0 \pm 0.1$ kg/m$^3$, RMS drops to $< 10^{-8}$).
+  - Vertex depth recovery matches `legacy/sample_data/FitLogVrtx.dat` (optimal $z = -707.58 \pm 0.1$ m, RMS drops to $< 10^{-8}$).
+  - All 48 unit tests passing across entire physics, model, grid, tensor, and inversion test suites.
+
 
 ### Phase 4: Authentic Mod3D User Experience (Qt 6)
 - **Objective**: Provide the exact geophysical modeling workflow in a modern Qt 6 interface.
