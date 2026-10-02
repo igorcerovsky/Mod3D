@@ -3,15 +3,11 @@
 #include "mod3d/PotField.h"
 #include <cmath>
 #include <algorithm>
+#include <utility>
 
 namespace mod3d {
 
 namespace {
-
-template<class T>
-inline T sign(T d) {
-    return ((d == 0) ? 0.0 : ((d < 0) ? -1.0 : 1.0));
-}
 
 inline Point3D sph(const Point3D &pt, const Point3D &shf) {
     constexpr double ER = 6375000.0;
@@ -30,24 +26,28 @@ inline Point3D sph(const Point3D &pt, const Point3D &shf) {
 
 } // namespace
 
-Facet3Pt::Facet3Pt()
-    : nType(FacetType::FCT_NORMAL), density(1000.0), densityOpos(0.0), dSign(1.0),
-      pBody(nullptr), pBodyOpos(nullptr)
-{
-}
-
 Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
-    : nType(FacetType::FCT_NORMAL), density(1000.0), densityOpos(0.0), dSign(1.0),
-      pBody(nullptr), pBodyOpos(nullptr)
+    : pts{pt0, pt1, pt2}
 {
-    Init(pt0, pt1, pt2);
+    Init();
 }
 
 Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW)
-    : nType(FacetType::FCT_NORMAL), density(densityCCW), densityOpos(densityCW), dSign(1.0),
-      pBody(nullptr), pBodyOpos(nullptr)
+    : pts{pt0, pt1, pt2}, density(densityCCW), densityOpos(densityCW)
 {
-    Init(pt0, pt1, pt2, densityCCW, densityCW);
+    Init();
+}
+
+Facet3Pt::Facet3Pt(std::span<const Point3D, 3> points)
+    : pts{points[0], points[1], points[2]}
+{
+    Init();
+}
+
+Facet3Pt::Facet3Pt(const std::array<Point3D, 3> &points)
+    : pts(points)
+{
+    Init();
 }
 
 void Facet3Pt::Init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
@@ -80,9 +80,25 @@ void Facet3Pt::Init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, 
 
 void Facet3Pt::Init(const Point3D *ppts)
 {
+    if (ppts) {
+        pts[0] = ppts[0];
+        pts[1] = ppts[1];
+        pts[2] = ppts[2];
+        Init();
+    }
+}
+
+void Facet3Pt::Init(std::span<const Point3D, 3> ppts)
+{
     pts[0] = ppts[0];
     pts[1] = ppts[1];
     pts[2] = ppts[2];
+    Init();
+}
+
+void Facet3Pt::Init(const std::array<Point3D, 3> &ppts)
+{
+    pts = ppts;
     Init();
 }
 
@@ -100,36 +116,28 @@ void Facet3Pt::SetOpositDensity(double dDensity, Point3D v_grad)
 {
     densityOpos = dDensity;
     v_densGradOpos = v_grad;
-    bLinOpos = v_densGradOpos.IsZero();
+    bLinOpos = v_densGradOpos.is_zero();
 }
 
 void Facet3Pt::Init()
 {
     // Outward unit normal vector (for triangle in CCW order)
-    v_n = (pts[0] - pts[1]) / (pts[1] - pts[2]);
-    v_n.Unit();
+    v_n = (pts[0] - pts[1]).cross(pts[1] - pts[2]);
+    v_n.normalize();
 
-    int n = 3;
-    for (int i = 0; i < n; i++) {
-        if (i != n - 1) {
-            v_mi[i] = pts[i + 1] - pts[i];
-            v_L[i] = v_mi[i];
-            len[i] = v_mi[i].Abs();
-            v_mi[i].Unit();
-        } else {
-            v_mi[i] = pts[0] - pts[i];
-            v_L[i] = v_mi[i];
-            len[i] = v_mi[i].Abs();
-            v_mi[i].Unit();
-        }
-        v_ni[i] = v_mi[i] / v_n;
+    for (size_t i = 0; i < 3; ++i) {
+        v_mi[i] = pts[(i + 1) % 3] - pts[i];
+        v_L[i] = v_mi[i];
+        len[i] = v_mi[i].norm();
+        v_mi[i].normalize();
+        v_ni[i] = v_mi[i].cross(v_n);
     }
 
-    bLin = v_densGrad.IsZero();
-    bLinOpos = v_densGradOpos.IsZero();
+    bLin = v_densGrad.is_zero();
+    bLinOpos = v_densGradOpos.is_zero();
 
     // Initialize modern header-only pfld facet representation
-    m_pfld.Init(std::span<const Point3D>(pts, 3));
+    m_pfld.Init(std::span<const Point3D, 3>(pts));
 }
 
 // Gravity field of a polygonal facet (Pohanka / Vlado) with constant density
@@ -166,52 +174,68 @@ void Facet3Pt::FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, double dSi
 
 double Facet3Pt::SolidAngle(const Point3D *spts) const
 {
+    if (!spts) return 0.0;
     return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(spts, 3), v_n * spts[1], 3);
+}
+
+double Facet3Pt::SolidAngle(std::span<const Point3D, 3> spts) const
+{
+    return pfld::Facet<double>::SolidAngle(spts, v_n * spts[1], 3);
 }
 
 void Facet3Pt::FldSpherVlado(const Point3D &v_r, Point3D &v_Grv) const
 {
-    Point3D spts[3];
-    for (int i = 0; i < 3; i++) {
-        spts[i] = sph(pts[i], v_r * (-1.0));
+    std::array<Point3D, 3> spts;
+    for (size_t i = 0; i < 3; ++i) {
+        spts[i] = sph(pts[i], -v_r);
     }
 
-    pfld::Facet<double> fctS(std::span<const Point3D>(spts, 3), true);
+    pfld::Facet<double> fctS(std::span<const Point3D>(spts.data(), 3), true);
     fctS.Fld_G(Point3D(0, 0, 0), v_Grv);
 }
 
 void Facet3Pt::FldSpherGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point3D &v_Grv) const
 {
-    Point3D spts[3];
-    for (int i = 0; i < 3; i++) {
-        spts[i] = sph(pts[i], v_r * (-1.0));
+    std::array<Point3D, 3> spts;
+    for (size_t i = 0; i < 3; ++i) {
+        spts[i] = sph(pts[i], -v_r);
     }
 
-    pfld::Facet<double> fctS(std::span<const Point3D>(spts, 3), true);
+    pfld::Facet<double> fctS(std::span<const Point3D>(spts.data(), 3), true);
     fctS.FldGS(Point3D(0, 0, 0), v_M, v_Mag, v_Grv);
 }
 
-
-double Facet3Pt::GetMeanElevation() const
+double Facet3Pt::GetMeanElevation() const noexcept
 {
     return (pts[0].z + pts[1].z + pts[2].z) / 3.0;
 }
 
-Point3D Facet3Pt::Centroid() const
+Point3D Facet3Pt::Centroid() const noexcept
 {
     return pts[0] + pts[1] + pts[2];
 }
 
-const Point3D *Facet3Pt::ContainsVertex(const Point3D *pt) const
+double Facet3Pt::area() const noexcept
 {
-    for (int i = 0; i < 3; i++) {
+    return 0.5 * (pts[1] - pts[0]).cross(pts[2] - pts[0]).norm();
+}
+
+const Point3D *Facet3Pt::ContainsVertex(const Point3D *pt) const noexcept
+{
+    if (!pt) return nullptr;
+    for (size_t i = 0; i < 3; ++i) {
         if (pts[i] == *pt)
             return &pts[i];
     }
     return nullptr;
 }
 
-bool Facet3Pt::IsOposit(const Facet3Pt &fct) const
+bool Facet3Pt::contains_vertex(const Point3D &pt) const noexcept
+{
+    return (pts[0] == pt || pts[1] == pt || pts[2] == pt);
+}
+
+bool Facet3Pt::IsOposit(const Facet3Pt &fct) const noexcept
 {
     Point3D c1 = pts[0] + pts[2] + pts[1];
     Point3D c2 = fct.pts[0] + fct.pts[1] + fct.pts[2];
@@ -220,14 +244,8 @@ bool Facet3Pt::IsOposit(const Facet3Pt &fct) const
 
 void Facet3Pt::Reverse()
 {
-    Point3D pt = pts[0];
-    pts[0] = pts[2];
-    pts[2] = pt;
-
-    Body *pBd = pBody;
-    pBody = pBodyOpos;
-    pBodyOpos = pBd;
-
+    std::swap(pts[0], pts[2]);
+    std::swap(pBody, pBodyOpos);
     Init();
 }
 
@@ -239,6 +257,9 @@ static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet, Point
     Point3D fb(0, 0, 0), fOb(0, 0, 0);
 
     if (pBodyOpos == nullptr) {
+        if (!pBody) {
+            return false;
+        }
         if (pBody->GetDensityGradient().IsZero()) {
             if (nTag == 1) {
                 facet.FldVlado(v_r, fb);
@@ -260,11 +281,13 @@ static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet, Point
             fGrv = fb - fOb;
         }
     } else {
-        if (pBody->GetDensityGradient().IsZero()) {
-            facet.FldVlado(v_r, fb);
-            fb = fb * pBody->GetDensity();
-        } else {
-            facet.FldVlado(v_r, fb, pBody->GetDensityGradient(), pBody->GetDensityAtOrigin());
+        if (pBody) {
+            if (pBody->GetDensityGradient().IsZero()) {
+                facet.FldVlado(v_r, fb);
+                fb = fb * pBody->GetDensity();
+            } else {
+                facet.FldVlado(v_r, fb, pBody->GetDensityGradient(), pBody->GetDensityAtOrigin());
+            }
         }
 
         if (pBodyOpos->GetDensityGradient().IsZero()) {
@@ -286,7 +309,7 @@ void Facet3Pt::Compute(
     Point3D &v_rGrv, Point3D &v_rTen, Point3D &v_rMag,
     double &dUnitGrv, double &dUnitMag, double &dUnitTns)
 {
-    if (GetType() == FacetType::FCT_NULL)
+    if (is_null())
         return;
 
     Point3D fGrv(0, 0, 0), fMag(0, 0, 0);

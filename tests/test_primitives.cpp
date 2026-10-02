@@ -2,7 +2,11 @@
 #include "mod3d/Point3D.h"
 #include "mod3d/Body.h"
 #include "mod3d/ColumnPoint.h"
+#include "mod3d/Facet3Pt.h"
 #include <cmath>
+#include <array>
+#include <span>
+#include <type_traits>
 
 using namespace mod3d;
 
@@ -208,4 +212,145 @@ TEST(BodyTest, VisualAndLockStates) {
 
     b.SetTransparency(0.8f);
     EXPECT_FLOAT_EQ(b.GetTransparency(), 0.8f);
+}
+
+// ============================================================================
+// 4. Facet3Pt Modernized API and Geometry Tests
+// ============================================================================
+
+TEST(Facet3PtTest, NonPolymorphicAndSize) {
+    // Ensure vtable overhead is removed
+    static_assert(!std::is_polymorphic_v<Facet3Pt>, "Facet3Pt must not be polymorphic");
+
+    Facet3Pt f;
+    EXPECT_EQ(f.size(), 3);
+    EXPECT_FALSE(f.empty());
+    EXPECT_FALSE(f.is_null());
+    EXPECT_FALSE(f.is_outer());
+    EXPECT_EQ(f.type(), FacetType::FCT_NORMAL);
+    EXPECT_DOUBLE_EQ(f.sign(), 1.0);
+}
+
+TEST(Facet3PtTest, ConstructorsAndAccessors) {
+    Point3D p0(0.0, 0.0, 100.0);
+    Point3D p1(10.0, 0.0, 100.0);
+    Point3D p2(0.0, 10.0, 100.0);
+
+    // Constructor with 3 points
+    Facet3Pt f1(p0, p1, p2, 2670.0, 1000.0);
+    EXPECT_EQ(f1[0], p0);
+    EXPECT_EQ(f1[1], p1);
+    EXPECT_EQ(f1[2], p2);
+    EXPECT_EQ(f1.points()[0], p0);
+    EXPECT_DOUBLE_EQ(f1.density, 2670.0);
+    EXPECT_DOUBLE_EQ(f1.densityOpos, 1000.0);
+
+    // Constructor with std::array
+    std::array<Point3D, 3> arr{p0, p1, p2};
+    Facet3Pt f2(arr);
+    EXPECT_EQ(f2, f1);
+
+    // Constructor with std::span
+    std::span<const Point3D, 3> sp(arr);
+    Facet3Pt f3(sp);
+    EXPECT_EQ(f3, f1);
+}
+
+TEST(Facet3PtTest, GeometryNormalsAreaAndCentroids) {
+    // Counter-clockwise horizontal triangle in XY plane at Z = 100
+    Point3D p0(0.0, 0.0, 100.0);
+    Point3D p1(10.0, 0.0, 100.0);
+    Point3D p2(0.0, 10.0, 100.0);
+
+    Facet3Pt f(p0, p1, p2);
+
+    // Outward normal points up (+Z)
+    Point3D n = f.normal();
+    EXPECT_NEAR(n.x, 0.0, 1e-12);
+    EXPECT_NEAR(n.y, 0.0, 1e-12);
+    EXPECT_NEAR(n.z, 1.0, 1e-12);
+    EXPECT_EQ(f.Normal(), f.normal());
+
+    // Triangle area: base 10, height 10 => 0.5 * 10 * 10 = 50.0
+    EXPECT_NEAR(f.area(), 50.0, 1e-12);
+
+    // Mean elevation
+    EXPECT_DOUBLE_EQ(f.mean_elevation(), 100.0);
+    EXPECT_DOUBLE_EQ(f.GetMeanElevation(), 100.0);
+
+    // True center (geometric centroid)
+    Point3D c = f.center();
+    EXPECT_NEAR(c.x, 10.0 / 3.0, 1e-12);
+    EXPECT_NEAR(c.y, 10.0 / 3.0, 1e-12);
+    EXPECT_NEAR(c.z, 100.0, 1e-12);
+
+    // Legacy Centroid() (unnormalized sum: p0 + p1 + p2)
+    Point3D legacyCntr = f.Centroid();
+    EXPECT_EQ(legacyCntr, Point3D(10.0, 10.0, 300.0));
+    EXPECT_EQ(f.centroid(), legacyCntr);
+
+    // Vertex containment
+    EXPECT_TRUE(f.contains_vertex(p0));
+    EXPECT_TRUE(f.contains_vertex(p1));
+    EXPECT_TRUE(f.contains_vertex(p2));
+    EXPECT_FALSE(f.contains_vertex(Point3D(5.0, 5.0, 100.0)));
+    EXPECT_NE(f.ContainsVertex(&p1), nullptr);
+    EXPECT_EQ(f.ContainsVertex(nullptr), nullptr);
+}
+
+TEST(Facet3PtTest, ReverseAndOpposites) {
+    Point3D p0(0.0, 0.0, 100.0);
+    Point3D p1(10.0, 0.0, 100.0);
+    Point3D p2(0.0, 10.0, 100.0);
+
+    Body b1(1, "TopBody", 2500.0);
+    Body b2(2, "BotBody", 2700.0);
+
+    Facet3Pt f(p0, p1, p2);
+    f.pBody = &b1;
+    f.pBodyOpos = &b2;
+
+    EXPECT_NEAR(f.normal().z, 1.0, 1e-12);
+    EXPECT_EQ(f.pBody, &b1);
+    EXPECT_EQ(f.pBodyOpos, &b2);
+
+    // Reverse facet
+    f.Reverse();
+    EXPECT_EQ(f[0], p2);
+    EXPECT_EQ(f[1], p1);
+    EXPECT_EQ(f[2], p0);
+    EXPECT_NEAR(f.normal().z, -1.0, 1e-12);
+    EXPECT_EQ(f.pBody, &b2);
+    EXPECT_EQ(f.pBodyOpos, &b1);
+
+    // Opposite facet test
+    Facet3Pt original(p0, p1, p2);
+    EXPECT_TRUE(f.is_opposite(original));
+    EXPECT_TRUE(f.IsOposit(original));
+}
+
+TEST(Facet3PtTest, PfldIntegrationAndFieldConsistency) {
+    Point3D p0(0.0, 0.0, 0.0);
+    Point3D p1(100.0, 0.0, 0.0);
+    Point3D p2(0.0, 100.0, 0.0);
+
+    Facet3Pt f(p0, p1, p2);
+
+    Point3D obs(50.0, 50.0, -100.0); // observation point above facet
+    double gzMod3d = 0.0;
+    f.Fld_Gz(obs, gzMod3d);
+
+    double gzPfld = f.field_gz(obs);
+    EXPECT_NEAR(gzMod3d, gzPfld, 1e-14);
+
+    Point3D gMod3d(0, 0, 0);
+    f.Fld_G(obs, gMod3d);
+
+    Point3D gPfld = f.field_g(obs);
+    EXPECT_NEAR(gMod3d.x, gPfld.x, 1e-14);
+    EXPECT_NEAR(gMod3d.y, gPfld.y, 1e-14);
+    EXPECT_NEAR(gMod3d.z, gPfld.z, 1e-14);
+
+    // Ensure pfld_facet() reference matches
+    EXPECT_EQ(f.pfld_facet().size(), 3);
 }
