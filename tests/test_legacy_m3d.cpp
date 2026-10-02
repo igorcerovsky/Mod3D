@@ -207,7 +207,7 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
-    std::string path = std::string(MOD3D_EXAMPLES_DIR) + "/Test.m3d";
+    std::string path = std::string(MOD3D_TEST_DATA_DIR) + "/models/Test.m3d";
     ASSERT_TRUE(fs::exists(path)) << "Path does not exist: " << path;
 
     Project proj;
@@ -266,7 +266,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
-    std::string path = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    std::string path = std::string(MOD3D_TEST_DATA_DIR) + "/models/Sample.m3d";
     ASSERT_TRUE(fs::exists(path)) << "Path does not exist: " << path;
 
     Project proj;
@@ -303,27 +303,10 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     std::vector<Facet3Pt> facets;
     proj.model().getFacetsComputation(facets);
     EXPECT_GT(facets.size(), 300u);
-
-    // Verify Polyhedral Mesh Exporters with Authentic Sample Model
-    std::string objOut = (fs::temp_directory_path() / "test_sample_export.obj").string();
-    std::string stlOut = (fs::temp_directory_path() / "test_sample_export.stl").string();
-    std::string vtkOut = (fs::temp_directory_path() / "test_sample_export.vtk").string();
-
-    EXPECT_TRUE(proj.exportObj(objOut));
-    EXPECT_TRUE(proj.exportStl(stlOut, true));
-    EXPECT_TRUE(proj.exportVtk(vtkOut));
-
-    EXPECT_GT(fs::file_size(objOut), 1000u);
-    EXPECT_GT(fs::file_size(stlOut), 1000u);
-    EXPECT_GT(fs::file_size(vtkOut), 1000u);
-
-    fs::remove(objOut);
-    fs::remove(stlOut);
-    fs::remove(vtkOut);
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
-    std::string path = std::string(MOD3D_EXAMPLES_DIR) + "/TestMag.m3d";
+    std::string path = std::string(MOD3D_TEST_DATA_DIR) + "/models/TestMag.m3d";
     ASSERT_TRUE(fs::exists(path));
 
     Project proj;
@@ -345,7 +328,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_NestedAndInclinedBodies) {
-    std::string nestedPath = std::string(MOD3D_EXAMPLES_DIR) + "/NestedInside.m3d";
+    std::string nestedPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/NestedInside.m3d";
     ASSERT_TRUE(fs::exists(nestedPath));
 
     Project projNested;
@@ -355,7 +338,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_NestedAndInclinedBodies) {
     projNested.model().getFacetsComputation(nestedFacets);
     EXPECT_GT(nestedFacets.size(), 100u);
 
-    std::string inclinedPath = std::string(MOD3D_EXAMPLES_DIR) + "/InclinedBody.m3d";
+    std::string inclinedPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/InclinedBody.m3d";
     ASSERT_TRUE(fs::exists(inclinedPath));
 
     Project projInclined;
@@ -367,7 +350,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_NestedAndInclinedBodies) {
 }
 
 TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
-    std::string reliefPath = std::string(MOD3D_EXAMPLES_DIR) + "/SampleRelief.grd";
+    std::string reliefPath = std::string(MOD3D_TEST_DATA_DIR) + "/grids/SampleRelief.grd";
     ASSERT_TRUE(fs::exists(reliefPath));
 
     Grid relief;
@@ -382,7 +365,7 @@ TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
     EXPECT_NEAR(relief.getMax(), 484.95, 0.1);
 
     // Test grid with dummy (nodata) values
-    std::string dummyPath = std::string(MOD3D_EXAMPLES_DIR) + "/gz_dummy.grd";
+    std::string dummyPath = std::string(MOD3D_TEST_DATA_DIR) + "/grids/gz_dummy.grd";
     ASSERT_TRUE(fs::exists(dummyPath));
 
     Grid gzDummy;
@@ -404,5 +387,167 @@ TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
     // Min and max must properly exclude dummy values
     EXPECT_NEAR(gzDummy.getMin(), -12.06, 0.1);
     EXPECT_NEAR(gzDummy.getMax(), 7.82, 0.1);
+}
+
+TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
+    const std::vector<std::string> modelFiles = {
+        "Test.m3d",
+        "Sample.m3d",
+        "TestMag.m3d",
+        "NestedInside.m3d",
+        "InclinedBody.m3d",
+        "TestZeroDensity.m3d"
+    };
+
+    for (const auto &fn : modelFiles) {
+        std::string m3dPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/" + fn;
+        ASSERT_TRUE(fs::exists(m3dPath)) << "Missing test model: " << m3dPath;
+
+        Project origProj;
+        ASSERT_TRUE(origProj.loadLegacyM3D(m3dPath)) << "Failed to load legacy: " << fn;
+
+        // Export to modern .mod3d (JSON)
+        std::string jsonPath = (fs::temp_directory_path() / (fn + ".mod3d")).string();
+        ASSERT_TRUE(origProj.saveJson(jsonPath)) << "Failed to save modern JSON for: " << fn;
+        ASSERT_TRUE(fs::exists(jsonPath));
+        ASSERT_GT(fs::file_size(jsonPath), 500u);
+
+        // Reload the modern project format
+        Project reloadedProj;
+        ASSERT_TRUE(reloadedProj.loadJson(jsonPath)) << "Failed to reload modern JSON for: " << fn;
+
+        // Verify full fidelity between original and reloaded
+        EXPECT_EQ(origProj.model().getRows(), reloadedProj.model().getRows());
+        EXPECT_EQ(origProj.model().getCols(), reloadedProj.model().getCols());
+        EXPECT_DOUBLE_EQ(origProj.model().getX0(), reloadedProj.model().getX0());
+        EXPECT_DOUBLE_EQ(origProj.model().getY0(), reloadedProj.model().getY0());
+        EXPECT_DOUBLE_EQ(origProj.model().getXSize(), reloadedProj.model().getXSize());
+        EXPECT_DOUBLE_EQ(origProj.model().getYSize(), reloadedProj.model().getYSize());
+        EXPECT_DOUBLE_EQ(origProj.model().getZMin(), reloadedProj.model().getZMin());
+        EXPECT_DOUBLE_EQ(origProj.model().getZMax(), reloadedProj.model().getZMax());
+        EXPECT_EQ(origProj.model().isExtend(), reloadedProj.model().isExtend());
+
+        // Verify Bodies
+        ASSERT_EQ(origProj.model().getBodies().size(), reloadedProj.model().getBodies().size());
+        for (const auto &origBody : origProj.model().getBodies()) {
+            const Body *relBody = reloadedProj.model().getBody(origBody->GetID());
+            ASSERT_NE(relBody, nullptr) << "Body ID " << origBody->GetID() << " not found in reloaded " << fn;
+            EXPECT_EQ(origBody->GetName(), relBody->GetName());
+            EXPECT_DOUBLE_EQ(origBody->GetRawDensity(), relBody->GetRawDensity());
+            EXPECT_NEAR(origBody->GetSusceptibility(), relBody->GetSusceptibility(), 1e-6);
+            EXPECT_EQ(origBody->IsActive(), relBody->IsActive());
+        }
+
+        // Verify Column Points
+        for (int r = 0; r < origProj.model().getRows(); ++r) {
+            for (int c = 0; c < origProj.model().getCols(); ++c) {
+                size_t cnt1 = origProj.model().getCount(r, c);
+                size_t cnt2 = reloadedProj.model().getCount(r, c);
+                ASSERT_EQ(cnt1, cnt2);
+                for (size_t k = 0; k < cnt1; ++k) {
+                    const auto *p1 = origProj.model().getAt(r, c, static_cast<int>(k));
+                    const auto *p2 = reloadedProj.model().getAt(r, c, static_cast<int>(k));
+                    ASSERT_NE(p1, nullptr);
+                    ASSERT_NE(p2, nullptr);
+                    EXPECT_EQ(p1->bodyId(), p2->bodyId());
+                    EXPECT_NEAR(p1->point().x, p2->point().x, 1e-4);
+                    EXPECT_NEAR(p1->point().y, p2->point().y, 1e-4);
+                    EXPECT_NEAR(p1->point().z, p2->point().z, 1e-4);
+                }
+            }
+        }
+
+        // Verify Facets List
+        std::vector<Facet3Pt> fOrig, fReload;
+        origProj.model().getFacetsComputation(fOrig);
+        reloadedProj.model().getFacetsComputation(fReload);
+        EXPECT_EQ(fOrig.size(), fReload.size()) << "Facet mismatch for " << fn;
+
+        // Cleanup
+        fs::remove(jsonPath);
+    }
+}
+
+TEST(LegacyM3DTest, ExportAllAuthenticModelsToObjStlVtk) {
+    const std::vector<std::string> modelFiles = {
+        "Test.m3d",
+        "Sample.m3d",
+        "TestMag.m3d",
+        "NestedInside.m3d",
+        "InclinedBody.m3d"
+    };
+
+    for (const auto &fn : modelFiles) {
+        std::string m3dPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/" + fn;
+        Project proj;
+        ASSERT_TRUE(proj.loadLegacyM3D(m3dPath));
+
+        std::vector<Facet3Pt> facets;
+        proj.model().getFacetsComputation(facets);
+        ASSERT_GT(facets.size(), 0u);
+
+        std::string baseOut = (fs::temp_directory_path() / fn).string();
+        std::string objPath = baseOut + ".obj";
+        std::string stlAsciiPath = baseOut + "_ascii.stl";
+        std::string stlBinPath = baseOut + "_bin.stl";
+        std::string vtkPath = baseOut + ".vtk";
+
+        // 1. Export OBJ
+        EXPECT_TRUE(proj.exportObj(objPath));
+        ASSERT_TRUE(fs::exists(objPath));
+        {
+            std::ifstream ifs(objPath);
+            std::string line;
+            size_t vertexCount = 0, faceCount = 0;
+            while (std::getline(ifs, line)) {
+                if (line.rfind("v ", 0) == 0) ++vertexCount;
+                if (line.rfind("f ", 0) == 0) ++faceCount;
+            }
+            EXPECT_EQ(faceCount, facets.size());
+            EXPECT_EQ(vertexCount, facets.size() * 3);
+        }
+
+        // 2. Export STL ASCII
+        EXPECT_TRUE(proj.exportStl(stlAsciiPath, -1, false));
+        ASSERT_TRUE(fs::exists(stlAsciiPath));
+        {
+            std::ifstream ifs(stlAsciiPath);
+            std::string firstLine;
+            std::getline(ifs, firstLine);
+            EXPECT_NE(firstLine.find("solid"), std::string::npos);
+        }
+
+        // 3. Export STL Binary
+        EXPECT_TRUE(proj.exportStl(stlBinPath, -1, true));
+        ASSERT_TRUE(fs::exists(stlBinPath));
+        {
+            size_t binSize = fs::file_size(stlBinPath);
+            ASSERT_GE(binSize, 84u);
+            std::ifstream ifs(stlBinPath, std::ios::binary);
+            ifs.seekg(80);
+            uint32_t triCount = 0;
+            ifs.read(reinterpret_cast<char *>(&triCount), sizeof(uint32_t));
+            EXPECT_EQ(binSize, 84u + triCount * 50u);
+            EXPECT_GT(triCount, 0u);
+        }
+
+        // 4. Export VTK PolyData
+        EXPECT_TRUE(proj.exportVtk(vtkPath));
+        ASSERT_TRUE(fs::exists(vtkPath));
+        {
+            std::ifstream ifs(vtkPath);
+            std::string content((std::istreambuf_iterator<char>(ifs)), std::istreambuf_iterator<char>());
+            EXPECT_NE(content.find("# vtk DataFile Version 3.0"), std::string::npos);
+            EXPECT_NE(content.find("DATASET POLYDATA"), std::string::npos);
+            EXPECT_NE(content.find("CELL_DATA"), std::string::npos);
+            EXPECT_NE(content.find("SCALARS Density"), std::string::npos);
+        }
+
+        // Clean up
+        fs::remove(objPath);
+        fs::remove(stlAsciiPath);
+        fs::remove(stlBinPath);
+        fs::remove(vtkPath);
+    }
 }
 

@@ -15,6 +15,7 @@ add_compile_definitions(
     PFLD_APP_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld/tests/test_data"
     LEGACY_SAMPLE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../legacy/sample_data"
     MOD3D_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../Examples"
+    MOD3D_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
 )
 
 # Test Point3D
