@@ -74,11 +74,24 @@ TEST(Point3DTest, DistanceAndAngle) {
 // ============================================================================
 
 TEST(ColumnPointTest, ConstructorsAndDefaults) {
+    // Compile-time layout guarantees
+    static_assert(std::is_standard_layout_v<ColumnPoint>, "ColumnPoint must be standard layout");
+    static_assert(std::is_trivially_copyable_v<ColumnPoint>, "ColumnPoint must be trivially copyable");
+
+    // Compile-time constexpr evaluation
+    constexpr ColumnPoint cpConst(Point3D(100.0, 200.0, -500.0), 7);
+    static_assert(cpConst.z() == -500.0);
+    static_assert(cpConst.x() == 100.0);
+    static_assert(cpConst.y() == 200.0);
+    static_assert(cpConst.bodyId() == 7);
+    static_assert(cpConst.isModified());
+
     ColumnPoint cpDefault;
     EXPECT_DOUBLE_EQ(cpDefault.z(), 0.0);
     EXPECT_EQ(cpDefault.bodyId(), -1);
     EXPECT_EQ(cpDefault.body(), nullptr);
     EXPECT_TRUE(cpDefault.isModified());
+    EXPECT_FALSE(cpDefault.has_body());
 
     ColumnPoint cpZ(-450.0);
     EXPECT_DOUBLE_EQ(cpZ.z(), -450.0);
@@ -89,6 +102,14 @@ TEST(ColumnPointTest, ConstructorsAndDefaults) {
     EXPECT_EQ(cpBody.bodyId(), 42);
     EXPECT_EQ(cpBody.body(), &testBody);
     EXPECT_DOUBLE_EQ(cpBody.z(), -600.0);
+    EXPECT_TRUE(cpBody.has_body());
+
+    // 5-arg coordinate constructor
+    ColumnPoint cpCoords(10.0, 20.0, -30.0, 5, &testBody);
+    EXPECT_DOUBLE_EQ(cpCoords.x(), 10.0);
+    EXPECT_DOUBLE_EQ(cpCoords.y(), 20.0);
+    EXPECT_DOUBLE_EQ(cpCoords.z(), -30.0);
+    EXPECT_EQ(cpCoords.bodyId(), 5);
 }
 
 TEST(ColumnPointTest, SettersAndSync) {
@@ -109,6 +130,47 @@ TEST(ColumnPointTest, SettersAndSync) {
     EXPECT_EQ(cp.point(), newPt);
     EXPECT_DOUBLE_EQ(cp.z(), -850.0);
     EXPECT_TRUE(cp.isModified());
+
+    // set_coords and individual component setters
+    cp.setModified(false);
+    cp.set_coords(50.0, 60.0, -100.0);
+    EXPECT_DOUBLE_EQ(cp.x(), 50.0);
+    EXPECT_DOUBLE_EQ(cp.y(), 60.0);
+    EXPECT_DOUBLE_EQ(cp.z(), -100.0);
+    EXPECT_TRUE(cp.isModified());
+
+    cp.set_x(75.0);
+    cp.set_y(85.0);
+    cp.set_z(-120.0);
+    EXPECT_DOUBLE_EQ(cp.x(), 75.0);
+    EXPECT_DOUBLE_EQ(cp.y(), 85.0);
+    EXPECT_DOUBLE_EQ(cp.z(), -120.0);
+}
+
+TEST(ColumnPointTest, ComparisonsAndPredicates) {
+    ColumnPoint pTop(Point3D(0.0, 0.0, -100.0), 1);
+    ColumnPoint pBot(Point3D(0.0, 0.0, -300.0), 1);
+
+    EXPECT_TRUE(pTop == pTop);
+    EXPECT_FALSE(pTop == pBot);
+
+    // Relative vertical position
+    EXPECT_TRUE(pTop.is_above(pBot));
+    EXPECT_FALSE(pTop.is_below(pBot));
+    EXPECT_TRUE(pBot.is_below(pTop));
+
+    // Sorting predicates
+    ColumnPoint::DepthLess depthLess;
+    ColumnPoint::DepthGreater depthGreater;
+    EXPECT_TRUE(depthLess(pBot, pTop));      // -300 < -100
+    EXPECT_TRUE(depthGreater(pTop, pBot));   // -100 > -300
+
+    // Stream operator formatting
+    std::ostringstream oss;
+    oss << pTop;
+    std::string str = oss.str();
+    EXPECT_NE(str.find("ColumnPoint"), std::string::npos);
+    EXPECT_NE(str.find("-100"), std::string::npos);
 }
 
 // ============================================================================
