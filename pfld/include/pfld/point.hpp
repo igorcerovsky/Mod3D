@@ -129,6 +129,76 @@ public:
 		return copy;
 	}
 
+	// Offset all components by scalar
+	constexpr Point3D operator+(const T a) const noexcept {
+		return Point3D(x + a, y + a, z + a);
+	}
+
+	// Make all components positive
+	void Positive() noexcept {
+		x = std::abs(x);
+		y = std::abs(y);
+		z = std::abs(z);
+	}
+
+	// Invert sign of all components
+	constexpr void TurnSign() noexcept {
+		x = -x;
+		y = -y;
+		z = -z;
+	}
+
+	// Reset to origin
+	constexpr void Zero() noexcept {
+		x = T{0};
+		y = T{0};
+		z = T{0};
+	}
+
+	// Check if zero
+	[[nodiscard]] constexpr bool IsZero() const noexcept {
+		return (x == T{0} && y == T{0} && z == T{0});
+	}
+
+	// Angle with another vector (in radians)
+	[[nodiscard]] T Angle(const Point3D& v) const noexcept {
+		const T denom = std::sqrt((v * v) * ((*this) * (*this)));
+		if (denom > std::numeric_limits<T>::epsilon()) {
+			const T cosVal = std::clamp((*this * v) / denom, T{-1}, T{1});
+			return std::acos(cosVal);
+		}
+		return T{0};
+	}
+
+	// Euclidean distance to another point
+	[[nodiscard]] T Distance(const Point3D& other) const noexcept {
+		return (*this - other).Abs();
+	}
+	[[nodiscard]] T distance(const Point3D& other) const noexcept {
+		return (*this - other).Abs();
+	}
+
+	// Direction cosine with Z axis
+	[[nodiscard]] T AngleZ() const noexcept {
+		const T l = Abs();
+		if (l > std::numeric_limits<T>::epsilon()) {
+			return z / l;
+		}
+		return T{0};
+	}
+
+	// Component-wise offset
+	constexpr void Offset(T xOffset, T yOffset, T zOffset) noexcept {
+		x += xOffset;
+		y += yOffset;
+		z += zOffset;
+	}
+	constexpr void Offset(const Point3D& pt) noexcept {
+		x += pt.x;
+		y += pt.y;
+		z += pt.z;
+	}
+
 	// Legacy static helpers
 	static constexpr void Add(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
 		res.x = pt1.x + pt2.x; res.y = pt1.y + pt2.y; res.z = pt1.z + pt2.z;
@@ -151,6 +221,8 @@ public:
 // Aliases for common floating point precisions
 using Point3Dd = Point3D<double>;
 using Point3Df = Point3D<float>;
+using point = Point3D<double>;
+using ptvec = std::vector<point>;
 
 // Compile-time checks for standard layout and trivial copyability
 static_assert(std::is_standard_layout_v<Point3D<double>>, "Point3D<double> must be standard layout");

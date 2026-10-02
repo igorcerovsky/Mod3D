@@ -127,71 +127,21 @@ void Facet3Pt::Init()
 
     bLin = v_densGrad.IsZero();
     bLinOpos = v_densGradOpos.IsZero();
+
+    // Initialize modern header-only pfld facet representation
+    m_pfld.Init(std::span<const Point3D>(pts, 3));
 }
 
 // Gravity field of a polygonal facet (Pohanka / Vlado) with constant density
 void Facet3Pt::FldVlado(const Point3D &v_r, Point3D &v_Grv) const
 {
-    int n = 3;
-    double z, u, v, w, W2, W, U, V, T, f = 0.0;
-
-    const Point3D *v_a = &pts[0];
-    z = std::fabs(v_n * (*v_a - v_r));
-
-    for (int i = 0; i < n; i++) {
-        u = v_mi[i] * (pts[i] - v_r);
-        v = u + len[i];
-        w = v_ni[i] * (pts[i] - v_r);
-
-        z = z + EPS_VAL;
-        W2 = w * w + z * z;
-        U = std::sqrt(u * u + W2);
-        V = std::sqrt(v * v + W2);
-        W = std::sqrt(W2);
-        T = U + V;
-        f += w * (sign(v) * std::log((V + std::fabs(v)) / W) - sign(u) * std::log((U + std::fabs(u)) / W)) -
-             2.0 * z * std::atan((2.0 * w * len[i]) / ((T + len[i]) * std::fabs(T - len[i]) + 2.0 * T * z));
-    }
-    f *= GRAV_CONST;
-
-    v_Grv += v_n * f;
+    m_pfld.Fld_G(v_r, v_Grv);
 }
 
 // Gravity field for variable (linear) density gradient
 void Facet3Pt::FldVlado(const Point3D &v_r, Point3D &v_Grv, Point3D ro, double ro0) const
 {
-    int n = 3;
-    double z, u, v, w, W2, W, U, V, T, L, A, Fi, Fi2, d, Z;
-    Point3D f(0, 0, 0);
-
-    const Point3D *v_a = &pts[0];
-    Z = v_n * (*v_a - v_r);
-    z = std::fabs(Z);
-
-    for (int i = 0; i < n; i++) {
-        u = v_mi[i] * (pts[i] - v_r);
-        v = u + len[i];
-        w = v_ni[i] * (pts[i] - v_r);
-
-        z = z + EPS_VAL;
-        W2 = w * w + z * z;
-        U = std::sqrt(u * u + W2);
-        V = std::sqrt(v * v + W2);
-        W = std::sqrt(W2);
-        T = U + V;
-        d = len[i];
-        A = -std::atan((2.0 * w * d) / ((T + d) * std::fabs(T - d) + 2.0 * T * z));
-        if (sign(u) == sign(v)) {
-            L = sign(v) * std::log((V + std::fabs(v)) / (U + std::fabs(u)));
-        } else {
-            L = std::log((V + std::fabs(v)) * (U + std::fabs(u)) / (W * W));
-        }
-        Fi = w * L + 2.0 * z * A;
-        Fi2 = (d / 4.0) * ((v + u) * (v + u) / T + T) + W * W * L / 2.0;
-        f += v_n * (Fi * (ro0 + ro * v_r + ro * v_n * Z) + ro * v_ni[i] * Fi2) - ro * (Fi * Z / 2.0);
-    }
-    f = f * GRAV_CONST;
-    v_Grv += f;
+    m_pfld.Fld_G(v_r, ro, ro0, v_Grv);
 }
 
 // Full gravity gradient tensor
@@ -199,187 +149,24 @@ void Facet3Pt::FldVladoGrd(const Point3D &v_r, double refDensity,
                            double &gxx, double &gyy, double &gzz,
                            double &gxy, double &gxz, double &gyz) const
 {
-    int n = 3;
-    double z, u, v, w, W2, W, U, V, T, L, A, d, Z, e;
-    double dens;
-
-    const Point3D *v_a = &pts[0];
-    Z = v_n * (*v_a - v_r);
-    z = std::fabs(Z);
-    e = sign(Z);
-
-    Point3D tmpFldGrd(0, 0, 0);
-    for (int i = 0; i < n; i++) {
-        u = v_mi[i] * (pts[i] - v_r);
-        v = u + len[i];
-        w = v_ni[i] * (pts[i] - v_r);
-
-        z = z + EPS_VAL;
-        W2 = w * w + z * z;
-        U = std::sqrt(u * u + W2);
-        V = std::sqrt(v * v + W2);
-        W = std::sqrt(W2);
-        T = U + V;
-        d = len[i];
-        A = -std::atan((2.0 * w * d) / (T * T - (v - u) * (v - u) + 2.0 * T * z));
-        if (sign(u) == sign(v)) {
-            L = sign(v) * std::log((V + std::fabs(v)) / (U + std::fabs(u)));
-        } else {
-            L = std::log((V + std::fabs(v)) * (U + std::fabs(u)) / (W * W));
-        }
-        tmpFldGrd += v_ni[i] * L + v_n * 2.0 * e * A;
-    }
-    tmpFldGrd = tmpFldGrd * GRAV_CONST;
-
-    if (densityOpos != 0.0)
-        dens = density - densityOpos;
-    else
-        dens = density - refDensity;
-
-    gxx = dens * tmpFldGrd.x * v_n.x;
-    gyy = dens * tmpFldGrd.y * v_n.y;
-    gzz = dens * tmpFldGrd.z * v_n.z;
-    gyz = dens * 0.5 * (tmpFldGrd.y * v_n.z + tmpFldGrd.z * v_n.y);
-    gxy = dens * 0.5 * (tmpFldGrd.x * v_n.y + tmpFldGrd.y * v_n.x);
-    gxz = dens * 0.5 * (tmpFldGrd.x * v_n.z + tmpFldGrd.z * v_n.x);
+    m_pfld.FldVladoGrd(v_r, refDensity, gxx, gyy, gzz, gxy, gxz, gyz, densityOpos, density);
 }
 
 void Facet3Pt::FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point3D &v_Grv) const
 {
-    int n = 3;
-    Point3D spts[3];
-    Point3D shf = v_r * (-1.0);
-    for (int i = 0; i < n; i++) {
-        spts[i] = pts[i] + shf;
-    }
-
-    Point3D v_rr;
-    double r, L, b, I, h;
-    double P = 0.0, Q = 0.0, R = 0.0;
-    double s, d;
-    double dOmega;
-
-    dOmega = SolidAngle(spts);
-    if (dOmega == 0.0) return;
-
-    for (int i = 0; i < n; i++) {
-        v_rr = spts[i];
-        r = spts[i].Abs();
-        L = len[i];
-        b = 2.0 * (v_rr * v_L[i]);
-        h = r + b / (2.0 * L);
-        if (h != 0.0)
-            I = (1.0 / L) * std::log((std::sqrt(L * L + b + r * r) + L + b / (2.0 * L)) / h);
-        else
-            I = (1.0 / L) * std::log(std::fabs(L - r) / r);
-
-        P += I * v_L[i].x;
-        Q += I * v_L[i].y;
-        R += I * v_L[i].z;
-    }
-
-    Point3D v_f;
-    v_f.x = dOmega * v_n.x + Q * v_n.z - R * v_n.y;
-    v_f.y = dOmega * v_n.y + R * v_n.x - P * v_n.z;
-    v_f.z = dOmega * v_n.z + P * v_n.y - Q * v_n.x;
-
-    s = v_M * v_n;
-    v_Mag += v_f * s;
-
-    d = spts[0] * v_n;
-    v_Grv += v_f * d * GRAV_CONST;
+    m_pfld.FldGS(v_r, v_M, v_Mag, v_Grv);
 }
 
 void Facet3Pt::FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, double dSignMultiplier) const
 {
-    int n = 3;
-    Point3D spts[3];
-    Point3D shf = v_r * (-1.0);
-    for (int i = 0; i < n; i++) {
-        spts[i] = pts[i] + shf;
-    }
-
-    Point3D v_rr;
-    double r, L, b, I, h;
-    double P = 0.0, Q = 0.0, R = 0.0;
-    double s;
-    double dOmega;
-
-    dOmega = SolidAngle(spts);
-
-    for (int i = 0; i < n; i++) {
-        v_rr = spts[i];
-        r = spts[i].Abs();
-        L = len[i];
-        b = 2.0 * (v_rr * v_L[i]);
-        h = r + b / (2.0 * L);
-        if (h != 0.0)
-            I = (1.0 / L) * std::log((std::sqrt(L * L + b + r * r) + L + b / (2.0 * L)) / h);
-        else
-            I = (1.0 / L) * std::log(std::fabs(L - r) / r);
-
-        P += I * v_L[i].x;
-        Q += I * v_L[i].y;
-        R += I * v_L[i].z;
-    }
-
-    Point3D v_f;
-    v_f.x = dOmega * v_n.x + Q * v_n.z - R * v_n.y;
-    v_f.y = dOmega * v_n.y + R * v_n.x - P * v_n.z;
-    v_f.z = dOmega * v_n.z + P * v_n.y - Q * v_n.x;
-
-    s = dSignMultiplier * (v_M * v_n);
-    v_Mag += v_f * s;
+    Point3D mag(0, 0, 0);
+    m_pfld.FldGS_M(v_r, v_M, mag);
+    v_Mag += mag * dSignMultiplier;
 }
 
 double Facet3Pt::SolidAngle(const Point3D *spts) const
 {
-    double Omega = 0.0;
-    int n = 3;
-    double dInOut = v_n * spts[1];
-    if (dInOut == 0.0)
-        return 0.0;
-
-    const Point3D *p1 = nullptr, *p2 = nullptr, *p3 = nullptr, *p = nullptr;
-    double dFi = 0.0, a, b;
-    for (int i = 0; i < n; i++) {
-        if (i == 0) {
-            p1 = &spts[n - 1];
-            p2 = &spts[0];
-            p3 = &spts[1];
-        } else if (i < (n - 1)) {
-            p1 = &spts[i - 1];
-            p2 = &spts[i];
-            p3 = &spts[i + 1];
-        } else {
-            p1 = &spts[i - 1];
-            p2 = &spts[i];
-            p3 = &spts[0];
-        }
-        if (dInOut > 0.0) {
-            p = p1;
-            p1 = p3;
-            p3 = p;
-        }
-        Point3D n1 = *p2 / *p1;
-        n1.Unit();
-        Point3D n2 = *p3 / *p2;
-        n2.Unit();
-        double dPerp = *p3 * n1;
-        b = n1 * n2;
-        if (b < -1.0) b = -1.0;
-        if (b > 1.0) b = 1.0;
-        a = PI_VAL - std::acos(b);
-        if (dPerp < 0.0) {
-            a = 2.0 * PI_VAL - a;
-        }
-        dFi += a;
-    }
-    Omega = dFi - (n - 2) * PI_VAL;
-    if (dInOut > 0.0)
-        Omega = -Omega;
-
-    return Omega;
+    return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(spts, 3), v_n * spts[1], 3);
 }
 
 void Facet3Pt::FldSpherVlado(const Point3D &v_r, Point3D &v_Grv) const
@@ -389,30 +176,8 @@ void Facet3Pt::FldSpherVlado(const Point3D &v_r, Point3D &v_Grv) const
         spts[i] = sph(pts[i], v_r * (-1.0));
     }
 
-    Facet3Pt fctS;
-    fctS.Init(spts);
-
-    int n = 3;
-    double z, u, v, w, W2, W, U, V, T, f = 0.0;
-    const Point3D *v_a = &spts[0];
-    z = std::fabs(fctS.v_n * (*v_a));
-
-    for (int i = 0; i < n; i++) {
-        u = fctS.v_mi[i] * spts[i];
-        v = u + fctS.len[i];
-        w = fctS.v_ni[i] * spts[i];
-
-        z = z + EPS_VAL;
-        W2 = w * w + z * z;
-        U = std::sqrt(u * u + W2);
-        V = std::sqrt(v * v + W2);
-        W = std::sqrt(W2);
-        T = U + V;
-        f += w * (sign(v) * std::log((V + std::fabs(v)) / W) - sign(u) * std::log((U + std::fabs(u)) / W)) -
-             2.0 * z * std::atan((2.0 * w * fctS.len[i]) / ((T + fctS.len[i]) * std::fabs(T - fctS.len[i]) + 2.0 * T * z));
-    }
-    f *= GRAV_CONST;
-    v_Grv += fctS.v_n * f;
+    pfld::Facet<double> fctS(std::span<const Point3D>(spts, 3), true);
+    fctS.Fld_G(Point3D(0, 0, 0), v_Grv);
 }
 
 void Facet3Pt::FldSpherGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point3D &v_Grv) const
@@ -422,52 +187,10 @@ void Facet3Pt::FldSpherGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point
         spts[i] = sph(pts[i], v_r * (-1.0));
     }
 
-    Point3D v_L;
-    Point3D v_rr;
-    Point3D v_sn = (spts[0] - spts[1]) / (spts[1] - spts[2]);
-    v_sn.Unit();
-
-    double r, L, b, I, h;
-    double P = 0.0, Q = 0.0, R = 0.0;
-    double s, d;
-    double dOmega;
-
-    dOmega = SolidAngle(spts);
-    if (dOmega == 0.0) return;
-
-    int n = 3;
-    for (int i = 0; i < n; i++) {
-        v_rr = spts[i];
-        if (i < (n - 1)) {
-            v_L = spts[i + 1] - spts[i];
-        } else {
-            v_L = spts[0] - spts[i];
-        }
-        r = spts[i].Abs();
-        L = v_L.Abs();
-        b = 2.0 * (v_rr * v_L);
-        h = r + b / (2.0 * L);
-        if (h != 0.0)
-            I = (1.0 / L) * std::log((std::sqrt(L * L + b + r * r) + L + b / (2.0 * L)) / h);
-        else
-            I = (1.0 / L) * std::log(std::fabs(L - r) / r);
-
-        P += I * v_L.x;
-        Q += I * v_L.y;
-        R += I * v_L.z;
-    }
-
-    Point3D v_f;
-    v_f.x = dOmega * v_sn.x + Q * v_sn.z - R * v_sn.y;
-    v_f.y = dOmega * v_sn.y + R * v_sn.x - P * v_sn.z;
-    v_f.z = dOmega * v_sn.z + P * v_sn.y - Q * v_sn.x;
-
-    s = v_M * v_sn;
-    v_Mag += v_f * s;
-
-    d = spts[0] * v_sn;
-    v_Grv += v_f * d * GRAV_CONST;
+    pfld::Facet<double> fctS(std::span<const Point3D>(spts, 3), true);
+    fctS.FldGS(Point3D(0, 0, 0), v_M, v_Mag, v_Grv);
 }
+
 
 double Facet3Pt::GetMeanElevation() const
 {

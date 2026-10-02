@@ -1,8 +1,10 @@
 #pragma once
 
 #include "mod3d/Point3D.h"
+#include "pfld/facet.hpp"
 #include <vector>
 #include <memory>
+#include <span>
 
 namespace mod3d {
 
@@ -105,6 +107,13 @@ public:
         Point3D &v_rGrv, Point3D &v_rTen, Point3D &v_rMag,
         double &dUnitGrv, double &dUnitMag, double &dUnitTns);
 
+    // Integration with modern header-only pfld library
+    [[nodiscard]] const pfld::Facet<double> &pfld_facet() const noexcept { return m_pfld; }
+    [[nodiscard]] pfld::Facet<double> &pfld_facet() noexcept { return m_pfld; }
+    operator const pfld::Facet<double> &() const noexcept { return m_pfld; }
+    operator pfld::Facet<double> &() noexcept { return m_pfld; }
+    [[nodiscard]] double field_gz(const Point3D &r) const { return m_pfld.field_gz(r); }
+
 public:
     FacetType nType{FacetType::FCT_NORMAL};
     Point3D pts[3];
@@ -128,7 +137,11 @@ public:
     // Body associations
     Body *pBody{nullptr};
     Body *pBodyOpos{nullptr};
+
+    // Modern header-only pfld facet representation
+    pfld::Facet<double> m_pfld;
 };
+
 
 using FacetList = std::vector<Facet3Pt>;
 using facetvec = std::vector<Facet3Pt>; // Alias for pfld_UnitTest compatibility

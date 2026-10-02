@@ -254,6 +254,24 @@ public:
 		return SolidAngle(std::span<const point>(pts), inOut, sz);
 	}
 
+	// --- Gravity Gradient Tensor Computation ---
+	void FldVladoGrd(const point& r, T refDensity,
+	                 T& gxx, T& gyy, T& gzz,
+	                 T& gxy, T& gxz, T& gyz,
+	                 T densityOpos = T{0}, T density = T{1000.0}) const;
+
+	// --- Edge and Vector Geometry Accessors ---
+	[[nodiscard]] const ptvec& L() const noexcept { return _L; }
+	[[nodiscard]] const ptvec& mi() const noexcept { return _mi; }
+	[[nodiscard]] const ptvec& ni() const noexcept { return _ni; }
+	[[nodiscard]] const valvec& edge_lengths() const noexcept { return _len; }
+
+	void FldVlado(const point& r, T& f) const;
+	[[nodiscard]] T FldVlado(const point& r) const;
+
+	void FldGS(const point& r, point& f) const;
+	[[nodiscard]] point FldGS(const point& r) const;
+
 protected:
 	bool   _initialized{false}; ///< True if normal, edge vectors, and lengths have been initialized
 	size_t _sz{0};              ///< Number of vertices
@@ -264,13 +282,8 @@ protected:
 	ptvec  _ni{};               ///< In-plane outward unit normals: ni[i] = mi[i] x n
 	point  _n{};                ///< Facet unit normal vector
 	valvec _len{};              ///< Side lengths of edges
-
-	void FldVlado(const point& r, T& f) const;
-	[[nodiscard]] T FldVlado(const point& r) const;
-
-	void FldGS(const point& r, point& f) const;
-	[[nodiscard]] point FldGS(const point& r) const;
 };
+
 
 // Default double-precision aliases
 using facet = Facet<double>;
@@ -645,6 +658,53 @@ T Facet<T>::SolidAngle(std::span<const point> pts, const T inOut, const size_t s
 		Omega = -Omega;
 	}
 	return Omega;
+}
+
+template <std::floating_point T>
+void Facet<T>::FldVladoGrd(const point& r, T refDensity,
+                           T& gxx, T& gyy, T& gzz,
+                           T& gxy, T& gxz, T& gyz,
+                           T densityOpos, T density) const
+{
+	if (_sz < 3) return;
+	const point* v_a = &_pts[0];
+	const T Z = _n * (*v_a - r);
+	const T z = std::abs(Z);
+	const T e = sign(Z);
+
+	point tmpFldGrd{0, 0, 0};
+	for (size_t i = 0; i < _sz; ++i) {
+		const point tmp = _pts[i] - r;
+		const T u = _mi[i] * tmp;
+		const T v = u + _len[i];
+		const T w = _ni[i] * tmp;
+
+		const T z_eps = z + constants::eps<T>;
+		const T W2 = w * w + z_eps * z_eps;
+		const T U = std::sqrt(u * u + W2);
+		const T V = std::sqrt(v * v + W2);
+		const T W = std::sqrt(W2);
+		const T TT = U + V;
+		const T d = _len[i];
+		const T A = -std::atan((static_cast<T>(2.0) * w * d) / (TT * TT - (v - u) * (v - u) + static_cast<T>(2.0) * TT * z_eps));
+		T L{0};
+		if (sign(u) == sign(v)) {
+			L = sign(v) * std::log((V + std::abs(v)) / (U + std::abs(u)));
+		} else {
+			L = std::log((V + std::abs(v)) * (U + std::abs(u)) / (W * W));
+		}
+		tmpFldGrd += _ni[i] * L + _n * (static_cast<T>(2.0) * e * A);
+	}
+	tmpFldGrd = tmpFldGrd * constants::G<T>;
+
+	const T dens = (densityOpos != static_cast<T>(0.0)) ? (density - densityOpos) : (density - refDensity);
+
+	gxx = dens * tmpFldGrd.x * _n.x;
+	gyy = dens * tmpFldGrd.y * _n.y;
+	gzz = dens * tmpFldGrd.z * _n.z;
+	gyz = dens * static_cast<T>(0.5) * (tmpFldGrd.y * _n.z + tmpFldGrd.z * _n.y);
+	gxy = dens * static_cast<T>(0.5) * (tmpFldGrd.x * _n.y + tmpFldGrd.y * _n.x);
+	gxz = dens * static_cast<T>(0.5) * (tmpFldGrd.x * _n.z + tmpFldGrd.z * _n.x);
 }
 
 } // namespace pfld

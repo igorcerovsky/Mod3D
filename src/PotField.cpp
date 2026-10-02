@@ -1,5 +1,7 @@
 #include "mod3d/PotField.h"
+#include "pfld/facet.hpp"
 #include <cmath>
+#include <span>
 
 namespace mod3d {
 
@@ -308,49 +310,9 @@ double Mag_dT(double mx, double my, double mz, double afx, double afy, double af
 
 double SolidAngle(Point3D *pts, int n, Point3D &v_u)
 {
-    double Omega = 0.0;
-    double dInOut = v_u * pts[1];
-    if (dInOut != 0.0) {
-        Point3D *p1 = nullptr, *p2 = nullptr, *p3 = nullptr, *p = nullptr;
-        double dFi = 0.0, a, b;
-        for (int i = 0; i < n; i++) {
-            if (i == 0) {
-                p1 = &pts[n - 1];
-                p2 = &pts[0];
-                p3 = &pts[1];
-            } else if (i < (n - 1)) {
-                p1 = &pts[i - 1];
-                p2 = &pts[i];
-                p3 = &pts[i + 1];
-            } else {
-                p1 = &pts[i - 1];
-                p2 = &pts[i];
-                p3 = &pts[0];
-            }
-            if (dInOut > 0.0) {
-                p = p1;
-                p1 = p3;
-                p3 = p;
-            }
-            Point3D n1 = *p2 / *p1;
-            n1.Unit();
-            Point3D n2 = *p3 / *p2;
-            n2.Unit();
-            double dPerp = *p3 * n1;
-            b = n1 * n2;
-            if (b < -1.0) b = -1.0;
-            if (b > 1.0) b = 1.0;
-            a = PI_VAL - std::acos(b);
-            if (dPerp < 0.0) {
-                a = 2.0 * PI_VAL - a;
-            }
-            dFi += a;
-        }
-        Omega = dFi - (n - 2) * PI_VAL;
-        if (dInOut > 0.0)
-            Omega = -Omega;
-    }
-    return Omega;
+    if (pts == nullptr || n < 3) return 0.0;
+    return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(pts, n), v_u * pts[1], n);
 }
 
 } // namespace mod3d
+

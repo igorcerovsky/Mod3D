@@ -20,13 +20,14 @@ endif()
 
 find_package(Threads REQUIRED)
 
+# Header-only physics library
+add_subdirectory(pfld)
+
 # Core static library
 add_library(mod3d_core STATIC
-    src/Point3D.cpp
     src/PotField.cpp
     src/Body.cpp
     src/Facet3Pt.cpp
-    src/FieldCompute.cpp
     src/ColumnPoint.cpp
     src/Grid.cpp
     src/Model.cpp
@@ -34,7 +35,7 @@ add_library(mod3d_core STATIC
     src/Observation.cpp
 )
 
-target_link_libraries(mod3d_core PUBLIC Threads::Threads)
+target_link_libraries(mod3d_core PUBLIC pfld Threads::Threads)
 
 target_include_directories(mod3d_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
