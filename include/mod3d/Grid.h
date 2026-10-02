@@ -56,8 +56,11 @@ public:
     const std::vector<double> &data() const { return m_data; }
     std::vector<double> &data() { return m_data; }
 
+    static bool isDummyValue(double val) {
+        return val >= 1.7e38 || std::abs(val - GRID_DUMMY) < 1e10 || std::isnan(val);
+    }
     bool isDummy(size_t row, size_t col) const {
-        return std::abs(operator()(row, col) - GRID_DUMMY) < 1e10 || std::isnan(operator()(row, col));
+        return isDummyValue(operator()(row, col));
     }
 
     void fill(double val);

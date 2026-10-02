@@ -63,7 +63,7 @@ double Grid::getMin() const
 {
     double minVal = std::numeric_limits<double>::max();
     for (double v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10 && !std::isnan(v)) {
+        if (!isDummyValue(v)) {
             minVal = std::min(minVal, v);
         }
     }
@@ -74,7 +74,7 @@ double Grid::getMax() const
 {
     double maxVal = -std::numeric_limits<double>::max();
     for (double v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10 && !std::isnan(v)) {
+        if (!isDummyValue(v)) {
             maxVal = std::max(maxVal, v);
         }
     }
@@ -86,7 +86,7 @@ double Grid::getMean() const
     double sum = 0.0;
     size_t count = 0;
     for (double v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10 && !std::isnan(v)) {
+        if (!isDummyValue(v)) {
             sum += v;
             count++;
         }
@@ -99,7 +99,7 @@ double Grid::getRMS() const
     double sumSq = 0.0;
     size_t count = 0;
     for (double v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10 && !std::isnan(v)) {
+        if (!isDummyValue(v)) {
             sumSq += v * v;
             count++;
         }
@@ -217,7 +217,11 @@ bool Grid::loadSrf6Binary(const std::string &filePath)
         for (size_t c = 0; c < m_cols; ++c) {
             float val = 0.0f;
             file.read(reinterpret_cast<char *>(&val), 4);
-            operator()(r, c) = static_cast<double>(val);
+            if (val >= 1.7e38f) {
+                operator()(r, c) = GRID_DUMMY;
+            } else {
+                operator()(r, c) = static_cast<double>(val);
+            }
         }
     }
     return true;

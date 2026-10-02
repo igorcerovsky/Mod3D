@@ -778,12 +778,102 @@ public:
         return read<uint32_t>();
     }
 
+    struct MfcClassInfo {
+        std::string name;
+        uint16_t schema{0};
+    };
+
+    MfcClassInfo readObjectTag() {
+        if (!good() || eof()) return {"", 0};
+        uint16_t tag = read<uint16_t>();
+        if (tag == 0xFFFF) {
+            uint16_t schema = read<uint16_t>();
+            uint16_t len = read<uint16_t>();
+            std::string className(len, '\0');
+            if (len > 0) readBytes(&className[0], len);
+            MfcClassInfo info{className, schema};
+            m_classes.push_back(info);
+            return info;
+        }
+        if (tag & 0x8000) {
+            size_t idx = (tag & 0x7FFF);
+            if (idx > 0 && idx <= m_classes.size()) {
+                return m_classes[idx - 1];
+            }
+            if (!m_classes.empty()) {
+                return m_classes.back();
+            }
+            return {"", 0};
+        }
+        // Not an MFC class tag - seek back 2 bytes
+        m_is.seekg(-2, std::ios::cur);
+        return {"", 0};
+    }
+
     bool eof() const { return m_is.eof(); }
     bool good() const { return m_is.good(); }
 
 private:
     std::istream &m_is;
+    std::vector<MfcClassInfo> m_classes;
 };
+
+Grid readMfcGrid(BinaryStreamReader &reader) {
+    if (!reader.good() || reader.eof()) return Grid();
+    std::string strId = reader.readCString();
+    if (strId.find("_gridMod3D") == std::string::npos) {
+        return Grid();
+    }
+    int32_t version = reader.read<int32_t>();
+    int32_t type = reader.read<int32_t>();
+    uint32_t rows = reader.read<uint32_t>();
+    uint32_t cols = reader.read<uint32_t>();
+    double x0 = reader.read<double>();
+    double y0 = reader.read<double>();
+    double xSize = reader.read<double>();
+    double ySize = reader.read<double>();
+    double dMinX = reader.read<double>();
+    double dMaxX = reader.read<double>();
+    double dMinY = reader.read<double>();
+    double dMaxY = reader.read<double>();
+    double dMinZ = reader.read<double>();
+    double dMaxZ = reader.read<double>();
+    int32_t clrTbl = reader.read<int32_t>();
+    int32_t contNum = reader.read<int32_t>();
+    double dRMS = reader.read<double>();
+    double dRot = reader.read<double>();
+    double dDrv = reader.read<double>();
+    (void)version; (void)type; (void)dMinX; (void)dMaxX; (void)dMinY; (void)dMaxY;
+    (void)dMinZ; (void)dMaxZ; (void)clrTbl; (void)contNum; (void)dRMS; (void)dDrv;
+
+    Grid g(rows, cols, x0, y0, xSize, ySize, dRot);
+    for (uint32_t r = 0; r < rows; ++r) {
+        for (uint32_t c = 0; c < cols; ++c) {
+            g(r, c) = reader.read<double>();
+        }
+    }
+
+    // Skip m_clrGrad
+    reader.read<uint32_t>(); // m_Background
+    reader.read<uint32_t>(); // m_StartPeg
+    reader.read<uint32_t>(); // m_EndPeg
+    reader.read<uint32_t>(); // m_UseBackground
+    reader.read<int32_t>();  // m_Quantization
+    reader.read<int32_t>();  // m_InterpolationMethod
+    int32_t pegCount = reader.read<int32_t>();
+    for (int p = 0; p < pegCount; ++p) {
+        reader.read<uint32_t>(); // colour
+        reader.read<float>();    // position
+    }
+
+    // Color range
+    reader.read<int32_t>(); // m_bHistClr
+    reader.read<int32_t>(); // m_bCustomRange
+    reader.read<double>();  // m_dMinHstCst
+    reader.read<double>();  // m_dMaxHstCst
+
+    return g;
+}
 
 } // namespace
 
@@ -939,6 +1029,7 @@ bool Project::loadLegacyM3D(const std::string &filePath)
         int c = i % modCols;
         uint32_t ptCount = reader.readArrayCount();
         for (uint32_t k = 0; k < ptCount; ++k) {
+            reader.readObjectTag();
             int32_t bodyId = reader.read<int32_t>();
             double zVal = reader.read<double>();
             (void)zVal;
@@ -954,6 +1045,7 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     // Read Bodies array
     uint32_t bodyCount = reader.readArrayCount();
     for (uint32_t b = 0; b < bodyCount; ++b) {
+        auto classInfo = reader.readObjectTag();
         int32_t bId = reader.read<int32_t>();
         std::string bName = reader.readCString();
         std::string bDesc = reader.readCString();
@@ -974,22 +1066,20 @@ bool Project::loadLegacyM3D(const std::string &filePath)
         rem.y = reader.read<double>();
         rem.z = reader.read<double>();
 
-        // Skip pen/brush drawing attributes
-        uint32_t pCol = reader.read<uint32_t>();
-        int32_t pStyle = reader.read<int32_t>();
-        int32_t pWidth = reader.read<int32_t>();
-        uint32_t bCol = reader.read<uint32_t>();
-        int32_t bHatch = reader.read<int32_t>();
-        int32_t bStyle2 = reader.read<int32_t>();
-        uint32_t pMapCol = reader.read<uint32_t>();
-        int32_t pMapStyle = reader.read<int32_t>();
-        int32_t pMapWidth = reader.read<int32_t>();
-        uint32_t bMapCol = reader.read<uint32_t>();
-        int32_t bMapHatch = reader.read<int32_t>();
-        int32_t bMapStyle2 = reader.read<int32_t>();
-        int32_t bFill = reader.read<int32_t>();
-        (void)pCol; (void)pStyle; (void)pWidth; (void)bCol; (void)bHatch; (void)bStyle2;
-        (void)pMapCol; (void)pMapStyle; (void)pMapWidth; (void)bMapCol; (void)bMapHatch; (void)bMapStyle2; (void)bFill;
+        // Skip 15 pen/brush drawing attributes (COLORREF, styles, hatches, fills)
+        uint32_t bCol = 0;
+        for (int attr = 0; attr < 15; ++attr) {
+            uint32_t val = reader.read<uint32_t>();
+            if (attr == 3) {
+                bCol = val; // brush color
+            }
+        }
+
+        if (classInfo.schema >= 3) {
+            int32_t bTransparent = reader.read<int32_t>();
+            float fAlpha = reader.read<float>();
+            (void)bTransparent; (void)fAlpha;
+        }
 
         auto bodyObj = std::make_unique<Body>(bId, bName, dens);
         bodyObj->SetDescription(bDesc);
@@ -1017,11 +1107,29 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     m_observation.setGravityObservation(ObservationMode::SensorHeight, tensHeight);
     m_observation.setMagneticObservation(ObservationMode::FlightElevation, tensFlightElev);
 
+    // Attempt to read observation grids if present (Relief, Gravity, Magnetic)
+    if (reader.good() && !reader.eof()) {
+        uint32_t extraObjs = reader.readArrayCount();
+        (void)extraObjs;
+        Grid relGrid = readMfcGrid(reader);
+        if (!relGrid.empty()) {
+            m_observation.setSurfaceRelief(relGrid);
+        }
+        Grid grvGrid = readMfcGrid(reader);
+        if (!grvGrid.empty()) {
+            m_observation.setObservedGrid(FieldComponent::GZ, grvGrid);
+        }
+        Grid magGrid = readMfcGrid(reader);
+        if (!magGrid.empty()) {
+            m_observation.setObservedGrid(FieldComponent::DELTA_T, magGrid);
+        }
+    }
+
     // Regenerate 3D polyhedral facets
     m_model.updateBodyIndex();
     m_model.initFacetList();
 
-    return reader.good();
+    return true;
 }
 
 } // namespace mod3d
