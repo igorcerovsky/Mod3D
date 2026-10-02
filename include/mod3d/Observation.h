@@ -53,15 +53,33 @@ public:
 
     void initGeometry(size_t rows, size_t cols, double x0, double y0, double dx, double dy, double rotDeg = 0.0);
 
+    // Dimensions & Geometry
+    size_t getRows() const { return m_rows; }
+    size_t getCols() const { return m_cols; }
+    double getX0() const { return m_x0; }
+    double getY0() const { return m_y0; }
+    double getDx() const { return m_dx; }
+    double getDy() const { return m_dy; }
+    double getRotDeg() const { return m_rotDeg; }
+
     // Height & Elevation Settings
     void setGravityObservation(ObservationMode mode, double heightVal);
     void setGravityObservationGrid(const Grid &grid);
+    ObservationMode getGravityMode() const { return m_grvMode; }
+    double getGravityHeight() const { return m_grvHeight; }
+    const Grid &getGravityElevGrid() const { return m_grvElevGrid; }
 
     void setMagneticObservation(ObservationMode mode, double heightVal);
     void setMagneticObservationGrid(const Grid &grid);
+    ObservationMode getMagneticMode() const { return m_magMode; }
+    double getMagneticHeight() const { return m_magHeight; }
+    const Grid &getMagneticElevGrid() const { return m_magElevGrid; }
 
     void setTensorObservation(ObservationMode mode, double heightVal);
     void setTensorObservationGrid(const Grid &grid);
+    ObservationMode getTensorMode() const { return m_tensorMode; }
+    double getTensorHeight() const { return m_tensorHeight; }
+    const Grid &getTensorElevGrid() const { return m_tensorElevGrid; }
 
     void setSurfaceRelief(const Grid &relief);
     const Grid &getSurfaceRelief() const { return m_reliefGrid; }
@@ -69,10 +87,18 @@ public:
     // Ambient Geomagnetic Field Parameters
     void setAmbientFieldParams(double inclinationDeg, double declinationDeg, double intensityNT);
     Point3D getAmbientFieldVector() const;
+    double getInclinationDeg() const { return m_incDeg; }
+    double getDeclinationDeg() const { return m_decDeg; }
+    double getMagneticIntensity() const { return m_magIntensity; }
 
     // Reference Density
     void setReferenceDensity(double refDens) { m_refDensity = refDens; }
     double getReferenceDensity() const { return m_refDensity; }
+
+    // Grid Maps
+    const std::map<FieldComponent, Grid> &getModeledGrids() const { return m_modeledGrids; }
+    const std::map<FieldComponent, Grid> &getObservedGrids() const { return m_observedGrids; }
+    const std::map<FieldComponent, Grid> &getDifferenceGrids() const { return m_differenceGrids; }
 
     // Point Evaluation
     std::vector<Point3D> getObservationPoints(FieldComponent comp) const;

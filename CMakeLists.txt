@@ -20,6 +20,17 @@ endif()
 
 find_package(Threads REQUIRED)
 
+# JSON library (system or FetchContent)
+find_package(nlohmann_json 3.10 QUIET)
+if(NOT nlohmann_json_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
 # Header-only physics library
 add_subdirectory(pfld)
 
@@ -33,9 +44,10 @@ add_library(mod3d_core STATIC
     src/Model.cpp
     src/Inversion.cpp
     src/Observation.cpp
+    src/Project.cpp
 )
 
-target_link_libraries(mod3d_core PUBLIC pfld Threads::Threads)
+target_link_libraries(mod3d_core PUBLIC pfld Threads::Threads nlohmann_json::nlohmann_json)
 
 target_include_directories(mod3d_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

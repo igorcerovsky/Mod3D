@@ -60,10 +60,16 @@ class Model {
 public:
     Model();
     ~Model() = default;
+    Model(const Model &) = delete;
+    Model &operator=(const Model &) = delete;
+    Model(Model &&) noexcept = default;
+    Model &operator=(Model &&) noexcept = default;
 
     // Initialization
     bool init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
     bool init(const Grid &reliefGrid, double zMin, double zMax);
+    bool initEmpty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
+    void clear();
     bool isInitialized() const { return m_initialized; }
 
     // Dimensions and Coordinates
@@ -75,6 +81,10 @@ public:
     double getYSize() const { return m_ySize; }
     double getZMin() const { return m_zMin; }
     double getZMax() const { return m_zMax; }
+    double getXMin() const { return m_xMin; }
+    double getXMax() const { return m_xMax; }
+    double getYMin() const { return m_yMin; }
+    double getYMax() const { return m_yMax; }
     double getHell() const { return m_zMin; }
     double getHeaven() const { return m_zMax; }
 
@@ -104,6 +114,7 @@ public:
 
     // Body Management
     Body *newBody();
+    void addBody(std::unique_ptr<Body> body);
     int insertBody(int row, int col, double z, double thickness = -1.0, bool isNew = true, int bodyId = -1, double zT = 0.0, double zB = 0.0, bool bZ = true);
     int removeBody(int index, int row, int col);
     int deleteBody(int bodyId);
@@ -134,6 +145,11 @@ public:
     void setExtensions(double exN, double exS, double exE, double exW, bool enable = true) {
         m_dExN = exN; m_dExS = exS; m_dExE = exE; m_dExW = exW; m_extend = enable;
     }
+    bool isExtend() const { return m_extend; }
+    double getExN() const { return m_dExN; }
+    double getExS() const { return m_dExS; }
+    double getExE() const { return m_dExE; }
+    double getExW() const { return m_dExW; }
 
 private:
     int getFlatIndex(int row, int col) const;

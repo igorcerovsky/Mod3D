@@ -134,6 +134,43 @@ bool Model::init(const Grid &reliefGrid, double zMin, double zMax)
     return true;
 }
 
+bool Model::initEmpty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
+{
+    m_nRows = totalRows;
+    m_nCols = totalCols;
+    m_x0 = x0;
+    m_y0 = y0;
+    m_xSize = xSize;
+    m_ySize = ySize;
+    m_xMin = m_x0;
+    m_xMax = m_x0 + (m_nCols - 3) * m_xSize;
+    m_yMin = m_y0;
+    m_yMax = m_y0 + (m_nRows - 3) * m_ySize;
+    m_zMin = zMin;
+    m_zMax = zMax;
+
+    const size_t totalCells = static_cast<size_t>(m_nRows * m_nCols);
+    m_data.clear();
+    m_data.resize(totalCells);
+    m_facets.clear();
+    m_facets.resize(totalCells);
+
+    m_initialized = true;
+    return true;
+}
+
+void Model::clear()
+{
+    m_initialized = false;
+    m_nRows = 0;
+    m_nCols = 0;
+    m_bodies.clear();
+    m_data.clear();
+    m_facets.clear();
+    m_fctLstUpdate.clear();
+    m_nextBodyId = 1;
+}
+
 size_t Model::getCount(int row, int col) const
 {
     int idx = getFlatIndex(row, col);
@@ -227,6 +264,17 @@ Body *Model::newBody()
     m_bodies.push_back(std::move(b));
     updateBodyIndex();
     return raw;
+}
+
+void Model::addBody(std::unique_ptr<Body> body)
+{
+    if (body) {
+        if (body->GetID() >= m_nextBodyId) {
+            m_nextBodyId = body->GetID() + 1;
+        }
+        m_bodies.push_back(std::move(body));
+        updateBodyIndex();
+    }
 }
 
 Body *Model::getBody(int bodyId)

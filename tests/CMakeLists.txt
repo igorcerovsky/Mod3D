@@ -56,5 +56,20 @@ add_executable(test_observation_inversion test_observation_inversion.cpp)
 target_link_libraries(test_observation_inversion PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_observation_inversion)
 
+# Phase 4: Test Project JSON Serialization Roundtrip
+add_executable(test_project_io test_project_io.cpp)
+target_link_libraries(test_project_io PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_project_io)
+
+# Phase 4: Test 3D Polyhedral Mesh Exporters (OBJ, STL, VTK)
+add_executable(test_mesh_exporters test_mesh_exporters.cpp)
+target_link_libraries(test_mesh_exporters PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_mesh_exporters)
+
+# Phase 4: Test Legacy Windows MFC .m3d Binary Deserializer
+add_executable(test_legacy_m3d test_legacy_m3d.cpp)
+target_link_libraries(test_legacy_m3d PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_legacy_m3d)
+
 
 
