@@ -7,6 +7,7 @@
 #include <memory>
 #include <limits>
 #include <algorithm>
+#include <numeric>
 
 #include "pfld/facet.hpp"
 #include "pfld/pfld_compute.hpp"
@@ -98,6 +99,103 @@ TEST(PfldTest, Test_Point3D_Unit)
 	point pt3(0.0, 0.0, 4.0);
 	pt3.Unit();
 	EXPECT_TRUE(pt3 == point(0, 0, 1));
+}
+
+TEST(PfldTest, Test_Point3D_STL_Interface)
+{
+	using point = pfld::Point3D<double>;
+
+	point p(3.0, 4.0, 12.0);
+	EXPECT_DOUBLE_EQ(p.norm_squared(), 169.0);
+	EXPECT_DOUBLE_EQ(p.length_squared(), 169.0);
+	EXPECT_DOUBLE_EQ(p.norm(), 13.0);
+	EXPECT_DOUBLE_EQ(p.length(), 13.0);
+	EXPECT_DOUBLE_EQ(p.abs(), 13.0);
+
+	// In-place normalize and normalized copy
+	point p_copy = p.normalized();
+	EXPECT_DOUBLE_EQ(p_copy.norm(), 1.0);
+	EXPECT_DOUBLE_EQ(p_copy.x, 3.0 / 13.0);
+	EXPECT_DOUBLE_EQ(p_copy.y, 4.0 / 13.0);
+	EXPECT_DOUBLE_EQ(p_copy.z, 12.0 / 13.0);
+
+	p.normalize();
+	EXPECT_DOUBLE_EQ(p.norm(), 1.0);
+	EXPECT_DOUBLE_EQ(p.x, 3.0 / 13.0);
+
+	// Zero & Empty
+	point zero_pt;
+	EXPECT_TRUE(zero_pt.is_zero());
+	EXPECT_TRUE(zero_pt.empty());
+	zero_pt.offset(1.0, 2.0, 3.0);
+	EXPECT_FALSE(zero_pt.is_zero());
+	zero_pt.reset();
+	EXPECT_TRUE(zero_pt.is_zero());
+
+	// Sign manipulation
+	point neg(-2.0, -3.0, 5.0);
+	neg.turn_sign();
+	EXPECT_EQ(neg, point(2.0, 3.0, -5.0));
+	neg.negate();
+	EXPECT_EQ(neg, point(-2.0, -3.0, 5.0));
+	neg.positive();
+	EXPECT_EQ(neg, point(2.0, 3.0, 5.0));
+
+	// Distance and angle
+	point p1(0.0, 0.0, 0.0);
+	point p2(0.0, 3.0, 4.0);
+	EXPECT_DOUBLE_EQ(p1.distance(p2), 5.0);
+	EXPECT_DOUBLE_EQ(p2.angle_z(), 4.0 / 5.0);
+
+	point px(1.0, 0.0, 0.0);
+	point py(0.0, 1.0, 0.0);
+	EXPECT_NEAR(px.angle(py), 3.14159265358979323846 / 2.0, 1e-12);
+}
+
+TEST(PfldTest, Test_Point3D_Container_Interface)
+{
+	using point = pfld::Point3D<double>;
+	point p(1.0, 2.0, 3.0);
+
+	// Size & max_size
+	EXPECT_EQ(point::size(), 3u);
+	EXPECT_EQ(p.size(), 3u);
+	EXPECT_EQ(p.max_size(), 3u);
+
+	// Subscript operator and at()
+	EXPECT_DOUBLE_EQ(p[0], 1.0);
+	EXPECT_DOUBLE_EQ(p[1], 2.0);
+	EXPECT_DOUBLE_EQ(p[2], 3.0);
+	EXPECT_DOUBLE_EQ(p.at(0), 1.0);
+	EXPECT_DOUBLE_EQ(p.at(1), 2.0);
+	EXPECT_DOUBLE_EQ(p.at(2), 3.0);
+	EXPECT_THROW((void)p.at(3), std::out_of_range);
+
+	// Front and back
+	EXPECT_DOUBLE_EQ(p.front(), 1.0);
+	EXPECT_DOUBLE_EQ(p.back(), 3.0);
+
+	// Data pointer
+	double* d = p.data();
+	EXPECT_EQ(d, &p.x);
+	EXPECT_DOUBLE_EQ(d[0], 1.0);
+	EXPECT_DOUBLE_EQ(d[1], 2.0);
+	EXPECT_DOUBLE_EQ(d[2], 3.0);
+
+	// Range-based for loop & std::accumulate
+	double sum = std::accumulate(p.begin(), p.end(), 0.0);
+	EXPECT_DOUBLE_EQ(sum, 6.0);
+
+	// Fill
+	p.fill(7.5);
+	EXPECT_EQ(p, point(7.5, 7.5, 7.5));
+
+	// Structured binding
+	point p_bind(10.0, 20.0, 30.0);
+	auto [bx, by, bz] = p_bind;
+	EXPECT_DOUBLE_EQ(bx, 10.0);
+	EXPECT_DOUBLE_EQ(by, 20.0);
+	EXPECT_DOUBLE_EQ(bz, 30.0);
 }
 
 TEST(PfldTest, Test_Body)

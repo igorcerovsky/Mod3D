@@ -1,9 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <limits>
-#include <type_traits>
 #include <ostream>
+#include <stdexcept>
+#include <type_traits>
+#include <vector>
 
 namespace pfld {
 
@@ -16,6 +20,14 @@ class Point3D
 {
 public:
 	using value_type = T;
+	using size_type = std::size_t;
+	using difference_type = std::ptrdiff_t;
+	using reference = T&;
+	using const_reference = const T&;
+	using pointer = T*;
+	using const_pointer = const T*;
+	using iterator = T*;
+	using const_iterator = const T*;
 
 	T x{0};
 	T y{0};
@@ -101,116 +113,189 @@ public:
 		return *this / pt;
 	}
 
-	// Vector length / norm
-	constexpr T norm_squared() const noexcept {
+	// --- Vector Norm and Length (STL style) ---
+	[[nodiscard]] constexpr T norm_squared() const noexcept {
 		return x * x + y * y + z * z;
 	}
-	T norm() const noexcept {
+	[[nodiscard]] constexpr T length_squared() const noexcept {
+		return norm_squared();
+	}
+	[[nodiscard]] T norm() const noexcept {
 		return std::sqrt(norm_squared());
 	}
-	T Abs() const noexcept {
+	[[nodiscard]] T length() const noexcept {
+		return norm();
+	}
+	[[nodiscard]] T abs() const noexcept {
 		return norm();
 	}
 
-	// In-place normalization
-	void Unit() noexcept {
-		const T l = Abs();
+	// --- Normalization (STL style: normalize() in-place, normalized()/unit() copy) ---
+	void normalize() noexcept {
+		const T l = norm();
 		if (l > std::numeric_limits<T>::epsilon()) {
 			x /= l; y /= l; z /= l;
 		} else {
 			x = T{0}; y = T{0}; z = T{0};
 		}
 	}
-
-	// Returns normalized copy
-	Point3D unit() const noexcept {
+	[[nodiscard]] Point3D normalized() const noexcept {
 		Point3D copy = *this;
-		copy.Unit();
+		copy.normalize();
 		return copy;
 	}
-
-	// Offset all components by scalar
-	constexpr Point3D operator+(const T a) const noexcept {
-		return Point3D(x + a, y + a, z + a);
+	[[nodiscard]] Point3D unit() const noexcept {
+		return normalized();
 	}
 
-	// Make all components positive
-	void Positive() noexcept {
+	// --- Sign and Zero Manipulation (STL style) ---
+	void positive() noexcept {
 		x = std::abs(x);
 		y = std::abs(y);
 		z = std::abs(z);
 	}
 
-	// Invert sign of all components
-	constexpr void TurnSign() noexcept {
+	constexpr void turn_sign() noexcept {
 		x = -x;
 		y = -y;
 		z = -z;
 	}
+	constexpr void negate() noexcept {
+		turn_sign();
+	}
 
-	// Reset to origin
-	constexpr void Zero() noexcept {
+	constexpr void zero() noexcept {
 		x = T{0};
 		y = T{0};
 		z = T{0};
 	}
-
-	// Check if zero
-	[[nodiscard]] constexpr bool IsZero() const noexcept {
-		return (x == T{0} && y == T{0} && z == T{0});
+	constexpr void reset() noexcept {
+		zero();
 	}
 
-	// Angle with another vector (in radians)
-	[[nodiscard]] T Angle(const Point3D& v) const noexcept {
+	[[nodiscard]] constexpr bool is_zero() const noexcept {
+		return (x == T{0} && y == T{0} && z == T{0});
+	}
+	[[nodiscard]] constexpr bool empty() const noexcept {
+		return is_zero();
+	}
+
+	// --- Geometry Queries (STL style) ---
+	[[nodiscard]] T angle(const Point3D& v) const noexcept {
 		const T denom = std::sqrt((v * v) * ((*this) * (*this)));
 		if (denom > std::numeric_limits<T>::epsilon()) {
-			const T cosVal = std::clamp((*this * v) / denom, T{-1}, T{1});
-			return std::acos(cosVal);
+			const T cos_val = std::clamp((*this * v) / denom, T{-1}, T{1});
+			return std::acos(cos_val);
 		}
 		return T{0};
 	}
 
-	// Euclidean distance to another point
-	[[nodiscard]] T Distance(const Point3D& other) const noexcept {
-		return (*this - other).Abs();
-	}
 	[[nodiscard]] T distance(const Point3D& other) const noexcept {
-		return (*this - other).Abs();
+		return (*this - other).norm();
 	}
 
-	// Direction cosine with Z axis
-	[[nodiscard]] T AngleZ() const noexcept {
-		const T l = Abs();
+	[[nodiscard]] T angle_z() const noexcept {
+		const T l = norm();
 		if (l > std::numeric_limits<T>::epsilon()) {
 			return z / l;
 		}
 		return T{0};
 	}
 
-	// Component-wise offset
-	constexpr void Offset(T xOffset, T yOffset, T zOffset) noexcept {
-		x += xOffset;
-		y += yOffset;
-		z += zOffset;
+	// --- Offsets (STL style) ---
+	constexpr void offset(T x_offset, T y_offset, T z_offset) noexcept {
+		x += x_offset;
+		y += y_offset;
+		z += z_offset;
 	}
-	constexpr void Offset(const Point3D& pt) noexcept {
+	constexpr void offset(const Point3D& pt) noexcept {
 		x += pt.x;
 		y += pt.y;
 		z += pt.z;
 	}
 
-	// Legacy static helpers
-	static constexpr void Add(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
+	// --- Array-like Element Access & Iteration (STL style) ---
+	[[nodiscard]] static constexpr size_type size() noexcept { return 3; }
+	[[nodiscard]] static constexpr size_type max_size() noexcept { return 3; }
+
+	[[nodiscard]] constexpr reference operator[](size_type i) noexcept {
+		if (i == 0) return x;
+		if (i == 1) return y;
+		return z;
+	}
+	[[nodiscard]] constexpr const_reference operator[](size_type i) const noexcept {
+		if (i == 0) return x;
+		if (i == 1) return y;
+		return z;
+	}
+
+	[[nodiscard]] constexpr reference at(size_type i) {
+		if (i >= 3) {
+			throw std::out_of_range("pfld::Point3D::at: index out of range");
+		}
+		return (*this)[i];
+	}
+	[[nodiscard]] constexpr const_reference at(size_type i) const {
+		if (i >= 3) {
+			throw std::out_of_range("pfld::Point3D::at: index out of range");
+		}
+		return (*this)[i];
+	}
+
+	[[nodiscard]] constexpr pointer data() noexcept { return &x; }
+	[[nodiscard]] constexpr const_pointer data() const noexcept { return &x; }
+
+	[[nodiscard]] constexpr iterator begin() noexcept { return &x; }
+	[[nodiscard]] constexpr const_iterator begin() const noexcept { return &x; }
+	[[nodiscard]] constexpr const_iterator cbegin() const noexcept { return &x; }
+
+	[[nodiscard]] constexpr iterator end() noexcept { return &x + 3; }
+	[[nodiscard]] constexpr const_iterator end() const noexcept { return &x + 3; }
+	[[nodiscard]] constexpr const_iterator cend() const noexcept { return &x + 3; }
+
+	[[nodiscard]] constexpr reference front() noexcept { return x; }
+	[[nodiscard]] constexpr const_reference front() const noexcept { return x; }
+	[[nodiscard]] constexpr reference back() noexcept { return z; }
+	[[nodiscard]] constexpr const_reference back() const noexcept { return z; }
+
+	constexpr void fill(const T& val) noexcept {
+		x = val; y = val; z = val;
+	}
+
+	// --- Static Helpers (STL style) ---
+	static constexpr void add(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
 		res.x = pt1.x + pt2.x; res.y = pt1.y + pt2.y; res.z = pt1.z + pt2.z;
 	}
-	static constexpr void Sub(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
+	static constexpr void sub(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
 		res.x = pt1.x - pt2.x; res.y = pt1.y - pt2.y; res.z = pt1.z - pt2.z;
 	}
-	static constexpr void Cross(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
+	static constexpr void cross(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept {
 		res.x = pt1.y * pt2.z - pt1.z * pt2.y;
 		res.y = pt1.z * pt2.x - pt1.x * pt2.z;
 		res.z = pt1.x * pt2.y - pt1.y * pt2.x;
 	}
+
+	// --- Legacy Compatibility Aliases ---
+	[[nodiscard]] T Abs() const noexcept { return norm(); }
+	void Unit() noexcept { normalize(); }
+	void Positive() noexcept { positive(); }
+	constexpr void TurnSign() noexcept { turn_sign(); }
+	constexpr void Zero() noexcept { zero(); }
+	[[nodiscard]] constexpr bool IsZero() const noexcept { return is_zero(); }
+	[[nodiscard]] T Angle(const Point3D& v) const noexcept { return angle(v); }
+	[[nodiscard]] T Distance(const Point3D& other) const noexcept { return distance(other); }
+	[[nodiscard]] T AngleZ() const noexcept { return angle_z(); }
+	constexpr void Offset(T x_offset, T y_offset, T z_offset) noexcept { offset(x_offset, y_offset, z_offset); }
+	constexpr void Offset(const Point3D& pt) noexcept { offset(pt); }
+	static constexpr void Add(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept { add(pt1, pt2, res); }
+	static constexpr void Sub(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept { sub(pt1, pt2, res); }
+	static constexpr void Cross(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept { cross(pt1, pt2, res); }
+
+	// Offset all components by scalar
+	constexpr Point3D operator+(const T a) const noexcept {
+		return Point3D(x + a, y + a, z + a);
+	}
+
 
 	// Stream output helper
 	friend std::ostream& operator<<(std::ostream& os, const Point3D& pt) {
