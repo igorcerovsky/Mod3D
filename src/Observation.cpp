@@ -4,96 +4,124 @@
 #include "mod3d/Body.h"
 #include <cmath>
 #include <stdexcept>
+#include <utility>
 
 namespace mod3d {
 
-ObservationSpace::ObservationSpace()
-{
-}
+ObservationSpace::ObservationSpace() = default;
 
 ObservationSpace::ObservationSpace(
     size_t rows, size_t cols, double x0, double y0, double dx, double dy, double rotDeg)
 {
-    initGeometry(rows, cols, x0, y0, dx, dy, rotDeg);
+    init_geometry(rows, cols, x0, y0, dx, dy, rotDeg);
 }
 
-void ObservationSpace::initGeometry(
+void ObservationSpace::swap(ObservationSpace &other) noexcept
+{
+    using std::swap;
+    swap(rows_, other.rows_);
+    swap(cols_, other.cols_);
+    swap(x0_, other.x0_);
+    swap(y0_, other.y0_);
+    swap(dx_, other.dx_);
+    swap(dy_, other.dy_);
+    swap(rot_deg_, other.rot_deg_);
+    swap(relief_grid_, other.relief_grid_);
+    swap(grv_mode_, other.grv_mode_);
+    swap(grv_height_, other.grv_height_);
+    swap(grv_elev_grid_, other.grv_elev_grid_);
+    swap(mag_mode_, other.mag_mode_);
+    swap(mag_height_, other.mag_height_);
+    swap(mag_elev_grid_, other.mag_elev_grid_);
+    swap(tensor_mode_, other.tensor_mode_);
+    swap(tensor_height_, other.tensor_height_);
+    swap(tensor_elev_grid_, other.tensor_elev_grid_);
+    swap(inc_deg_, other.inc_deg_);
+    swap(dec_deg_, other.dec_deg_);
+    swap(mag_intensity_, other.mag_intensity_);
+    swap(ref_density_, other.ref_density_);
+    swap(modeled_grids_, other.modeled_grids_);
+    swap(observed_grids_, other.observed_grids_);
+    swap(difference_grids_, other.difference_grids_);
+}
+
+void ObservationSpace::init_geometry(
     size_t rows, size_t cols, double x0, double y0, double dx, double dy, double rotDeg)
 {
-    m_rows = rows;
-    m_cols = cols;
-    m_x0 = x0;
-    m_y0 = y0;
-    m_dx = dx;
-    m_dy = dy;
-    m_rotDeg = rotDeg;
+    rows_ = rows;
+    cols_ = cols;
+    x0_ = x0;
+    y0_ = y0;
+    dx_ = dx;
+    dy_ = dy;
+    rot_deg_ = rotDeg;
 
-    m_reliefGrid = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
-    m_grvElevGrid = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
-    m_magElevGrid = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
-    m_tensorElevGrid = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
+    relief_grid_ = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
+    grv_elev_grid_ = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
+    mag_elev_grid_ = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
+    tensor_elev_grid_ = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
 }
 
-void ObservationSpace::setGravityObservation(ObservationMode mode, double heightVal)
+void ObservationSpace::set_gravity_observation(ObservationMode mode, double heightVal)
 {
-    m_grvMode = mode;
-    m_grvHeight = heightVal;
+    grv_mode_ = mode;
+    grv_height_ = heightVal;
 }
 
-void ObservationSpace::setGravityObservationGrid(const Grid &grid)
+void ObservationSpace::set_gravity_observation_grid(const Grid &grid)
 {
-    m_grvMode = ObservationMode::ElevationGrid;
-    m_grvElevGrid = grid;
+    grv_mode_ = ObservationMode::ElevationGrid;
+    grv_elev_grid_ = grid;
 }
 
-void ObservationSpace::setMagneticObservation(ObservationMode mode, double heightVal)
+void ObservationSpace::set_magnetic_observation(ObservationMode mode, double heightVal)
 {
-    m_magMode = mode;
-    m_magHeight = heightVal;
+    mag_mode_ = mode;
+    mag_height_ = heightVal;
 }
 
-void ObservationSpace::setMagneticObservationGrid(const Grid &grid)
+void ObservationSpace::set_magnetic_observation_grid(const Grid &grid)
 {
-    m_magMode = ObservationMode::ElevationGrid;
-    m_magElevGrid = grid;
+    mag_mode_ = ObservationMode::ElevationGrid;
+    mag_elev_grid_ = grid;
 }
 
-void ObservationSpace::setTensorObservation(ObservationMode mode, double heightVal)
+void ObservationSpace::set_tensor_observation(ObservationMode mode, double heightVal)
 {
-    m_tensorMode = mode;
-    m_tensorHeight = heightVal;
+    tensor_mode_ = mode;
+    tensor_height_ = heightVal;
 }
 
-void ObservationSpace::setTensorObservationGrid(const Grid &grid)
+void ObservationSpace::set_tensor_observation_grid(const Grid &grid)
 {
-    m_tensorMode = ObservationMode::ElevationGrid;
-    m_tensorElevGrid = grid;
+    tensor_mode_ = ObservationMode::ElevationGrid;
+    tensor_elev_grid_ = grid;
 }
 
-void ObservationSpace::setSurfaceRelief(const Grid &relief)
+void ObservationSpace::set_surface_relief(const Grid &relief)
 {
-    m_reliefGrid = relief;
+    relief_grid_ = relief;
 }
 
-void ObservationSpace::setAmbientFieldParams(double inclinationDeg, double declinationDeg, double intensityNT)
+void ObservationSpace::set_ambient_field_params(double inclinationDeg, double declinationDeg, double intensityNT)
 {
-    m_incDeg = inclinationDeg;
-    m_decDeg = declinationDeg;
-    m_magIntensity = intensityNT;
+    inc_deg_ = inclinationDeg;
+    dec_deg_ = declinationDeg;
+    mag_intensity_ = intensityNT;
 }
 
-Point3D ObservationSpace::getAmbientFieldVector() const
+Point3D ObservationSpace::ambient_field_vector() const
 {
-    return AmbientField(m_incDeg, m_decDeg, m_magIntensity);
+    return AmbientField(inc_deg_, dec_deg_, mag_intensity_);
 }
 
-double ObservationSpace::getElevationAt(
+double ObservationSpace::get_elevation_at(
     ObservationMode mode, double heightVal, const Grid &elevGrid, size_t r, size_t c) const
 {
     switch (mode) {
     case ObservationMode::SensorHeight:
-        if (!m_reliefGrid.empty()) {
-            return m_reliefGrid(r, c) + heightVal;
+        if (!relief_grid_.empty()) {
+            return relief_grid_(r, c) + heightVal;
         }
         return heightVal;
     case ObservationMode::FlightElevation:
@@ -107,38 +135,37 @@ double ObservationSpace::getElevationAt(
     return heightVal;
 }
 
-std::vector<Point3D> ObservationSpace::getObservationPoints(FieldComponent comp) const
+std::vector<Point3D> ObservationSpace::observation_points(FieldComponent comp) const
 {
     std::vector<Point3D> points;
-    if (m_rows == 0 || m_cols == 0) return points;
+    if (rows_ == 0 || cols_ == 0) return points;
 
-    points.reserve(m_rows * m_cols);
+    points.reserve(rows_ * cols_);
 
-    ObservationMode mode = m_grvMode;
-    double heightVal = m_grvHeight;
-    const Grid *elevGrid = &m_grvElevGrid;
+    ObservationMode mode = grv_mode_;
+    double heightVal = grv_height_;
+    const Grid *elevGrid = &grv_elev_grid_;
 
-    int compVal = static_cast<int>(comp);
-    if (compVal >= 10 && compVal < 20) {
-        mode = m_magMode;
-        heightVal = m_magHeight;
-        elevGrid = &m_magElevGrid;
-    } else if (compVal >= 20) {
-        mode = m_tensorMode;
-        heightVal = m_tensorHeight;
-        elevGrid = &m_tensorElevGrid;
+    if (is_magnetic_component(comp)) {
+        mode = mag_mode_;
+        heightVal = mag_height_;
+        elevGrid = &mag_elev_grid_;
+    } else if (is_tensor_component(comp)) {
+        mode = tensor_mode_;
+        heightVal = tensor_height_;
+        elevGrid = &tensor_elev_grid_;
     }
 
-    const double pi = 3.14159265358979323846;
-    const double rad = m_rotDeg * pi / 180.0;
+    const double pi = std::numbers::pi_v<double>;
+    const double rad = rot_deg_ * pi / 180.0;
     const double cRot = std::cos(rad);
     const double sRot = std::sin(rad);
 
-    for (size_t r = 0; r < m_rows; ++r) {
-        for (size_t c = 0; c < m_cols; ++c) {
-            double x = m_x0 + (c * m_dx) * cRot - (r * m_dy) * sRot;
-            double y = m_y0 + (c * m_dx) * sRot + (r * m_dy) * cRot;
-            double z = getElevationAt(mode, heightVal, *elevGrid, r, c);
+    for (size_t r = 0; r < rows_; ++r) {
+        for (size_t c = 0; c < cols_; ++c) {
+            double x = x0_ + (c * dx_) * cRot - (r * dy_) * sRot;
+            double y = y0_ + (c * dx_) * sRot + (r * dy_) * cRot;
+            double z = get_elevation_at(mode, heightVal, *elevGrid, r, c);
             points.emplace_back(x, y, z);
         }
     }
@@ -146,76 +173,76 @@ std::vector<Point3D> ObservationSpace::getObservationPoints(FieldComponent comp)
     return points;
 }
 
-void ObservationSpace::ensureGridAllocated(std::map<FieldComponent, Grid> &gridMap, FieldComponent comp)
+void ObservationSpace::ensure_grid_allocated(std::map<FieldComponent, Grid> &gridMap, FieldComponent comp)
 {
     auto it = gridMap.find(comp);
     if (it == gridMap.end()) {
-        gridMap.emplace(comp, Grid(m_rows, m_cols, m_x0, m_y0, m_dx, m_dy, m_rotDeg));
+        gridMap.emplace(comp, Grid(rows_, cols_, x0_, y0_, dx_, dy_, rot_deg_));
     }
 }
 
-Grid *ObservationSpace::getModeledGrid(FieldComponent comp)
+Grid *ObservationSpace::modeled_grid(FieldComponent comp)
 {
-    ensureGridAllocated(m_modeledGrids, comp);
-    return &m_modeledGrids[comp];
+    ensure_grid_allocated(modeled_grids_, comp);
+    return &modeled_grids_[comp];
 }
 
-const Grid *ObservationSpace::getModeledGrid(FieldComponent comp) const
+const Grid *ObservationSpace::modeled_grid(FieldComponent comp) const
 {
-    auto it = m_modeledGrids.find(comp);
-    if (it != m_modeledGrids.end()) return &it->second;
+    auto it = modeled_grids_.find(comp);
+    if (it != modeled_grids_.end()) return &it->second;
     return nullptr;
 }
 
-Grid *ObservationSpace::getObservedGrid(FieldComponent comp)
+Grid *ObservationSpace::observed_grid(FieldComponent comp)
 {
-    ensureGridAllocated(m_observedGrids, comp);
-    return &m_observedGrids[comp];
+    ensure_grid_allocated(observed_grids_, comp);
+    return &observed_grids_[comp];
 }
 
-const Grid *ObservationSpace::getObservedGrid(FieldComponent comp) const
+const Grid *ObservationSpace::observed_grid(FieldComponent comp) const
 {
-    auto it = m_observedGrids.find(comp);
-    if (it != m_observedGrids.end()) return &it->second;
+    auto it = observed_grids_.find(comp);
+    if (it != observed_grids_.end()) return &it->second;
     return nullptr;
 }
 
-void ObservationSpace::setObservedGrid(FieldComponent comp, const Grid &grid)
+void ObservationSpace::set_observed_grid(FieldComponent comp, const Grid &grid)
 {
-    m_observedGrids[comp] = grid;
+    observed_grids_[comp] = grid;
 }
 
-Grid *ObservationSpace::getDifferenceGrid(FieldComponent comp)
+Grid *ObservationSpace::difference_grid(FieldComponent comp)
 {
-    ensureGridAllocated(m_differenceGrids, comp);
-    return &m_differenceGrids[comp];
+    ensure_grid_allocated(difference_grids_, comp);
+    return &difference_grids_[comp];
 }
 
-const Grid *ObservationSpace::getDifferenceGrid(FieldComponent comp) const
+const Grid *ObservationSpace::difference_grid(FieldComponent comp) const
 {
-    auto it = m_differenceGrids.find(comp);
-    if (it != m_differenceGrids.end()) return &it->second;
+    auto it = difference_grids_.find(comp);
+    if (it != difference_grids_.end()) return &it->second;
     return nullptr;
 }
 
-void ObservationSpace::computeForwardField(const std::vector<Facet3Pt> &facets, bool zeroFirst)
+void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets, bool zeroFirst)
 {
-    if (m_rows == 0 || m_cols == 0) return;
+    if (rows_ == 0 || cols_ == 0) return;
 
-    ensureGridAllocated(m_modeledGrids, FieldComponent::GZ);
-    Grid &grdGz = m_modeledGrids[FieldComponent::GZ];
-    if (zeroFirst) grdGz.zeroData();
+    ensure_grid_allocated(modeled_grids_, FieldComponent::GZ);
+    Grid &grdGz = modeled_grids_[FieldComponent::GZ];
+    if (zeroFirst) grdGz.zero();
 
-    ensureGridAllocated(m_modeledGrids, FieldComponent::GX);
-    ensureGridAllocated(m_modeledGrids, FieldComponent::GY);
-    Grid &grdGx = m_modeledGrids[FieldComponent::GX];
-    Grid &grdGy = m_modeledGrids[FieldComponent::GY];
+    ensure_grid_allocated(modeled_grids_, FieldComponent::GX);
+    ensure_grid_allocated(modeled_grids_, FieldComponent::GY);
+    Grid &grdGx = modeled_grids_[FieldComponent::GX];
+    Grid &grdGy = modeled_grids_[FieldComponent::GY];
     if (zeroFirst) {
-        grdGx.zeroData();
-        grdGy.zeroData();
+        grdGx.zero();
+        grdGy.zero();
     }
 
-    auto obsPoints = getObservationPoints(FieldComponent::GZ);
+    auto obsPoints = observation_points(FieldComponent::GZ);
     const size_t nPts = obsPoints.size();
 
     for (size_t p = 0; p < nPts; ++p) {
@@ -223,13 +250,13 @@ void ObservationSpace::computeForwardField(const std::vector<Facet3Pt> &facets, 
         for (const auto &fct : facets) {
             double densContrast = 0.0;
             if (fct.pBody) {
-                double bDens = fct.pBody->GetDensity();
-                double oposDens = fct.pBodyOpos ? fct.pBodyOpos->GetDensity() : m_refDensity;
+                double bDens = fct.pBody->density();
+                double oposDens = fct.pBodyOpos ? fct.pBodyOpos->density() : ref_density_;
                 densContrast = bDens - oposDens;
             } else if (fct.densityOpos != 0.0) {
                 densContrast = fct.density - fct.densityOpos;
             } else {
-                densContrast = fct.density - m_refDensity;
+                densContrast = fct.density - ref_density_;
             }
 
             Point3D g(0.0, 0.0, 0.0);
@@ -237,8 +264,8 @@ void ObservationSpace::computeForwardField(const std::vector<Facet3Pt> &facets, 
             totalG += g * (densContrast * fct.dSign);
         }
 
-        size_t r = p / m_cols;
-        size_t c = p % m_cols;
+        size_t r = p / cols_;
+        size_t c = p % cols_;
         if (zeroFirst) {
             grdGx(r, c) = totalG.x;
             grdGy(r, c) = totalG.y;
@@ -250,29 +277,29 @@ void ObservationSpace::computeForwardField(const std::vector<Facet3Pt> &facets, 
         }
     }
 
-    computeTotalFields();
+    compute_total_fields();
 }
 
-void ObservationSpace::updateDeltaField(const std::vector<Facet3Pt> &deltaFacets)
+void ObservationSpace::update_delta_field(const std::vector<Facet3Pt> &deltaFacets)
 {
     if (deltaFacets.empty()) return;
-    computeForwardField(deltaFacets, false);
+    compute_forward_field(deltaFacets, false);
 }
 
-void ObservationSpace::computeTotalFields()
+void ObservationSpace::compute_total_fields()
 {
-    Grid *pGx = getModeledGrid(FieldComponent::GX);
-    Grid *pGy = getModeledGrid(FieldComponent::GY);
-    Grid *pGz = getModeledGrid(FieldComponent::GZ);
-    Grid *pGTot = getModeledGrid(FieldComponent::G_TOT);
+    Grid *pGx = modeled_grid(FieldComponent::GX);
+    Grid *pGy = modeled_grid(FieldComponent::GY);
+    Grid *pGz = modeled_grid(FieldComponent::GZ);
+    Grid *pGTot = modeled_grid(FieldComponent::G_TOT);
 
     if (pGx && pGy && pGz && pGTot) {
-        for (size_t r = 0; r < m_rows; ++r) {
-            for (size_t c = 0; c < m_cols; ++c) {
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
                 double gx = (*pGx)(r, c);
                 double gy = (*pGy)(r, c);
                 double gz = (*pGz)(r, c);
-                if (pGx->isDummy(r, c) || pGy->isDummy(r, c) || pGz->isDummy(r, c)) {
+                if (pGx->is_dummy(r, c) || pGy->is_dummy(r, c) || pGz->is_dummy(r, c)) {
                     (*pGTot)(r, c) = GRID_DUMMY;
                 } else {
                     (*pGTot)(r, c) = std::sqrt(gx * gx + gy * gy + gz * gz);
@@ -282,17 +309,17 @@ void ObservationSpace::computeTotalFields()
     }
 }
 
-void ObservationSpace::computeDifference(FieldComponent comp, bool removeMean)
+void ObservationSpace::compute_difference(FieldComponent comp, bool removeMean)
 {
-    Grid *pMod = getModeledGrid(comp);
-    Grid *pObs = getObservedGrid(comp);
-    Grid *pDif = getDifferenceGrid(comp);
+    Grid *pMod = modeled_grid(comp);
+    Grid *pObs = observed_grid(comp);
+    Grid *pDif = difference_grid(comp);
 
     if (!pMod || !pObs || !pDif) return;
 
-    for (size_t r = 0; r < m_rows; ++r) {
-        for (size_t c = 0; c < m_cols; ++c) {
-            if (pMod->isDummy(r, c) || pObs->isDummy(r, c)) {
+    for (size_t r = 0; r < rows_; ++r) {
+        for (size_t c = 0; c < cols_; ++c) {
+            if (pMod->is_dummy(r, c) || pObs->is_dummy(r, c)) {
                 (*pDif)(r, c) = GRID_DUMMY;
             } else {
                 (*pDif)(r, c) = (*pMod)(r, c) - (*pObs)(r, c);
@@ -301,11 +328,11 @@ void ObservationSpace::computeDifference(FieldComponent comp, bool removeMean)
     }
 
     if (removeMean) {
-        double meanVal = pDif->getMean();
+        double meanVal = pDif->mean();
         *pMod -= meanVal;
-        for (size_t r = 0; r < m_rows; ++r) {
-            for (size_t c = 0; c < m_cols; ++c) {
-                if (!pDif->isDummy(r, c)) {
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
+                if (!pDif->is_dummy(r, c)) {
                     (*pDif)(r, c) -= meanVal;
                 }
             }
@@ -313,7 +340,7 @@ void ObservationSpace::computeDifference(FieldComponent comp, bool removeMean)
     }
 }
 
-FitResult ObservationSpace::fitDensity(
+FitResult ObservationSpace::fit_density(
     Body *pBody,
     const std::vector<Facet3Pt> &bodyFacets,
     FieldComponent comp,
@@ -325,14 +352,14 @@ FitResult ObservationSpace::fitDensity(
         return FitResult{};
     }
 
-    Grid *pObs = getObservedGrid(comp);
+    Grid *pObs = observed_grid(comp);
     if (!pObs || pObs->empty()) {
         return FitResult{};
     }
 
     // 1. Compute unit response (contrast = 1.0)
-    auto obsPoints = getObservationPoints(comp);
-    Grid grdUnit(m_rows, m_cols, m_x0, m_y0, m_dx, m_dy, m_rotDeg);
+    auto obsPoints = observation_points(comp);
+    Grid grdUnit(rows_, cols_, x0_, y0_, dx_, dy_, rot_deg_);
 
     for (size_t p = 0; p < obsPoints.size(); ++p) {
         double unitGz = 0.0;
@@ -341,19 +368,19 @@ FitResult ObservationSpace::fitDensity(
             fct.Fld_G(obsPoints[p], g);
             unitGz += g.z * fct.dSign;
         }
-        size_t r = p / m_cols;
-        size_t c = p % m_cols;
+        size_t r = p / cols_;
+        size_t c = p % cols_;
         grdUnit(r, c) = unitGz;
     }
 
-    // Objective function for differential density x = (dens - m_refDensity)
+    // Objective function for differential density x = (dens - ref_density_)
     auto objFunc = [&](double x) -> double {
         double sumSq = 0.0;
         size_t count = 0;
 
-        for (size_t r = 0; r < m_rows; ++r) {
-            for (size_t c = 0; c < m_cols; ++c) {
-                if (!pObs->isDummy(r, c) && !grdUnit.isDummy(r, c)) {
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
+                if (!pObs->is_dummy(r, c) && !grdUnit.is_dummy(r, c)) {
                     double calcVal = x * grdUnit(r, c);
                     double diff = calcVal - (*pObs)(r, c);
                     sumSq += diff * diff;
@@ -364,7 +391,7 @@ FitResult ObservationSpace::fitDensity(
         return count > 0 ? std::sqrt(sumSq / count) : 0.0;
     };
 
-    double dens0 = initialDensity - m_refDensity;
+    double dens0 = initialDensity - ref_density_;
     double startA = dens0;
     double startB = dens0 + 10.0;
 
@@ -372,21 +399,21 @@ FitResult ObservationSpace::fitDensity(
         startA, startB, objFunc, method, tol, 100, "Density inversion");
 
     double optimalDiffDensity = res.optimalParameter;
-    double optimalDensity = optimalDiffDensity + m_refDensity;
-    pBody->SetDensity(optimalDensity);
+    double optimalDensity = optimalDiffDensity + ref_density_;
+    pBody->set_density(optimalDensity);
     res.optimalParameter = optimalDensity;
 
     return res;
 }
 
-FitResult ObservationSpace::fitVertex(
+FitResult ObservationSpace::fit_vertex(
     Model &model,
     int row, int col, int index,
     FieldComponent comp,
     double tol,
     FitMethod method)
 {
-    Grid *pObs = getObservedGrid(comp);
+    Grid *pObs = observed_grid(comp);
     if (!pObs || pObs->empty()) {
         return FitResult{};
     }
@@ -409,14 +436,14 @@ FitResult ObservationSpace::fitVertex(
         std::vector<Facet3Pt> currentFacets;
         model.getFacetsComputation(currentFacets);
 
-        computeForwardField(currentFacets, true);
-        const Grid *pMod = getModeledGrid(comp);
+        compute_forward_field(currentFacets, true);
+        const Grid *pMod = modeled_grid(comp);
 
         double sumSq = 0.0;
         size_t count = 0;
-        for (size_t r = 0; r < m_rows; ++r) {
-            for (size_t c = 0; c < m_cols; ++c) {
-                if (!pObs->isDummy(r, c) && !pMod->isDummy(r, c)) {
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
+                if (!pObs->is_dummy(r, c) && !pMod->is_dummy(r, c)) {
                     double diff = (*pMod)(r, c) - (*pObs)(r, c);
                     sumSq += diff * diff;
                     count++;
