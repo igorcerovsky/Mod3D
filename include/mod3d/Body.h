@@ -34,7 +34,9 @@ struct BodyColor {
  */
 class Body {
 public:
-    // Constructors and Rule of 5
+    // ========================================================================
+    // Lifecycle & Rule of 5
+    // ========================================================================
     Body();
     explicit Body(int id, std::string name = "Body", double density = 2670.0);
     ~Body() = default;
@@ -47,71 +49,49 @@ public:
     void swap(Body &other) noexcept;
     friend void swap(Body &a, Body &b) noexcept { a.swap(b); }
 
+    // ========================================================================
+    // Modern C++20 API (STL snake_case convention, noexcept, [[nodiscard]])
+    // ========================================================================
+
     // Identifiers & Metadata
     [[nodiscard]] int id() const noexcept { return m_nID; }
-    [[nodiscard]] int GetID() const noexcept { return m_nID; }
     void set_id(int id) noexcept { m_nID = id; }
-    void SetID(int id) noexcept { m_nID = id; }
 
     [[nodiscard]] int index() const noexcept { return m_nIndex; }
-    [[nodiscard]] int GetIndex() const noexcept { return m_nIndex; }
     void set_index(int idx) noexcept { m_nIndex = idx; }
-    void SetIndex(int idx) noexcept { m_nIndex = idx; }
 
     [[nodiscard]] const std::string &name() const noexcept { return m_strName; }
-    [[nodiscard]] const std::string &GetName() const noexcept { return m_strName; }
     void set_name(std::string name) { m_strName = std::move(name); }
-    void SetName(std::string name) { m_strName = std::move(name); }
 
     [[nodiscard]] const std::string &description() const noexcept { return m_strDescription; }
-    [[nodiscard]] const std::string &GetDescription() const noexcept { return m_strDescription; }
     void set_description(std::string desc) { m_strDescription = std::move(desc); }
-    void SetDescription(std::string desc) { m_strDescription = std::move(desc); }
 
     // State Flags
     [[nodiscard]] bool is_active() const noexcept { return m_bActive; }
-    [[nodiscard]] bool IsActive() const noexcept { return m_bActive; }
     void set_active(bool active) noexcept { m_bActive = active; }
-    void SetActive(bool active) noexcept { m_bActive = active; }
 
     [[nodiscard]] bool is_visible() const noexcept { return m_bShow; }
-    [[nodiscard]] bool IsVisible() const noexcept { return m_bShow; }
     void set_visible(bool visible) noexcept { m_bShow = visible; }
-    void SetVisible(bool visible) noexcept { m_bShow = visible; }
 
     [[nodiscard]] bool is_locked() const noexcept { return m_bLocked; }
-    [[nodiscard]] bool IsLocked() const noexcept { return m_bLocked; }
     void set_locked(bool locked) noexcept { m_bLocked = locked; }
-    void SetLocked(bool locked) noexcept { m_bLocked = locked; }
 
     [[nodiscard]] bool is_filled() const noexcept { return m_bFill; }
-    [[nodiscard]] bool IsFilled() const noexcept { return m_bFill; }
     void set_filled(bool fill) noexcept { m_bFill = fill; }
-    void SetFilled(bool fill) noexcept { m_bFill = fill; }
 
     // Physical Properties (Gravity / Density)
     [[nodiscard]] double density() const noexcept { return (m_bActive ? m_dDensity : 0.0); }
-    [[nodiscard]] double GetDensity() const noexcept { return density(); }
     [[nodiscard]] double raw_density() const noexcept { return m_dDensity; }
-    [[nodiscard]] double GetRawDensity() const noexcept { return m_dDensity; }
     void set_density(double dens) noexcept { m_dDensity = dens; }
-    void SetDensity(double dens) noexcept { m_dDensity = dens; }
 
     [[nodiscard]] const Point3D &density_gradient() const noexcept { return m_vDensGrad; }
-    [[nodiscard]] Point3D GetDensityGradient() const noexcept { return m_vDensGrad; }
     void set_density_gradient(const Point3D &grad) noexcept { m_vDensGrad = grad; }
-    void SetDensityGradient(const Point3D &grad) noexcept { m_vDensGrad = grad; }
 
     [[nodiscard]] const Point3D &density_origin() const noexcept { return m_vDensOrg; }
-    [[nodiscard]] Point3D GetDensityOrigo() const noexcept { return m_vDensOrg; }
     void set_density_origin(const Point3D &orig) noexcept { m_vDensOrg = orig; }
-    void SetDensityOrigo(const Point3D &orig) noexcept { m_vDensOrg = orig; }
 
     [[nodiscard]] double density_at_origin() const noexcept {
         return (m_dDensity - m_vDensGrad * m_vDensOrg);
-    }
-    [[nodiscard]] double GetDensityAtOrigin() const noexcept {
-        return density_at_origin();
     }
 
     [[nodiscard]] double density_at(const Point3D &pt) const noexcept {
@@ -121,44 +101,96 @@ public:
 
     // Physical Properties (Magnetics)
     [[nodiscard]] double susceptibility() const noexcept { return m_dSusc; }
-    [[nodiscard]] double GetSusceptibility() const noexcept { return m_dSusc; }
     void set_susceptibility(double susc) noexcept { m_dSusc = susc; }
-    void SetSusceptibility(double susc) noexcept { m_dSusc = susc; }
 
     [[nodiscard]] const Point3D &magnetization_vector() const noexcept { return m_vMagVector; }
-    [[nodiscard]] Point3D GetMagnetizationVector() const noexcept { return m_vMagVector; }
     void set_magnetization_vector(const Point3D &mv) noexcept { m_vMagVector = mv; }
-    void SetMagnetizationVector(const Point3D &mv) noexcept { m_vMagVector = mv; }
 
     [[nodiscard]] const Point3D &remanent_magnetization() const noexcept { return m_vMagRem; }
-    [[nodiscard]] Point3D GetRemanentMagnetization() const noexcept { return m_vMagRem; }
     void set_remanent_magnetization(const Point3D &rem) noexcept { m_vMagRem = rem; }
-    void SetRemanentMagnetization(const Point3D &rem) noexcept { m_vMagRem = rem; }
 
     void compute_magnetization_vector(const Point3D &vIndFld);
-    void ComputeMagnetizationVector(const Point3D &vIndFld) { compute_magnetization_vector(vIndFld); }
 
     // Rendering Parameters
     [[nodiscard]] BodyColor color() const noexcept { return m_color; }
-    [[nodiscard]] BodyColor GetColor() const noexcept { return m_color; }
     void set_color(const BodyColor &color) noexcept { m_color = color; }
-    void SetColor(const BodyColor &color) noexcept { m_color = color; }
 
     [[nodiscard]] float transparency() const noexcept { return m_fAlpha; }
-    [[nodiscard]] float GetTransparency() const noexcept { return m_fAlpha; }
     void set_transparency(float alpha) noexcept { m_fAlpha = alpha; }
-    void SetTransparency(float alpha) noexcept { m_fAlpha = alpha; }
 
     [[nodiscard]] bool is_transparent() const noexcept { return m_bTransparent; }
-    [[nodiscard]] bool IsTransparent() const noexcept { return m_bTransparent; }
     void set_transparent(bool trans) noexcept { m_bTransparent = trans; }
-    void SetTransparent(bool trans) noexcept { m_bTransparent = trans; }
 
     // Comparisons
     [[nodiscard]] bool operator==(const Body &other) const noexcept;
     [[nodiscard]] bool operator!=(const Body &other) const noexcept { return !(*this == other); }
 
     friend std::ostream &operator<<(std::ostream &os, const Body &b);
+
+    // ========================================================================
+    // Legacy API (CamelCase compatibility wrappers for legacy Mod3D codebase)
+    // ========================================================================
+
+    // Identifiers & Metadata
+    [[nodiscard]] int GetID() const noexcept { return id(); }
+    void SetID(int id) noexcept { set_id(id); }
+
+    [[nodiscard]] int GetIndex() const noexcept { return index(); }
+    void SetIndex(int idx) noexcept { set_index(idx); }
+
+    [[nodiscard]] const std::string &GetName() const noexcept { return name(); }
+    void SetName(std::string name) { set_name(std::move(name)); }
+
+    [[nodiscard]] const std::string &GetDescription() const noexcept { return description(); }
+    void SetDescription(std::string desc) { set_description(std::move(desc)); }
+
+    // State Flags
+    [[nodiscard]] bool IsActive() const noexcept { return is_active(); }
+    void SetActive(bool active) noexcept { set_active(active); }
+
+    [[nodiscard]] bool IsVisible() const noexcept { return is_visible(); }
+    void SetVisible(bool visible) noexcept { set_visible(visible); }
+
+    [[nodiscard]] bool IsLocked() const noexcept { return is_locked(); }
+    void SetLocked(bool locked) noexcept { set_locked(locked); }
+
+    [[nodiscard]] bool IsFilled() const noexcept { return is_filled(); }
+    void SetFilled(bool fill) noexcept { set_filled(fill); }
+
+    // Physical Properties (Gravity / Density)
+    [[nodiscard]] double GetDensity() const noexcept { return density(); }
+    [[nodiscard]] double GetRawDensity() const noexcept { return raw_density(); }
+    void SetDensity(double dens) noexcept { set_density(dens); }
+
+    [[nodiscard]] Point3D GetDensityGradient() const noexcept { return density_gradient(); }
+    void SetDensityGradient(const Point3D &grad) noexcept { set_density_gradient(grad); }
+
+    [[nodiscard]] Point3D GetDensityOrigo() const noexcept { return density_origin(); }
+    void SetDensityOrigo(const Point3D &orig) noexcept { set_density_origin(orig); }
+
+    [[nodiscard]] double GetDensityAtOrigin() const noexcept { return density_at_origin(); }
+
+    // Physical Properties (Magnetics)
+    [[nodiscard]] double GetSusceptibility() const noexcept { return susceptibility(); }
+    void SetSusceptibility(double susc) noexcept { set_susceptibility(susc); }
+
+    [[nodiscard]] Point3D GetMagnetizationVector() const noexcept { return magnetization_vector(); }
+    void SetMagnetizationVector(const Point3D &mv) noexcept { set_magnetization_vector(mv); }
+
+    [[nodiscard]] Point3D GetRemanentMagnetization() const noexcept { return remanent_magnetization(); }
+    void SetRemanentMagnetization(const Point3D &rem) noexcept { set_remanent_magnetization(rem); }
+
+    void ComputeMagnetizationVector(const Point3D &vIndFld) { compute_magnetization_vector(vIndFld); }
+
+    // Rendering Parameters
+    [[nodiscard]] BodyColor GetColor() const noexcept { return color(); }
+    void SetColor(const BodyColor &color) noexcept { set_color(color); }
+
+    [[nodiscard]] float GetTransparency() const noexcept { return transparency(); }
+    void SetTransparency(float alpha) noexcept { set_transparency(alpha); }
+
+    [[nodiscard]] bool IsTransparent() const noexcept { return is_transparent(); }
+    void SetTransparent(bool trans) noexcept { set_transparent(trans); }
 
 private:
     int m_nID{0};
