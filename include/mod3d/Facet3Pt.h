@@ -32,7 +32,9 @@ enum class FacetType {
  */
 class Facet3Pt {
 public:
-    // Constructors
+    // ========================================================================
+    // Lifecycle & Rule of 5
+    // ========================================================================
     constexpr Facet3Pt() noexcept = default;
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW = 0.0);
@@ -45,13 +47,9 @@ public:
     Facet3Pt(Facet3Pt &&) noexcept = default;
     Facet3Pt &operator=(Facet3Pt &&) noexcept = default;
 
-    // Comparisons
-    [[nodiscard]] constexpr bool operator==(const Facet3Pt &fct) const noexcept {
-        return (pts[0] == fct.pts[0] && pts[1] == fct.pts[1] && pts[2] == fct.pts[2]);
-    }
-    [[nodiscard]] constexpr bool operator!=(const Facet3Pt &fct) const noexcept {
-        return !(*this == fct);
-    }
+    // ========================================================================
+    // Modern C++20 API (STL snake_case convention, noexcept, [[nodiscard]])
+    // ========================================================================
 
     // Vertex Element Access
     [[nodiscard]] constexpr Point3D &operator[](size_t index) noexcept { return pts[index]; }
@@ -61,7 +59,48 @@ public:
     [[nodiscard]] static constexpr size_t size() noexcept { return 3; }
     [[nodiscard]] static constexpr bool empty() noexcept { return false; }
 
-    // Initialization
+    // Facet Attributes & Geometry
+    [[nodiscard]] FacetType type() const noexcept { return nType; }
+    void set_type(FacetType t) noexcept { nType = t; }
+
+    [[nodiscard]] double sign() const noexcept { return dSign; }
+    void set_sign(double s) noexcept { dSign = s; }
+
+    [[nodiscard]] bool is_null() const noexcept { return nType == FacetType::FCT_NULL; }
+    [[nodiscard]] bool is_outer() const noexcept { return nType == FacetType::FCT_OUTER; }
+    [[nodiscard]] bool is_opposite(const Facet3Pt &fct) const noexcept;
+
+    [[nodiscard]] double mean_elevation() const noexcept;
+    [[nodiscard]] Point3D centroid() const noexcept;
+    [[nodiscard]] Point3D center() const noexcept { return (pts[0] + pts[1] + pts[2]) / 3.0; }
+    [[nodiscard]] double area() const noexcept;
+    [[nodiscard]] const Point3D &normal() const noexcept { return v_n; }
+
+    [[nodiscard]] bool contains_vertex(const Point3D &pt) const noexcept;
+    void reverse();
+
+    [[nodiscard]] double solid_angle(std::span<const Point3D, 3> spts) const;
+    [[nodiscard]] double solid_angle(const Point3D *spts) const;
+
+    // Modern pfld Integration
+    [[nodiscard]] const pfld::Facet<double> &pfld_facet() const noexcept { return pfld_; }
+    [[nodiscard]] pfld::Facet<double> &pfld_facet() noexcept { return pfld_; }
+    operator const pfld::Facet<double> &() const noexcept { return pfld_; }
+    operator pfld::Facet<double> &() noexcept { return pfld_; }
+    [[nodiscard]] double field_gz(const Point3D &r) const { return pfld_.field_gz(r); }
+    [[nodiscard]] Point3D field_g(const Point3D &r) const { return pfld_.field_g(r); }
+
+    // Comparisons
+    [[nodiscard]] constexpr bool operator==(const Facet3Pt &fct) const noexcept {
+        return (pts[0] == fct.pts[0] && pts[1] == fct.pts[1] && pts[2] == fct.pts[2]);
+    }
+    [[nodiscard]] constexpr bool operator!=(const Facet3Pt &fct) const noexcept {
+        return !(*this == fct);
+    }
+
+    // ========================================================================
+    // Legacy API (Compatibility wrappers and legacy potential field functions)
+    // ========================================================================
     void Init();
     void Init(const Point3D *ppts);
     void Init(std::span<const Point3D, 3> ppts);
@@ -105,44 +144,26 @@ public:
         gz += g_vec.z;
     }
 
-    // Facet management & queries
-    [[nodiscard]] bool IsOposit(const Facet3Pt &fct) const noexcept;
-    [[nodiscard]] bool is_opposite(const Facet3Pt &fct) const noexcept { return IsOposit(fct); }
+    [[nodiscard]] bool IsOposit(const Facet3Pt &fct) const noexcept { return is_opposite(fct); }
+    [[nodiscard]] bool IsNull() const noexcept { return is_null(); }
+    [[nodiscard]] bool IsOuter() const noexcept { return is_outer(); }
 
-    [[nodiscard]] bool IsNull() const noexcept { return nType == FacetType::FCT_NULL; }
-    [[nodiscard]] bool is_null() const noexcept { return IsNull(); }
+    void SetType(FacetType type) noexcept { set_type(type); }
+    [[nodiscard]] FacetType GetType() const noexcept { return type(); }
 
-    [[nodiscard]] bool IsOuter() const noexcept { return nType == FacetType::FCT_OUTER; }
-    [[nodiscard]] bool is_outer() const noexcept { return IsOuter(); }
+    [[nodiscard]] double GetSign() const noexcept { return sign(); }
+    void SetSign(double s) noexcept { set_sign(s); }
 
-    void SetType(FacetType type) noexcept { nType = type; }
-    void set_type(FacetType type) noexcept { nType = type; }
-    [[nodiscard]] FacetType GetType() const noexcept { return nType; }
-    [[nodiscard]] FacetType type() const noexcept { return nType; }
+    [[nodiscard]] double SolidAngle(const Point3D *spts) const { return solid_angle(spts); }
+    [[nodiscard]] double SolidAngle(std::span<const Point3D, 3> spts) const { return solid_angle(spts); }
 
-    [[nodiscard]] double GetSign() const noexcept { return dSign; }
-    [[nodiscard]] double sign() const noexcept { return dSign; }
-    void SetSign(double s) noexcept { dSign = s; }
-    void set_sign(double s) noexcept { dSign = s; }
-
-    [[nodiscard]] double SolidAngle(const Point3D *spts) const;
-    [[nodiscard]] double SolidAngle(std::span<const Point3D, 3> spts) const;
-
-    [[nodiscard]] double GetMeanElevation() const noexcept;
-    [[nodiscard]] double mean_elevation() const noexcept { return GetMeanElevation(); }
-
-    [[nodiscard]] Point3D Centroid() const noexcept;
-    [[nodiscard]] Point3D centroid() const noexcept { return Centroid(); }
-    [[nodiscard]] Point3D center() const noexcept { return (pts[0] + pts[1] + pts[2]) / 3.0; }
-    [[nodiscard]] double area() const noexcept;
+    [[nodiscard]] double GetMeanElevation() const noexcept { return mean_elevation(); }
+    [[nodiscard]] Point3D Centroid() const noexcept { return centroid(); }
 
     [[nodiscard]] const Point3D *ContainsVertex(const Point3D *pt) const noexcept;
-    [[nodiscard]] bool contains_vertex(const Point3D &pt) const noexcept;
+    void Reverse() { reverse(); }
 
-    void Reverse();
-
-    [[nodiscard]] const Point3D &Normal() const noexcept { return v_n; }
-    [[nodiscard]] const Point3D &normal() const noexcept { return v_n; }
+    [[nodiscard]] const Point3D &Normal() const noexcept { return normal(); }
 
     // High-level field calculation with reference model and body interaction
     void Compute(
@@ -152,14 +173,6 @@ public:
         double &dRefDens, double &dRefDensOrg, Point3D &v_refDens, int nRdm,
         Point3D &v_rGrv, Point3D &v_rTen, Point3D &v_rMag,
         double &dUnitGrv, double &dUnitMag, double &dUnitTns);
-
-    // Integration with modern header-only pfld library
-    [[nodiscard]] const pfld::Facet<double> &pfld_facet() const noexcept { return m_pfld; }
-    [[nodiscard]] pfld::Facet<double> &pfld_facet() noexcept { return m_pfld; }
-    operator const pfld::Facet<double> &() const noexcept { return m_pfld; }
-    operator pfld::Facet<double> &() noexcept { return m_pfld; }
-    [[nodiscard]] double field_gz(const Point3D &r) const { return m_pfld.field_gz(r); }
-    [[nodiscard]] Point3D field_g(const Point3D &r) const { return m_pfld.field_g(r); }
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};
@@ -186,7 +199,7 @@ public:
     Body *pBodyOpos{nullptr};
 
     // Modern header-only pfld facet representation
-    pfld::Facet<double> m_pfld;
+    pfld::Facet<double> pfld_;
 };
 
 using FacetList = std::vector<Facet3Pt>;

@@ -137,19 +137,19 @@ void Facet3Pt::Init()
     bLinOpos = v_densGradOpos.is_zero();
 
     // Initialize modern header-only pfld facet representation
-    m_pfld.Init(std::span<const Point3D, 3>(pts));
+    pfld_.Init(std::span<const Point3D, 3>(pts));
 }
 
 // Gravity field of a polygonal facet (Pohanka / Vlado) with constant density
 void Facet3Pt::FldVlado(const Point3D &v_r, Point3D &v_Grv) const
 {
-    m_pfld.Fld_G(v_r, v_Grv);
+    pfld_.Fld_G(v_r, v_Grv);
 }
 
 // Gravity field for variable (linear) density gradient
 void Facet3Pt::FldVlado(const Point3D &v_r, Point3D &v_Grv, Point3D ro, double ro0) const
 {
-    m_pfld.Fld_G(v_r, ro, ro0, v_Grv);
+    pfld_.Fld_G(v_r, ro, ro0, v_Grv);
 }
 
 // Full gravity gradient tensor
@@ -157,28 +157,28 @@ void Facet3Pt::FldVladoGrd(const Point3D &v_r, double refDensity,
                            double &gxx, double &gyy, double &gzz,
                            double &gxy, double &gxz, double &gyz) const
 {
-    m_pfld.FldVladoGrd(v_r, refDensity, gxx, gyy, gzz, gxy, gxz, gyz, densityOpos, density);
+    pfld_.FldVladoGrd(v_r, refDensity, gxx, gyy, gzz, gxy, gxz, gyz, densityOpos, density);
 }
 
 void Facet3Pt::FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point3D &v_Grv) const
 {
-    m_pfld.FldGS(v_r, v_M, v_Mag, v_Grv);
+    pfld_.FldGS(v_r, v_M, v_Mag, v_Grv);
 }
 
 void Facet3Pt::FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, double dSignMultiplier) const
 {
     Point3D mag(0, 0, 0);
-    m_pfld.FldGS_M(v_r, v_M, mag);
+    pfld_.FldGS_M(v_r, v_M, mag);
     v_Mag += mag * dSignMultiplier;
 }
 
-double Facet3Pt::SolidAngle(const Point3D *spts) const
+double Facet3Pt::solid_angle(const Point3D *spts) const
 {
     if (!spts) return 0.0;
     return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(spts, 3), v_n * spts[1], 3);
 }
 
-double Facet3Pt::SolidAngle(std::span<const Point3D, 3> spts) const
+double Facet3Pt::solid_angle(std::span<const Point3D, 3> spts) const
 {
     return pfld::Facet<double>::SolidAngle(spts, v_n * spts[1], 3);
 }
@@ -205,12 +205,12 @@ void Facet3Pt::FldSpherGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point
     fctS.FldGS(Point3D(0, 0, 0), v_M, v_Mag, v_Grv);
 }
 
-double Facet3Pt::GetMeanElevation() const noexcept
+double Facet3Pt::mean_elevation() const noexcept
 {
     return (pts[0].z + pts[1].z + pts[2].z) / 3.0;
 }
 
-Point3D Facet3Pt::Centroid() const noexcept
+Point3D Facet3Pt::centroid() const noexcept
 {
     return pts[0] + pts[1] + pts[2];
 }
@@ -235,14 +235,14 @@ bool Facet3Pt::contains_vertex(const Point3D &pt) const noexcept
     return (pts[0] == pt || pts[1] == pt || pts[2] == pt);
 }
 
-bool Facet3Pt::IsOposit(const Facet3Pt &fct) const noexcept
+bool Facet3Pt::is_opposite(const Facet3Pt &fct) const noexcept
 {
     Point3D c1 = pts[0] + pts[2] + pts[1];
     Point3D c2 = fct.pts[0] + fct.pts[1] + fct.pts[2];
     return (c1 == c2);
 }
 
-void Facet3Pt::Reverse()
+void Facet3Pt::reverse()
 {
     std::swap(pts[0], pts[2]);
     std::swap(pBody, pBodyOpos);

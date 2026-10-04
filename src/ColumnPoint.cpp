@@ -4,8 +4,8 @@
 namespace mod3d {
 
 std::ostream &operator<<(std::ostream &os, const ColumnPoint &cp) {
-    os << "ColumnPoint(pt=(" << cp.m_pt.x << ", " << cp.m_pt.y << ", " << cp.m_pt.z
-       << "), z=" << cp.m_z << ", bodyId=" << cp.m_bodyId << ", modified=" << (cp.m_modified ? "true" : "false") << ")";
+    os << "ColumnPoint(pt=(" << cp.pt_.x << ", " << cp.pt_.y << ", " << cp.pt_.z
+       << "), z=" << cp.z_ << ", bodyId=" << cp.body_id_ << ", modified=" << (cp.modified_ ? "true" : "false") << ")";
     return os;
 }
 

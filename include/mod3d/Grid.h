@@ -35,7 +35,9 @@ public:
         size_t dummy_count{0};
     };
 
-    // Constructors and Rule of 5
+    // ========================================================================
+    // Lifecycle & Rule of 5
+    // ========================================================================
     Grid() = default;
     Grid(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg = 0.0);
     Grid(const Grid &) = default;
@@ -49,38 +51,38 @@ public:
 
     void resize(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg = 0.0);
 
+    // ========================================================================
+    // Modern C++20 API (STL snake_case convention, noexcept, [[nodiscard]])
+    // ========================================================================
+
     // Dimensions and Geometry
-    [[nodiscard]] constexpr size_t rows() const noexcept { return m_rows; }
-    [[nodiscard]] constexpr size_t cols() const noexcept { return m_cols; }
-    [[nodiscard]] constexpr size_t size() const noexcept { return m_rows * m_cols; }
-    [[nodiscard]] constexpr bool empty() const noexcept { return m_rows == 0 || m_cols == 0; }
+    [[nodiscard]] constexpr size_t rows() const noexcept { return rows_; }
+    [[nodiscard]] constexpr size_t cols() const noexcept { return cols_; }
+    [[nodiscard]] constexpr size_t size() const noexcept { return rows_ * cols_; }
+    [[nodiscard]] constexpr bool empty() const noexcept { return rows_ == 0 || cols_ == 0; }
     [[nodiscard]] constexpr bool is_empty() const noexcept { return empty(); }
 
-    [[nodiscard]] constexpr double x0() const noexcept { return m_x0; }
-    [[nodiscard]] constexpr double y0() const noexcept { return m_y0; }
-    [[nodiscard]] constexpr double dx() const noexcept { return m_xSize; }
-    [[nodiscard]] constexpr double dy() const noexcept { return m_ySize; }
-    [[nodiscard]] constexpr double xSize() const noexcept { return m_xSize; }
-    [[nodiscard]] constexpr double ySize() const noexcept { return m_ySize; }
-    [[nodiscard]] constexpr double rotation() const noexcept { return m_rotDeg; }
-    [[nodiscard]] constexpr double rotation_deg() const noexcept { return m_rotDeg; }
-    [[nodiscard]] double rotation_rad() const noexcept { return m_rotDeg * std::numbers::pi_v<double> / 180.0; }
+    [[nodiscard]] constexpr double x0() const noexcept { return x0_; }
+    [[nodiscard]] constexpr double y0() const noexcept { return y0_; }
+    [[nodiscard]] constexpr double dx() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr double dy() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr double x_size() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr double y_size() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr double rotation_deg() const noexcept { return rot_deg_; }
+    [[nodiscard]] double rotation_rad() const noexcept { return rot_deg_ * std::numbers::pi_v<double> / 180.0; }
 
     // World coordinate bounding box
     [[nodiscard]] double x_min() const noexcept;
     [[nodiscard]] double x_max() const noexcept;
     [[nodiscard]] double y_min() const noexcept;
     [[nodiscard]] double y_max() const noexcept;
-    [[nodiscard]] double z_min() const noexcept { return getMin(); }
-    [[nodiscard]] double z_max() const noexcept { return getMax(); }
+    [[nodiscard]] double z_min() const noexcept;
+    [[nodiscard]] double z_max() const noexcept;
 
     // Coordinate conversions
-    [[nodiscard]] double getX(size_t row, size_t col) const noexcept;
-    [[nodiscard]] double getY(size_t row, size_t col) const noexcept;
-    [[nodiscard]] double x(size_t row, size_t col) const noexcept { return getX(row, col); }
-    [[nodiscard]] double y(size_t row, size_t col) const noexcept { return getY(row, col); }
-    [[nodiscard]] Point3D getPoint(size_t row, size_t col) const noexcept;
-    [[nodiscard]] Point3D point(size_t row, size_t col) const noexcept { return getPoint(row, col); }
+    [[nodiscard]] double x(size_t row, size_t col) const noexcept;
+    [[nodiscard]] double y(size_t row, size_t col) const noexcept;
+    [[nodiscard]] Point3D point(size_t row, size_t col) const noexcept;
 
     [[nodiscard]] bool world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept;
     [[nodiscard]] bool grid_to_world(double row, double col, double &xVal, double &yVal) const noexcept;
@@ -92,68 +94,50 @@ public:
 
     // Element Access
     [[nodiscard]] double operator()(size_t row, size_t col) const noexcept {
-        return m_data[row * m_cols + col];
+        return data_[row * cols_ + col];
     }
     [[nodiscard]] double &operator()(size_t row, size_t col) noexcept {
-        return m_data[row * m_cols + col];
+        return data_[row * cols_ + col];
     }
 
     [[nodiscard]] double &at(size_t row, size_t col);
     [[nodiscard]] double at(size_t row, size_t col) const;
 
-    [[nodiscard]] double operator[](size_t index) const noexcept { return m_data[index]; }
-    [[nodiscard]] double &operator[](size_t index) noexcept { return m_data[index]; }
-
-    [[nodiscard]] double getValue(size_t row, size_t col) const noexcept {
-        return operator()(row, col);
-    }
-    void setValue(size_t row, size_t col, double val) noexcept {
-        operator()(row, col) = val;
-    }
+    [[nodiscard]] double operator[](size_t index) const noexcept { return data_[index]; }
+    [[nodiscard]] double &operator[](size_t index) noexcept { return data_[index]; }
 
     // Direct Data and Span Access
-    [[nodiscard]] const std::vector<double> &data() const noexcept { return m_data; }
-    [[nodiscard]] std::vector<double> &data() noexcept { return m_data; }
-    [[nodiscard]] std::span<const double> span() const noexcept { return m_data; }
-    [[nodiscard]] std::span<double> span() noexcept { return m_data; }
+    [[nodiscard]] const std::vector<double> &data() const noexcept { return data_; }
+    [[nodiscard]] std::vector<double> &data() noexcept { return data_; }
+    [[nodiscard]] std::span<const double> span() const noexcept { return data_; }
+    [[nodiscard]] std::span<double> span() noexcept { return data_; }
 
     // Iterators
-    [[nodiscard]] auto begin() noexcept { return m_data.begin(); }
-    [[nodiscard]] auto end() noexcept { return m_data.end(); }
-    [[nodiscard]] auto begin() const noexcept { return m_data.begin(); }
-    [[nodiscard]] auto end() const noexcept { return m_data.end(); }
-    [[nodiscard]] auto cbegin() const noexcept { return m_data.cbegin(); }
-    [[nodiscard]] auto cend() const noexcept { return m_data.cend(); }
+    [[nodiscard]] auto begin() noexcept { return data_.begin(); }
+    [[nodiscard]] auto end() noexcept { return data_.end(); }
+    [[nodiscard]] auto begin() const noexcept { return data_.begin(); }
+    [[nodiscard]] auto end() const noexcept { return data_.end(); }
+    [[nodiscard]] auto cbegin() const noexcept { return data_.cbegin(); }
+    [[nodiscard]] auto cend() const noexcept { return data_.cend(); }
 
     // Dummy value checks
     [[nodiscard]] static constexpr bool is_dummy_value(double val) noexcept {
         return val >= 1.7e38 || (val != val);
     }
-    [[nodiscard]] static bool isDummyValue(double val) noexcept {
-        return is_dummy_value(val);
-    }
     [[nodiscard]] bool is_dummy(size_t row, size_t col) const noexcept {
         return is_dummy_value(operator()(row, col));
-    }
-    [[nodiscard]] bool isDummy(size_t row, size_t col) const noexcept {
-        return is_dummy(row, col);
     }
 
     // Mutators
     void fill(double val);
     void zero() { fill(0.0); }
-    void zeroData() { zero(); }
 
     // Statistics
     [[nodiscard]] Stats compute_stats() const noexcept;
-    [[nodiscard]] double getMin() const;
-    [[nodiscard]] double getMax() const;
-    [[nodiscard]] double getMean() const;
-    [[nodiscard]] double getRMS() const;
-    [[nodiscard]] double min() const { return getMin(); }
-    [[nodiscard]] double max() const { return getMax(); }
-    [[nodiscard]] double mean() const { return getMean(); }
-    [[nodiscard]] double rms() const { return getRMS(); }
+    [[nodiscard]] double min() const;
+    [[nodiscard]] double max() const;
+    [[nodiscard]] double mean() const;
+    [[nodiscard]] double rms() const;
 
     // Grid Arithmetic (In-place)
     Grid &operator+=(double val);
@@ -183,27 +167,57 @@ public:
     [[nodiscard]] bool operator==(const Grid &other) const noexcept;
     [[nodiscard]] bool operator!=(const Grid &other) const noexcept { return !(*this == other); }
 
-    // File I/O (Supports std::filesystem::path and std::string)
-    bool loadSrf6Binary(const std::filesystem::path &filePath);
-    bool saveSrf6Binary(const std::filesystem::path &filePath) const;
-    bool loadSrf6Ascii(const std::filesystem::path &filePath);
-    bool saveSrf6Ascii(const std::filesystem::path &filePath) const;
+    // File I/O
+    bool load_srf6_binary(const std::filesystem::path &filePath);
+    bool save_srf6_binary(const std::filesystem::path &filePath) const;
+    bool load_srf6_ascii(const std::filesystem::path &filePath);
+    bool save_srf6_ascii(const std::filesystem::path &filePath) const;
 
     friend std::ostream &operator<<(std::ostream &os, const Grid &grid);
 
-private:
-    void updatePrecomputedTrig();
+    // ========================================================================
+    // Legacy API (CamelCase compatibility wrappers for MFC Mod3D codebase)
+    // ========================================================================
+    [[nodiscard]] constexpr double xSize() const noexcept { return dx(); }
+    [[nodiscard]] constexpr double ySize() const noexcept { return dy(); }
+    [[nodiscard]] constexpr double rotation() const noexcept { return rotation_deg(); }
 
-    size_t m_rows{0};
-    size_t m_cols{0};
-    double m_x0{0.0};
-    double m_y0{0.0};
-    double m_xSize{0.0};
-    double m_ySize{0.0};
-    double m_rotDeg{0.0};
-    double m_cosRot{1.0};
-    double m_sinRot{0.0};
-    std::vector<double> m_data;
+    [[nodiscard]] double getX(size_t row, size_t col) const noexcept { return x(row, col); }
+    [[nodiscard]] double getY(size_t row, size_t col) const noexcept { return y(row, col); }
+    [[nodiscard]] Point3D getPoint(size_t row, size_t col) const noexcept { return point(row, col); }
+
+    [[nodiscard]] double getValue(size_t row, size_t col) const noexcept { return operator()(row, col); }
+    void setValue(size_t row, size_t col, double val) noexcept { operator()(row, col) = val; }
+
+    [[nodiscard]] static bool isDummyValue(double val) noexcept { return is_dummy_value(val); }
+    [[nodiscard]] bool isDummy(size_t row, size_t col) const noexcept { return is_dummy(row, col); }
+
+    void zeroData() { zero(); }
+
+    [[nodiscard]] double getMin() const { return min(); }
+    [[nodiscard]] double getMax() const { return max(); }
+    [[nodiscard]] double getMean() const { return mean(); }
+    [[nodiscard]] double getRMS() const { return rms(); }
+
+    bool loadSrf6Binary(const std::filesystem::path &filePath) { return load_srf6_binary(filePath); }
+    bool saveSrf6Binary(const std::filesystem::path &filePath) const { return save_srf6_binary(filePath); }
+    bool loadSrf6Ascii(const std::filesystem::path &filePath) { return load_srf6_ascii(filePath); }
+    bool saveSrf6Ascii(const std::filesystem::path &filePath) const { return save_srf6_ascii(filePath); }
+
+private:
+    void update_precomputed_trig();
+    void updatePrecomputedTrig() { update_precomputed_trig(); }
+
+    size_t rows_{0};
+    size_t cols_{0};
+    double x0_{0.0};
+    double y0_{0.0};
+    double x_size_{0.0};
+    double y_size_{0.0};
+    double rot_deg_{0.0};
+    double cos_rot_{1.0};
+    double sin_rot_{0.0};
+    std::vector<double> data_;
 };
 
 } // namespace mod3d
