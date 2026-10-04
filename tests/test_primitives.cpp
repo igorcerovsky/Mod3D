@@ -7,6 +7,7 @@
 #include <array>
 #include <span>
 #include <type_traits>
+#include <sstream>
 
 using namespace mod3d;
 
@@ -274,6 +275,73 @@ TEST(BodyTest, VisualAndLockStates) {
 
     b.SetTransparency(0.8f);
     EXPECT_FLOAT_EQ(b.GetTransparency(), 0.8f);
+}
+
+TEST(BodyTest, ModernizedFeaturesAndOperators) {
+    // Non-polymorphic value type verification
+    static_assert(!std::is_polymorphic_v<Body>, "Body must not be polymorphic");
+
+    // BodyColor constexpr and stream
+    constexpr BodyColor c1(10, 20, 30, 200);
+    constexpr BodyColor c2(10, 20, 30, 200);
+    constexpr BodyColor c3(10, 20, 31, 200);
+    static_assert(c1 == c2);
+    static_assert(c1 != c3);
+
+    std::ostringstream ssColor;
+    ssColor << c1;
+    EXPECT_EQ(ssColor.str(), "rgba(10, 20, 30, 200)");
+
+    // Default construction & modern getters
+    Body b1(5, "Layer1", 2500.0);
+    b1.set_index(2);
+    b1.set_description("Test geological unit");
+    EXPECT_EQ(b1.id(), 5);
+    EXPECT_EQ(b1.index(), 2);
+    EXPECT_EQ(b1.name(), "Layer1");
+    EXPECT_EQ(b1.description(), "Test geological unit");
+    EXPECT_DOUBLE_EQ(b1.density(), 2500.0);
+    EXPECT_DOUBLE_EQ(b1.raw_density(), 2500.0);
+    EXPECT_TRUE(b1.is_active());
+    EXPECT_TRUE(b1.is_visible());
+    EXPECT_FALSE(b1.is_locked());
+    EXPECT_TRUE(b1.is_filled());
+
+    // Density gradient and density_at calculation
+    b1.set_density_origin(Point3D(0.0, 0.0, -100.0));
+    b1.set_density_gradient(Point3D(0.0, 0.0, 0.2)); // +0.2 kg/m3 per meter depth
+    EXPECT_DOUBLE_EQ(b1.density_origin().z, -100.0);
+    EXPECT_DOUBLE_EQ(b1.density_gradient().z, 0.2);
+    // At z = -500: rho = 2500 + 0.2 * (-500 - (-100)) = 2500 + 0.2 * (-400) = 2420.0
+    EXPECT_DOUBLE_EQ(b1.density_at(Point3D(0.0, 0.0, -500.0)), 2420.0);
+    // When inactive, density_at must return 0.0
+    b1.set_active(false);
+    EXPECT_DOUBLE_EQ(b1.density_at(Point3D(0.0, 0.0, -500.0)), 0.0);
+    b1.set_active(true);
+
+    // Equality operator
+    Body b2 = b1;
+    EXPECT_EQ(b1, b2);
+    b2.set_name("Layer2");
+    EXPECT_NE(b1, b2);
+
+    // Swap (member and ADL)
+    Body b3(10, "Layer3", 3000.0);
+    Body b4 = b3;
+    Body b1_copy = b1;
+    b1.swap(b3);
+    EXPECT_EQ(b1, b4);
+    EXPECT_EQ(b3, b1_copy);
+    using std::swap;
+    swap(b1, b3);
+    EXPECT_EQ(b1, b1_copy);
+    EXPECT_EQ(b3, b4);
+
+    // Stream operator
+    std::ostringstream ssBody;
+    ssBody << b1;
+    EXPECT_NE(ssBody.str().find("Body(id=5"), std::string::npos);
+    EXPECT_NE(ssBody.str().find("name=\"Layer1\""), std::string::npos);
 }
 
 // ============================================================================
