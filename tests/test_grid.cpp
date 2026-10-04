@@ -152,3 +152,169 @@ TEST(GridComprehensiveTest, Surfer6BinaryRoundtrip) {
 
     std::remove(tmpBinFile.c_str());
 }
+
+// ============================================================================
+// 5. Modern C++20 Grid Features: Element Access, Transforms, Interpolation, Ops
+// ============================================================================
+
+TEST(GridModernizedTest, AtAndSpanAndIterators) {
+    Grid g(3, 4, 100.0, 200.0, 10.0, 20.0);
+    for (size_t i = 0; i < g.size(); ++i) {
+        g[i] = static_cast<double>(i * 5);
+    }
+
+    // operator[] and at()
+    EXPECT_DOUBLE_EQ(g[0], 0.0);
+    EXPECT_DOUBLE_EQ(g[1], 5.0);
+    EXPECT_DOUBLE_EQ(g.at(0, 1), 5.0);
+    EXPECT_DOUBLE_EQ(g.at(2, 3), 11 * 5.0);
+    EXPECT_THROW(g.at(3, 0), std::out_of_range);
+    EXPECT_THROW(g.at(0, 4), std::out_of_range);
+
+    // span access
+    std::span<const double> sp = g.span();
+    EXPECT_EQ(sp.size(), 12);
+    EXPECT_DOUBLE_EQ(sp[3], 15.0);
+
+    // Range-for iteration
+    double sum = 0.0;
+    for (double v : g) {
+        sum += v;
+    }
+    EXPECT_DOUBLE_EQ(sum, 11 * 12 * 5.0 / 2.0); // 0 + 5 + ... + 55 = 330
+}
+
+TEST(GridModernizedTest, BoundingBoxesAndTransform) {
+    // Rotated grid: 30 deg counter-clockwise
+    Grid g(4, 5, 1000.0, 2000.0, 50.0, 100.0, 30.0);
+    EXPECT_EQ(g.rotation_deg(), 30.0);
+    EXPECT_NEAR(g.rotation_rad(), 30.0 * 3.14159265358979323846 / 180.0, 1e-12);
+
+    // World to grid and grid to world round-trip
+    for (size_t r = 0; r < g.rows(); ++r) {
+        for (size_t c = 0; c < g.cols(); ++c) {
+            double wx = g.x(r, c);
+            double wy = g.y(r, c);
+            EXPECT_TRUE(g.contains(wx, wy));
+
+            double calcR = 0.0, calcC = 0.0;
+            EXPECT_TRUE(g.world_to_grid(wx, wy, calcR, calcC));
+            EXPECT_NEAR(calcR, static_cast<double>(r), 1e-10);
+            EXPECT_NEAR(calcC, static_cast<double>(c), 1e-10);
+
+            double backX = 0.0, backY = 0.0;
+            EXPECT_TRUE(g.grid_to_world(calcR, calcC, backX, backY));
+            EXPECT_NEAR(backX, wx, 1e-10);
+            EXPECT_NEAR(backY, wy, 1e-10);
+        }
+    }
+
+    // Points outside the grid
+    EXPECT_FALSE(g.contains(0.0, 0.0));
+    EXPECT_FALSE(g.contains(99999.0, 99999.0));
+
+    // Bounding box consistency
+    EXPECT_LE(g.x_min(), g.x_max());
+    EXPECT_LE(g.y_min(), g.y_max());
+    for (size_t r = 0; r < g.rows(); ++r) {
+        for (size_t c = 0; c < g.cols(); ++c) {
+            EXPECT_GE(g.x(r, c), g.x_min() - 1e-9);
+            EXPECT_LE(g.x(r, c), g.x_max() + 1e-9);
+            EXPECT_GE(g.y(r, c), g.y_min() - 1e-9);
+            EXPECT_LE(g.y(r, c), g.y_max() + 1e-9);
+        }
+    }
+}
+
+TEST(GridModernizedTest, BilinearInterpolation) {
+    // 3x3 unrotated grid with values equal to x + 2*y
+    Grid g(3, 3, 0.0, 0.0, 10.0, 10.0, 0.0);
+    for (size_t r = 0; r < 3; ++r) {
+        for (size_t c = 0; c < 3; ++c) {
+            double x = g.x(r, c);
+            double y = g.y(r, c);
+            g(r, c) = x + 2.0 * y;
+        }
+    }
+
+    // Interpolation exactly at grid node (10, 10)
+    EXPECT_NEAR(g.interpolate(10.0, 10.0), 30.0, 1e-10);
+    EXPECT_NEAR(g.sample(0.0, 0.0), 0.0, 1e-10);
+
+    // Midpoint interpolation between (0, 0) [val=0] and (10, 0) [val=10]: at (5, 0) => 5.0
+    EXPECT_NEAR(g.sample(5.0, 0.0), 5.0, 1e-10);
+
+    // Cell center interpolation: (5.0, 5.0) => 5 + 2*5 = 15.0
+    EXPECT_NEAR(g.interpolate(5.0, 5.0), 15.0, 1e-10);
+
+    // Arbitrary internal point (3.5, 7.2) => 3.5 + 2*7.2 = 17.9
+    EXPECT_NEAR(g.interpolate(3.5, 7.2), 17.9, 1e-10);
+
+    // Outside grid boundaries returns GRID_DUMMY
+    EXPECT_TRUE(Grid::is_dummy_value(g.interpolate(-1.0, 5.0)));
+    EXPECT_TRUE(Grid::is_dummy_value(g.interpolate(25.0, 5.0)));
+}
+
+TEST(GridModernizedTest, BinaryArithmeticAndEquality) {
+    Grid g1(2, 2, 0.0, 0.0, 1.0, 1.0);
+    g1(0, 0) = 10.0; g1(0, 1) = 20.0;
+    g1(1, 0) = 30.0; g1(1, 1) = 40.0;
+
+    Grid g2(2, 2, 0.0, 0.0, 1.0, 1.0);
+    g2(0, 0) = 1.0; g2(0, 1) = 2.0;
+    g2(1, 0) = 3.0; g2(1, 1) = 4.0;
+
+    // Equality
+    EXPECT_TRUE(g1 == g1);
+    EXPECT_FALSE(g1 == g2);
+    EXPECT_TRUE(g1 != g2);
+
+    // Non-member binary operators: g1 + g2, g1 - g2, g1 * g2, g1 / g2
+    Grid sum = g1 + g2;
+    EXPECT_DOUBLE_EQ(sum(0, 0), 11.0);
+    EXPECT_DOUBLE_EQ(sum(1, 1), 44.0);
+
+    Grid diff = g1 - g2;
+    EXPECT_DOUBLE_EQ(diff(0, 0), 9.0);
+    EXPECT_DOUBLE_EQ(diff(1, 1), 36.0);
+
+    Grid scaled = g1 * 2.5;
+    EXPECT_DOUBLE_EQ(scaled(0, 0), 25.0);
+    EXPECT_DOUBLE_EQ(scaled(1, 1), 100.0);
+
+    Grid scaledLeft = 2.0 * g2;
+    EXPECT_DOUBLE_EQ(scaledLeft(0, 0), 2.0);
+    EXPECT_DOUBLE_EQ(scaledLeft(1, 1), 8.0);
+
+    Grid divScalar = g1 / 2.0;
+    EXPECT_DOUBLE_EQ(divScalar(0, 0), 5.0);
+    EXPECT_DOUBLE_EQ(divScalar(1, 1), 20.0);
+}
+
+TEST(GridModernizedTest, StatsAndSwapStream) {
+    Grid g(2, 2, 0.0, 0.0, 1.0, 1.0);
+    g(0, 0) = 10.0;
+    g(0, 1) = 20.0;
+    g(1, 0) = 30.0;
+    g(1, 1) = GRID_DUMMY;
+
+    auto stats = g.compute_stats();
+    EXPECT_DOUBLE_EQ(stats.min, 10.0);
+    EXPECT_DOUBLE_EQ(stats.max, 30.0);
+    EXPECT_DOUBLE_EQ(stats.mean, 20.0);
+    EXPECT_EQ(stats.valid_count, 3);
+    EXPECT_EQ(stats.dummy_count, 1);
+
+    // Stream operator formatting
+    std::ostringstream oss;
+    oss << g;
+    std::string s = oss.str();
+    EXPECT_NE(s.find("Grid(rows=2, cols=2"), std::string::npos);
+
+    // Swap
+    Grid other(5, 5, 10.0, 20.0, 2.0, 2.0);
+    g.swap(other);
+    EXPECT_EQ(g.rows(), 5);
+    EXPECT_EQ(other.rows(), 2);
+}
+

@@ -5,18 +5,28 @@
 #include <cmath>
 #include <cstring>
 #include <iomanip>
+#include <numbers>
+#include <ostream>
 
 namespace mod3d {
-
-namespace {
-constexpr double PI = 3.14159265358979323846;
-}
-
-Grid::Grid() = default;
 
 Grid::Grid(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg)
 {
     resize(rows, cols, x0, y0, xSize, ySize, rotDeg);
+}
+
+void Grid::swap(Grid &other) noexcept
+{
+    std::swap(m_rows, other.m_rows);
+    std::swap(m_cols, other.m_cols);
+    std::swap(m_x0, other.m_x0);
+    std::swap(m_y0, other.m_y0);
+    std::swap(m_xSize, other.m_xSize);
+    std::swap(m_ySize, other.m_ySize);
+    std::swap(m_rotDeg, other.m_rotDeg);
+    std::swap(m_cosRot, other.m_cosRot);
+    std::swap(m_sinRot, other.m_sinRot);
+    m_data.swap(other.m_data);
 }
 
 void Grid::resize(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg)
@@ -34,24 +44,168 @@ void Grid::resize(size_t rows, size_t cols, double x0, double y0, double xSize, 
 
 void Grid::updatePrecomputedTrig()
 {
-    const double rad = m_rotDeg * PI / 180.0;
+    const double rad = m_rotDeg * std::numbers::pi_v<double> / 180.0;
     m_cosRot = std::cos(rad);
     m_sinRot = std::sin(rad);
 }
 
-double Grid::getX(size_t row, size_t col) const
+double Grid::getX(size_t row, size_t col) const noexcept
 {
     return m_x0 + (col * m_xSize) * m_cosRot - (row * m_ySize) * m_sinRot;
 }
 
-double Grid::getY(size_t row, size_t col) const
+double Grid::getY(size_t row, size_t col) const noexcept
 {
     return m_y0 + (col * m_xSize) * m_sinRot + (row * m_ySize) * m_cosRot;
 }
 
-Point3D Grid::getPoint(size_t row, size_t col) const
+Point3D Grid::getPoint(size_t row, size_t col) const noexcept
 {
     return Point3D(getX(row, col), getY(row, col), operator()(row, col));
+}
+
+double &Grid::at(size_t row, size_t col)
+{
+    if (row >= m_rows || col >= m_cols) {
+        throw std::out_of_range("Grid::at index out of range");
+    }
+    return m_data[row * m_cols + col];
+}
+
+double Grid::at(size_t row, size_t col) const
+{
+    if (row >= m_rows || col >= m_cols) {
+        throw std::out_of_range("Grid::at index out of range");
+    }
+    return m_data[row * m_cols + col];
+}
+
+double Grid::x_min() const noexcept
+{
+    if (empty()) return m_x0;
+    if (m_rotDeg == 0.0) return m_x0;
+    const double x00 = getX(0, 0);
+    const double x01 = getX(0, m_cols - 1);
+    const double x10 = getX(m_rows - 1, 0);
+    const double x11 = getX(m_rows - 1, m_cols - 1);
+    return std::min({x00, x01, x10, x11});
+}
+
+double Grid::x_max() const noexcept
+{
+    if (empty()) return m_x0;
+    if (m_rotDeg == 0.0) return m_x0 + (m_cols > 0 ? (m_cols - 1) * m_xSize : 0.0);
+    const double x00 = getX(0, 0);
+    const double x01 = getX(0, m_cols - 1);
+    const double x10 = getX(m_rows - 1, 0);
+    const double x11 = getX(m_rows - 1, m_cols - 1);
+    return std::max({x00, x01, x10, x11});
+}
+
+double Grid::y_min() const noexcept
+{
+    if (empty()) return m_y0;
+    if (m_rotDeg == 0.0) return m_y0;
+    const double y00 = getY(0, 0);
+    const double y01 = getY(0, m_cols - 1);
+    const double y10 = getY(m_rows - 1, 0);
+    const double y11 = getY(m_rows - 1, m_cols - 1);
+    return std::min({y00, y01, y10, y11});
+}
+
+double Grid::y_max() const noexcept
+{
+    if (empty()) return m_y0;
+    if (m_rotDeg == 0.0) return m_y0 + (m_rows > 0 ? (m_rows - 1) * m_ySize : 0.0);
+    const double y00 = getY(0, 0);
+    const double y01 = getY(0, m_cols - 1);
+    const double y10 = getY(m_rows - 1, 0);
+    const double y11 = getY(m_rows - 1, m_cols - 1);
+    return std::max({y00, y01, y10, y11});
+}
+
+bool Grid::world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept
+{
+    if (m_xSize <= 0.0 || m_ySize <= 0.0) return false;
+    const double dxVal = xVal - m_x0;
+    const double dyVal = yVal - m_y0;
+    col = (dxVal * m_cosRot + dyVal * m_sinRot) / m_xSize;
+    row = (-dxVal * m_sinRot + dyVal * m_cosRot) / m_ySize;
+    return true;
+}
+
+bool Grid::grid_to_world(double row, double col, double &xVal, double &yVal) const noexcept
+{
+    xVal = m_x0 + (col * m_xSize) * m_cosRot - (row * m_ySize) * m_sinRot;
+    yVal = m_y0 + (col * m_xSize) * m_sinRot + (row * m_ySize) * m_cosRot;
+    return true;
+}
+
+bool Grid::contains(double xVal, double yVal) const noexcept
+{
+    if (empty() || m_xSize <= 0.0 || m_ySize <= 0.0) return false;
+    double r = 0.0, c = 0.0;
+    if (!world_to_grid(xVal, yVal, r, c)) return false;
+    constexpr double eps = 1e-7;
+    return (r >= -eps && r <= static_cast<double>(m_rows - 1) + eps &&
+            c >= -eps && c <= static_cast<double>(m_cols - 1) + eps);
+}
+
+double Grid::interpolate(double xVal, double yVal) const
+{
+    if (empty() || m_xSize <= 0.0 || m_ySize <= 0.0) {
+        return GRID_DUMMY;
+    }
+
+    double row_f = 0.0, col_f = 0.0;
+    if (!world_to_grid(xVal, yVal, row_f, col_f)) {
+        return GRID_DUMMY;
+    }
+
+    const double maxR = static_cast<double>(m_rows - 1);
+    const double maxC = static_cast<double>(m_cols - 1);
+    constexpr double eps = 1e-7;
+
+    if (row_f < -eps || row_f > maxR + eps ||
+        col_f < -eps || col_f > maxC + eps) {
+        return GRID_DUMMY;
+    }
+
+    row_f = std::clamp(row_f, 0.0, maxR);
+    col_f = std::clamp(col_f, 0.0, maxC);
+
+    const size_t r0 = static_cast<size_t>(std::floor(row_f));
+    const size_t c0 = static_cast<size_t>(std::floor(col_f));
+    const size_t r1 = std::min(r0 + 1, m_rows - 1);
+    const size_t c1 = std::min(c0 + 1, m_cols - 1);
+
+    const double dr = row_f - static_cast<double>(r0);
+    const double dc = col_f - static_cast<double>(c0);
+
+    const double v00 = operator()(r0, c0);
+    const double v01 = operator()(r0, c1);
+    const double v10 = operator()(r1, c0);
+    const double v11 = operator()(r1, c1);
+
+    double valSum = 0.0;
+    double weightSum = 0.0;
+
+    auto add_weight = [&](double val, double w) {
+        if (!is_dummy_value(val) && w > 0.0) {
+            valSum += val * w;
+            weightSum += w;
+        }
+    };
+
+    add_weight(v00, (1.0 - dc) * (1.0 - dr));
+    add_weight(v01, dc * (1.0 - dr));
+    add_weight(v10, (1.0 - dc) * dr);
+    add_weight(v11, dc * dr);
+
+    if (weightSum > 1e-9) {
+        return valSum / weightSum;
+    }
+    return GRID_DUMMY;
 }
 
 void Grid::fill(double val)
@@ -59,58 +213,63 @@ void Grid::fill(double val)
     std::fill(m_data.begin(), m_data.end(), val);
 }
 
-double Grid::getMin() const
+Grid::Stats Grid::compute_stats() const noexcept
 {
-    double minVal = std::numeric_limits<double>::max();
-    for (double v : m_data) {
-        if (!isDummyValue(v)) {
-            minVal = std::min(minVal, v);
+    Stats s;
+    if (m_data.empty()) {
+        s.min = 0.0;
+        s.max = 0.0;
+        return s;
+    }
+
+    double sum = 0.0;
+    double sumSq = 0.0;
+    for (const double v : m_data) {
+        if (!is_dummy_value(v)) {
+            if (v < s.min) s.min = v;
+            if (v > s.max) s.max = v;
+            sum += v;
+            sumSq += v * v;
+            s.valid_count++;
+        } else {
+            s.dummy_count++;
         }
     }
-    return minVal;
+
+    if (s.valid_count > 0) {
+        s.mean = sum / static_cast<double>(s.valid_count);
+        s.rms = std::sqrt(sumSq / static_cast<double>(s.valid_count));
+    } else {
+        s.min = 0.0;
+        s.max = 0.0;
+    }
+    return s;
+}
+
+double Grid::getMin() const
+{
+    return compute_stats().min;
 }
 
 double Grid::getMax() const
 {
-    double maxVal = -std::numeric_limits<double>::max();
-    for (double v : m_data) {
-        if (!isDummyValue(v)) {
-            maxVal = std::max(maxVal, v);
-        }
-    }
-    return maxVal;
+    return compute_stats().max;
 }
 
 double Grid::getMean() const
 {
-    double sum = 0.0;
-    size_t count = 0;
-    for (double v : m_data) {
-        if (!isDummyValue(v)) {
-            sum += v;
-            count++;
-        }
-    }
-    return (count > 0) ? (sum / count) : 0.0;
+    return compute_stats().mean;
 }
 
 double Grid::getRMS() const
 {
-    double sumSq = 0.0;
-    size_t count = 0;
-    for (double v : m_data) {
-        if (!isDummyValue(v)) {
-            sumSq += v * v;
-            count++;
-        }
-    }
-    return (count > 0) ? std::sqrt(sumSq / count) : 0.0;
+    return compute_stats().rms;
 }
 
 Grid &Grid::operator+=(double val)
 {
     for (double &v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10) v += val;
+        if (!is_dummy_value(v)) v += val;
     }
     return *this;
 }
@@ -118,7 +277,7 @@ Grid &Grid::operator+=(double val)
 Grid &Grid::operator-=(double val)
 {
     for (double &v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10) v -= val;
+        if (!is_dummy_value(v)) v -= val;
     }
     return *this;
 }
@@ -126,7 +285,7 @@ Grid &Grid::operator-=(double val)
 Grid &Grid::operator*=(double val)
 {
     for (double &v : m_data) {
-        if (std::abs(v - GRID_DUMMY) > 1e10) v *= val;
+        if (!is_dummy_value(v)) v *= val;
     }
     return *this;
 }
@@ -135,7 +294,7 @@ Grid &Grid::operator/=(double val)
 {
     if (val != 0.0) {
         for (double &v : m_data) {
-            if (std::abs(v - GRID_DUMMY) > 1e10) v /= val;
+            if (!is_dummy_value(v)) v /= val;
         }
     }
     return *this;
@@ -145,7 +304,7 @@ Grid &Grid::operator+=(const Grid &other)
 {
     const size_t n = std::min(m_data.size(), other.m_data.size());
     for (size_t i = 0; i < n; ++i) {
-        if (std::abs(m_data[i] - GRID_DUMMY) > 1e10 && std::abs(other.m_data[i] - GRID_DUMMY) > 1e10) {
+        if (!is_dummy_value(m_data[i]) && !is_dummy_value(other.m_data[i])) {
             m_data[i] += other.m_data[i];
         }
     }
@@ -156,7 +315,7 @@ Grid &Grid::operator-=(const Grid &other)
 {
     const size_t n = std::min(m_data.size(), other.m_data.size());
     for (size_t i = 0; i < n; ++i) {
-        if (std::abs(m_data[i] - GRID_DUMMY) > 1e10 && std::abs(other.m_data[i] - GRID_DUMMY) > 1e10) {
+        if (!is_dummy_value(m_data[i]) && !is_dummy_value(other.m_data[i])) {
             m_data[i] -= other.m_data[i];
         }
     }
@@ -167,7 +326,7 @@ Grid &Grid::operator*=(const Grid &other)
 {
     const size_t n = std::min(m_data.size(), other.m_data.size());
     for (size_t i = 0; i < n; ++i) {
-        if (std::abs(m_data[i] - GRID_DUMMY) > 1e10 && std::abs(other.m_data[i] - GRID_DUMMY) > 1e10) {
+        if (!is_dummy_value(m_data[i]) && !is_dummy_value(other.m_data[i])) {
             m_data[i] *= other.m_data[i];
         }
     }
@@ -178,14 +337,23 @@ Grid &Grid::operator/=(const Grid &other)
 {
     const size_t n = std::min(m_data.size(), other.m_data.size());
     for (size_t i = 0; i < n; ++i) {
-        if (std::abs(m_data[i] - GRID_DUMMY) > 1e10 && std::abs(other.m_data[i] - GRID_DUMMY) > 1e10 && other.m_data[i] != 0.0) {
+        if (!is_dummy_value(m_data[i]) && !is_dummy_value(other.m_data[i]) && other.m_data[i] != 0.0) {
             m_data[i] /= other.m_data[i];
         }
     }
     return *this;
 }
 
-bool Grid::loadSrf6Binary(const std::string &filePath)
+bool Grid::operator==(const Grid &other) const noexcept
+{
+    if (m_rows != other.m_rows || m_cols != other.m_cols) return false;
+    if (m_x0 != other.m_x0 || m_y0 != other.m_y0) return false;
+    if (m_xSize != other.m_xSize || m_ySize != other.m_ySize) return false;
+    if (m_rotDeg != other.m_rotDeg) return false;
+    return m_data == other.m_data;
+}
+
+bool Grid::loadSrf6Binary(const std::filesystem::path &filePath)
 {
     std::ifstream file(filePath, std::ios::binary);
     if (!file.is_open()) return false;
@@ -206,12 +374,12 @@ bool Grid::loadSrf6Binary(const std::string &filePath)
     file.read(reinterpret_cast<char *>(&zlo), 8);
     file.read(reinterpret_cast<char *>(&zhi), 8);
 
-    if (nx <= 1 || ny <= 1) return false;
+    if (!file || nx <= 1 || ny <= 1) return false;
 
-    const double dx = (xhi - xlo) / (nx - 1);
-    const double dy = (yhi - ylo) / (ny - 1);
+    const double dxVal = (xhi - xlo) / (nx - 1);
+    const double dyVal = (yhi - ylo) / (ny - 1);
 
-    resize(static_cast<size_t>(ny), static_cast<size_t>(nx), xlo, ylo, dx, dy, 0.0);
+    resize(static_cast<size_t>(ny), static_cast<size_t>(nx), xlo, ylo, dxVal, dyVal, 0.0);
 
     for (size_t r = 0; r < m_rows; ++r) {
         for (size_t c = 0; c < m_cols; ++c) {
@@ -224,10 +392,10 @@ bool Grid::loadSrf6Binary(const std::string &filePath)
             }
         }
     }
-    return true;
+    return !file.bad();
 }
 
-bool Grid::saveSrf6Binary(const std::string &filePath) const
+bool Grid::saveSrf6Binary(const std::filesystem::path &filePath) const
 {
     if (empty()) return false;
     std::ofstream file(filePath, std::ios::binary);
@@ -261,10 +429,10 @@ bool Grid::saveSrf6Binary(const std::string &filePath) const
             file.write(reinterpret_cast<const char *>(&val), 4);
         }
     }
-    return true;
+    return file.good();
 }
 
-bool Grid::loadSrf6Ascii(const std::string &filePath)
+bool Grid::loadSrf6Ascii(const std::filesystem::path &filePath)
 {
     std::ifstream file(filePath);
     if (!file.is_open()) return false;
@@ -281,12 +449,12 @@ bool Grid::loadSrf6Ascii(const std::string &filePath)
     file >> ylo >> yhi;
     file >> zlo >> zhi;
 
-    if (nx <= 1 || ny <= 1) return false;
+    if (!file || nx <= 1 || ny <= 1) return false;
 
-    const double dx = (xhi - xlo) / (nx - 1);
-    const double dy = (yhi - ylo) / (ny - 1);
+    const double dxVal = (xhi - xlo) / (nx - 1);
+    const double dyVal = (yhi - ylo) / (ny - 1);
 
-    resize(ny, nx, xlo, ylo, dx, dy, 0.0);
+    resize(ny, nx, xlo, ylo, dxVal, dyVal, 0.0);
 
     for (size_t r = 0; r < m_rows; ++r) {
         for (size_t c = 0; c < m_cols; ++c) {
@@ -295,10 +463,10 @@ bool Grid::loadSrf6Ascii(const std::string &filePath)
             operator()(r, c) = val;
         }
     }
-    return true;
+    return !file.bad();
 }
 
-bool Grid::saveSrf6Ascii(const std::string &filePath) const
+bool Grid::saveSrf6Ascii(const std::filesystem::path &filePath) const
 {
     if (empty()) return false;
     std::ofstream file(filePath);
@@ -306,9 +474,9 @@ bool Grid::saveSrf6Ascii(const std::string &filePath) const
 
     file << "DSAA\n";
     file << m_cols << " " << m_rows << "\n";
-    file << std::setprecision(10) << m_x0 << " " << (m_x0 + (m_cols - 1) * m_xSize) << "\n";
-    file << std::setprecision(10) << m_y0 << " " << (m_y0 + (m_rows - 1) * m_ySize) << "\n";
-    file << std::setprecision(10) << getMin() << " " << getMax() << "\n";
+    file << std::setprecision(12) << m_x0 << " " << (m_x0 + (m_cols - 1) * m_xSize) << "\n";
+    file << std::setprecision(12) << m_y0 << " " << (m_y0 + (m_rows - 1) * m_ySize) << "\n";
+    file << std::setprecision(12) << getMin() << " " << getMax() << "\n";
 
     for (size_t r = 0; r < m_rows; ++r) {
         for (size_t c = 0; c < m_cols; ++c) {
@@ -316,7 +484,16 @@ bool Grid::saveSrf6Ascii(const std::string &filePath) const
         }
         file << "\n";
     }
-    return true;
+    return file.good();
+}
+
+std::ostream &operator<<(std::ostream &os, const Grid &grid)
+{
+    os << "Grid(rows=" << grid.m_rows << ", cols=" << grid.m_cols
+       << ", x0=" << grid.m_x0 << ", y0=" << grid.m_y0
+       << ", dx=" << grid.m_xSize << ", dy=" << grid.m_ySize
+       << ", rot=" << grid.m_rotDeg << " deg)";
+    return os;
 }
 
 } // namespace mod3d
