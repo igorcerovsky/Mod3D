@@ -8,54 +8,54 @@ namespace mod3d {
 Body::Body() = default;
 
 Body::Body(int id, std::string name, double density)
-    : m_nID(id), m_nIndex(0), m_strName(std::move(name)), m_dDensity(density)
+    : id_(id), index_(0), name_(std::move(name)), density_(density)
 {
 }
 
 void Body::swap(Body &other) noexcept {
     using std::swap;
-    swap(m_nID, other.m_nID);
-    swap(m_nIndex, other.m_nIndex);
-    swap(m_strName, other.m_strName);
-    swap(m_strDescription, other.m_strDescription);
-    swap(m_bShow, other.m_bShow);
-    swap(m_bLocked, other.m_bLocked);
-    swap(m_bFill, other.m_bFill);
-    swap(m_bActive, other.m_bActive);
-    swap(m_dDensity, other.m_dDensity);
-    swap(m_vDensGrad, other.m_vDensGrad);
-    swap(m_vDensOrg, other.m_vDensOrg);
-    swap(m_dSusc, other.m_dSusc);
-    swap(m_vMagVector, other.m_vMagVector);
-    swap(m_vMagRem, other.m_vMagRem);
-    swap(m_color, other.m_color);
-    swap(m_fAlpha, other.m_fAlpha);
-    swap(m_bTransparent, other.m_bTransparent);
+    swap(id_, other.id_);
+    swap(index_, other.index_);
+    swap(name_, other.name_);
+    swap(description_, other.description_);
+    swap(visible_, other.visible_);
+    swap(locked_, other.locked_);
+    swap(filled_, other.filled_);
+    swap(active_, other.active_);
+    swap(density_, other.density_);
+    swap(density_grad_, other.density_grad_);
+    swap(density_org_, other.density_org_);
+    swap(susceptibility_, other.susceptibility_);
+    swap(mag_vector_, other.mag_vector_);
+    swap(mag_rem_, other.mag_rem_);
+    swap(color_, other.color_);
+    swap(transparency_, other.transparency_);
+    swap(transparent_, other.transparent_);
 }
 
 void Body::compute_magnetization_vector(const Point3D &vIndFld) {
-    m_vMagVector = MagnetizationVector(m_dSusc, vIndFld.x, vIndFld.y, vIndFld.z,
-                                       m_vMagRem.x, m_vMagRem.y, m_vMagRem.z);
+    mag_vector_ = MagnetizationVector(susceptibility_, vIndFld.x, vIndFld.y, vIndFld.z,
+                                      mag_rem_.x, mag_rem_.y, mag_rem_.z);
 }
 
 bool Body::operator==(const Body &other) const noexcept {
-    return m_nID == other.m_nID &&
-           m_nIndex == other.m_nIndex &&
-           m_strName == other.m_strName &&
-           m_strDescription == other.m_strDescription &&
-           m_bShow == other.m_bShow &&
-           m_bLocked == other.m_bLocked &&
-           m_bFill == other.m_bFill &&
-           m_bActive == other.m_bActive &&
-           m_dDensity == other.m_dDensity &&
-           m_vDensGrad == other.m_vDensGrad &&
-           m_vDensOrg == other.m_vDensOrg &&
-           m_dSusc == other.m_dSusc &&
-           m_vMagVector == other.m_vMagVector &&
-           m_vMagRem == other.m_vMagRem &&
-           m_color == other.m_color &&
-           m_fAlpha == other.m_fAlpha &&
-           m_bTransparent == other.m_bTransparent;
+    return id_ == other.id_ &&
+           index_ == other.index_ &&
+           name_ == other.name_ &&
+           description_ == other.description_ &&
+           visible_ == other.visible_ &&
+           locked_ == other.locked_ &&
+           filled_ == other.filled_ &&
+           active_ == other.active_ &&
+           density_ == other.density_ &&
+           density_grad_ == other.density_grad_ &&
+           density_org_ == other.density_org_ &&
+           susceptibility_ == other.susceptibility_ &&
+           mag_vector_ == other.mag_vector_ &&
+           mag_rem_ == other.mag_rem_ &&
+           color_ == other.color_ &&
+           transparency_ == other.transparency_ &&
+           transparent_ == other.transparent_;
 }
 
 std::ostream &operator<<(std::ostream &os, const BodyColor &col) {
@@ -67,11 +67,11 @@ std::ostream &operator<<(std::ostream &os, const BodyColor &col) {
 }
 
 std::ostream &operator<<(std::ostream &os, const Body &b) {
-    os << "Body(id=" << b.m_nID
-       << ", name=\"" << b.m_strName << "\""
-       << ", density=" << b.m_dDensity
-       << ", susc=" << b.m_dSusc
-       << ", active=" << (b.m_bActive ? "true" : "false")
+    os << "Body(id=" << b.id_
+       << ", name=\"" << b.name_ << "\""
+       << ", density=" << b.density_
+       << ", susc=" << b.susceptibility_
+       << ", active=" << (b.active_ ? "true" : "false")
        << ")";
     return os;
 }

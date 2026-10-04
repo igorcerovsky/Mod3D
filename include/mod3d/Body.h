@@ -54,72 +54,72 @@ public:
     // ========================================================================
 
     // Identifiers & Metadata
-    [[nodiscard]] int id() const noexcept { return m_nID; }
-    void set_id(int id) noexcept { m_nID = id; }
+    [[nodiscard]] int id() const noexcept { return id_; }
+    void set_id(int id) noexcept { id_ = id; }
 
-    [[nodiscard]] int index() const noexcept { return m_nIndex; }
-    void set_index(int idx) noexcept { m_nIndex = idx; }
+    [[nodiscard]] int index() const noexcept { return index_; }
+    void set_index(int idx) noexcept { index_ = idx; }
 
-    [[nodiscard]] const std::string &name() const noexcept { return m_strName; }
-    void set_name(std::string name) { m_strName = std::move(name); }
+    [[nodiscard]] const std::string &name() const noexcept { return name_; }
+    void set_name(std::string name) { name_ = std::move(name); }
 
-    [[nodiscard]] const std::string &description() const noexcept { return m_strDescription; }
-    void set_description(std::string desc) { m_strDescription = std::move(desc); }
+    [[nodiscard]] const std::string &description() const noexcept { return description_; }
+    void set_description(std::string desc) { description_ = std::move(desc); }
 
     // State Flags
-    [[nodiscard]] bool is_active() const noexcept { return m_bActive; }
-    void set_active(bool active) noexcept { m_bActive = active; }
+    [[nodiscard]] bool is_active() const noexcept { return active_; }
+    void set_active(bool active) noexcept { active_ = active; }
 
-    [[nodiscard]] bool is_visible() const noexcept { return m_bShow; }
-    void set_visible(bool visible) noexcept { m_bShow = visible; }
+    [[nodiscard]] bool is_visible() const noexcept { return visible_; }
+    void set_visible(bool visible) noexcept { visible_ = visible; }
 
-    [[nodiscard]] bool is_locked() const noexcept { return m_bLocked; }
-    void set_locked(bool locked) noexcept { m_bLocked = locked; }
+    [[nodiscard]] bool is_locked() const noexcept { return locked_; }
+    void set_locked(bool locked) noexcept { locked_ = locked; }
 
-    [[nodiscard]] bool is_filled() const noexcept { return m_bFill; }
-    void set_filled(bool fill) noexcept { m_bFill = fill; }
+    [[nodiscard]] bool is_filled() const noexcept { return filled_; }
+    void set_filled(bool fill) noexcept { filled_ = fill; }
 
     // Physical Properties (Gravity / Density)
-    [[nodiscard]] double density() const noexcept { return (m_bActive ? m_dDensity : 0.0); }
-    [[nodiscard]] double raw_density() const noexcept { return m_dDensity; }
-    void set_density(double dens) noexcept { m_dDensity = dens; }
+    [[nodiscard]] double density() const noexcept { return (active_ ? density_ : 0.0); }
+    [[nodiscard]] double raw_density() const noexcept { return density_; }
+    void set_density(double dens) noexcept { density_ = dens; }
 
-    [[nodiscard]] const Point3D &density_gradient() const noexcept { return m_vDensGrad; }
-    void set_density_gradient(const Point3D &grad) noexcept { m_vDensGrad = grad; }
+    [[nodiscard]] const Point3D &density_gradient() const noexcept { return density_grad_; }
+    void set_density_gradient(const Point3D &grad) noexcept { density_grad_ = grad; }
 
-    [[nodiscard]] const Point3D &density_origin() const noexcept { return m_vDensOrg; }
-    void set_density_origin(const Point3D &orig) noexcept { m_vDensOrg = orig; }
+    [[nodiscard]] const Point3D &density_origin() const noexcept { return density_org_; }
+    void set_density_origin(const Point3D &orig) noexcept { density_org_ = orig; }
 
     [[nodiscard]] double density_at_origin() const noexcept {
-        return (m_dDensity - m_vDensGrad * m_vDensOrg);
+        return (density_ - density_grad_ * density_org_);
     }
 
     [[nodiscard]] double density_at(const Point3D &pt) const noexcept {
-        if (!m_bActive) return 0.0;
-        return m_dDensity + m_vDensGrad * (pt - m_vDensOrg);
+        if (!active_) return 0.0;
+        return density_ + density_grad_ * (pt - density_org_);
     }
 
     // Physical Properties (Magnetics)
-    [[nodiscard]] double susceptibility() const noexcept { return m_dSusc; }
-    void set_susceptibility(double susc) noexcept { m_dSusc = susc; }
+    [[nodiscard]] double susceptibility() const noexcept { return susceptibility_; }
+    void set_susceptibility(double susc) noexcept { susceptibility_ = susc; }
 
-    [[nodiscard]] const Point3D &magnetization_vector() const noexcept { return m_vMagVector; }
-    void set_magnetization_vector(const Point3D &mv) noexcept { m_vMagVector = mv; }
+    [[nodiscard]] const Point3D &magnetization_vector() const noexcept { return mag_vector_; }
+    void set_magnetization_vector(const Point3D &mv) noexcept { mag_vector_ = mv; }
 
-    [[nodiscard]] const Point3D &remanent_magnetization() const noexcept { return m_vMagRem; }
-    void set_remanent_magnetization(const Point3D &rem) noexcept { m_vMagRem = rem; }
+    [[nodiscard]] const Point3D &remanent_magnetization() const noexcept { return mag_rem_; }
+    void set_remanent_magnetization(const Point3D &rem) noexcept { mag_rem_ = rem; }
 
     void compute_magnetization_vector(const Point3D &vIndFld);
 
     // Rendering Parameters
-    [[nodiscard]] BodyColor color() const noexcept { return m_color; }
-    void set_color(const BodyColor &color) noexcept { m_color = color; }
+    [[nodiscard]] BodyColor color() const noexcept { return color_; }
+    void set_color(const BodyColor &color) noexcept { color_ = color; }
 
-    [[nodiscard]] float transparency() const noexcept { return m_fAlpha; }
-    void set_transparency(float alpha) noexcept { m_fAlpha = alpha; }
+    [[nodiscard]] float transparency() const noexcept { return transparency_; }
+    void set_transparency(float alpha) noexcept { transparency_ = alpha; }
 
-    [[nodiscard]] bool is_transparent() const noexcept { return m_bTransparent; }
-    void set_transparent(bool trans) noexcept { m_bTransparent = trans; }
+    [[nodiscard]] bool is_transparent() const noexcept { return transparent_; }
+    void set_transparent(bool trans) noexcept { transparent_ = trans; }
 
     // Comparisons
     [[nodiscard]] bool operator==(const Body &other) const noexcept;
@@ -193,28 +193,28 @@ public:
     void SetTransparent(bool trans) noexcept { set_transparent(trans); }
 
 private:
-    int m_nID{0};
-    int m_nIndex{0};
+    int id_{0};
+    int index_{0};
 
-    std::string m_strName{"Name the body..."};
-    std::string m_strDescription{"Body description..."};
-    bool m_bShow{true};
-    bool m_bLocked{false};
-    bool m_bFill{true};
-    bool m_bActive{true};
+    std::string name_{"Name the body..."};
+    std::string description_{"Body description..."};
+    bool visible_{true};
+    bool locked_{false};
+    bool filled_{true};
+    bool active_{true};
 
     // Physical parameters
-    double m_dDensity{2700.0};       // kg/m3
-    Point3D m_vDensGrad{0, 0, 0};    // linear density gradient
-    Point3D m_vDensOrg{0, 0, 0};     // density reference origin
-    double m_dSusc{0.01};            // SI susceptibility
-    Point3D m_vMagVector{0, 0, 0};   // total magnetization vector
-    Point3D m_vMagRem{0, 0, 0};      // remanent magnetization
+    double density_{2700.0};          // kg/m3
+    Point3D density_grad_{0, 0, 0};   // linear density gradient
+    Point3D density_org_{0, 0, 0};    // density reference origin
+    double susceptibility_{0.01};     // SI susceptibility
+    Point3D mag_vector_{0, 0, 0};     // total magnetization vector
+    Point3D mag_rem_{0, 0, 0};        // remanent magnetization
 
     // Rendering parameters
-    BodyColor m_color{0, 0, 180, 255};
-    float m_fAlpha{0.5f};
-    bool m_bTransparent{true};
+    BodyColor color_{0, 0, 180, 255};
+    float transparency_{0.5f};
+    bool transparent_{true};
 };
 
 static_assert(!std::is_polymorphic_v<Body>, "Body must not be polymorphic");
