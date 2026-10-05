@@ -39,11 +39,12 @@
 |                                          +--------------------+                                    |
 |                                                 ^                                                  |
 |                                                 |                                                  |
-|                                  +------------------------------+                                  |
-|                                  |   mod3d::pfld (Physics Engine)                              |    |
-|                                  |  - Götze-Petersen Line Int.  |                                  |
-|                                  |  - Gravity, Tensor, Magnetic |                                  |
-|                                  +------------------------------+                                  |
+|                                  +-----------------------------------------------+             |
+|                                  |   mod3d::pfld / PotField (Physics Engine)     |             |
+|                                  |  - Vladimír Pohánka Analytical Kernel (Primary)             |
+|                                  |  - Guptasarma-Singh & Götze-Petersen Kernels  |             |
+|                                  |  - Gravity, Tensor Gradients, Magnetics       |             |
+|                                  +-----------------------------------------------+             |
 |                                                                                                    |
 +----------------------------------------------------------------------------------------------------+
 ```
@@ -134,23 +135,70 @@ Mod3D supports two density formulations:
 
 ---
 
-### 2.5 The Götze & Petersen (1992) Facet Line Integral Method
+### 2.5 Primary Gravity Field Computation: The Vladimír Pohánka Analytical Method
 
-Mod3D evaluates potential fields using the analytical method of **Götze and Petersen (1992)**. By applying Gauss's Divergence Theorem twice:
-1. The volume integral over the 3D polyhedron is transformed into surface integrals over its planar triangular facets.
-2. Each facet surface integral is transformed into line integrals along the three directed perimeter edges:
+The primary and default gravity computation engine in Mod3D (`Formula::POHANKA = 0`, as initialized in `Mod3DDoc`) is based on the optimum analytical formulation developed by **Dr. Vladimír Pohánka**:
 
-```mermaid
-graph LR
-    Vol["3D Polyhedral Volume Integral"] -->|"Gauss Divergence Theorem"| Surf["Planar Triangular Facet Integrals"]
-    Surf -->|"Stokes' / Green's Theorem"| Line["Directed Edge Line Integrals (Analytical)"]
-```
+> [!NOTE]
+> **Foundational Publications**:
+> 1. **Pohánka, V. (1988)**: *Optimum expression for computation of the gravity field of a polyhedron.* Geophysics, Vol. 53, No. 11, pp. 1457–1467.
+> 2. **Pohánka, V. (1998)**: *Calculation of the gravity field of a body with arbitrary shape and inhomogeneous density.* Contributions to Geophysics and Geodesy, Vol. 28, No. 3, pp. 169–188.
 
-For a triangular facet with vertices $\mathbf{v}_1, \mathbf{v}_2, \mathbf{v}_3$ and outward normal $\hat{\mathbf{n}}$:
-$$\mathbf{g}_{facet} = G \rho \sum_{k=1}^3 \hat{\mathbf{n}} \cdot \mathbf{I}_{edge}(\mathbf{v}_k, \mathbf{v}_{k+1})$$
-where $\mathbf{I}_{edge}$ is computed using closed-form logarithmic and arctangent boundary functions. This formulation provides:
-- Exact singularity-free values even when observation points touch facet vertices or edges.
-- Unmatched computational efficiency compared to numerical quadrature or prism grids.
+#### Why Pohánka's Method is the Primary Choice
+1. **Mathematical Optimality**: Expresses the gravitational attraction and tensor gradients of arbitrary planar polygonal and triangular facets using a minimal, non-redundant set of logarithmic and arctangent boundary functions.
+2. **Singularity-Free Formulation**: The logarithmic and arctangent arguments are conditioned to remain entirely well-behaved without numerical degradation when the observation point $P$ approaches, touches, or lies upon facet vertices, edges, or the facet plane itself ($z \to 0$).
+3. **Exact Linear Density Gradient Support**: Provides exact, closed-form analytical solutions not only for homogeneous density contrasts, but also for continuous 3D linear density gradients $\rho(P) = \rho_0 + \mathbf{g}_{dens} \cdot (\mathbf{r}_P - \mathbf{r}_0)$, essential for modeling sedimentary compaction and regional crustal gradients.
+
+#### Analytical Formulation on Planar Facets
+For a planar facet with $n$ vertices $\mathbf{p}_0, \mathbf{p}_1, \dots, \mathbf{p}_{n-1}$ (in Mod3D, $n=3$ for triangular facets) and unit outward normal $\mathbf{n}$:
+
+1. **Local Edge Coordinate System**:
+   For each directed edge $i$ connecting vertex $\mathbf{p}_i$ to $\mathbf{p}_{i+1}$ (with cyclic index $\mathbf{p}_n = \mathbf{p}_0$):
+   - Edge length: $d_i = |\mathbf{p}_{i+1} - \mathbf{p}_i|$
+   - Edge unit vector: $\mathbf{u}_i = \frac{\mathbf{p}_{i+1} - \mathbf{p}_i}{d_i}$
+   - In-plane outward unit normal perpendicular to edge: $\mathbf{n}_i = \mathbf{u}_i \times \mathbf{n}$
+
+2. **Observation Point Projection**:
+   For an observation station $\mathbf{r}$:
+   - Signed normal distance to facet plane: $Z = \mathbf{n} \cdot (\mathbf{p}_0 - \mathbf{r})$
+   - Absolute perpendicular distance: $z = |Z| + \varepsilon$ (with $\varepsilon \approx 10^{-12}$ to handle plane singularities)
+   - Plane sign: $e = \text{sgn}(Z)$
+
+3. **Per-Edge Coordinates**:
+   - $u_i = \mathbf{u}_i \cdot (\mathbf{p}_i - \mathbf{r})$
+   - $v_i = u_i + d_i = \mathbf{u}_i \cdot (\mathbf{p}_{i+1} - \mathbf{r})$
+   - $w_i = \mathbf{n}_i \cdot (\mathbf{p}_i - \mathbf{r})$
+   - Radial terms: $W_i^2 = w_i^2 + z^2, \quad W_i = \sqrt{W_i^2}$
+   - Hypotenuse distances: $U_i = \sqrt{u_i^2 + W_i^2}, \quad V_i = \sqrt{v_i^2 + W_i^2}, \quad T_i = U_i + V_i$
+
+4. **Optimum Boundary Functions (Pohánka 1988)**:
+   - **Logarithmic Edge Function ($L_i$)**:
+     $$L_i = \begin{cases} \text{sgn}(v_i) \ln \left( \frac{V_i + |v_i|}{U_i + |u_i|} \right) & \text{if } \text{sgn}(u_i) = \text{sgn}(v_i) \\ \ln \left( \frac{(V_i + |v_i|)(U_i + |u_i|)}{W_i^2} \right) & \text{if } \text{sgn}(u_i) \ne \text{sgn}(v_i) \end{cases}$$
+   - **Angular Arctangent Function ($A_i$)**:
+     $$A_i = -\arctan \left( \frac{2 w_i d_i}{(T_i + d_i)|T_i - d_i| + 2 T_i z} \right)$$
+   - **Solid Angle Potential Terms**:
+     $$\Phi_i = w_i L_i + 2 z A_i$$
+     $$\Phi_{2, i} = \frac{d_i}{4} \left( \frac{(v_i + u_i)^2}{T_i} + T_i \right) + \frac{W_i^2 L_i}{2}$$
+
+5. **Field Accumulation**:
+   - **Constant Density Gravity Vector**:
+     $$\mathbf{g} = G (\rho - \rho_{ref}) \sum_{faces} \mathbf{n} \left( \sum_{i=1}^n \Phi_i \right)$$
+   - **Linear Density Gradient Gravity Vector**:
+     $$\mathbf{g} = G \sum_{faces} \sum_{i=1}^n \left[ \mathbf{n} \left( \Phi_i (\rho_0 + \mathbf{g}_{dens} \cdot \mathbf{r} + (\mathbf{g}_{dens} \cdot \mathbf{n}) Z) + (\mathbf{g}_{dens} \cdot \mathbf{n}_i) \Phi_{2, i} \right) - \mathbf{g}_{dens} \left( \frac{\Phi_i Z}{2} \right) \right]$$
+   - **Marussi Gravity Gradient Tensor ($\mathbf{T}$)**:
+     Using the tensor edge vector $\mathbf{t}_i = \mathbf{n}_i L_i + 2 e A_i \mathbf{n}$:
+     $$T_{xx} = G \Delta \rho \sum t_{x} n_x, \quad T_{yy} = G \Delta \rho \sum t_{y} n_y, \quad T_{zz} = G \Delta \rho \sum t_{z} n_z$$
+     $$T_{xy} = \frac{1}{2} G \Delta \rho \sum (t_x n_y + t_y n_x), \quad T_{xz} = \frac{1}{2} G \Delta \rho \sum (t_x n_z + t_z n_x), \quad T_{yz} = \frac{1}{2} G \Delta \rho \sum (t_y n_z + t_z n_y)$$
+
+---
+
+### 2.6 Secondary & Validation Potential Field Kernels
+
+In addition to Vladimír Pohánka's primary formulation, Mod3D integrates complementary potential field engines:
+1. **Guptasarma & Singh (1999)** (`Formula::GUPTASARMA_SINGH = 1`):
+   - Computes coupled magnetic and gravitational anomalies over planar polygonal facets using solid angle integration and analytical edge projections. Used for rapid magnetic anomaly evaluations and cross-method verification.
+2. **Götze & Petersen (1992)** (`pfld/g3d_poly.c`, `pfld/m3d_poly.c`):
+   - Classical polyhedral line-integral formulation transforming boundary integrals into closed contour edge sums, maintained as a reference validation baseline.
 
 ---
 
@@ -496,7 +544,8 @@ Mod3D/
 │   ├── Model.h                  # Top-level geological model container
 │   ├── Body.h                   # Geological unit and physical properties
 │   ├── ColumnPoint.h            # Column boundary point
-│   ├── Facet3Pt.h               # Triangular facet geometry & analytical kernel
+│   ├── Facet3Pt.h               # Triangular facet geometry & Pohánka analytical kernel
+│   ├── PotField.h               # Potential field kernels (Pohánka, Guptasarma-Singh)
 │   ├── Grid.h                   # 2D regular matrix and interpolation
 │   ├── Observation.h            # Observation space and multi-channel fields
 │   ├── Inversion1D.h            # Brent & Golden Section 1D inversion
@@ -508,11 +557,12 @@ Mod3D/
 │   ├── Body.cpp
 │   ├── ColumnPoint.cpp
 │   ├── Facet3Pt.cpp
+│   ├── PotField.cpp             # Vladimír Pohánka & Guptasarma-Singh kernels
 │   ├── Grid.cpp
 │   ├── Observation.cpp
 │   └── Inversion1D.cpp
 │
-├── pfld/                        # Potential Field Analytical Physics Engine
+├── pfld/                        # Secondary / Validation Physics Engine
 │   ├── g3d_poly.c               # Götze-Petersen polyhedron kernel
 │   └── m3d_poly.c               # Magnetic polyhedral kernel
 │
