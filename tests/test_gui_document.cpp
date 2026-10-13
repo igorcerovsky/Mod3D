@@ -1750,7 +1750,11 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
     mw.resize(1400, 900);
     mw.show();
 
-    bool ok = mw.document()->openFile("Examples/SampleBegin.m3d");
+    std::string sampleBeginPath = std::string(MOD3D_EXAMPLES_DIR) + "/SampleBegin.m3d";
+    if (!std::filesystem::exists(sampleBeginPath)) {
+        sampleBeginPath = "Examples/SampleBegin.m3d";
+    }
+    bool ok = mw.document()->openFile(QString::fromStdString(sampleBeginPath));
     EXPECT_TRUE(ok);
 
     auto *pane = mw.settingsPane();
