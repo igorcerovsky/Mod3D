@@ -9,6 +9,8 @@
 #include <QUndoStack>
 #include <memory>
 #include <vector>
+#include <limits>
+#include <cmath>
 
 namespace mod3d_gui {
 
@@ -125,7 +127,7 @@ public:
     bool removeBodyAtRowCol(int row, int col, int vertexIdx);
     bool moveVertexAtRowCol(int row, int col, int vertexIdx, double newZ, mod3d::BodyMoveType moveType = mod3d::BodyMoveType::Normal, int *outUpdatedIdx = nullptr);
     bool unsnapVertexAtRowCol(int row, int col, int vertexIdx, double separation = -1.0);
-    bool extendBodySideAtRowCol(int srcRow, int srcCol, int tgtRow, int tgtCol, int bodyId);
+    bool extendBodySideAtRowCol(int srcRow, int srcCol, int tgtRow, int tgtCol, int bodyId, double targetZ = std::numeric_limits<double>::quiet_NaN());
     bool collapseBodyEdgeAtRowCol(int row, int col, int bodyId);
     bool removeBodyFromProfile(int bodyId, ProfileOrientation orient, int prfIdx);
     bool copyBodyBetweenProfiles(int bodyId, ProfileOrientation orient, int srcPrfIdx, int dstPrfIdx);
@@ -141,7 +143,7 @@ public:
     bool copyBodyToPreviousProfile(int bodyId);
     bool moveVertex(int lineIdx, int vertexIdx, double newZ, mod3d::BodyMoveType moveType = mod3d::BodyMoveType::Normal, int *outUpdatedIdx = nullptr);
     bool unsnapVertexAt(int lineIdx, int vertexIdx, double separation = -1.0);
-    bool extendBodySide(int bodyId, int sourceLineIdx, int targetLineIdx);
+    bool extendBodySide(int bodyId, int sourceLineIdx, int targetLineIdx, double targetZ = std::numeric_limits<double>::quiet_NaN());
     bool collapseBodyEdge(int bodyId, int lineIdx);
     bool translateBodyVertical(int bodyId, double deltaZ);
 

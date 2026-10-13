@@ -419,7 +419,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
                             double z = ptObj.value("z", 0.0);
                             double x = ptObj.value("x", m_model.getXe(c));
                             double y = ptObj.value("y", m_model.getYe(r));
-                            Body *bodyPtr = (bId > 0) ? m_model.getBody(bId) : nullptr;
+                            Body *bodyPtr = (bId >= 0) ? m_model.getBody(bId) : nullptr;
                             ColumnPoint cp(Point3D(x, y, z), bId, bodyPtr);
                             m_model.add(r, c, cp);
                         }

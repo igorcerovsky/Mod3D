@@ -9,6 +9,7 @@
 #include <QWheelEvent>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace mod3d_gui {
 
@@ -1170,11 +1171,61 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
     mod3d::BodyMoveType moveType =
         ctrlPressed ? mod3d::BodyMoveType::Split : mod3d::BodyMoveType::Normal;
 
-    int r = 0, c = 0;
-    getRowCol(m_dragLineIdx, r, c);
-    m_doc->moveVertexAtRowCol(r, c, m_dragVertexIdx, newZ, moveType,
-                              &m_dragVertexIdx);
+    double xw = screenToWorldX(event->pos().x());
+    double startCoord = (m_profileOrient == ProfileOrientation::EastWest)
+                            ? m_doc->model().getX0()
+                            : m_doc->model().getY0();
+    double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
+                           ? m_doc->model().getXSize()
+                           : m_doc->model().getYSize();
+    int nLines = profileColumnLineCount();
+    int targetLineIdx = std::clamp(
+        static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
+        nLines - 1);
+
+    if (m_dragBodyId < 0) {
+      int r = 0, c = 0;
+      getRowCol(m_dragLineIdx, r, c);
+      m_dragBodyId = m_doc->model().getID(m_dragVertexIdx, r, c);
+    }
+
+    if (targetLineIdx != m_dragLineIdx && m_dragBodyId >= 0) {
+      int step = (targetLineIdx > m_dragLineIdx) ? 1 : -1;
+      int currLine = m_dragLineIdx;
+      while (currLine != targetLineIdx) {
+        int nextLine = currLine + step;
+        int nextR = 0, nextC = 0;
+        getRowCol(nextLine, nextR, nextC);
+        int nextVIdx = m_doc->model().updateMoveIndex(
+            m_dragVertexIdx, nextR, nextC, m_dragBodyId);
+        if (nextVIdx < 0) {
+          break;
+        }
+        currLine = nextLine;
+        m_dragLineIdx = nextLine;
+        m_dragVertexIdx = nextVIdx;
+        m_doc->moveVertexAtRowCol(nextR, nextC, m_dragVertexIdx, newZ, moveType,
+                                  &m_dragVertexIdx);
+      }
+    } else {
+      int r = 0, c = 0;
+      getRowCol(m_dragLineIdx, r, c);
+      m_doc->moveVertexAtRowCol(r, c, m_dragVertexIdx, newZ, moveType,
+                                &m_dragVertexIdx);
+    }
     m_dragLastMouseZ = newZ;
+    m_hoverLineIdx = m_dragLineIdx;
+    m_hoverVertexIdx = m_dragVertexIdx;
+    m_hoverBodyId = m_dragBodyId;
+
+    int rStation = 0, cStation = 0;
+    getRowCol(m_dragLineIdx, rStation, cStation);
+    double wy = currentProfileCoordinate();
+    double wxCoord = xw;
+    if (m_profileOrient == ProfileOrientation::SouthNorth) {
+      std::swap(wxCoord, wy);
+    }
+    emit cursorStationChanged(rStation, cStation, wxCoord, wy, newZ, 0.0);
     return;
   }
 
@@ -1190,23 +1241,43 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   }
 
   if (m_dragOp == DragOperation::ExtendBodyLateral) {
-    int currentLine = -1;
+    double xw = screenToWorldX(event->pos().x());
+    double startCoord = (m_profileOrient == ProfileOrientation::EastWest)
+                            ? m_doc->model().getX0()
+                            : m_doc->model().getY0();
+    double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
+                           ? m_doc->model().getXSize()
+                           : m_doc->model().getYSize();
     int nLines = profileColumnLineCount();
-    for (int c = 0; c < nLines; ++c) {
-      int sx = worldToScreenX(columnCoordinate(c));
-      if (std::abs(event->pos().x() - sx) <= 12) {
-        currentLine = c;
-        break;
-      }
-    }
+    int currentLine = std::clamp(
+        static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
+        nLines - 1);
+
     if (currentLine >= 0 && currentLine != m_dragLineIdx) {
-      if (std::abs(currentLine - m_dragLineIdx) == 1) {
+      int step = (currentLine > m_dragLineIdx) ? 1 : -1;
+      while (m_dragLineIdx != currentLine) {
+        int nextLine = m_dragLineIdx + step;
         int srcR = 0, srcC = 0;
         int tgtR = 0, tgtC = 0;
         getRowCol(m_dragLineIdx, srcR, srcC);
-        getRowCol(currentLine, tgtR, tgtC);
-        m_doc->extendBodySideAtRowCol(srcR, srcC, tgtR, tgtC, m_dragBodyId);
-        m_dragLineIdx = currentLine;
+        getRowCol(nextLine, tgtR, tgtC);
+
+        double currentMouseZ = screenToWorldZ(event->pos().y());
+        double startMouseZ = screenToWorldZ(m_dragStartPos.y());
+        int bIdx = m_doc->model().getBodyIndex(m_dragBodyId, srcR, srcC);
+        double targetZ = std::numeric_limits<double>::quiet_NaN();
+        if (bIdx >= 0) {
+          double topZ = m_doc->model().getZ(srcR, srcC, bIdx);
+          double botZ = m_doc->model().getZ(srcR, srcC, bIdx + 1);
+          targetZ = (topZ + botZ) / 2.0 + (currentMouseZ - startMouseZ);
+        }
+
+        bool ok = m_doc->extendBodySideAtRowCol(srcR, srcC, tgtR, tgtC,
+                                                m_dragBodyId, targetZ);
+        if (!ok) {
+          break;
+        }
+        m_dragLineIdx = nextLine;
       }
     }
     return;
@@ -1258,6 +1329,9 @@ void ProfileView::mouseReleaseEvent(QMouseEvent *event) {
                          m_dragOp == DragOperation::MoveBodyVertical ||
                          m_dragOp == DragOperation::ExtendBodyLateral);
     m_dragOp = DragOperation::None;
+    m_dragBodyId = -1;
+    m_dragLineIdx = -1;
+    m_dragVertexIdx = -1;
     if (wasModelDrag) {
       m_doc->computeAll();
     }
@@ -1298,7 +1372,7 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
   switch (event->key()) {
   case Qt::Key_N:
     if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
-      if (m_hoverBodyId > 0)
+      if (m_hoverBodyId >= 0)
         m_doc->copyBodyBetweenProfiles(m_hoverBodyId, m_profileOrient,
                                        m_profileIndex, m_profileIndex + 1);
     } else {
@@ -1307,7 +1381,7 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
     break;
   case Qt::Key_P:
     if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
-      if (m_hoverBodyId > 0)
+      if (m_hoverBodyId >= 0)
         m_doc->copyBodyBetweenProfiles(m_hoverBodyId, m_profileOrient,
                                        m_profileIndex, m_profileIndex - 1);
     } else {
@@ -1375,8 +1449,8 @@ void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {
       targetZ = std::clamp(targetZ, zMin + halfT, zSurface - halfT);
 
       if (event->modifiers() & Qt::ShiftModifier) {
-        int existingId = (m_hoverBodyId > 0) ? m_hoverBodyId : -1;
-        if (existingId <= 0 && !m_doc->model().getBodies().empty()) {
+        int existingId = (m_hoverBodyId >= 0) ? m_hoverBodyId : -1;
+        if (existingId < 0 && !m_doc->model().getBodies().empty()) {
           existingId = m_doc->model().getBodies().front()->id();
         }
         m_doc->insertBodyAtRowCol(row, col, targetZ, -1.0, existingId);

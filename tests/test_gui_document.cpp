@@ -715,5 +715,197 @@ TEST_F(GuiDocumentTest, MouseWheelProfileNavigationAndCtrlZoom) {
     EXPECT_EQ(doc.profileIndex(), 4);
 }
 
+TEST_F(GuiDocumentTest, ExtendBodySidePreservesHeightAndCollapses) {
+    ModelDocument doc;
+    doc.newProject(6, 6, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Profile 0 (row 1 in EW): insert a body at column 3 with thickness 200 (top -400, bot -600)
+    doc.setProfileIndex(0);
+    int bodyId = doc.insertBodyAtRowCol(1, 3, -500.0, 200.0);
+    ASSERT_GT(bodyId, 0);
+
+    int idxCol3 = doc.model().getBodyIndex(bodyId, 1, 3);
+    ASSERT_GE(idxCol3, 0);
+    double initialTop = doc.model().getZ(1, 3, idxCol3);
+    double initialBot = doc.model().getZ(1, 3, idxCol3 + 1);
+    double initialHeight = std::abs(initialTop - initialBot);
+    EXPECT_NEAR(initialHeight, 200.0, 1e-4);
+
+    // Extend to column 4 (horizontal extension)
+    bool extOk = doc.extendBodySideAtRowCol(1, 3, 1, 4, bodyId);
+    EXPECT_TRUE(extOk);
+    int idxCol4 = doc.model().getBodyIndex(bodyId, 1, 4);
+    ASSERT_GE(idxCol4, 0);
+    double col4Top = doc.model().getZ(1, 4, idxCol4);
+    double col4Bot = doc.model().getZ(1, 4, idxCol4 + 1);
+    double col4Height = std::abs(col4Top - col4Bot);
+    // Height must remain 200, NOT double or increase
+    EXPECT_NEAR(col4Height, 200.0, 1e-4);
+    EXPECT_NEAR(col4Top, initialTop, 1e-4);
+    EXPECT_NEAR(col4Bot, initialBot, 1e-4);
+
+    // Extend to column 5
+    extOk = doc.extendBodySideAtRowCol(1, 4, 1, 5, bodyId);
+    EXPECT_TRUE(extOk);
+    int idxCol5 = doc.model().getBodyIndex(bodyId, 1, 5);
+    ASSERT_GE(idxCol5, 0);
+    double col5Height = std::abs(doc.model().getZ(1, 5, idxCol5) - doc.model().getZ(1, 5, idxCol5 + 1));
+    EXPECT_NEAR(col5Height, 200.0, 1e-4);
+
+    // Drag backwards (collapse from 5 into 4)
+    bool colOk = doc.extendBodySideAtRowCol(1, 5, 1, 4, bodyId);
+    EXPECT_TRUE(colOk);
+    EXPECT_LT(doc.model().getBodyIndex(bodyId, 1, 5), 0);
+    EXPECT_GE(doc.model().getBodyIndex(bodyId, 1, 4), 0);
+}
+
+TEST_F(GuiDocumentTest, MoveUpperBoundaryDrawingMode) {
+    ModelDocument doc;
+    doc.newProject(6, 6, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert body at row 1 across columns 2, 3, 4
+    doc.setProfileIndex(0);
+    int bodyId = doc.insertBodyAtRowCol(1, 2, -500.0, 200.0);
+    doc.insertBodyAtRowCol(1, 3, -500.0, 200.0, bodyId);
+    doc.insertBodyAtRowCol(1, 4, -500.0, 200.0, bodyId);
+
+    // Check updateMoveIndex functionality
+    int vIdxCol2Top = doc.model().getBodyIndex(bodyId, 1, 2);
+    int vIdxCol2Bot = vIdxCol2Top + 1;
+
+    // Moving top boundary (odd index) across columns
+    int vIdxCol3Top = doc.model().updateMoveIndex(vIdxCol2Top, 1, 3, bodyId);
+    EXPECT_EQ(vIdxCol3Top, doc.model().getBodyIndex(bodyId, 1, 3));
+    EXPECT_EQ(vIdxCol3Top % 2, 1); // Upper boundary is odd
+
+    // Moving bottom boundary (even index) across columns
+    int vIdxCol3Bot = doc.model().updateMoveIndex(vIdxCol2Bot, 1, 3, bodyId);
+    EXPECT_EQ(vIdxCol3Bot, doc.model().getBodyIndex(bodyId, 1, 3) + 1);
+    EXPECT_EQ(vIdxCol3Bot % 2, 0); // Lower boundary is even
+
+    // Column 5 does not have bodyId -> returns -1
+    EXPECT_EQ(doc.model().updateMoveIndex(vIdxCol2Top, 1, 5, bodyId), -1);
+
+    // Test stepping drawing mode across columns 2 -> 3 -> 4
+    int currVIdx = vIdxCol2Top;
+    double newZ = -350.0;
+    for (int col = 2; col <= 4; ++col) {
+        if (col > 2) {
+            currVIdx = doc.model().updateMoveIndex(currVIdx, 1, col, bodyId);
+            ASSERT_GT(currVIdx, 0);
+        }
+        bool moved = doc.moveVertexAtRowCol(1, col, currVIdx, newZ);
+        EXPECT_TRUE(moved);
+        EXPECT_NEAR(doc.model().getZ(1, col, currVIdx), newZ, 1e-4);
+    }
+
+    // Verify all 3 columns now have upper boundary sculpted to -350.0
+    EXPECT_NEAR(doc.model().getZ(1, 2, vIdxCol2Top), -350.0, 1e-4);
+    int vIdxCol3 = doc.model().getBodyIndex(bodyId, 1, 3);
+    EXPECT_NEAR(doc.model().getZ(1, 3, vIdxCol3), -350.0, 1e-4);
+    int vIdxCol4 = doc.model().getBodyIndex(bodyId, 1, 4);
+    EXPECT_NEAR(doc.model().getZ(1, 4, vIdxCol4), -350.0, 1e-4);
+
+    // ProfileView offscreen render works cleanly with the sculpted model
+    ProfileView pv(&doc, ProfileOrientation::EastWest, 0);
+    pv.resize(800, 600);
+    QPixmap pm(800, 600);
+    pv.render(&pm);
+    EXPECT_FALSE(pm.isNull());
+}
+
+class TestProfileView : public ProfileView {
+public:
+    using ProfileView::ProfileView;
+    void sendMousePress(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(pos), btn, btn, mods);
+        mousePressEvent(&ev);
+    }
+    void sendMouseMove(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(pos), btn, btn, mods);
+        mouseMoveEvent(&ev);
+    }
+    void sendMouseRelease(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(pos), btn, Qt::NoButton, mods);
+        mouseReleaseEvent(&ev);
+    }
+    int toScreenX(double xw) const { return worldToScreenX(xw); }
+    int toScreenZ(double zw) const { return worldToScreenZ(zw); }
+};
+
+TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
+    ModelDocument doc;
+    std::string testPath = std::string(MOD3D_EXAMPLES_DIR) + "/Test.m3d";
+    if (!std::filesystem::exists(testPath)) {
+        testPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/Test.m3d";
+    }
+    ASSERT_TRUE(std::filesystem::exists(testPath));
+    ASSERT_TRUE(doc.openFile(QString::fromStdString(testPath)));
+
+    ASSERT_FALSE(doc.model().getBodies().empty());
+    int loadedBodyId = doc.model().getBodies().front()->id();
+    EXPECT_EQ(loadedBodyId, 0); // Confirms loaded body has ID 0
+
+    // Find a row and col where loadedBodyId exists with an adjacent column
+    int foundRow = -1, foundCol = -1;
+    for (int r = 1; r < doc.model().getRows() - 1; ++r) {
+        for (int c = 1; c < doc.model().getCols() - 2; ++c) {
+            int idx1 = doc.model().getBodyIndex(loadedBodyId, r, c);
+            int idx2 = doc.model().getBodyIndex(loadedBodyId, r, c + 1);
+            if (idx1 >= 0 && idx2 >= 0) {
+                foundRow = r;
+                foundCol = c;
+                break;
+            }
+        }
+        if (foundRow >= 0) break;
+    }
+    ASSERT_GE(foundRow, 0);
+    ASSERT_GE(foundCol, 0);
+
+    int vIdx = doc.model().getBodyIndex(loadedBodyId, foundRow, foundCol);
+    int vIdxNext = doc.model().getBodyIndex(loadedBodyId, foundRow, foundCol + 1);
+    ASSERT_GE(vIdx, 0);
+    ASSERT_GE(vIdxNext, 0);
+
+    doc.setProfileOrientation(ProfileOrientation::EastWest);
+    doc.setProfileIndex(foundRow - 1);
+
+    TestProfileView pv(&doc, ProfileOrientation::EastWest, foundRow - 1);
+    pv.resize(1000, 600);
+    QPixmap pm(1000, 600);
+    pv.render(&pm);
+
+    double initialColZ = doc.model().getZ(foundRow, foundCol, vIdx);
+    double initialNextColZ = doc.model().getZ(foundRow, foundCol + 1, vIdxNext);
+
+    int lineIdxStart = foundCol - 1;
+    int lineIdxTarget = (foundCol + 1) - 1;
+
+    double xwStart = pv.columnCoordinate(lineIdxStart);
+    int sxStart = pv.toScreenX(xwStart);
+    int syTopStart = pv.toScreenZ(initialColZ);
+
+    // 1. Mouse Press on the upper vertex at starting column
+    pv.sendMousePress(QPoint(sxStart, syTopStart));
+
+    // 2. Mouse Move across into target column at a new depth
+    double newZ = initialColZ + 15.0;
+    double xwTarget = pv.columnCoordinate(lineIdxTarget);
+    int sxTarget = pv.toScreenX(xwTarget);
+    int syTarget = pv.toScreenZ(newZ);
+
+    pv.sendMouseMove(QPoint(sxTarget, syTarget));
+
+    // 3. Mouse Release
+    pv.sendMouseRelease(QPoint(sxTarget, syTarget));
+
+    // Verify drawing mode successfully moved the upper boundary of body 0 in the adjacent column!
+    double updatedNextColZ = doc.model().getZ(foundRow, foundCol + 1, vIdxNext);
+    EXPECT_NEAR(updatedNextColZ, newZ, 0.5);
+    EXPECT_NE(updatedNextColZ, initialNextColZ);
+}
+
+
 
 

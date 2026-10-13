@@ -88,13 +88,15 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
 
-private:
-    // Layout & Geometry
-    void updatePaneRects();
+    // Coordinate Conversion
     double screenToWorldX(int screenX) const;
     int worldToScreenX(double worldX) const;
     double screenToWorldZ(int screenZ) const;
     int worldToScreenZ(double worldZ) const;
+
+private:
+    // Layout & Geometry
+    void updatePaneRects();
     int worldToScreenField(double fldVal, double minFld, double maxFld) const;
     int findClosestLineIndex(int screenX) const;
 

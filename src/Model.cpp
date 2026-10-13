@@ -325,6 +325,20 @@ int Model::getBodyIndex(int bodyId, int row, int col) const
     return -1;
 }
 
+int Model::updateMoveIndex(int indexOld, int row, int col, int bodyId) const
+{
+    int iPlus = (indexOld + 1) % 2;
+    int indexMax = static_cast<int>(getCount(row, col));
+    int i = 1;
+    while (i < indexMax) {
+        if (bodyId == getID(i, row, col)) {
+            return i + iPlus;
+        }
+        i += 2;
+    }
+    return -1;
+}
+
 int Model::getID(int index, int row, int col) const
 {
     const int count = static_cast<int>(getCount(row, col));

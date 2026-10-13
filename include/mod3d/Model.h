@@ -121,6 +121,7 @@ public:
     Body *getBody(int bodyId);
     const Body *getBody(int bodyId) const;
     int getBodyIndex(int bodyId, int row, int col) const;
+    int updateMoveIndex(int indexOld, int row, int col, int bodyId) const;
     int getID(int index, int row, int col) const;
     const std::vector<std::unique_ptr<Body>> &getBodies() const { return m_bodies; }
     void updateBodyIndex();

@@ -241,7 +241,7 @@ mod3d::Body *ModelDocument::createNewBody() {
     midZ = std::clamp(midZ, zMin + halfT, zSurface - halfT);
 
     int bodyId = insertBodyAt(curLine, midZ);
-    if (bodyId > 0) {
+    if (bodyId >= 0) {
         return m_project.model().getBody(bodyId);
     }
     auto *b = m_project.model().newBody();
@@ -255,7 +255,7 @@ int ModelDocument::insertBodyAtRowCol(int row, int col, double z, double thickne
         thickness = m_project.model().getDefaultThickness();
     }
 
-    bool isNew = (bodyId <= 0);
+    bool isNew = (bodyId < 0);
     double halfT = thickness / 2.0;
     int res = m_project.model().insertBody(row, col, z, halfT, isNew, bodyId);
     if (res >= 0) {
@@ -451,13 +451,24 @@ bool ModelDocument::unsnapVertexAt(int lineIdx, int vertexIdx, double separation
     return unsnapVertexAtRowCol(row, col, vertexIdx, separation);
 }
 
-bool ModelDocument::extendBodySideAtRowCol(int srcRow, int srcCol, int tgtRow, int tgtCol, int bodyId) {
+bool ModelDocument::extendBodySideAtRowCol(int srcRow, int srcCol, int tgtRow, int tgtCol, int bodyId, double targetZ) {
+    if (m_project.model().getBodyIndex(bodyId, tgtRow, tgtCol) >= 0) {
+        return collapseBodyEdgeAtRowCol(srcRow, srcCol, bodyId);
+    }
+
     int bIdx = m_project.model().getBodyIndex(bodyId, srcRow, srcCol);
     if (bIdx < 0) return false;
 
-    double z = m_project.model().getZ(srcRow, srcCol, bIdx);
-    double th = m_project.model().getThickness(srcRow, srcCol, bIdx);
-    int res = m_project.model().insertBody(tgtRow, tgtCol, z, th, false, bodyId);
+    double topZ = m_project.model().getZ(srcRow, srcCol, bIdx);
+    double botZ = m_project.model().getZ(srcRow, srcCol, bIdx + 1);
+    double th = std::abs(topZ - botZ);
+    double halfT = th / 2.0;
+    double midZ = std::isnan(targetZ) ? ((topZ + botZ) / 2.0) : targetZ;
+
+    int res = m_project.model().insertBody(tgtRow, tgtCol, midZ, halfT, false, bodyId);
+    if (res < 0 && !std::isnan(targetZ)) {
+        res = m_project.model().insertBody(tgtRow, tgtCol, (topZ + botZ) / 2.0, halfT, false, bodyId);
+    }
     if (res >= 0) {
         setModified(true);
         if (m_realTimeCompute) {
@@ -470,12 +481,12 @@ bool ModelDocument::extendBodySideAtRowCol(int srcRow, int srcCol, int tgtRow, i
     return false;
 }
 
-bool ModelDocument::extendBodySide(int bodyId, int sourceLineIdx, int targetLineIdx) {
+bool ModelDocument::extendBodySide(int bodyId, int sourceLineIdx, int targetLineIdx, double targetZ) {
     int srcRow = 0, srcCol = 0;
     int tgtRow = 0, tgtCol = 0;
     getRowCol(sourceLineIdx, srcRow, srcCol);
     getRowCol(targetLineIdx, tgtRow, tgtCol);
-    return extendBodySideAtRowCol(srcRow, srcCol, tgtRow, tgtCol, bodyId);
+    return extendBodySideAtRowCol(srcRow, srcCol, tgtRow, tgtCol, bodyId, targetZ);
 }
 
 bool ModelDocument::collapseBodyEdgeAtRowCol(int row, int col, int bodyId) {

@@ -468,7 +468,7 @@ void MainWindow::onBodyProperties(int bodyId) {
         QMessageBox::information(this, tr("Body Properties"), tr("No bodies exist in the current model."));
         return;
     }
-    mod3d::Body *b = (bodyId > 0) ? m_doc->model().getBody(bodyId) : m_doc->model().getBodies().front().get();
+    mod3d::Body *b = (bodyId >= 0) ? m_doc->model().getBody(bodyId) : m_doc->model().getBodies().front().get();
     if (b) {
         BodyPropertiesDialog dlg(b, this);
         if (dlg.exec() == QDialog::Accepted) {
