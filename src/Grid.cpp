@@ -397,6 +397,57 @@ bool Grid::load_srf6_binary(const std::filesystem::path &filePath)
 
     char id[4];
     file.read(id, 4);
+    if (std::strncmp(id, "DSRB", 4) == 0) {
+        uint32_t size = 0, ver = 0;
+        file.read(reinterpret_cast<char *>(&size), 4);
+        file.read(reinterpret_cast<char *>(&ver), 4);
+
+        char sectionTag[4];
+        file.read(sectionTag, 4);
+        if (std::strncmp(sectionTag, "GRID", 4) != 0) return false;
+
+        uint32_t tagSize = 0;
+        file.read(reinterpret_cast<char *>(&tagSize), 4);
+
+        uint32_t ny = 0, nx = 0;
+        file.read(reinterpret_cast<char *>(&ny), 4);
+        file.read(reinterpret_cast<char *>(&nx), 4);
+
+        double xlo = 0, ylo = 0, dxVal = 0, dyVal = 0, zlo = 0, zhi = 0, rot = 0, blank = 0;
+        file.read(reinterpret_cast<char *>(&xlo), 8);
+        file.read(reinterpret_cast<char *>(&ylo), 8);
+        file.read(reinterpret_cast<char *>(&dxVal), 8);
+        file.read(reinterpret_cast<char *>(&dyVal), 8);
+        file.read(reinterpret_cast<char *>(&zlo), 8);
+        file.read(reinterpret_cast<char *>(&zhi), 8);
+        file.read(reinterpret_cast<char *>(&rot), 8);
+        file.read(reinterpret_cast<char *>(&blank), 8);
+
+        char dataTag[4];
+        file.read(dataTag, 4);
+        if (std::strncmp(dataTag, "DATA", 4) != 0) return false;
+
+        uint32_t dataSize = 0;
+        file.read(reinterpret_cast<char *>(&dataSize), 4);
+
+        if (!file || nx <= 1 || ny <= 1) return false;
+
+        resize(static_cast<size_t>(ny), static_cast<size_t>(nx), xlo, ylo, dxVal, dyVal, rot);
+
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
+                double val = 0.0;
+                file.read(reinterpret_cast<char *>(&val), 8);
+                if (std::abs(val - blank) < 1e-4 || val >= 1.7e38 || std::isnan(val)) {
+                    operator()(r, c) = GRID_DUMMY;
+                } else {
+                    operator()(r, c) = val;
+                }
+            }
+        }
+        return !file.bad();
+    }
+
     if (std::strncmp(id, "DSBB", 4) != 0) return false;
 
     int16_t nx = 0, ny = 0;
@@ -522,6 +573,14 @@ bool Grid::save_srf6_ascii(const std::filesystem::path &filePath) const
         file << "\n";
     }
     return file.good();
+}
+
+bool Grid::load_file(const std::filesystem::path &filePath)
+{
+    if (load_srf6_binary(filePath)) {
+        return true;
+    }
+    return load_srf6_ascii(filePath);
 }
 
 std::ostream &operator<<(std::ostream &os, const Grid &grid)

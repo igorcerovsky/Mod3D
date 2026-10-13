@@ -172,6 +172,7 @@ public:
     bool save_srf6_binary(const std::filesystem::path &filePath) const;
     bool load_srf6_ascii(const std::filesystem::path &filePath);
     bool save_srf6_ascii(const std::filesystem::path &filePath) const;
+    bool load_file(const std::filesystem::path &filePath);
 
     friend std::ostream &operator<<(std::ostream &os, const Grid &grid);
 

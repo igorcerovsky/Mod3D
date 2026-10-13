@@ -259,7 +259,20 @@ double Model::getThickness(int row, int col, int index) const
 Body *Model::newBody()
 {
     auto b = std::make_unique<Body>();
-    b->SetID(m_nextBodyId++);
+    int newId = m_nextBodyId++;
+    b->SetID(newId);
+    static const BodyColor defaultPalette[] = {
+        {180, 120, 80, 255},  // Sandstone
+        {220, 80, 60, 255},   // Granite
+        {60, 140, 180, 255},  // Limestone
+        {100, 180, 100, 255}, // Shale
+        {180, 100, 180, 255}, // Basalt
+        {220, 180, 60, 255},  // Alluvium
+        {80, 80, 90, 255}     // Gabbro
+    };
+    int pIdx = (newId - 1) % 7;
+    if (pIdx < 0) pIdx = 0;
+    b->set_color(defaultPalette[pIdx]);
     Body *raw = b.get();
     m_bodies.push_back(std::move(b));
     updateBodyIndex();
@@ -472,23 +485,26 @@ int Model::moveVertex(int &index, int row, int col, double z, BodyMoveType moveT
     if (index <= 0) return -1;
 
     const int indexMax = static_cast<int>(getCount(row, col)) - 1;
+    if (index >= indexMax) return -1;
+
     const double zR = getZ(row, col, 0);
     const double zC = getZ(row, col, index);
 
+    // Identify contiguous cluster of vertices [i, j) that share the same Z as index
     int i = index;
-    int j = index + 1;
-    double zU = getZ(row, col, index - 1);
-    double zD = getZ(row, col, index + 1);
+    while (i > 1 && getZ(row, col, i - 1) == zC) {
+        --i;
+    }
+    double zU = getZ(row, col, i - 1);
 
+    int j = index + 1;
     while (j < indexMax + 1) {
-        zD = getZ(row, col, j);
-        if (zC > zD) break;
-        if (j == indexMax) {
-            zD = getZ(row, col, j);
-            break;
-        }
+        double nextZ = getZ(row, col, j);
+        if (zC > nextZ) break;
+        if (j == indexMax) break;
         j++;
     }
+    double zD = getZ(row, col, j);
 
     m_currentRow = row;
     m_currentCol = col;
@@ -513,12 +529,14 @@ int Model::moveVertex(int &index, int row, int col, double z, BodyMoveType moveT
             return 0;
         }
     } else if (moveType == BodyMoveType::Split) {
-        if (z >= zC && z < zU) {
-            setZ(row, col, index, z);
-        }
-        if (z <= zC && z > zD) {
+        if (z > zC) {
+            double targetZ = std::min(z, zU);
+            index = i;
+            setZ(row, col, index, targetZ);
+        } else if (z < zC) {
+            double targetZ = std::max(z, zD);
             index = j - 1;
-            setZ(row, col, index, z);
+            setZ(row, col, index, targetZ);
         }
     } else if (moveType == BodyMoveType::Constrained) {
         if (z > zD && z < zU) {

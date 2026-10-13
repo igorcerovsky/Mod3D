@@ -7,6 +7,8 @@
 #include <cstdint>
 #include <algorithm>
 #include <iostream>
+#include <string_view>
+#include <vector>
 
 namespace mod3d {
 
@@ -303,6 +305,11 @@ std::string Project::toJsonString(int indent) const
         {"intensity_nt", m_observation.getMagneticIntensity()}
     };
     jObs["reference_density"] = m_observation.getReferenceDensity();
+    jObs["units"] = {
+        {"gravity", m_observation.gravity_units()},
+        {"magnetic", m_observation.magnetic_units()},
+        {"tensor", m_observation.tensor_units()}
+    };
 
     // Modeled Grids
     nlohmann::json jModeled = nlohmann::json::object();
@@ -490,6 +497,12 @@ bool Project::fromJsonString(const std::string &jsonStr)
             }
             if (jo.contains("reference_density")) {
                 m_observation.setReferenceDensity(jo.value("reference_density", 2670.0));
+            }
+            if (jo.contains("units")) {
+                const auto &ju = jo["units"];
+                m_observation.set_gravity_units(ju.value("gravity", 1.0e6));
+                m_observation.set_magnetic_units(ju.value("magnetic", 1.0));
+                m_observation.set_tensor_units(ju.value("tensor", 1.0e9));
             }
 
             // Observed Grids
@@ -813,10 +826,90 @@ public:
     bool eof() const { return m_is.eof(); }
     bool good() const { return m_is.good(); }
 
+    std::istream &stream() { return m_is; }
+    std::streampos tell() { return m_is.tellg(); }
+    void seek(std::streampos pos) {
+        m_is.clear();
+        m_is.seekg(pos);
+    }
+
 private:
     std::istream &m_is;
     std::vector<MfcClassInfo> m_classes;
 };
+
+bool validateMfcGrid(const uint8_t *buf, size_t bufLen, size_t &pos) {
+    if (pos >= bufLen) return false;
+    uint8_t lenByte = buf[pos++];
+    size_t strLen = lenByte;
+    if (lenByte == 0xFF) {
+        if (pos + 2 > bufLen) return false;
+        uint16_t w = static_cast<uint16_t>(buf[pos] | (buf[pos + 1] << 8));
+        pos += 2;
+        if (w == 0xFFFF) {
+            if (pos + 4 > bufLen) return false;
+            strLen = static_cast<size_t>(buf[pos] | (buf[pos + 1] << 8) | (buf[pos + 2] << 16) | (buf[pos + 3] << 24));
+            pos += 4;
+        } else {
+            strLen = w;
+        }
+    }
+    if (pos + strLen > bufLen) return false;
+    std::string_view s(reinterpret_cast<const char*>(buf + pos), strLen);
+    if (s.find("_gridMod3D") == std::string_view::npos) return false;
+    pos += strLen;
+
+    // Header: version(4), type(4), rows(4), cols(4)
+    if (pos + 16 > bufLen) return false;
+    int32_t version = 0;
+    std::memcpy(&version, buf + pos, sizeof(version));
+    uint32_t rows = 0;
+    std::memcpy(&rows, buf + pos + 8, sizeof(rows));
+    uint32_t cols = 0;
+    std::memcpy(&cols, buf + pos + 12, sizeof(cols));
+    pos += 16;
+
+    // Bounds: 10 doubles = 80 bytes
+    // clrTbl(4), contNum(4), dRMS(8), dRot(8), dDrv(8) = 32 bytes
+    if (pos + 112 > bufLen) return false;
+    pos += 112;
+
+    if (rows > 5000 || cols > 5000) return false;
+    size_t valBytes = static_cast<size_t>(rows) * cols * sizeof(double);
+    if (pos + valBytes > bufLen) return false;
+    pos += valBytes;
+
+    // Gradient: 4 uint32 (16), 2 int32 (8), pegCount (4) = 28 bytes
+    if (pos + 28 > bufLen) return false;
+    int32_t pegCount = 0;
+    std::memcpy(&pegCount, buf + pos + 24, sizeof(pegCount));
+    pos += 28;
+    if (pegCount < 0 || pegCount > 1000) return false;
+    size_t pegBytes = static_cast<size_t>(pegCount) * 8;
+    if (pos + pegBytes > bufLen) return false;
+    pos += pegBytes;
+
+    if (version >= 20040326) {
+        if (pos + 24 > bufLen) return false;
+        pos += 24;
+    }
+    return true;
+}
+
+bool canRead64Grids(const uint8_t *buf, size_t bufLen, size_t startPos) {
+    size_t pos = startPos;
+    // 4 observation grids (relief, grv, mag, tns)
+    for (int i = 0; i < 4; ++i) {
+        if (!validateMfcGrid(buf, bufLen, pos)) return false;
+    }
+    // 60 component grids each followed by activeCompute int32_t (4 bytes)
+    for (int i = 0; i < 60; ++i) {
+        if (!validateMfcGrid(buf, bufLen, pos)) return false;
+        if (pos + 4 > bufLen) return false;
+        pos += 4;
+    }
+    return true;
+}
 
 Grid readMfcGrid(BinaryStreamReader &reader) {
     if (!reader.good() || reader.eof()) return Grid();
@@ -843,7 +936,7 @@ Grid readMfcGrid(BinaryStreamReader &reader) {
     double dRMS = reader.read<double>();
     double dRot = reader.read<double>();
     double dDrv = reader.read<double>();
-    (void)version; (void)type; (void)dMinX; (void)dMaxX; (void)dMinY; (void)dMaxY;
+    (void)type; (void)dMinX; (void)dMaxX; (void)dMinY; (void)dMaxY;
     (void)dMinZ; (void)dMaxZ; (void)clrTbl; (void)contNum; (void)dRMS; (void)dDrv;
 
     Grid g(rows, cols, x0, y0, xSize, ySize, dRot);
@@ -866,11 +959,13 @@ Grid readMfcGrid(BinaryStreamReader &reader) {
         reader.read<float>();    // position
     }
 
-    // Color range
-    reader.read<int32_t>(); // m_bHistClr
-    reader.read<int32_t>(); // m_bCustomRange
-    reader.read<double>();  // m_dMinHstCst
-    reader.read<double>();  // m_dMaxHstCst
+    // Color range if version >= 20040326
+    if (version >= 20040326) {
+        reader.read<int32_t>(); // m_bHistClr
+        reader.read<int32_t>(); // m_bCustomRange
+        reader.read<double>();  // m_dMinHstCst
+        reader.read<double>();  // m_dMaxHstCst
+    }
 
     return g;
 }
@@ -929,7 +1024,9 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     m_settings.gravityFormula = reader.read<int32_t>();
     double grvDensRef = reader.read<double>();
     double grvUnits = reader.read<double>();
-    (void)grvUnits;
+    if (grvUnits > 0.0) {
+        m_observation.set_gravity_units(grvUnits);
+    }
     Point3D grvDensGrad;
     grvDensGrad.x = reader.read<double>();
     grvDensGrad.y = reader.read<double>();
@@ -944,7 +1041,10 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     double tensFlightElev = reader.read<double>();
     double tensHeight = reader.read<double>();
     double tensUnits = reader.read<double>();
-    (void)tensTag; (void)tensCompute; (void)tensUnits;
+    (void)tensTag; (void)tensCompute;
+    if (tensUnits > 0.0) {
+        m_observation.set_tensor_units(tensUnits);
+    }
 
     double grvSens = reader.read<double>();
     double grvElev = reader.read<double>();
@@ -1107,21 +1207,105 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     m_observation.setGravityObservation(ObservationMode::SensorHeight, tensHeight);
     m_observation.setMagneticObservation(ObservationMode::FlightElevation, tensFlightElev);
 
-    // Attempt to read observation grids if present (Relief, Gravity, Magnetic)
+    // Attempt to read grids (Relief, Observation elevations, Modeled, Difference, Measured)
     if (reader.good() && !reader.eof()) {
-        uint32_t extraObjs = reader.readArrayCount();
-        (void)extraObjs;
+        std::streampos curPos = reader.tell();
+        reader.stream().seekg(0, std::ios::end);
+        std::streampos endPos = reader.stream().tellg();
+        reader.seek(curPos);
+
+        bool foundGrids = false;
+        if (endPos > curPos) {
+            size_t remBytes = static_cast<size_t>(endPos - curPos);
+            std::vector<uint8_t> buffer(remBytes);
+            reader.readBytes(buffer.data(), remBytes);
+
+            const std::string tag = "_gridMod3D";
+            for (size_t i = 0; i + tag.size() <= buffer.size(); ++i) {
+                if (std::memcmp(buffer.data() + i, tag.data(), tag.size()) == 0) {
+                    size_t candidates[] = { (i >= 1) ? i - 1 : 0, (i >= 3) ? i - 3 : 0 };
+                    for (size_t cand : candidates) {
+                        if (canRead64Grids(buffer.data(), buffer.size(), cand)) {
+                            reader.seek(curPos + static_cast<std::streamoff>(cand));
+                            foundGrids = true;
+                            break;
+                        }
+                    }
+                    if (foundGrids) break;
+                }
+            }
+        }
+
+        if (!foundGrids) {
+            reader.seek(curPos);
+            uint32_t extraObjs = reader.readArrayCount();
+            (void)extraObjs;
+        }
+
         Grid relGrid = readMfcGrid(reader);
         if (!relGrid.empty()) {
             m_observation.setSurfaceRelief(relGrid);
         }
         Grid grvGrid = readMfcGrid(reader);
         if (!grvGrid.empty()) {
-            m_observation.setObservedGrid(FieldComponent::GZ, grvGrid);
+            m_observation.setGravityObservationGrid(grvGrid);
         }
         Grid magGrid = readMfcGrid(reader);
         if (!magGrid.empty()) {
-            m_observation.setObservedGrid(FieldComponent::DELTA_T, magGrid);
+            m_observation.setMagneticObservationGrid(magGrid);
+        }
+        Grid tnsGrid = readMfcGrid(reader);
+        if (!tnsGrid.empty()) {
+            m_observation.setTensorObservationGrid(tnsGrid);
+        }
+
+        auto legacyCompToFieldComponent = [](int compIdx) -> std::optional<FieldComponent> {
+            switch (compIdx) {
+            case 0: return FieldComponent::GX;
+            case 1: return FieldComponent::GY;
+            case 2: return FieldComponent::GZ;
+            case 3: return FieldComponent::G_TOT;
+            case 4: return FieldComponent::GXX;
+            case 5: return FieldComponent::GYY;
+            case 6: return FieldComponent::GZZ;
+            case 7: return FieldComponent::GXY;
+            case 8: return FieldComponent::GXZ;
+            case 9: return FieldComponent::GYZ;
+            case 10: return FieldComponent::MX;
+            case 11: return FieldComponent::MY;
+            case 12: return FieldComponent::MZ;
+            case 13: return FieldComponent::DELTA_T;
+            default: return std::nullopt;
+            }
+        };
+
+        // Read 60 component grids (m_grd[0..59])
+        for (int i = 0; i < 60 && reader.good() && !reader.eof(); ++i) {
+            Grid grid = readMfcGrid(reader);
+            int32_t activeCompute = 0;
+            if (reader.good() && !reader.eof()) {
+                activeCompute = reader.read<int32_t>();
+            }
+            (void)activeCompute;
+
+            if (grid.empty()) continue;
+
+            if (i >= 0 && i < 20) {
+                auto comp = legacyCompToFieldComponent(i);
+                if (comp) {
+                    m_observation.setModeledGrid(*comp, grid);
+                }
+            } else if (i >= 20 && i < 40) {
+                auto comp = legacyCompToFieldComponent(i - 20);
+                if (comp) {
+                    m_observation.setDifferenceGrid(*comp, grid);
+                }
+            } else if (i >= 40 && i < 60) {
+                auto comp = legacyCompToFieldComponent(i - 40);
+                if (comp) {
+                    m_observation.setObservedGrid(*comp, grid);
+                }
+            }
         }
     }
 

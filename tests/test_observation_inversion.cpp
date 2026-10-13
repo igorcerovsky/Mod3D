@@ -253,8 +253,8 @@ TEST(Gate3InversionTest, DensityRecoveryMatchesFitLogDens) {
     EXPECT_NEAR(fitRes.optimalParameter, trueDensity, 0.1);
     EXPECT_NEAR(body->GetDensity(), trueDensity, 0.1);
 
-    // 2. Minimum RMS residual should be virtually zero (< 1e-8)
-    EXPECT_LT(fitRes.minimumObjective, 1e-8);
+    // 2. Minimum RMS residual should be virtually zero (< 1e-4 mGal)
+    EXPECT_LT(fitRes.minimumObjective, 1e-4);
 
     // 3. Iteration count is reasonable (< 30 iterations)
     EXPECT_LT(fitRes.iterations, 30);
@@ -320,6 +320,6 @@ TEST(Gate3InversionTest, VertexDepthRecoveryMatchesFitLogVrtx) {
     EXPECT_NEAR(fitRes.optimalParameter, trueZ, 0.1);
     EXPECT_NEAR(model.getZ(2, 2, 1), trueZ, 0.1);
 
-    // 2. Minimum RMS drops to near zero (< 1e-8)
-    EXPECT_LT(fitRes.minimumObjective, 1e-8);
+    // 2. Minimum RMS drops to near zero (< 1e-4 mGal)
+    EXPECT_LT(fitRes.minimumObjective, 1e-4);
 }

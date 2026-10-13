@@ -40,6 +40,9 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept
     swap(dec_deg_, other.dec_deg_);
     swap(mag_intensity_, other.mag_intensity_);
     swap(ref_density_, other.ref_density_);
+    swap(grv_units_, other.grv_units_);
+    swap(mag_units_, other.mag_units_);
+    swap(tensor_units_, other.tensor_units_);
     swap(modeled_grids_, other.modeled_grids_);
     swap(observed_grids_, other.observed_grids_);
     swap(difference_grids_, other.difference_grids_);
@@ -196,8 +199,9 @@ const Grid *ObservationSpace::modeled_grid(FieldComponent comp) const
 
 Grid *ObservationSpace::observed_grid(FieldComponent comp)
 {
-    ensure_grid_allocated(observed_grids_, comp);
-    return &observed_grids_[comp];
+    auto it = observed_grids_.find(comp);
+    if (it != observed_grids_.end()) return &it->second;
+    return nullptr;
 }
 
 const Grid *ObservationSpace::observed_grid(FieldComponent comp) const
@@ -205,6 +209,11 @@ const Grid *ObservationSpace::observed_grid(FieldComponent comp) const
     auto it = observed_grids_.find(comp);
     if (it != observed_grids_.end()) return &it->second;
     return nullptr;
+}
+
+void ObservationSpace::set_modeled_grid(FieldComponent comp, const Grid &grid)
+{
+    modeled_grids_[comp] = grid;
 }
 
 void ObservationSpace::set_observed_grid(FieldComponent comp, const Grid &grid)
@@ -223,6 +232,11 @@ const Grid *ObservationSpace::difference_grid(FieldComponent comp) const
     auto it = difference_grids_.find(comp);
     if (it != difference_grids_.end()) return &it->second;
     return nullptr;
+}
+
+void ObservationSpace::set_difference_grid(FieldComponent comp, const Grid &grid)
+{
+    difference_grids_[comp] = grid;
 }
 
 void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets, bool zeroFirst)
@@ -266,14 +280,15 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
 
         size_t r = p / cols_;
         size_t c = p % cols_;
+        Point3D scaledG = totalG * grv_units_;
         if (zeroFirst) {
-            grdGx(r, c) = totalG.x;
-            grdGy(r, c) = totalG.y;
-            grdGz(r, c) = totalG.z;
+            grdGx(r, c) = scaledG.x;
+            grdGy(r, c) = scaledG.y;
+            grdGz(r, c) = scaledG.z;
         } else {
-            grdGx(r, c) += totalG.x;
-            grdGy(r, c) += totalG.y;
-            grdGz(r, c) += totalG.z;
+            grdGx(r, c) += scaledG.x;
+            grdGy(r, c) += scaledG.y;
+            grdGz(r, c) += scaledG.z;
         }
     }
 
@@ -313,6 +328,11 @@ void ObservationSpace::compute_difference(FieldComponent comp, bool removeMean)
 {
     Grid *pMod = modeled_grid(comp);
     Grid *pObs = observed_grid(comp);
+    if ((!pObs || pObs->empty()) && comp == FieldComponent::GZ) {
+        pObs = observed_grid(FieldComponent::G_TOT);
+    } else if ((!pObs || pObs->empty()) && comp == FieldComponent::G_TOT) {
+        pObs = observed_grid(FieldComponent::GZ);
+    }
     Grid *pDif = difference_grid(comp);
 
     if (!pMod || !pObs || !pDif) return;
@@ -370,7 +390,7 @@ FitResult ObservationSpace::fit_density(
         }
         size_t r = p / cols_;
         size_t c = p % cols_;
-        grdUnit(r, c) = unitGz;
+        grdUnit(r, c) = unitGz * grv_units_;
     }
 
     // Objective function for differential density x = (dens - ref_density_)

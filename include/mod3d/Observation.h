@@ -129,6 +129,16 @@ public:
     void set_reference_density(double refDens) noexcept { ref_density_ = refDens; }
     [[nodiscard]] double reference_density() const noexcept { return ref_density_; }
 
+    // Physical Field Units Scaling Factors (matches legacy m_dGrvUnits, m_dMagUnits, m_gvrTens.dUnits)
+    void set_gravity_units(double units) noexcept { grv_units_ = units; }
+    [[nodiscard]] double gravity_units() const noexcept { return grv_units_; }
+
+    void set_magnetic_units(double units) noexcept { mag_units_ = units; }
+    [[nodiscard]] double magnetic_units() const noexcept { return mag_units_; }
+
+    void set_tensor_units(double units) noexcept { tensor_units_ = units; }
+    [[nodiscard]] double tensor_units() const noexcept { return tensor_units_; }
+
     // Observation Point Generation
     [[nodiscard]] std::vector<Point3D> observation_points(FieldComponent comp) const;
 
@@ -139,6 +149,7 @@ public:
 
     [[nodiscard]] Grid *modeled_grid(FieldComponent comp);
     [[nodiscard]] const Grid *modeled_grid(FieldComponent comp) const;
+    void set_modeled_grid(FieldComponent comp, const Grid &grid);
 
     [[nodiscard]] Grid *observed_grid(FieldComponent comp);
     [[nodiscard]] const Grid *observed_grid(FieldComponent comp) const;
@@ -146,6 +157,7 @@ public:
 
     [[nodiscard]] Grid *difference_grid(FieldComponent comp);
     [[nodiscard]] const Grid *difference_grid(FieldComponent comp) const;
+    void set_difference_grid(FieldComponent comp, const Grid &grid);
 
     // Forward Modeling & Difference Computation
     void compute_forward_field(const std::vector<Facet3Pt> &facets, bool zeroFirst = true);
@@ -224,6 +236,7 @@ public:
 
     [[nodiscard]] Grid *getModeledGrid(FieldComponent comp) { return modeled_grid(comp); }
     [[nodiscard]] const Grid *getModeledGrid(FieldComponent comp) const { return modeled_grid(comp); }
+    void setModeledGrid(FieldComponent comp, const Grid &grid) { set_modeled_grid(comp, grid); }
 
     [[nodiscard]] Grid *getObservedGrid(FieldComponent comp) { return observed_grid(comp); }
     [[nodiscard]] const Grid *getObservedGrid(FieldComponent comp) const { return observed_grid(comp); }
@@ -231,6 +244,7 @@ public:
 
     [[nodiscard]] Grid *getDifferenceGrid(FieldComponent comp) { return difference_grid(comp); }
     [[nodiscard]] const Grid *getDifferenceGrid(FieldComponent comp) const { return difference_grid(comp); }
+    void setDifferenceGrid(FieldComponent comp, const Grid &grid) { set_difference_grid(comp, grid); }
 
     void computeForwardField(const std::vector<Facet3Pt> &facets, bool zeroFirst = true) {
         compute_forward_field(facets, zeroFirst);
@@ -257,6 +271,13 @@ public:
         FitMethod method = FitMethod::Brent) {
         return fit_vertex(model, row, col, index, comp, tol, method);
     }
+
+    void setGravityUnits(double units) noexcept { set_gravity_units(units); }
+    [[nodiscard]] double getGravityUnits() const noexcept { return gravity_units(); }
+    void setMagneticUnits(double units) noexcept { set_magnetic_units(units); }
+    [[nodiscard]] double getMagneticUnits() const noexcept { return magnetic_units(); }
+    void setTensorUnits(double units) noexcept { set_tensor_units(units); }
+    [[nodiscard]] double getTensorUnits() const noexcept { return tensor_units(); }
 
 private:
     void ensure_grid_allocated(std::map<FieldComponent, Grid> &gridMap, FieldComponent comp);
@@ -288,6 +309,9 @@ private:
     double dec_deg_{0.0};
     double mag_intensity_{50000.0};
     double ref_density_{2670.0};
+    double grv_units_{1.0e6};
+    double mag_units_{1.0};
+    double tensor_units_{1.0e9};
 
     std::map<FieldComponent, Grid> modeled_grids_;
     std::map<FieldComponent, Grid> observed_grids_;

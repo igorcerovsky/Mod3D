@@ -54,5 +54,14 @@ target_include_directories(mod3d_core PUBLIC
     $<INSTALL_INTERFACE:include>
 )
 
+if(APPLE AND EXISTS "/opt/homebrew")
+    list(APPEND CMAKE_PREFIX_PATH "/opt/homebrew")
+endif()
+
+find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets REQUIRED)
+
+add_subdirectory(gui)
+
 enable_testing()
 add_subdirectory(tests)
+

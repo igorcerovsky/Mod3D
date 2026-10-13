@@ -73,5 +73,8 @@ add_executable(test_legacy_m3d test_legacy_m3d.cpp)
 target_link_libraries(test_legacy_m3d PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_legacy_m3d)
 
-
-
+# Phase 6: GUI ModelDocument, Views, and Profile Workflow Tests
+add_executable(test_gui_document test_gui_document.cpp)
+set_target_properties(test_gui_document PROPERTIES AUTOMOC ON)
+target_link_libraries(test_gui_document PRIVATE mod3d_gui_lib mod3d_core Qt6::Widgets GTest::gtest_main)
+gtest_discover_tests(test_gui_document)

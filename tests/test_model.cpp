@@ -369,6 +369,67 @@ TEST(ModelEdgeCasesTest, MoveVertexConstrainedAndSplit) {
     EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -200.0);
 }
 
+TEST(ModelEdgeCasesTest, SnappedVerticesNormalAndSplitUnsnap) {
+    Model model;
+    model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert body at (2, 2)
+    int idx = model.insertBody(2, 2, -500.0, 100.0, true);
+    ASSERT_EQ(idx, 1);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -400.0); // Top
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -600.0); // Bot
+
+    // 1. Snap them together by moving top down to bottom (-600.0)
+    int topIdx = 1;
+    int res = model.moveVertex(topIdx, 2, 2, -600.0, BodyMoveType::Normal);
+    EXPECT_EQ(res, 0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -600.0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -600.0);
+
+    // 2. Normal move on snapped points: moves both together (maintains pinch-out)
+    int vIdx = 1;
+    res = model.moveVertex(vIdx, 2, 2, -700.0, BodyMoveType::Normal);
+    EXPECT_EQ(res, 0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -700.0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -700.0);
+
+    // 3. Split move (Ctrl+Drag) UPWARDS: unsnaps top vertex upwards towards relief
+    vIdx = 1;
+    res = model.moveVertex(vIdx, 2, 2, -450.0, BodyMoveType::Split);
+    EXPECT_EQ(res, 0);
+    EXPECT_EQ(vIdx, 1);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -450.0); // Top moved up
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -700.0); // Bot remained in place! Unsnapped!
+
+    // 4. Snap them together again at -450.0
+    int botIdx = 2;
+    res = model.moveVertex(botIdx, 2, 2, -450.0, BodyMoveType::Normal);
+    EXPECT_EQ(res, 0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -450.0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -450.0);
+
+    // 5. Split move (Ctrl+Drag) DOWNWARDS: unsnaps bottom vertex downwards
+    vIdx = 1; // start from top index
+    res = model.moveVertex(vIdx, 2, 2, -800.0, BodyMoveType::Split);
+    EXPECT_EQ(res, 0);
+    EXPECT_EQ(vIdx, 2); // updated to bottom index!
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -450.0); // Top remained in place!
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -800.0); // Bot moved down! Unsnapped!
+
+    // 6. Snap together at -800.0 and test unsnapping when starting from bottom index (2)
+    topIdx = 1;
+    model.moveVertex(topIdx, 2, 2, -800.0, BodyMoveType::Normal);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -800.0);
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -800.0);
+
+    vIdx = 2; // clicked bottom index
+    res = model.moveVertex(vIdx, 2, 2, -550.0, BodyMoveType::Split);
+    EXPECT_EQ(res, 0);
+    EXPECT_EQ(vIdx, 1); // shifted to top index
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -550.0); // Top moved up!
+    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -800.0); // Bot remained at -800.0!
+}
+
 TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     Model model;
     model.init(3, 3, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
