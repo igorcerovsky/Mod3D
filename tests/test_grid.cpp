@@ -318,3 +318,40 @@ TEST(GridModernizedTest, StatsAndSwapStream) {
     EXPECT_EQ(other.rows(), 2);
 }
 
+TEST(GridModernizedTest, ContourGenerationConrec) {
+    // 5x5 grid with linear ramp in X: z = 100 + 10 * c
+    Grid g(5, 5, 0.0, 0.0, 100.0, 100.0);
+    for (size_t r = 0; r < 5; ++r) {
+        for (size_t c = 0; c < 5; ++c) {
+            g(r, c) = 100.0 + 10.0 * c;
+        }
+    }
+
+    auto levels = g.default_contour_levels(5);
+    ASSERT_FALSE(levels.empty());
+    for (double lvl : levels) {
+        EXPECT_GE(lvl, g.min());
+        EXPECT_LE(lvl, g.max());
+    }
+
+    // Generate contours specifically for level 120.0
+    auto segments = g.generate_contours({120.0});
+    ASSERT_FALSE(segments.empty());
+
+    for (const auto &seg : segments) {
+        EXPECT_DOUBLE_EQ(seg.z, 120.0);
+        // On level 120, column is 2, so X = 0 + 2 * 100 = 200 m
+        EXPECT_NEAR(seg.p1.x, 200.0, 1e-6);
+        EXPECT_NEAR(seg.p2.x, 200.0, 1e-6);
+        EXPECT_GE(seg.p1.y, 0.0);
+        EXPECT_LE(seg.p1.y, 400.0);
+        EXPECT_GE(seg.p2.y, 0.0);
+        EXPECT_LE(seg.p2.y, 400.0);
+    }
+
+    // Empty grid handling
+    Grid emptyG;
+    EXPECT_TRUE(emptyG.default_contour_levels().empty());
+    EXPECT_TRUE(emptyG.generate_contours({10.0}).empty());
+}
+

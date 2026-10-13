@@ -7,6 +7,8 @@
 #include <QMdiSubWindow>
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
+#include <unordered_map>
 
 namespace mod3d_gui {
 
@@ -293,7 +295,10 @@ void MapView::paintEvent(QPaintEvent *) {
     // 1. Draw Field / DEM Raster
     drawBackgroundRaster(painter);
 
-    // 2. Draw Station Points
+    // 2. Draw Topography / Relief Contours
+    drawReliefContours(painter);
+
+    // 3. Draw Station Points
     drawStationPoints(painter);
 
     // 3. Draw Body Outlines
@@ -378,6 +383,106 @@ void MapView::drawBackgroundRaster(QPainter &painter) {
     painter.setOpacity(0.65);
     painter.drawImage(targetRect, img);
     painter.setOpacity(1.0);
+}
+
+void MapView::drawReliefContours(QPainter &painter) {
+    if (!m_showReliefContours || !m_doc) return;
+
+    const auto &relief = m_doc->observation().surface_relief();
+    if (relief.empty() || relief.rows() < 2 || relief.cols() < 2) return;
+    if (relief.min() >= relief.max()) return;
+
+    auto levels = relief.default_contour_levels(10);
+    if (levels.empty()) return;
+    auto segments = relief.generate_contours(levels);
+    if (segments.empty()) return;
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    // Identify index contours (every 3rd-5th level or nice intervals)
+    std::unordered_set<int> indexLevels;
+    size_t stepIdx = (levels.size() >= 12) ? 5 : (levels.size() >= 6 ? 3 : 2);
+    for (size_t i = 0; i < levels.size(); ++i) {
+        if (i % stepIdx == 0) {
+            indexLevels.insert(static_cast<int>(std::round(levels[i] * 100.0)));
+        }
+    }
+
+    QColor normColor(140, 95, 45, 180);
+    QColor indexColor(100, 60, 20, 230);
+
+    QPen normPen(normColor, 1.1, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    QPen indexPen(indexColor, 1.8, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+
+    // Pass 1: Draw all contour line segments
+    for (const auto &seg : segments) {
+        int key = static_cast<int>(std::round(seg.z * 100.0));
+        bool isIndex = indexLevels.contains(key);
+
+        painter.setPen(isIndex ? indexPen : normPen);
+
+        int sx1 = worldToScreenX(seg.p1.x);
+        int sy1 = worldToScreenY(seg.p1.y);
+        int sx2 = worldToScreenX(seg.p2.x);
+        int sy2 = worldToScreenY(seg.p2.y);
+
+        painter.drawLine(sx1, sy1, sx2, sy2);
+    }
+
+    // Pass 2: Draw non-overlapping elevation labels on index contours
+    painter.setFont(QFont("Arial", 8, QFont::Bold));
+    QFontMetrics fm = painter.fontMetrics();
+    QRect canvas = mapCanvasRect();
+
+    std::vector<QPoint> placedLabels;
+    std::unordered_set<int> labeledLevels;
+
+    for (const auto &seg : segments) {
+        int key = static_cast<int>(std::round(seg.z * 100.0));
+        if (!indexLevels.contains(key) || labeledLevels.contains(key)) continue;
+
+        int sx1 = worldToScreenX(seg.p1.x);
+        int sy1 = worldToScreenY(seg.p1.y);
+        int sx2 = worldToScreenX(seg.p2.x);
+        int sy2 = worldToScreenY(seg.p2.y);
+
+        int midX = (sx1 + sx2) / 2;
+        int midY = (sy1 + sy2) / 2;
+
+        if (!canvas.adjusted(40, 40, -40, -40).contains(midX, midY)) continue;
+
+        double lenSq = (sx2 - sx1) * (sx2 - sx1) + (sy2 - sy1) * (sy2 - sy1);
+        if (lenSq < 30.0) continue;
+
+        bool tooClose = false;
+        for (const auto &pt : placedLabels) {
+            int dx = pt.x() - midX;
+            int dy = pt.y() - midY;
+            if (dx * dx + dy * dy < 100 * 100) {
+                tooClose = true;
+                break;
+            }
+        }
+        if (tooClose) continue;
+
+        QString txt = QString::number(seg.z, 'f', 0);
+        int tw = fm.horizontalAdvance(txt) + 8;
+        int th = fm.height() + 2;
+        QRect textRect(midX - tw / 2, midY - th / 2, tw, th);
+
+        painter.setPen(QPen(QColor(180, 140, 100, 180), 0.8));
+        painter.setBrush(QColor(255, 255, 255, 230));
+        painter.drawRoundedRect(textRect, 3, 3);
+
+        painter.setPen(indexColor);
+        painter.drawText(textRect, Qt::AlignCenter, txt);
+
+        placedLabels.push_back(QPoint(midX, midY));
+        labeledLevels.insert(key);
+    }
+
+    painter.restore();
 }
 
 void MapView::drawStationPoints(QPainter &painter) {

@@ -1848,3 +1848,76 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     EXPECT_TRUE(comboBodies->itemText(idx2).contains("3550.0 kg/m³"));
 }
 
+TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
+    MainWindow mw;
+    mw.resize(1400, 900);
+    mw.show();
+
+    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    if (!std::filesystem::exists(samplePath)) {
+        samplePath = "Examples/Sample.m3d";
+    }
+    bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
+    ASSERT_TRUE(ok);
+
+    const auto &relief = mw.document()->observation().surface_relief();
+    ASSERT_FALSE(relief.empty());
+    EXPECT_GT(relief.rows(), 1u);
+    EXPECT_GT(relief.cols(), 1u);
+    EXPECT_LT(relief.min(), relief.max());
+
+    // Generate contour segments directly on the relief grid
+    auto segments = relief.generate_contours(10);
+    EXPECT_FALSE(segments.empty());
+    for (const auto &seg : segments) {
+        EXPECT_GE(seg.z, relief.min());
+        EXPECT_LE(seg.z, relief.max());
+    }
+
+    // Locate MapView subwindow
+    MapView *mv = nullptr;
+    QMdiSubWindow *subMap = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *v = qobject_cast<MapView*>(sub->widget())) {
+            mv = v;
+            subMap = sub;
+            break;
+        }
+    }
+    ASSERT_NE(mv, nullptr);
+    ASSERT_NE(subMap, nullptr);
+
+    mw.mdiArea()->setActiveSubWindow(subMap);
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    pane->setActiveSubWindow(subMap);
+    pane->selectDisplayTab();
+
+    // Verify relief contours are enabled by default
+    EXPECT_TRUE(mv->showReliefContours());
+    auto *chkReliefContours = pane->mapReliefContoursCheckBox();
+    ASSERT_NE(chkReliefContours, nullptr);
+    EXPECT_TRUE(chkReliefContours->isChecked());
+
+    // Render with relief contours enabled
+    QPixmap pix(600, 600);
+    pix.fill(Qt::white);
+    mv->render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/607fceca-d970-4e9d-aa3e-d88bf8b0c1b8/map_relief_contours_on.png");
+
+    // Toggle off via checkbox
+    chkReliefContours->setChecked(false);
+    EXPECT_FALSE(mv->showReliefContours());
+
+    QPixmap pixOff(600, 600);
+    pixOff.fill(Qt::white);
+    mv->render(&pixOff);
+    pixOff.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/607fceca-d970-4e9d-aa3e-d88bf8b0c1b8/map_relief_contours_off.png");
+
+    // Toggle back on via MapView API
+    mv->setShowReliefContours(true);
+    EXPECT_TRUE(mv->showReliefContours());
+    pane->setActiveSubWindow(subMap);
+    EXPECT_TRUE(chkReliefContours->isChecked());
+}
+

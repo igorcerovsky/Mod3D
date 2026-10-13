@@ -66,6 +66,7 @@ private:
     int worldToScreenY(double wy) const;
 
     void drawBackgroundRaster(QPainter &painter);
+    void drawReliefContours(QPainter &painter);
     void drawStationPoints(QPainter &painter);
     void drawBodyOutlines(QPainter &painter);
     void drawActiveProfileTracker(QPainter &painter);

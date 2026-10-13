@@ -575,6 +575,163 @@ bool Grid::save_srf6_ascii(const std::filesystem::path &filePath) const
     return file.good();
 }
 
+std::vector<double> Grid::default_contour_levels(size_t numLevels) const
+{
+    if (empty() || rows_ < 2 || cols_ < 2) return {};
+    double minVal = min();
+    double maxVal = max();
+    if (!std::isfinite(minVal) || !std::isfinite(maxVal) || minVal >= maxVal) return {};
+
+    double span = maxVal - minVal;
+    if (span <= 1e-9) return {};
+
+    size_t nLvl = (numLevels > 0) ? numLevels : 10;
+    double roughStep = span / static_cast<double>(nLvl);
+    double mag = std::pow(10.0, std::floor(std::log10(roughStep)));
+    double norm = roughStep / mag;
+    double step;
+    if (norm < 1.5) step = 1.0 * mag;
+    else if (norm < 3.5) step = 2.0 * mag;
+    else if (norm < 7.5) step = 5.0 * mag;
+    else step = 10.0 * mag;
+
+    double firstLevel = std::ceil(minVal / step) * step;
+    std::vector<double> levels;
+    for (double lvl = firstLevel; lvl <= maxVal; lvl += step) {
+        levels.push_back(lvl);
+    }
+    return levels;
+}
+
+std::vector<Grid::ContourSegment> Grid::generate_contours(const std::vector<double> &levels) const
+{
+    if (empty() || rows_ < 2 || cols_ < 2 || levels.empty()) return {};
+
+    std::vector<ContourSegment> segments;
+    segments.reserve(rows_ * cols_ * 2);
+
+    static constexpr int castab[3][3][3] = {
+        { {0, 0, 8}, {0, 2, 5}, {7, 6, 9} },
+        { {0, 3, 4}, {1, 3, 1}, {4, 3, 0} },
+        { {9, 6, 7}, {5, 2, 0}, {8, 0, 0} }
+    };
+
+    for (size_t r = 0; r < rows_ - 1; ++r) {
+        for (size_t c = 0; c < cols_ - 1; ++c) {
+            if (is_dummy(r, c) || is_dummy(r, c + 1) || is_dummy(r + 1, c + 1) || is_dummy(r + 1, c)) {
+                continue;
+            }
+
+            const double z1 = operator()(r, c);
+            const double z2 = operator()(r, c + 1);
+            const double z3 = operator()(r + 1, c + 1);
+            const double z4 = operator()(r + 1, c);
+
+            const double cellMin = std::min({z1, z2, z3, z4});
+            const double cellMax = std::max({z1, z2, z3, z4});
+
+            double xh[5], yh[5], zh[5];
+            (void)grid_to_world(static_cast<double>(r), static_cast<double>(c), xh[1], yh[1]);
+            zh[1] = z1;
+
+            (void)grid_to_world(static_cast<double>(r), static_cast<double>(c + 1), xh[2], yh[2]);
+            zh[2] = z2;
+
+            (void)grid_to_world(static_cast<double>(r + 1), static_cast<double>(c + 1), xh[3], yh[3]);
+            zh[3] = z3;
+
+            (void)grid_to_world(static_cast<double>(r + 1), static_cast<double>(c), xh[4], yh[4]);
+            zh[4] = z4;
+
+            xh[0] = 0.25 * (xh[1] + xh[2] + xh[3] + xh[4]);
+            yh[0] = 0.25 * (yh[1] + yh[2] + yh[3] + yh[4]);
+            zh[0] = 0.25 * (zh[1] + zh[2] + zh[3] + zh[4]);
+
+            for (double Z : levels) {
+                if (Z < cellMin || Z > cellMax) continue;
+
+                double h[5];
+                int sh[5];
+                for (int i = 0; i < 5; ++i) {
+                    h[i] = zh[i] - Z;
+                    if (h[i] > 0.0) sh[i] = 1;
+                    else if (h[i] < 0.0) sh[i] = -1;
+                    else sh[i] = 0;
+                }
+
+                auto xsect = [&](int p1, int p2) -> double {
+                    double denom = h[p2] - h[p1];
+                    if (std::abs(denom) < 1e-15) return xh[p1];
+                    return (h[p2] * xh[p1] - h[p1] * xh[p2]) / denom;
+                };
+                auto ysect = [&](int p1, int p2) -> double {
+                    double denom = h[p2] - h[p1];
+                    if (std::abs(denom) < 1e-15) return yh[p1];
+                    return (h[p2] * yh[p1] - h[p1] * yh[p2]) / denom;
+                };
+
+                for (int m = 1; m <= 4; ++m) {
+                    int m1 = m;
+                    int m2 = 0;
+                    int m3 = (m < 4) ? m + 1 : 1;
+
+                    int case_val = castab[sh[m1] + 1][sh[m2] + 1][sh[m3] + 1];
+                    if (case_val == 0) continue;
+
+                    double x1 = 0.0, y1 = 0.0, x2 = 0.0, y2 = 0.0;
+                    switch (case_val) {
+                    case 1:
+                        x1 = xh[m1]; y1 = yh[m1];
+                        x2 = xh[m2]; y2 = yh[m2];
+                        break;
+                    case 2:
+                        x1 = xh[m2]; y1 = yh[m2];
+                        x2 = xh[m3]; y2 = yh[m3];
+                        break;
+                    case 3:
+                        x1 = xh[m3]; y1 = yh[m3];
+                        x2 = xh[m1]; y2 = yh[m1];
+                        break;
+                    case 4:
+                        x1 = xh[m1]; y1 = yh[m1];
+                        x2 = xsect(m2, m3); y2 = ysect(m2, m3);
+                        break;
+                    case 5:
+                        x1 = xh[m2]; y1 = yh[m2];
+                        x2 = xsect(m3, m1); y2 = ysect(m3, m1);
+                        break;
+                    case 6:
+                        x1 = xh[m3]; y1 = yh[m3];
+                        x2 = xsect(m1, m2); y2 = ysect(m1, m2);
+                        break;
+                    case 7:
+                        x1 = xsect(m1, m2); y1 = ysect(m1, m2);
+                        x2 = xsect(m2, m3); y2 = ysect(m2, m3);
+                        break;
+                    case 8:
+                        x1 = xsect(m2, m3); y1 = ysect(m2, m3);
+                        x2 = xsect(m3, m1); y2 = ysect(m3, m1);
+                        break;
+                    case 9:
+                        x1 = xsect(m3, m1); y1 = ysect(m3, m1);
+                        x2 = xsect(m1, m2); y2 = ysect(m1, m2);
+                        break;
+                    default:
+                        continue;
+                    }
+
+                    segments.push_back(ContourSegment{
+                        .z = Z,
+                        .p1 = Point3D(x1, y1, Z),
+                        .p2 = Point3D(x2, y2, Z)
+                    });
+                }
+            }
+        }
+    }
+    return segments;
+}
+
 bool Grid::load_file(const std::filesystem::path &filePath)
 {
     if (load_srf6_binary(filePath)) {

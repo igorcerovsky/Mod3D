@@ -49,6 +49,12 @@ public:
         size_t dummy_count{0};
     };
 
+    struct ContourSegment {
+        double z{0.0};
+        Point3D p1;
+        Point3D p2;
+    };
+
     // ========================================================================
     // Lifecycle & Rule of 5
     // ========================================================================
@@ -152,6 +158,16 @@ public:
     [[nodiscard]] double max() const;
     [[nodiscard]] double mean() const;
     [[nodiscard]] double rms() const;
+
+    // Contour Generation (CONREC)
+    [[nodiscard]] std::vector<double> default_contour_levels(size_t numLevels = 10) const;
+    [[nodiscard]] std::vector<ContourSegment> generate_contours(const std::vector<double> &levels) const;
+    [[nodiscard]] std::vector<ContourSegment> generate_contours(std::initializer_list<double> levels) const {
+        return generate_contours(std::vector<double>(levels));
+    }
+    [[nodiscard]] std::vector<ContourSegment> generate_contours(size_t numLevels = 10) const {
+        return generate_contours(default_contour_levels(numLevels));
+    }
 
     // Grid Arithmetic (In-place)
     Grid &operator+=(double val);

@@ -116,6 +116,41 @@ void MainWindow::setupConnections() {
                 if (auto *pv = qobject_cast<ProfileView*>(active->widget())) pv->fitToWindow();
                 else if (auto *mv = qobject_cast<MapView*>(active->widget())) mv->fitToWindow();
             }
+        } else if (act == "ToggleObsPoints") {
+            auto *active = m_mdiArea->activeSubWindow();
+            if (active) {
+                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
+                    mv->setShowStationPoints(!mv->showStationPoints());
+                }
+            }
+        } else if (act == "ToggleProfiles") {
+            auto *active = m_mdiArea->activeSubWindow();
+            if (active) {
+                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
+                    mv->setShowProfiles(!mv->showProfiles());
+                }
+            }
+        } else if (act == "ToggleReliefContours") {
+            auto *active = m_mdiArea->activeSubWindow();
+            if (active) {
+                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
+                    mv->setShowReliefContours(!mv->showReliefContours());
+                }
+            }
+        } else if (act == "ToggleReliefImage") {
+            auto *active = m_mdiArea->activeSubWindow();
+            if (active) {
+                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
+                    mv->setRasterMode(mv->rasterMode() == MapView::MapRasterMode::Relief ? MapView::MapRasterMode::Modeled : MapView::MapRasterMode::Relief);
+                }
+            }
+        } else if (act == "ToggleBodyFootprints") {
+            auto *active = m_mdiArea->activeSubWindow();
+            if (active) {
+                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
+                    mv->setShowBodyFootprints(!mv->showBodyFootprints());
+                }
+            }
         }
     });
 }

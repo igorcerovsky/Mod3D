@@ -45,6 +45,7 @@ public:
     QComboBox *bodyComboBox() const { return m_comboBodies; }
     QDoubleSpinBox *bodyDensitySpinBox() const { return m_spinDensity; }
     QDoubleSpinBox *bodySusceptibilitySpinBox() const { return m_spinSusceptibility; }
+    QCheckBox *mapReliefContoursCheckBox() const { return m_chkMapReliefContours; }
 
 signals:
     void requestBodyPropertiesDialog(int bodyId);
