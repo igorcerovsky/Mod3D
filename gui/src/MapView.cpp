@@ -19,7 +19,9 @@ MapView::MapView(ModelDocument *doc, QWidget *parent)
     connect(m_doc, &ModelDocument::modelGeometryChanged, this, QOverload<>::of(&QWidget::update));
     connect(m_doc, &ModelDocument::computationFinished, this, QOverload<>::of(&QWidget::update));
     connect(m_doc, &ModelDocument::activeFieldChanged, this, [this](mod3d::FieldComponent) { update(); });
+    connect(m_doc, &ModelDocument::fieldDisplayToggled, this, QOverload<>::of(&QWidget::update));
     connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) { update(); });
+    connect(m_doc, &ModelDocument::activeProfileCursorChanged, this, [this](const ModelDocument::ProfileCursorPoint &) { update(); });
     connect(m_doc, &ModelDocument::documentReset, this, [this]() {
         fitToWindow();
         update();
@@ -129,6 +131,94 @@ int MapView::worldToScreenY(double wy) const {
     return canvas.top() + static_cast<int>(std::round(t * canvas.height()));
 }
 
+namespace {
+
+enum class MapPaletteType {
+    Gravity = 0,
+    Magnetics = 1,
+    Relief = 2,
+    Difference = 3,
+    Grayscale = 4,
+    Field = 5
+};
+
+QColor getPaletteColor(double t, MapPaletteType palette) {
+    t = std::clamp(t, 0.0, 1.0);
+
+    struct ColorPeg {
+        double pos;
+        int r, g, b;
+    };
+
+    // Legacy CTBL_FLD: Dark Blue -> Cyan -> Green -> Yellow -> Red -> Magenta -> Light Pink
+    static const std::vector<ColorPeg> gravPegs = {
+        {0.0 / 6.0, 0, 0, 153},
+        {1.0 / 6.0, 0, 204, 255},
+        {2.0 / 6.0, 0, 255, 0},
+        {3.0 / 6.0, 255, 255, 0},
+        {4.0 / 6.0, 255, 0, 0},
+        {5.0 / 6.0, 255, 0, 255},
+        {6.0 / 6.0, 255, 200, 255}
+    };
+
+    // Multi-color field palette (fldPeg): Sky Blue -> Mint -> Green -> Yellow -> Orange -> Red -> Magenta -> Pink
+    [[maybe_unused]] static const std::vector<ColorPeg> fldPeg = {
+        {0.0 / 7.0, 0, 200, 255},
+        {1.0 / 7.0, 50, 235, 170},
+        {2.0 / 7.0, 110, 245, 60},
+        {3.0 / 7.0, 255, 245, 0},
+        {4.0 / 7.0, 255, 140, 0},
+        {5.0 / 7.0, 240, 20, 60},
+        {6.0 / 7.0, 245, 110, 245},
+        {7.0 / 7.0, 255, 235, 255}
+    };
+
+    // Magnetics / Difference: Diverging Blue -> White -> Red
+    static const std::vector<ColorPeg> diffPegs = {
+        {0.0, 0, 0, 160},
+        {0.5, 255, 255, 255},
+        {1.0, 160, 0, 0}
+    };
+
+    // Legacy CTBL_REL: Topographic relief
+    static const std::vector<ColorPeg> relPegs = {
+        {0.0 / 10.0, 221, 250, 218},
+        {1.0 / 10.0, 168, 251, 185},
+        {2.0 / 10.0, 27, 206, 96},
+        {3.0 / 10.0, 58, 160, 81},
+        {4.0 / 10.0, 238, 247, 189},
+        {5.0 / 10.0, 236, 230, 168},
+        {6.0 / 10.0, 231, 219, 167},
+        {7.0 / 10.0, 161, 127, 111},
+        {8.0 / 10.0, 108, 74, 76},
+        {9.0 / 10.0, 147, 137, 133},
+        {10.0 / 10.0, 249, 245, 231}
+    };
+
+    const auto &pegs = (palette == MapPaletteType::Magnetics) ? diffPegs
+                     : (palette == MapPaletteType::Difference) ? diffPegs
+                     : (palette == MapPaletteType::Relief) ? relPegs
+                     : (palette == MapPaletteType::Field) ? fldPeg
+                     : gravPegs;
+
+    if (t <= pegs.front().pos) return QColor(pegs.front().r, pegs.front().g, pegs.front().b);
+    if (t >= pegs.back().pos) return QColor(pegs.back().r, pegs.back().g, pegs.back().b);
+
+    for (size_t i = 0; i < pegs.size() - 1; ++i) {
+        if (t >= pegs[i].pos && t <= pegs[i + 1].pos) {
+            double span = pegs[i + 1].pos - pegs[i].pos;
+            double f = (span > 1e-9) ? (t - pegs[i].pos) / span : 0.0;
+            int r = static_cast<int>(std::round(pegs[i].r + f * (pegs[i + 1].r - pegs[i].r)));
+            int g = static_cast<int>(std::round(pegs[i].g + f * (pegs[i + 1].g - pegs[i].g)));
+            int b = static_cast<int>(std::round(pegs[i].b + f * (pegs[i + 1].b - pegs[i].b)));
+            return QColor(std::clamp(r, 0, 255), std::clamp(g, 0, 255), std::clamp(b, 0, 255));
+        }
+    }
+    return QColor(pegs.back().r, pegs.back().g, pegs.back().b);
+}
+
+} // namespace
+
 void MapView::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -155,17 +245,45 @@ void MapView::paintEvent(QPaintEvent *) {
     // 4. Draw Active Profile Tracker Line
     drawActiveProfileTracker(painter);
 
+    // 5. Draw Active Profile Point Marker (synced with ProfileView)
+    drawActiveProfilePointMarker(painter);
+
     painter.restore();
 
     // 5. Draw Canvas Border & Axes
     painter.setPen(QColor(160, 160, 170));
     painter.drawRect(canvas);
     drawAxes(painter);
+
+    // 6. Draw Color Scale Legend with Ticks, Numeric Annotations & Component Title
+    drawColorScaleLegend(painter);
 }
 
 void MapView::drawBackgroundRaster(QPainter &painter) {
-    const auto *grid = m_doc->activeModeledGrid();
-    if (!grid) return;
+    const mod3d::Grid *grid = nullptr;
+    bool isMag = mod3d::is_magnetic_component(m_doc->activeField());
+    MapPaletteType palType = isMag ? MapPaletteType::Magnetics : MapPaletteType::Gravity;
+
+    if (m_doc->showDifferenceField()) {
+        grid = m_doc->activeDifferenceGrid();
+        if (!isMag) {
+            palType = MapPaletteType::Difference;
+        }
+    } else if (m_doc->showMeasuredField() && !m_doc->showModeledField()) {
+        grid = m_doc->activeObservedGrid();
+    } else {
+        grid = m_doc->activeModeledGrid();
+        if (!grid || grid->empty()) {
+            grid = m_doc->activeObservedGrid();
+        }
+    }
+    if (!grid || grid->empty()) {
+        grid = m_doc->activeModeledGrid();
+    }
+    if (!grid || grid->empty()) {
+        grid = m_doc->activeObservedGrid();
+    }
+    if (!grid || grid->empty()) return;
     size_t rows = grid->rows();
     size_t cols = grid->cols();
     if (rows < 2 || cols < 2) return;
@@ -179,15 +297,11 @@ void MapView::drawBackgroundRaster(QPainter &painter) {
     for (size_t r = 0; r < rows; ++r) {
         for (size_t c = 0; c < cols; ++c) {
             double v = (*grid)(r, c);
-            double t = std::clamp((v - minV) / (maxV - minV), 0.0, 1.0);
-
-            // Jet-like rainbow palette
-            int red = static_cast<int>(255 * std::clamp(1.5 - std::abs(4.0 * t - 3.0), 0.0, 1.0));
-            int green = static_cast<int>(255 * std::clamp(1.5 - std::abs(4.0 * t - 2.0), 0.0, 1.0));
-            int blue = static_cast<int>(255 * std::clamp(1.5 - std::abs(4.0 * t - 1.0), 0.0, 1.0));
+            double t = (maxV > minV) ? std::clamp((v - minV) / (maxV - minV), 0.0, 1.0) : 0.5;
+            QColor col = getPaletteColor(t, palType);
 
             // Invert row for screen Y (Northing is up)
-            img.setPixel(static_cast<int>(c), static_cast<int>(rows - 1 - r), qRgb(red, green, blue));
+            img.setPixel(static_cast<int>(c), static_cast<int>(rows - 1 - r), col.rgb());
         }
     }
 
@@ -224,26 +338,114 @@ void MapView::drawStationPoints(QPainter &painter) {
 }
 
 void MapView::drawBodyOutlines(QPainter &painter) {
+    if (!m_showBodyFootprints) return;
     const auto &model = m_doc->model();
-    int rows = model.getRows();
-    int cols = model.getCols();
+    auto boundaries = model.getAllBodyBoundaries();
+    if (boundaries.empty()) return;
 
-    painter.setPen(QPen(QColor(80, 50, 40), 2.0));
-    for (const auto &body : model.getBodies()) {
-        int bId = body->id();
-        // Collect points where body exists
-        for (int r = 1; r <= rows; ++r) {
-            for (int c = 1; c <= cols; ++c) {
-                if (model.getBodyIndex(bId, r, c) >= 0) {
-                    double x = model.getXd(c);
-                    double y = model.getYd(r);
-                    int sx = worldToScreenX(x);
-                    int sy = worldToScreenY(y);
-                    painter.drawRect(sx - 2, sy - 2, 4, 4);
-                }
-            }
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    for (const auto &seg : boundaries) {
+        const auto *body = model.getBody(seg.bodyId);
+        if (body && !body->is_visible()) continue;
+        QColor col = body ? QColor(body->color().r, body->color().g, body->color().b) : QColor(0, 0, 180);
+        painter.setPen(QPen(col, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        int sx0 = worldToScreenX(seg.pt0.x);
+        int sy0 = worldToScreenY(seg.pt0.y);
+        int sx1 = worldToScreenX(seg.pt1.x);
+        int sy1 = worldToScreenY(seg.pt1.y);
+        painter.drawLine(sx0, sy0, sx1, sy1);
+    }
+    painter.restore();
+}
+
+void MapView::drawColorScaleLegend(QPainter &painter) {
+    const mod3d::Grid *grid = nullptr;
+    bool isMag = mod3d::is_magnetic_component(m_doc->activeField());
+    MapPaletteType palType = isMag ? MapPaletteType::Magnetics : MapPaletteType::Gravity;
+
+    if (m_doc->showDifferenceField()) {
+        grid = m_doc->activeDifferenceGrid();
+        if (!isMag) {
+            palType = MapPaletteType::Difference;
+        }
+    } else if (m_doc->showMeasuredField() && !m_doc->showModeledField()) {
+        grid = m_doc->activeObservedGrid();
+    } else {
+        grid = m_doc->activeModeledGrid();
+        if (!grid || grid->empty()) {
+            grid = m_doc->activeObservedGrid();
         }
     }
+    if (!grid || grid->empty()) {
+        grid = m_doc->activeModeledGrid();
+    }
+    if (!grid || grid->empty()) {
+        grid = m_doc->activeObservedGrid();
+    }
+    if (!grid || grid->empty()) return;
+
+    double minV = grid->min();
+    double maxV = grid->max();
+    if (minV >= maxV) return;
+
+    QRect canvas = mapCanvasRect();
+    int barW = 12;
+    int barH = std::clamp(canvas.height() - 40, 60, 240);
+    int barLeft = canvas.right() + 10;
+    int barTop = canvas.top() + (canvas.height() - barH) / 2 - 10;
+    int barBottom = barTop + barH;
+
+    painter.save();
+
+    // 1. Draw gradient vertical bar
+    for (int y = barTop; y <= barBottom; ++y) {
+        double t = (barH > 0) ? static_cast<double>(barBottom - y) / barH : 0.5;
+        QColor col = getPaletteColor(t, palType);
+        painter.setPen(col);
+        painter.drawLine(barLeft, y, barLeft + barW - 1, y);
+    }
+
+    // 2. Bar Border
+    painter.setPen(QColor(60, 60, 70));
+    painter.drawRect(barLeft, barTop, barW, barH);
+
+    // 3. Ticks and Numerical Labels
+    painter.setFont(QFont("Arial", 8));
+    QFontMetrics fm = painter.fontMetrics();
+    int numTicks = 5;
+    double span = maxV - minV;
+    int decimals = (span < 2.0) ? 2 : ((span < 20.0) ? 1 : 0);
+
+    for (int i = 0; i <= numTicks; ++i) {
+        double frac = static_cast<double>(i) / numTicks;
+        double val = minV + frac * span;
+        int ty = barBottom - static_cast<int>(std::round(frac * barH));
+
+        painter.setPen(QColor(80, 80, 90));
+        painter.drawLine(barLeft + barW, ty, barLeft + barW + 4, ty);
+
+        QString valStr = QString::number(val, 'f', decimals);
+        int textY = ty + fm.ascent() / 2 - 1;
+        painter.drawText(barLeft + barW + 7, textY, valStr);
+    }
+
+    // 4. Component Label & Unit below bar
+    QString compStr = m_doc->activeFieldComponentName();
+    if (palType == MapPaletteType::Difference) {
+        compStr = "d" + compStr;
+    }
+    QString unitStr = m_doc->activeFieldUnit();
+    QString titleStr = unitStr.isEmpty() ? compStr : QString("%1\n(%2)").arg(compStr, unitStr);
+
+    painter.setPen(QColor(40, 40, 50));
+    QFont boldFont("Arial", 8, QFont::Bold);
+    painter.setFont(boldFont);
+    QRect titleRect(barLeft - 6, barBottom + 8, 65, 32);
+    painter.drawText(titleRect, Qt::AlignLeft | Qt::AlignTop, titleStr);
+
+    painter.restore();
 }
 
 void MapView::drawActiveProfileTracker(QPainter &painter) {
@@ -331,6 +533,109 @@ void MapView::drawActiveProfileTracker(QPainter &painter) {
     }
 }
 
+void MapView::drawActiveProfilePointMarker(QPainter &painter) {
+    if (!m_doc) return;
+    const auto &pt = m_doc->activeProfileCursor();
+    if (!pt.active) return;
+
+    QRect canvas = mapCanvasRect();
+    int sx = worldToScreenX(pt.x);
+    int sy = worldToScreenY(pt.y);
+
+    if (sx < canvas.left() - 40 || sx > canvas.right() + 40 ||
+        sy < canvas.top() - 40 || sy > canvas.bottom() + 40) {
+        return;
+    }
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    QColor bodyCol(235, 40, 40);
+    if (pt.bodyId >= 0) {
+        if (const auto *b = m_doc->model().getBody(pt.bodyId)) {
+            bodyCol = QColor(b->color().r, b->color().g, b->color().b);
+        }
+    }
+
+    int haloRadius = pt.isDragging ? 13 : 9;
+    int coreRadius = pt.isDragging ? 6 : 5;
+
+    // 1. Semi-transparent pulse/glow outer halo
+    QColor haloCol = bodyCol;
+    haloCol.setAlpha(pt.isDragging ? 110 : 70);
+    painter.setPen(QPen(QColor(255, 255, 255, 140), 1.0));
+    painter.setBrush(haloCol);
+    painter.drawEllipse(QPoint(sx, sy), haloRadius, haloRadius);
+
+    // 2. High-contrast precision crosshairs
+    painter.setPen(QPen(QColor(255, 255, 255, 220), 2.0));
+    painter.drawLine(sx - haloRadius - 4, sy, sx - coreRadius - 1, sy);
+    painter.drawLine(sx + coreRadius + 1, sy, sx + haloRadius + 4, sy);
+    painter.drawLine(sx, sy - haloRadius - 4, sx, sy - coreRadius - 1);
+    painter.drawLine(sx, sy + coreRadius + 1, sx, sy + haloRadius + 4);
+
+    painter.setPen(QPen(QColor(30, 30, 30, 200), 1.0));
+    painter.drawLine(sx - haloRadius - 4, sy, sx - coreRadius - 1, sy);
+    painter.drawLine(sx + coreRadius + 1, sy, sx + haloRadius + 4, sy);
+    painter.drawLine(sx, sy - haloRadius - 4, sx, sy - coreRadius - 1);
+    painter.drawLine(sx, sy + coreRadius + 1, sx, sy + haloRadius + 4);
+
+    // 3. Central disc
+    painter.setPen(QPen(Qt::white, 2.0));
+    painter.setBrush(bodyCol);
+    painter.drawEllipse(QPoint(sx, sy), coreRadius, coreRadius);
+
+    // 4. Center pinpoint
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(Qt::white);
+    painter.drawEllipse(QPoint(sx, sy), 2, 2);
+
+    // 5. Floating information badge
+    QString labelText;
+    if (pt.bodyId >= 0 && !pt.bodyName.empty()) {
+        labelText = QString("%1: Z = %2 m").arg(QString::fromStdString(pt.bodyName)).arg(pt.z, 0, 'f', 1);
+    } else if (pt.row >= 0 && pt.col >= 0) {
+        labelText = QString("Station [%1, %2] (Z = %3 m)").arg(pt.row + 1).arg(pt.col + 1).arg(pt.z, 0, 'f', 1);
+    } else {
+        labelText = QString("(X=%1, Y=%2)").arg(pt.x, 0, 'f', 0).arg(pt.y, 0, 'f', 0);
+    }
+    if (pt.isDragging) {
+        labelText = tr("✎ ") + labelText;
+    }
+
+    QFont font("Arial", 8, QFont::Bold);
+    painter.setFont(font);
+    QFontMetrics fm(font);
+    int textW = fm.horizontalAdvance(labelText);
+    int badgeW = textW + 18;
+    int badgeH = fm.height() + 6;
+
+    int badgeX = sx + 12;
+    int badgeY = sy - badgeH - 6;
+    if (badgeX + badgeW > canvas.right() - 5) {
+        badgeX = sx - badgeW - 12;
+    }
+    if (badgeY < canvas.top() + 5) {
+        badgeY = sy + 12;
+    }
+
+    QRect badgeRect(badgeX, badgeY, badgeW, badgeH);
+    painter.setPen(QPen(QColor(255, 255, 255, 180), 1.0));
+    painter.setBrush(QColor(20, 22, 28, 225));
+    painter.drawRoundedRect(badgeRect, 4.0, 4.0);
+
+    // Color dot inside badge
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(bodyCol);
+    painter.drawEllipse(QPoint(badgeX + 8, badgeY + badgeH / 2), 3, 3);
+
+    // Badge text
+    painter.setPen(Qt::white);
+    painter.drawText(badgeX + 15, badgeY + badgeH - 5, labelText);
+
+    painter.restore();
+}
+
 void MapView::drawAxes(QPainter &painter) {
     QRect canvas = mapCanvasRect();
 
@@ -414,6 +719,20 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
                     bestRow = r - 1;
                 }
             }
+            int cols = m_doc->model().getCols();
+            int bestCol = 1;
+            double bestColDist = 1e30;
+            for (int c = 1; c < cols - 1; ++c) {
+                double xd = m_doc->model().getXd(c);
+                double d = std::abs(xd - wx);
+                if (d < bestColDist) {
+                    bestColDist = d;
+                    bestCol = c;
+                }
+            }
+            auto cur = m_doc->activeProfileCursor();
+            cur.col = bestCol;
+            m_doc->setActiveProfileCursor(cur);
             m_doc->setProfileIndex(bestRow);
         } else {
             // Find closest col
@@ -428,6 +747,20 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
                     bestCol = c - 1;
                 }
             }
+            int rows = m_doc->model().getRows();
+            int bestRow = 1;
+            double bestRowDist = 1e30;
+            for (int r = 1; r < rows - 1; ++r) {
+                double yd = m_doc->model().getYd(r);
+                double d = std::abs(yd - wy);
+                if (d < bestRowDist) {
+                    bestRowDist = d;
+                    bestRow = r;
+                }
+            }
+            auto cur = m_doc->activeProfileCursor();
+            cur.row = bestRow;
+            m_doc->setActiveProfileCursor(cur);
             m_doc->setProfileIndex(bestCol);
         }
     }

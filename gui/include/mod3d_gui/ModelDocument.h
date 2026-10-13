@@ -184,6 +184,24 @@ public:
 
     void getRowCol(int lineIdx, int &row, int &col) const;
 
+    // Profile Cursor Point Tracking (for Map View Synchronization)
+    struct ProfileCursorPoint {
+        bool active{false};
+        int row{-1};
+        int col{-1};
+        double x{0.0};
+        double y{0.0};
+        double z{0.0};
+        int bodyId{-1};
+        std::string bodyName;
+        bool isDragging{false};
+    };
+
+    const ProfileCursorPoint &activeProfileCursor() const noexcept { return m_activeProfileCursor; }
+    void setActiveProfileCursor(const ProfileCursorPoint &pt);
+    void clearActiveProfileCursor();
+    void updateStationPointForProfileChange();
+
 signals:
     void documentModifiedChanged(bool modified);
     void documentReset();
@@ -193,6 +211,7 @@ signals:
     void fieldDisplayToggled();
     void computationFinished();
     void statusMessage(const QString &message);
+    void activeProfileCursorChanged(const mod3d_gui::ModelDocument::ProfileCursorPoint &pt);
 
 private:
     void ensureProfileIndexValid();
@@ -204,6 +223,8 @@ private:
 
     ProfileOrientation m_profileOrient{ProfileOrientation::EastWest};
     int m_profileIndex{0};
+
+    ProfileCursorPoint m_activeProfileCursor;
 
     mod3d::FieldComponent m_activeField{mod3d::FieldComponent::GZ};
     bool m_realTimeCompute{true};

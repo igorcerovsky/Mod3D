@@ -17,6 +17,20 @@ namespace mod3d {
 
 constexpr double GRID_DUMMY = 1.7976931348623158e+308;
 
+enum class ColorTable {
+    Field = 0,
+    Magnetics = 1,
+    Relief = 2,
+    Difference = 3,
+    BlackWhite = 4
+};
+
+constexpr int CTBL_FLD = 0;
+constexpr int CTBL_MAG = 1;
+constexpr int CTBL_REL = 2;
+constexpr int CTBL_DIF = 3;
+constexpr int CTBL_BW  = 4;
+
 /**
  * @brief 2D Geophysical Regular Grid.
  * 

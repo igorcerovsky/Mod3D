@@ -21,6 +21,9 @@ public:
     QRect mapCanvasRect() const;
     double scalePixelsPerMeter() const;
 
+    bool showBodyFootprints() const noexcept { return m_showBodyFootprints; }
+    void setShowBodyFootprints(bool show) { m_showBodyFootprints = show; update(); }
+
 signals:
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
 
@@ -41,12 +44,14 @@ private:
     void drawStationPoints(QPainter &painter);
     void drawBodyOutlines(QPainter &painter);
     void drawActiveProfileTracker(QPainter &painter);
+    void drawActiveProfilePointMarker(QPainter &painter);
     void drawAxes(QPainter &painter);
+    void drawColorScaleLegend(QPainter &painter);
 
     ModelDocument *m_doc;
 
     int m_marginLeft{65};
-    int m_marginRight{25};
+    int m_marginRight{75};
     int m_marginTop{25};
     int m_marginBottom{45};
 
@@ -57,6 +62,7 @@ private:
 
     bool m_draggingProfileLine{false};
     bool m_panning{false};
+    bool m_showBodyFootprints{true};
     QPoint m_lastPanPos;
     int m_wheelDeltaAccumulator{0};
 };

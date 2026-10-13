@@ -50,6 +50,13 @@ struct FctGen {
     Point3D bot[5];         // bottom points: 0..3 corners, 4 center
 };
 
+// 2D horizontal projection boundary line segment for a geological body
+struct BodyBoundarySegment {
+    int bodyId{0};
+    Point3D pt0;
+    Point3D pt1;
+};
+
 /**
  * @brief Stratigraphic Geological Model & 3D Polyhedral Facet Engine.
  * 
@@ -137,6 +144,10 @@ public:
     std::vector<Facet3Pt> *getFacetList(int row, int col);
     const std::vector<Facet3Pt> *getFacetList(int row, int col) const;
 
+    // Body Boundaries (2D Horizontal Projection for Map View)
+    const std::vector<BodyBoundarySegment> *getBodyBoundAt(int row, int col) const;
+    std::vector<BodyBoundarySegment> getAllBodyBoundaries() const;
+
     // Real-Time Delta Updates
     void setComputeRealTime(bool realTime = true) { m_computeRealTime = realTime; }
     bool isComputeRealTime() const { return m_computeRealTime; }
@@ -204,6 +215,8 @@ private:
     std::vector<std::unique_ptr<Body>> m_bodies;
     std::vector<std::vector<ColumnPoint>> m_data; // size m_nRows * m_nCols
     std::vector<std::vector<Facet3Pt>> m_facets;  // size m_nRows * m_nCols
+    std::vector<std::vector<BodyBoundarySegment>> m_bodyBounds; // size m_nRows * m_nCols
+    std::vector<BodyBoundarySegment> *m_currentBoundCol{nullptr};
 
     bool m_computeRealTime{false};
     std::vector<Facet3Pt> m_fctLstUpdate;

@@ -60,6 +60,7 @@ void ProfileView::setProfileOrientation(ProfileOrientation orient) {
     fitToWindow();
     updateTitle();
     emit profileSettingsChanged(m_profileIndex, m_profileOrient);
+    updateStationPointOnProfileChange();
     update();
   }
 }
@@ -70,6 +71,7 @@ void ProfileView::setProfileIndex(int index) {
     m_profileIndex = clamped;
     updateTitle();
     emit profileSettingsChanged(m_profileIndex, m_profileOrient);
+    updateStationPointOnProfileChange();
     update();
   }
 }
@@ -125,6 +127,85 @@ void ProfileView::getRowCol(int lineIdx, int &row, int &col) const {
     row = lineIdx + 1;
     col = m_profileIndex + 1;
   }
+}
+
+void ProfileView::updateStationPointOnProfileChange() {
+  if (!m_doc) return;
+  int nLines = profileColumnLineCount();
+  if (nLines <= 0) return;
+
+  int targetLineIdx = m_hoverLineIdx;
+  if (targetLineIdx < 0) {
+    const auto &cur = m_doc->activeProfileCursor();
+    if (cur.active) {
+      if (m_profileOrient == ProfileOrientation::EastWest && cur.col >= 1) {
+        targetLineIdx = cur.col - 1;
+      } else if (m_profileOrient == ProfileOrientation::SouthNorth && cur.row >= 1) {
+        targetLineIdx = cur.row - 1;
+      }
+    }
+  }
+  if (targetLineIdx < 0 || targetLineIdx >= nLines) {
+    targetLineIdx = nLines / 2;
+  }
+  m_hoverLineIdx = targetLineIdx;
+
+  int rStation = 0, cStation = 0;
+  getRowCol(targetLineIdx, rStation, cStation);
+
+  double wy = currentProfileCoordinate();
+  double wx = columnCoordinate(targetLineIdx);
+  if (m_profileOrient == ProfileOrientation::SouthNorth) {
+    std::swap(wx, wy);
+  }
+
+  int bId = (m_hoverBodyId >= 0) ? m_hoverBodyId : m_doc->activeProfileCursor().bodyId;
+  std::string bName;
+  double wz = 0.0;
+  bool foundBody = false;
+
+  if (bId >= 0) {
+    int bIdx = m_doc->model().getBodyIndex(bId, rStation, cStation);
+    if (bIdx >= 0) {
+      wz = m_doc->model().getZ(rStation, cStation, bIdx);
+      if (const auto *b = m_doc->model().getBody(bId)) {
+        bName = b->name();
+      }
+      foundBody = true;
+    } else {
+      bId = -1;
+    }
+  }
+
+  if (!foundBody) {
+    for (const auto &b : m_doc->model().getBodies()) {
+      int bIdx = m_doc->model().getBodyIndex(b->id(), rStation, cStation);
+      if (bIdx >= 0) {
+        bId = b->id();
+        bName = b->name();
+        wz = m_doc->model().getZ(rStation, cStation, bIdx);
+        foundBody = true;
+        break;
+      }
+    }
+  }
+
+  if (!foundBody) {
+    wz = m_doc->model().getZ(rStation, cStation, 0);
+  }
+
+  emit cursorStationChanged(rStation, cStation, wx, wy, wz, 0.0);
+  m_doc->setActiveProfileCursor({
+      true,
+      rStation,
+      cStation,
+      wx,
+      wy,
+      wz,
+      bId,
+      bName,
+      false
+  });
 }
 
 void ProfileView::setShowPreviousProfile(bool show) {
@@ -1226,6 +1307,21 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
       std::swap(wxCoord, wy);
     }
     emit cursorStationChanged(rStation, cStation, wxCoord, wy, newZ, 0.0);
+    std::string bName;
+    if (auto *b = m_doc->model().getBody(m_dragBodyId)) {
+      bName = b->name();
+    }
+    m_doc->setActiveProfileCursor({
+        true,
+        rStation,
+        cStation,
+        wxCoord,
+        wy,
+        newZ,
+        m_dragBodyId,
+        bName,
+        true
+    });
     return;
   }
 
@@ -1236,6 +1332,28 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
       m_doc->translateBodyVerticalOnProfile(m_dragBodyId, m_profileOrient,
                                             m_profileIndex, deltaZ);
       m_dragLastMouseZ = currentZ;
+      int rStation = 0, cStation = 0;
+      getRowCol(m_dragLineIdx, rStation, cStation);
+      double wy = currentProfileCoordinate();
+      double wxCoord = columnCoordinate(m_dragLineIdx);
+      if (m_profileOrient == ProfileOrientation::SouthNorth) {
+        std::swap(wxCoord, wy);
+      }
+      std::string bName;
+      if (auto *b = m_doc->model().getBody(m_dragBodyId)) {
+        bName = b->name();
+      }
+      m_doc->setActiveProfileCursor({
+          true,
+          rStation,
+          cStation,
+          wxCoord,
+          wy,
+          currentZ,
+          m_dragBodyId,
+          bName,
+          true
+      });
     }
     return;
   }
@@ -1246,8 +1364,8 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
                             ? m_doc->model().getX0()
                             : m_doc->model().getY0();
     double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                           ? m_doc->model().getXSize()
-                           : m_doc->model().getYSize();
+                            ? m_doc->model().getXSize()
+                            : m_doc->model().getYSize();
     int nLines = profileColumnLineCount();
     int currentLine = std::clamp(
         static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
@@ -1279,6 +1397,28 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
         }
         m_dragLineIdx = nextLine;
       }
+      int rStation = 0, cStation = 0;
+      getRowCol(m_dragLineIdx, rStation, cStation);
+      double wy = currentProfileCoordinate();
+      double wxCoord = columnCoordinate(m_dragLineIdx);
+      if (m_profileOrient == ProfileOrientation::SouthNorth) {
+        std::swap(wxCoord, wy);
+      }
+      std::string bName;
+      if (auto *b = m_doc->model().getBody(m_dragBodyId)) {
+        bName = b->name();
+      }
+      m_doc->setActiveProfileCursor({
+          true,
+          rStation,
+          cStation,
+          wxCoord,
+          wy,
+          screenToWorldZ(event->pos().y()),
+          m_dragBodyId,
+          bName,
+          true
+      });
     }
     return;
   }
@@ -1311,14 +1451,44 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   int rStation = 0, cStation = 0;
   if (lineIdx >= 0) {
     getRowCol(lineIdx, rStation, cStation);
+  } else if (m_rectSectionPane.contains(event->pos())) {
+    lineIdx = findClosestLineIndex(event->pos().x());
+    if (lineIdx >= 0) {
+      getRowCol(lineIdx, rStation, cStation);
+    }
   }
-  double wx = screenToWorldX(event->pos().x());
+  double wx = (lineIdx >= 0) ? columnCoordinate(lineIdx) : screenToWorldX(event->pos().x());
   double wz = screenToWorldZ(event->pos().y());
+  if (vIdx >= 0 && lineIdx >= 0) {
+    wz = m_doc->model().getZ(rStation, cStation, vIdx);
+  }
   double wy = currentProfileCoordinate();
   if (m_profileOrient == ProfileOrientation::SouthNorth) {
     std::swap(wx, wy);
   }
   emit cursorStationChanged(rStation, cStation, wx, wy, wz, 0.0);
+
+  if (m_rectSectionPane.contains(event->pos()) || lineIdx >= 0) {
+    std::string bName;
+    if (bId >= 0) {
+      if (auto *b = m_doc->model().getBody(bId)) {
+        bName = b->name();
+      }
+    }
+    m_doc->setActiveProfileCursor({
+        true,
+        rStation,
+        cStation,
+        wx,
+        wy,
+        wz,
+        bId,
+        bName,
+        false
+    });
+  } else {
+    m_doc->clearActiveProfileCursor();
+  }
 
   QWidget::mouseMoveEvent(event);
 }
@@ -1335,9 +1505,21 @@ void ProfileView::mouseReleaseEvent(QMouseEvent *event) {
     if (wasModelDrag) {
       m_doc->computeAll();
     }
+    auto cur = m_doc->activeProfileCursor();
+    cur.isDragging = false;
+    m_doc->setActiveProfileCursor(cur);
     update();
   }
   QWidget::mouseReleaseEvent(event);
+}
+
+void ProfileView::leaveEvent(QEvent *event) {
+  if (m_doc) {
+    auto cur = m_doc->activeProfileCursor();
+    cur.isDragging = false;
+    m_doc->setActiveProfileCursor(cur);
+  }
+  QWidget::leaveEvent(event);
 }
 
 void ProfileView::wheelEvent(QWheelEvent *event) {
@@ -1348,6 +1530,11 @@ void ProfileView::wheelEvent(QWheelEvent *event) {
       zoomOut();
     }
   } else {
+    int lineUnderCursor = findClosestLineIndex(event->position().toPoint().x());
+    if (lineUnderCursor >= 0) {
+      m_hoverLineIdx = lineUnderCursor;
+    }
+
     int delta = event->angleDelta().y();
     if (delta == 0) {
       delta = event->angleDelta().x();

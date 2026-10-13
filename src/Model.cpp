@@ -68,6 +68,7 @@ bool Model::init(int nRows, int nCols, double x0, double y0, double xSize, doubl
     const size_t totalCells = static_cast<size_t>(m_nRows * m_nCols);
     m_data.resize(totalCells);
     m_facets.resize(totalCells);
+    m_bodyBounds.resize(totalCells);
 
     for (int r = 0; r < m_nRows; ++r) {
         for (int c = 0; c < m_nCols; ++c) {
@@ -109,6 +110,7 @@ bool Model::init(const Grid &reliefGrid, double zMin, double zMax)
     const size_t totalCells = static_cast<size_t>(m_nRows * m_nCols);
     m_data.resize(totalCells);
     m_facets.resize(totalCells);
+    m_bodyBounds.resize(totalCells);
 
     for (int r = 0; r < m_nRows; ++r) {
         for (int c = 0; c < m_nCols; ++c) {
@@ -154,6 +156,9 @@ bool Model::initEmpty(int totalRows, int totalCols, double x0, double y0, double
     m_data.resize(totalCells);
     m_facets.clear();
     m_facets.resize(totalCells);
+    m_bodyBounds.clear();
+    m_bodyBounds.resize(totalCells);
+    m_currentBoundCol = nullptr;
 
     m_initialized = true;
     return true;
@@ -167,6 +172,8 @@ void Model::clear()
     m_bodies.clear();
     m_data.clear();
     m_facets.clear();
+    m_bodyBounds.clear();
+    m_currentBoundCol = nullptr;
     m_fctLstUpdate.clear();
     m_nextBodyId = 1;
 }
@@ -635,6 +642,10 @@ void Model::initSideFacetsBound(const FctGen &fg, std::vector<Facet3Pt> &facetLi
 {
     if (fg.top[i0] == fg.bot[i0] && fg.top[i1] == fg.bot[i1]) return;
 
+    if (m_currentBoundCol) {
+        m_currentBoundCol->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
+    }
+
     Body *pBd = getBody(fg.id);
     if (fg.top[i0] != fg.bot[i0]) {
         Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
@@ -666,6 +677,9 @@ void Model::initSideFacets_2(const FctGen &fg, std::vector<Facet3Pt> &facetList,
     if (fg.b[1] && fg.b[2] && fg.top[1].x == m_xMax + m_dExE) return;
 
     if (fg.b[i0] && fg.b[i1] && ((fg.top[i0] != fg.bot[i0]) || (fg.top[i1] != fg.bot[i1]))) {
+        if (m_currentBoundCol) {
+            m_currentBoundCol->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
+        }
         Body *pBd = getBody(fg.id);
         if (fg.top[i0] != fg.bot[i0]) {
             Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
@@ -684,6 +698,10 @@ void Model::initSideFacets_2(const FctGen &fg, std::vector<Facet3Pt> &facetList,
 
 void Model::initSideFacets_3(const FctGen &fg, std::vector<Facet3Pt> &facetList, int i0, int i1)
 {
+    if (m_currentBoundCol) {
+        m_currentBoundCol->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
+    }
+
     if ((fg.top[i0] != fg.bot[i0]) || (fg.top[i1] != fg.bot[i1])) {
         Body *pBd = getBody(fg.id);
         if (fg.top[i0] != fg.bot[i0]) {
@@ -903,6 +921,14 @@ void Model::updateFacetColumn(int row, int col)
     std::vector<Facet3Pt> *pFctLst = getFacetList(row, col);
     if (!pFctLst) return;
 
+    int bIdx = row * m_nCols + col;
+    if (bIdx >= 0 && bIdx < static_cast<int>(m_bodyBounds.size())) {
+        m_bodyBounds[bIdx].clear();
+        m_currentBoundCol = &m_bodyBounds[bIdx];
+    } else {
+        m_currentBoundCol = nullptr;
+    }
+
     if (m_computeRealTime) {
         for (auto &fct : *pFctLst) {
             Facet3Pt fCopy = fct;
@@ -986,6 +1012,25 @@ int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
         }
     }
     return static_cast<int>(outList.size());
+}
+
+const std::vector<BodyBoundarySegment> *Model::getBodyBoundAt(int row, int col) const
+{
+    if (row < 0 || col < 0 || row > m_nRows - 2 || col > m_nCols - 2) return nullptr;
+    int idx = row * m_nCols + col;
+    if (idx >= 0 && idx < static_cast<int>(m_bodyBounds.size())) {
+        return &m_bodyBounds[idx];
+    }
+    return nullptr;
+}
+
+std::vector<BodyBoundarySegment> Model::getAllBodyBoundaries() const
+{
+    std::vector<BodyBoundarySegment> all;
+    for (const auto &colBounds : m_bodyBounds) {
+        all.insert(all.end(), colBounds.begin(), colBounds.end());
+    }
+    return all;
 }
 
 } // namespace mod3d

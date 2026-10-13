@@ -123,6 +123,8 @@ nlohmann::json bodyToJson(const Body &b) {
     j["remanence"] = { b.GetRemanentMagnetization().x, b.GetRemanentMagnetization().y, b.GetRemanentMagnetization().z };
     j["magnetization_vector"] = { b.GetMagnetizationVector().x, b.GetMagnetizationVector().y, b.GetMagnetizationVector().z };
     j["color"] = { b.GetColor().r, b.GetColor().g, b.GetColor().b, b.GetColor().a };
+    j["fill_color"] = { b.GetFillColor().r, b.GetFillColor().g, b.GetFillColor().b, b.GetFillColor().a };
+    j["map_color"] = { b.GetMapColor().r, b.GetMapColor().g, b.GetMapColor().b, b.GetMapColor().a };
     j["transparent"] = b.IsTransparent();
     j["alpha"] = b.GetTransparency();
     return j;
@@ -160,6 +162,22 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
         col.b = static_cast<uint8_t>(j["color"][2]);
         col.a = static_cast<uint8_t>(j["color"][3]);
         b->SetColor(col);
+    }
+    if (j.contains("fill_color") && j["fill_color"].size() >= 4) {
+        BodyColor col;
+        col.r = static_cast<uint8_t>(j["fill_color"][0]);
+        col.g = static_cast<uint8_t>(j["fill_color"][1]);
+        col.b = static_cast<uint8_t>(j["fill_color"][2]);
+        col.a = static_cast<uint8_t>(j["fill_color"][3]);
+        b->SetFillColor(col);
+    }
+    if (j.contains("map_color") && j["map_color"].size() >= 4) {
+        BodyColor col;
+        col.r = static_cast<uint8_t>(j["map_color"][0]);
+        col.g = static_cast<uint8_t>(j["map_color"][1]);
+        col.b = static_cast<uint8_t>(j["map_color"][2]);
+        col.a = static_cast<uint8_t>(j["map_color"][3]);
+        b->SetMapColor(col);
     }
     b->SetTransparent(j.value("transparent", false));
     b->SetTransparency(j.value("alpha", 1.0f));
@@ -1171,19 +1189,44 @@ bool Project::loadLegacyM3D(const std::string &filePath)
         rem.y = reader.read<double>();
         rem.z = reader.read<double>();
 
-        // Skip 15 pen/brush drawing attributes (COLORREF, styles, hatches, fills)
-        uint32_t bCol = 0;
-        for (int attr = 0; attr < 15; ++attr) {
-            uint32_t val = reader.read<uint32_t>();
-            if (attr == 3) {
-                bCol = val; // brush color
+        // Read 15 pen/brush drawing attributes (COLORREF, styles, hatches, fills)
+        uint32_t pCol = reader.read<uint32_t>();
+        uint32_t pStyle = reader.read<uint32_t>();
+        int32_t pWidthX = reader.read<int32_t>();
+        int32_t pWidthY = reader.read<int32_t>();
+        uint32_t bCol = reader.read<uint32_t>();
+        uint32_t bHatch = reader.read<uint32_t>();
+        uint32_t bStyle = reader.read<uint32_t>();
+        uint32_t pMapCol = reader.read<uint32_t>();
+        uint32_t pMapStyle = reader.read<uint32_t>();
+        int32_t pMapWidthX = reader.read<int32_t>();
+        int32_t pMapWidthY = reader.read<int32_t>();
+        uint32_t bMapCol = reader.read<uint32_t>();
+        uint32_t bMapHatch = reader.read<uint32_t>();
+        uint32_t bMapStyle = reader.read<uint32_t>();
+        int32_t bFill = reader.read<int32_t>();
+
+        (void)pStyle; (void)pWidthX; (void)pWidthY;
+        (void)bHatch; (void)bStyle;
+        (void)pMapStyle; (void)pMapWidthX; (void)pMapWidthY;
+        (void)bMapCol; (void)bMapHatch; (void)bMapStyle;
+
+        bool isTransparent = false;
+        float fAlpha = 0.5f;
+        if (classInfo.schema >= 3) {
+            int32_t bTransparent = reader.read<int32_t>();
+            float alpha = reader.read<float>();
+            isTransparent = (bTransparent != 0);
+            if (alpha >= 0.0f && alpha <= 1.0f) {
+                fAlpha = alpha;
             }
         }
 
-        if (classInfo.schema >= 3) {
-            int32_t bTransparent = reader.read<int32_t>();
-            float fAlpha = reader.read<float>();
-            (void)bTransparent; (void)fAlpha;
+        if (bName.empty()) {
+            bName = "Body " + std::to_string(bId);
+        }
+        if (bDesc == "Body description...") {
+            bDesc = "";
         }
 
         auto bodyObj = std::make_unique<Body>(bId, bName, dens);
@@ -1191,17 +1234,58 @@ bool Project::loadLegacyM3D(const std::string &filePath)
         bodyObj->SetActive(bActive != 0);
         bodyObj->SetLocked(bLocked != 0);
         bodyObj->SetVisible(bShow != 0);
+        bodyObj->SetFilled(bFill != 0);
+        bodyObj->SetTransparent(isTransparent);
+        bodyObj->SetTransparency(fAlpha);
         bodyObj->SetDensityGradient(densGrad);
         bodyObj->SetDensityOrigo(densOrg);
         bodyObj->SetSusceptibility(susc);
         bodyObj->SetRemanentMagnetization(rem);
 
-        BodyColor col;
-        col.r = static_cast<uint8_t>(bCol & 0xFF);
-        col.g = static_cast<uint8_t>((bCol >> 8) & 0xFF);
-        col.b = static_cast<uint8_t>((bCol >> 16) & 0xFF);
-        col.a = 255;
-        bodyObj->SetColor(col);
+        auto rgbFromColorref = [](uint32_t cr) -> BodyColor {
+            return BodyColor(
+                static_cast<uint8_t>(cr & 0xFF),
+                static_cast<uint8_t>((cr >> 8) & 0xFF),
+                static_cast<uint8_t>((cr >> 16) & 0xFF),
+                255
+            );
+        };
+
+        // Prefer profile pen color (pCol), then brush fill color (bCol), then map pen color (pMapCol)
+        uint32_t chosenCol = pCol;
+        if (chosenCol == 0 && bCol != 0) {
+            chosenCol = bCol;
+        } else if (chosenCol == 0 && pMapCol != 0) {
+            chosenCol = pMapCol;
+        }
+
+        if (chosenCol != 0) {
+            bodyObj->SetColor(rgbFromColorref(chosenCol));
+        } else {
+            static const BodyColor defaultPalette[] = {
+                {180, 120, 80, 255},  // Sandstone
+                {220, 80, 60, 255},   // Granite
+                {60, 140, 180, 255},  // Limestone
+                {100, 180, 100, 255}, // Shale
+                {180, 100, 180, 255}, // Basalt
+                {220, 180, 60, 255},  // Alluvium
+                {80, 80, 90, 255}     // Gabbro
+            };
+            int pIdx = (bId >= 0 ? bId : 0) % 7;
+            bodyObj->SetColor(defaultPalette[pIdx]);
+        }
+
+        if (bCol != 0) {
+            bodyObj->SetFillColor(rgbFromColorref(bCol));
+        } else {
+            bodyObj->SetFillColor(bodyObj->GetColor());
+        }
+
+        if (pMapCol != 0) {
+            bodyObj->SetMapColor(rgbFromColorref(pMapCol));
+        } else {
+            bodyObj->SetMapColor(bodyObj->GetColor());
+        }
 
         m_model.addBody(std::move(bodyObj));
     }

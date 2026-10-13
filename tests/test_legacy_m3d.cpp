@@ -304,6 +304,13 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     std::vector<Facet3Pt> facets;
     proj.model().getFacetsComputation(facets);
     EXPECT_GT(facets.size(), 300u);
+
+    // Verify Body Attributes & Map Boundary Segments
+    EXPECT_FALSE(b0->IsFilled());
+    EXPECT_NE(b0->GetColor().a, 0);
+    EXPECT_NE(b1->GetColor().a, 0);
+    EXPECT_NE(b2->GetColor().a, 0);
+    EXPECT_GT(proj.model().getAllBodyBoundaries().size(), 0u);
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {

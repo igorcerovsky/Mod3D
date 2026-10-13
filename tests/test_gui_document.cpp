@@ -964,6 +964,162 @@ TEST_F(GuiDocumentTest, MagneticFieldComputedOnSelectionAndUpdatesRealTime) {
     EXPECT_NE(updatedVal, initialVal);
 }
 
+TEST_F(GuiDocumentTest, MapViewColorScaleLegendAndBodyContourProjection) {
+    std::string path = std::string(MOD3D_TEST_DATA_DIR) + "/models/Sample.m3d";
+    ASSERT_TRUE(std::filesystem::exists(path));
 
+    ModelDocument doc;
+    ASSERT_TRUE(doc.openFile(QString::fromStdString(path)));
 
+    // 1. Verify loaded body attributes
+    ASSERT_EQ(doc.model().getBodies().size(), 3u);
+    const auto *b0 = doc.model().getBody(0);
+    const auto *b1 = doc.model().getBody(1);
+    const auto *b2 = doc.model().getBody(2);
+    ASSERT_NE(b0, nullptr);
+    ASSERT_NE(b1, nullptr);
+    ASSERT_NE(b2, nullptr);
 
+    EXPECT_EQ(b0->GetName(), "Body");
+    EXPECT_EQ(b1->GetName(), "Wings");
+    EXPECT_EQ(b2->GetName(), "... and I feel fine");
+    EXPECT_FALSE(b0->IsFilled());
+
+    // 2. Verify 2D body boundary contours exist
+    const auto &boundaries = doc.model().getAllBodyBoundaries();
+    EXPECT_GT(boundaries.size(), 0u);
+    for (const auto &seg : boundaries) {
+        EXPECT_TRUE(seg.bodyId == 0 || seg.bodyId == 1 || seg.bodyId == 2);
+    }
+
+    // 3. Test MapView rendering with color scale legend and body contours
+    MapView mv(&doc);
+    mv.resize(900, 700);
+    mv.fitToWindow();
+
+    QPixmap pixmap(900, 700);
+    pixmap.fill(Qt::white);
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    // Test with Gravity palette (Gz)
+    doc.setActiveField(mod3d::FieldComponent::GZ);
+    doc.computeAll();
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    // Test with Magnetic palette (DELTA_T)
+    doc.setActiveField(mod3d::FieldComponent::DELTA_T);
+    doc.computeAll();
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    // Test with Difference palette
+    doc.setShowDifferenceField(true);
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    // Test with Body Footprints enabled and disabled
+    EXPECT_TRUE(mv.showBodyFootprints());
+    mv.setShowBodyFootprints(false);
+    EXPECT_FALSE(mv.showBodyFootprints());
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    mv.setShowBodyFootprints(true);
+    EXPECT_TRUE(mv.showBodyFootprints());
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+}
+
+TEST_F(GuiDocumentTest, ProfileToMapViewCursorSyncAndMarkerRendering) {
+    ModelDocument doc;
+    doc.newProject(8, 8, 1000.0, 2000.0, 50.0, 50.0, -2000.0, 0.0);
+    doc.setProfileIndex(2);
+
+    int bodyId = doc.insertBodyAt(3, -500.0, 200.0);
+    ASSERT_GT(bodyId, 0);
+
+    // 1. Profile change automatically positions station point on profile row 3
+    EXPECT_TRUE(doc.activeProfileCursor().active);
+    EXPECT_EQ(doc.activeProfileCursor().row, 3);
+
+    // 2. Test ModelDocument cursor tracking signal
+    bool signalEmitted = false;
+    ModelDocument::ProfileCursorPoint receivedPt;
+    QObject::connect(&doc, &ModelDocument::activeProfileCursorChanged, [&](const ModelDocument::ProfileCursorPoint &pt) {
+        signalEmitted = true;
+        receivedPt = pt;
+    });
+
+    ModelDocument::ProfileCursorPoint testPt;
+    testPt.active = true;
+    testPt.row = 2;
+    testPt.col = 3;
+    testPt.x = 1150.0;
+    testPt.y = 2100.0;
+    testPt.z = -500.0;
+    testPt.bodyId = bodyId;
+    testPt.bodyName = "TestBody";
+    testPt.isDragging = false;
+
+    doc.setActiveProfileCursor(testPt);
+    EXPECT_TRUE(signalEmitted);
+    EXPECT_TRUE(doc.activeProfileCursor().active);
+    EXPECT_EQ(receivedPt.bodyId, bodyId);
+    EXPECT_DOUBLE_EQ(receivedPt.x, 1150.0);
+    EXPECT_DOUBLE_EQ(receivedPt.y, 2100.0);
+    EXPECT_DOUBLE_EQ(receivedPt.z, -500.0);
+
+    // 3. Test MapView rendering active point marker without throwing/crashing
+    MapView mv(&doc);
+    mv.resize(800, 600);
+    mv.fitToWindow();
+
+    QPixmap pixmap(800, 600);
+    pixmap.fill(Qt::white);
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    // Test dragging state marker
+    testPt.isDragging = true;
+    doc.setActiveProfileCursor(testPt);
+    mv.render(&pixmap);
+    EXPECT_FALSE(pixmap.isNull());
+
+    // 4. Test ProfileView mouse events triggering cursor updates
+    TestProfileView pv(&doc, ProfileOrientation::EastWest, 2);
+    pv.resize(800, 500);
+    pv.render(&pixmap);
+
+    int lineIdx = 3;
+    double xw = pv.columnCoordinate(lineIdx);
+    int sx = pv.toScreenX(xw);
+    int sy = pv.toScreenZ(-500.0);
+
+    // Mouse move over cross-section in ProfileView
+    pv.sendMouseMove(QPoint(sx, sy));
+    EXPECT_TRUE(doc.activeProfileCursor().active);
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().x, xw);
+
+    // 5. Test profile position change updates station point (including moveProfile and wheel)
+    double prevY = doc.activeProfileCursor().y;
+    pv.moveProfile(1);
+    EXPECT_TRUE(doc.activeProfileCursor().active);
+    EXPECT_EQ(doc.activeProfileCursor().row, 4); // row 4 for profile 3
+    EXPECT_NE(doc.activeProfileCursor().y, prevY);
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().getYd(4));
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().x, xw); // X position along column is preserved
+
+    // Wheel scrolling updates profile and station point
+    QWheelEvent wheelUp(QPointF(sx, sy), QPointF(sx, sy), QPoint(), QPoint(0, 120),
+                        Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+    QApplication::sendEvent(&pv, &wheelUp);
+    EXPECT_TRUE(doc.activeProfileCursor().active);
+    EXPECT_EQ(doc.activeProfileCursor().row, 5); // profile 4 -> row 5
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().getYd(5));
+
+    // Clear cursor
+    doc.clearActiveProfileCursor();
+    EXPECT_FALSE(doc.activeProfileCursor().active);
+}

@@ -68,6 +68,7 @@ public:
     void setShowGridLines(bool show);
 
     void updateTitle();
+    void updateStationPointOnProfileChange();
 
 signals:
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
@@ -87,6 +88,7 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
+    void leaveEvent(QEvent *event) override;
 
     // Coordinate Conversion
     double screenToWorldX(int screenX) const;

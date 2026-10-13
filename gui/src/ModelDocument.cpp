@@ -142,6 +142,7 @@ void ModelDocument::setProfileOrientation(ProfileOrientation orient) {
     if (m_profileOrient != orient) {
         m_profileOrient = orient;
         ensureProfileIndexValid();
+        updateStationPointForProfileChange();
         emit profileChanged(m_profileIndex, m_profileOrient);
     }
 }
@@ -150,6 +151,7 @@ void ModelDocument::setProfileIndex(int index) {
     int clamped = std::clamp(index, 0, maxProfileIndex());
     if (m_profileIndex != clamped) {
         m_profileIndex = clamped;
+        updateStationPointForProfileChange();
         emit profileChanged(m_profileIndex, m_profileOrient);
     }
 }
@@ -691,6 +693,97 @@ bool ModelDocument::loadReliefGrid(const QString &filePath) {
                            .arg(g.cols())
                            .arg(QFileInfo(filePath).fileName()));
     return true;
+}
+
+void ModelDocument::setActiveProfileCursor(const ProfileCursorPoint &pt) {
+    m_activeProfileCursor = pt;
+    emit activeProfileCursorChanged(m_activeProfileCursor);
+}
+
+void ModelDocument::clearActiveProfileCursor() {
+    if (m_activeProfileCursor.active) {
+        m_activeProfileCursor.active = false;
+        emit activeProfileCursorChanged(m_activeProfileCursor);
+    }
+}
+
+void ModelDocument::updateStationPointForProfileChange() {
+    int rows = m_project.model().getRows();
+    int cols = m_project.model().getCols();
+    if (rows <= 2 || cols <= 2) return;
+
+    int rStation = 1;
+    int cStation = 1;
+
+    if (m_profileOrient == ProfileOrientation::EastWest) {
+        rStation = m_profileIndex + 1; // 1-based in Model
+        if (m_activeProfileCursor.col >= 1 && m_activeProfileCursor.col <= cols - 2) {
+            cStation = m_activeProfileCursor.col;
+        } else {
+            cStation = std::clamp(cols / 2, 1, cols - 2);
+        }
+    } else {
+        cStation = m_profileIndex + 1;
+        if (m_activeProfileCursor.row >= 1 && m_activeProfileCursor.row <= rows - 2) {
+            rStation = m_activeProfileCursor.row;
+        } else {
+            rStation = std::clamp(rows / 2, 1, rows - 2);
+        }
+    }
+
+    double wx = m_project.model().getXd(cStation);
+    double wy = m_project.model().getYd(rStation);
+    double wz = 0.0;
+
+    int bId = m_activeProfileCursor.bodyId;
+    std::string bName;
+    bool foundBody = false;
+
+    // Check if the previous body exists at this new station on the profile
+    if (bId >= 0) {
+        int bIdx = m_project.model().getBodyIndex(bId, rStation, cStation);
+        if (bIdx >= 0) {
+            wz = m_project.model().getZ(rStation, cStation, bIdx);
+            if (const auto *b = m_project.model().getBody(bId)) {
+                bName = b->name();
+            }
+            foundBody = true;
+        } else {
+            bId = -1;
+        }
+    }
+
+    // If same body not present, check if any body exists at this station
+    if (!foundBody) {
+        for (const auto &b : m_project.model().getBodies()) {
+            int bIdx = m_project.model().getBodyIndex(b->id(), rStation, cStation);
+            if (bIdx >= 0) {
+                bId = b->id();
+                bName = b->name();
+                wz = m_project.model().getZ(rStation, cStation, bIdx);
+                foundBody = true;
+                break;
+            }
+        }
+    }
+
+    if (!foundBody) {
+        wz = m_project.model().getZ(rStation, cStation, 0);
+    }
+
+    m_activeProfileCursor = {
+        true,
+        rStation,
+        cStation,
+        wx,
+        wy,
+        wz,
+        bId,
+        bName,
+        false
+    };
+
+    emit activeProfileCursorChanged(m_activeProfileCursor);
 }
 
 } // namespace mod3d_gui

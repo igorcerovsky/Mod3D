@@ -113,7 +113,17 @@ public:
 
     // Rendering Parameters
     [[nodiscard]] BodyColor color() const noexcept { return color_; }
-    void set_color(const BodyColor &color) noexcept { color_ = color; }
+    void set_color(const BodyColor &color) noexcept {
+        color_ = color;
+        if (fill_color_ == BodyColor()) fill_color_ = color;
+        if (map_color_ == BodyColor()) map_color_ = color;
+    }
+
+    [[nodiscard]] BodyColor fill_color() const noexcept { return fill_color_; }
+    void set_fill_color(const BodyColor &col) noexcept { fill_color_ = col; }
+
+    [[nodiscard]] BodyColor map_color() const noexcept { return map_color_; }
+    void set_map_color(const BodyColor &col) noexcept { map_color_ = col; }
 
     [[nodiscard]] float transparency() const noexcept { return transparency_; }
     void set_transparency(float alpha) noexcept { transparency_ = alpha; }
@@ -186,6 +196,12 @@ public:
     [[nodiscard]] BodyColor GetColor() const noexcept { return color(); }
     void SetColor(const BodyColor &color) noexcept { set_color(color); }
 
+    [[nodiscard]] BodyColor GetFillColor() const noexcept { return fill_color(); }
+    void SetFillColor(const BodyColor &col) noexcept { set_fill_color(col); }
+
+    [[nodiscard]] BodyColor GetMapColor() const noexcept { return map_color(); }
+    void SetMapColor(const BodyColor &col) noexcept { set_map_color(col); }
+
     [[nodiscard]] float GetTransparency() const noexcept { return transparency(); }
     void SetTransparency(float alpha) noexcept { set_transparency(alpha); }
 
@@ -213,6 +229,8 @@ private:
 
     // Rendering parameters
     BodyColor color_{0, 0, 180, 255};
+    BodyColor fill_color_{0, 0, 180, 255};
+    BodyColor map_color_{0, 0, 180, 255};
     float transparency_{0.5f};
     bool transparent_{true};
 };

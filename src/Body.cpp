@@ -10,6 +10,9 @@ Body::Body() = default;
 Body::Body(int id, std::string name, double density)
     : id_(id), index_(0), name_(std::move(name)), density_(density)
 {
+    if (name_.empty()) {
+        name_ = "Body " + std::to_string(id);
+    }
 }
 
 void Body::swap(Body &other) noexcept {
@@ -29,6 +32,8 @@ void Body::swap(Body &other) noexcept {
     swap(mag_vector_, other.mag_vector_);
     swap(mag_rem_, other.mag_rem_);
     swap(color_, other.color_);
+    swap(fill_color_, other.fill_color_);
+    swap(map_color_, other.map_color_);
     swap(transparency_, other.transparency_);
     swap(transparent_, other.transparent_);
 }
@@ -54,6 +59,8 @@ bool Body::operator==(const Body &other) const noexcept {
            mag_vector_ == other.mag_vector_ &&
            mag_rem_ == other.mag_rem_ &&
            color_ == other.color_ &&
+           fill_color_ == other.fill_color_ &&
+           map_color_ == other.map_color_ &&
            transparency_ == other.transparency_ &&
            transparent_ == other.transparent_;
 }
