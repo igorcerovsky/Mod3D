@@ -33,13 +33,20 @@ MainWindow::MainWindow(QWidget *parent)
     addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->mainToolBar());
     addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->profileToolBar());
     addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->mapToolBar());
-    addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->fieldToolBar());
+
+    m_settingsPane = new SettingsPane(m_doc, this, this);
+    addDockWidget(Qt::RightDockWidgetArea, m_settingsPane);
 
     setupMenus();
     setupConnections();
     updateWindowTitle();
 
+    connect(m_settingsPane, &SettingsPane::requestBodyPropertiesDialog, this, &MainWindow::onBodyProperties);
+
     connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this](QMdiSubWindow *sub) {
+        if (m_settingsPane) {
+            m_settingsPane->setActiveSubWindow(sub);
+        }
         if (sub) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
                 m_toolbarsMgr->setActiveProfileView(pv);
@@ -59,12 +66,16 @@ MainWindow::MainWindow(QWidget *parent)
     //  - top right: map view
     //  - bottom left: 3D view
     //  - bottom right: N-S (perpendicular) profile
-    openProfileView(ProfileOrientation::EastWest);
+    auto *pvEW = openProfileView(ProfileOrientation::EastWest);
     openMapView();
     openGL3DView();
     openProfileView(ProfileOrientation::SouthNorth);
 
-    resize(1200, 800);
+    if (pvEW) {
+        m_settingsPane->setActiveSubWindow(qobject_cast<QMdiSubWindow*>(pvEW->parentWidget()));
+    }
+
+    resize(1260, 820);
     arrangeDefaultTiles();
     QTimer::singleShot(0, this, [this]() { arrangeDefaultTiles(); });
 }
@@ -148,6 +159,8 @@ void MainWindow::setupMenus() {
 
     // 2. View Menu
     auto *menuView = mb->addMenu(tr("&View"));
+    menuView->addAction(m_settingsPane->toggleViewAction());
+    menuView->addSeparator();
     menuView->addAction(tr("Redraw"), this, [this]() {
         for (auto *sub : m_mdiArea->subWindowList()) {
             sub->widget()->update();

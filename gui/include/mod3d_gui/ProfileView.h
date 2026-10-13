@@ -67,6 +67,28 @@ public:
     bool showGridLines() const noexcept { return m_showGridLines; }
     void setShowGridLines(bool show);
 
+    // View-specific Field Curves & Primary Y-Axis Field
+    mod3d::FieldComponent mainFieldComponent() const noexcept { return m_mainField; }
+    void setMainFieldComponent(mod3d::FieldComponent comp);
+
+    bool showModeledCurve() const noexcept { return m_showModeledCurve; }
+    void setShowModeledCurve(bool show);
+
+    bool showMeasuredCurve() const noexcept { return m_showMeasuredCurve; }
+    void setShowMeasuredCurve(bool show);
+
+    bool showDifferenceCurve() const noexcept { return m_showDifferenceCurve; }
+    void setShowDifferenceCurve(bool show);
+
+    bool showSecondaryCurve() const noexcept { return m_showSecondaryCurve; }
+    void setShowSecondaryCurve(bool show);
+
+    std::optional<mod3d::FieldComponent> secondaryFieldComponent() const noexcept { return m_secondaryField; }
+    void setSecondaryFieldComponent(std::optional<mod3d::FieldComponent> comp);
+
+    bool continuousDrawingMode() const noexcept { return m_continuousDrawingMode; }
+    void setContinuousDrawingMode(bool enabled);
+
     void updateTitle();
     void updateStationPointOnProfileChange();
 
@@ -169,6 +191,15 @@ private:
     double m_dragLastMouseZ{0.0};
 
     int m_wheelDeltaAccumulator{0};
+
+    // View-specific Field Curves & Primary Y-Axis Field
+    mod3d::FieldComponent m_mainField{mod3d::FieldComponent::GZ};
+    bool m_showModeledCurve{true};
+    bool m_showMeasuredCurve{true};
+    bool m_showDifferenceCurve{true};
+    bool m_showSecondaryCurve{false};
+    std::optional<mod3d::FieldComponent> m_secondaryField{std::nullopt};
+    bool m_continuousDrawingMode{false};
 };
 
 } // namespace mod3d_gui

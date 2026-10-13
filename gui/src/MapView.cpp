@@ -27,7 +27,46 @@ MapView::MapView(ModelDocument *doc, QWidget *parent)
         update();
     });
 
+    if (m_doc) {
+        m_fieldComponent = m_doc->activeField();
+    }
+
     fitToWindow();
+}
+
+void MapView::setRasterMode(MapRasterMode mode) {
+    if (m_rasterMode != mode) {
+        m_rasterMode = mode;
+        update();
+    }
+}
+
+void MapView::setFieldComponent(mod3d::FieldComponent comp) {
+    if (m_fieldComponent != comp) {
+        m_fieldComponent = comp;
+        update();
+    }
+}
+
+void MapView::setShowStationPoints(bool show) {
+    if (m_showStationPoints != show) {
+        m_showStationPoints = show;
+        update();
+    }
+}
+
+void MapView::setShowProfiles(bool show) {
+    if (m_showProfiles != show) {
+        m_showProfiles = show;
+        update();
+    }
+}
+
+void MapView::setShowBodyFootprints(bool show) {
+    if (m_showBodyFootprints != show) {
+        m_showBodyFootprints = show;
+        update();
+    }
 }
 
 void MapView::fitToWindow() {
@@ -260,28 +299,30 @@ void MapView::paintEvent(QPaintEvent *) {
 }
 
 void MapView::drawBackgroundRaster(QPainter &painter) {
+    if (m_rasterMode == MapRasterMode::None) return;
+
     const mod3d::Grid *grid = nullptr;
-    bool isMag = mod3d::is_magnetic_component(m_doc->activeField());
+    bool isMag = mod3d::is_magnetic_component(m_fieldComponent);
     MapPaletteType palType = isMag ? MapPaletteType::Magnetics : MapPaletteType::Gravity;
 
-    if (m_doc->showDifferenceField()) {
-        grid = m_doc->activeDifferenceGrid();
+    if (m_rasterMode == MapRasterMode::Difference) {
+        grid = m_doc->differenceGrid(m_fieldComponent);
         if (!isMag) {
             palType = MapPaletteType::Difference;
         }
-    } else if (m_doc->showMeasuredField() && !m_doc->showModeledField()) {
-        grid = m_doc->activeObservedGrid();
-    } else {
-        grid = m_doc->activeModeledGrid();
-        if (!grid || grid->empty()) {
-            grid = m_doc->activeObservedGrid();
+    } else if (m_rasterMode == MapRasterMode::Observed) {
+        grid = m_doc->observedGrid(m_fieldComponent);
+        if ((!grid || grid->empty()) && m_fieldComponent == mod3d::FieldComponent::GZ) {
+            grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
         }
-    }
-    if (!grid || grid->empty()) {
-        grid = m_doc->activeModeledGrid();
-    }
-    if (!grid || grid->empty()) {
-        grid = m_doc->activeObservedGrid();
+    } else if (m_rasterMode == MapRasterMode::Relief) {
+        grid = &m_doc->observation().getSurfaceRelief();
+        palType = MapPaletteType::Relief;
+    } else { // Modeled
+        grid = m_doc->modeledGrid(m_fieldComponent);
+        if (!grid || grid->empty()) {
+            grid = m_doc->observedGrid(m_fieldComponent);
+        }
     }
     if (!grid || grid->empty()) return;
     size_t rows = grid->rows();
@@ -322,6 +363,7 @@ void MapView::drawBackgroundRaster(QPainter &painter) {
 }
 
 void MapView::drawStationPoints(QPainter &painter) {
+    if (!m_showStationPoints) return;
     int rows = m_doc->model().getRows();
     int cols = m_doc->model().getCols();
 
@@ -361,28 +403,30 @@ void MapView::drawBodyOutlines(QPainter &painter) {
 }
 
 void MapView::drawColorScaleLegend(QPainter &painter) {
+    if (m_rasterMode == MapRasterMode::None) return;
+
     const mod3d::Grid *grid = nullptr;
-    bool isMag = mod3d::is_magnetic_component(m_doc->activeField());
+    bool isMag = mod3d::is_magnetic_component(m_fieldComponent);
     MapPaletteType palType = isMag ? MapPaletteType::Magnetics : MapPaletteType::Gravity;
 
-    if (m_doc->showDifferenceField()) {
-        grid = m_doc->activeDifferenceGrid();
+    if (m_rasterMode == MapRasterMode::Difference) {
+        grid = m_doc->differenceGrid(m_fieldComponent);
         if (!isMag) {
             palType = MapPaletteType::Difference;
         }
-    } else if (m_doc->showMeasuredField() && !m_doc->showModeledField()) {
-        grid = m_doc->activeObservedGrid();
-    } else {
-        grid = m_doc->activeModeledGrid();
-        if (!grid || grid->empty()) {
-            grid = m_doc->activeObservedGrid();
+    } else if (m_rasterMode == MapRasterMode::Observed) {
+        grid = m_doc->observedGrid(m_fieldComponent);
+        if ((!grid || grid->empty()) && m_fieldComponent == mod3d::FieldComponent::GZ) {
+            grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
         }
-    }
-    if (!grid || grid->empty()) {
-        grid = m_doc->activeModeledGrid();
-    }
-    if (!grid || grid->empty()) {
-        grid = m_doc->activeObservedGrid();
+    } else if (m_rasterMode == MapRasterMode::Relief) {
+        grid = &m_doc->observation().getSurfaceRelief();
+        palType = MapPaletteType::Relief;
+    } else { // Modeled
+        grid = m_doc->modeledGrid(m_fieldComponent);
+        if (!grid || grid->empty()) {
+            grid = m_doc->observedGrid(m_fieldComponent);
+        }
     }
     if (!grid || grid->empty()) return;
 
@@ -432,11 +476,13 @@ void MapView::drawColorScaleLegend(QPainter &painter) {
     }
 
     // 4. Component Label & Unit below bar
-    QString compStr = m_doc->activeFieldComponentName();
-    if (palType == MapPaletteType::Difference) {
+    QString compStr = ModelDocument::componentName(m_fieldComponent);
+    if (m_rasterMode == MapRasterMode::Difference) {
         compStr = "d" + compStr;
+    } else if (m_rasterMode == MapRasterMode::Relief) {
+        compStr = "DEM";
     }
-    QString unitStr = m_doc->activeFieldUnit();
+    QString unitStr = (m_rasterMode == MapRasterMode::Relief) ? "m" : ModelDocument::componentUnit(m_fieldComponent);
     QString titleStr = unitStr.isEmpty() ? compStr : QString("%1\n(%2)").arg(compStr, unitStr);
 
     painter.setPen(QColor(40, 40, 50));
@@ -449,6 +495,7 @@ void MapView::drawColorScaleLegend(QPainter &painter) {
 }
 
 void MapView::drawActiveProfileTracker(QPainter &painter) {
+    if (!m_showProfiles) return;
     QMdiArea *mdi = nullptr;
     QWidget *p = parentWidget();
     while (p) {

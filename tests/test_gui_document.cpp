@@ -1338,3 +1338,156 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/quad_layout_3d_turntable.png");
 }
 
+TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
+    MainWindow mw;
+    mw.resize(1280, 820);
+    mw.show();
+
+    ASSERT_NE(mw.settingsPane(), nullptr);
+    EXPECT_EQ(mw.dockWidgetArea(mw.settingsPane()), Qt::RightDockWidgetArea);
+    EXPECT_FALSE(mw.settingsPane()->isHidden());
+
+    // Verify 4 default views exist
+    auto subWindows = mw.mdiArea()->subWindowList();
+    EXPECT_EQ(subWindows.size(), 4);
+
+    // Call arrange tiles
+    mw.arrangeDefaultTiles();
+
+    // Verify rendering with side pane (Profile View + Fields Display tab)
+    QPixmap pix(1280, 820);
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_pane_layout.png");
+
+    // 2. Switch to Body Editor tab
+    mw.settingsPane()->selectBodyEditorTab();
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_body_editor.png");
+
+    // 3. Switch to Map View and back to Fields tab
+    QMdiSubWindow *subMap = nullptr;
+    for (auto *sub : subWindows) {
+        if (qobject_cast<MapView*>(sub->widget())) {
+            subMap = sub;
+            break;
+        }
+    }
+    ASSERT_NE(subMap, nullptr);
+    mw.mdiArea()->setActiveSubWindow(subMap);
+    mw.settingsPane()->setActiveSubWindow(subMap);
+    mw.settingsPane()->selectFieldsTab();
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_map_view.png");
+}
+
+TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
+    ModelDocument doc;
+    doc.createDefaultProject();
+
+    // 1. ProfileView view-specific field settings
+    ProfileView pv1(&doc, ProfileOrientation::EastWest, 0);
+    ProfileView pv2(&doc, ProfileOrientation::SouthNorth, 0);
+
+    // Default primary field is GZ
+    EXPECT_EQ(pv1.mainFieldComponent(), mod3d::FieldComponent::GZ);
+    EXPECT_EQ(pv2.mainFieldComponent(), mod3d::FieldComponent::GZ);
+
+    // Customize pv1 to DELTA_T, pv2 stays GZ
+    pv1.setMainFieldComponent(mod3d::FieldComponent::DELTA_T);
+    EXPECT_EQ(pv1.mainFieldComponent(), mod3d::FieldComponent::DELTA_T);
+    EXPECT_EQ(pv2.mainFieldComponent(), mod3d::FieldComponent::GZ);
+
+    // View-specific curve toggles
+    EXPECT_TRUE(pv1.showModeledCurve());
+    EXPECT_TRUE(pv1.showMeasuredCurve());
+    EXPECT_TRUE(pv1.showDifferenceCurve());
+    EXPECT_FALSE(pv1.showSecondaryCurve());
+
+    pv1.setShowMeasuredCurve(false);
+    pv1.setShowDifferenceCurve(false);
+    pv1.setShowSecondaryCurve(true);
+    pv1.setSecondaryFieldComponent(mod3d::FieldComponent::GZ);
+
+    EXPECT_FALSE(pv1.showMeasuredCurve());
+    EXPECT_FALSE(pv1.showDifferenceCurve());
+    EXPECT_TRUE(pv1.showSecondaryCurve());
+    EXPECT_EQ(pv1.secondaryFieldComponent(), mod3d::FieldComponent::GZ);
+
+    // pv2 curve visibility remains untouched
+    EXPECT_TRUE(pv2.showMeasuredCurve());
+    EXPECT_TRUE(pv2.showDifferenceCurve());
+    EXPECT_FALSE(pv2.showSecondaryCurve());
+
+    // 2. MapView single raster display mode
+    MapView mv(&doc);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Modeled);
+    EXPECT_EQ(mv.fieldComponent(), mod3d::FieldComponent::GZ);
+
+    mv.setRasterMode(MapView::MapRasterMode::Observed);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Observed);
+
+    mv.setRasterMode(MapView::MapRasterMode::Difference);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Difference);
+
+    mv.setRasterMode(MapView::MapRasterMode::Relief);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Relief);
+
+    mv.setRasterMode(MapView::MapRasterMode::None);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::None);
+
+    mv.setFieldComponent(mod3d::FieldComponent::DELTA_T);
+    EXPECT_EQ(mv.fieldComponent(), mod3d::FieldComponent::DELTA_T);
+
+    // Map overlay toggles
+    EXPECT_TRUE(mv.showStationPoints());
+    EXPECT_TRUE(mv.showProfiles());
+    EXPECT_TRUE(mv.showBodyFootprints());
+
+    mv.setShowStationPoints(false);
+    EXPECT_FALSE(mv.showStationPoints());
+
+    mv.setShowProfiles(false);
+    EXPECT_FALSE(mv.showProfiles());
+
+    mv.setShowBodyFootprints(false);
+    EXPECT_FALSE(mv.showBodyFootprints());
+}
+
+TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
+    MainWindow mw;
+    mw.show();
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+
+    // Find ProfileView and MapView subwindows
+    QMdiSubWindow *subPv = nullptr;
+    QMdiSubWindow *subMv = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (qobject_cast<ProfileView*>(sub->widget())) subPv = sub;
+        else if (qobject_cast<MapView*>(sub->widget())) subMv = sub;
+        else if (qobject_cast<GL3DView*>(sub->widget())) sub3D = sub;
+    }
+
+    ASSERT_NE(subPv, nullptr);
+    ASSERT_NE(subMv, nullptr);
+    ASSERT_NE(sub3D, nullptr);
+
+    // Activate profile view
+    mw.mdiArea()->setActiveSubWindow(subPv);
+    pane->setActiveSubWindow(subPv);
+
+    // Activate map view
+    mw.mdiArea()->setActiveSubWindow(subMv);
+    pane->setActiveSubWindow(subMv);
+
+    // Activate 3D view
+    mw.mdiArea()->setActiveSubWindow(sub3D);
+    pane->setActiveSubWindow(sub3D);
+}
+

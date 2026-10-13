@@ -24,6 +24,7 @@ set(GUI_HEADERS
     include/mod3d_gui/dialogs/ComputePropertiesDialog.h
     include/mod3d_gui/dialogs/ActiveGridsDialog.h
     include/mod3d_gui/dialogs/Fit1DDialog.h
+    include/mod3d_gui/SettingsPane.h
 )
 
 set(GUI_SOURCES
@@ -35,6 +36,7 @@ set(GUI_SOURCES
     src/SpreadsheetView.cpp
     src/Toolbars.cpp
     src/StatusBarManager.cpp
+    src/SettingsPane.cpp
     src/dialogs/BodyPropertiesDialog.cpp
     src/dialogs/ModelPropertiesDialog.cpp
     src/dialogs/DefineObservationDialog.cpp

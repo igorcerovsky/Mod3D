@@ -46,8 +46,67 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
     update();
   });
 
+  if (m_doc) {
+    m_mainField = m_doc->activeField();
+    m_showModeledCurve = m_doc->showModeledField();
+    m_showMeasuredCurve = m_doc->showMeasuredField();
+    m_showDifferenceCurve = m_doc->showDifferenceField();
+  }
+
   fitToWindow();
   updateTitle();
+}
+
+void ProfileView::setMainFieldComponent(mod3d::FieldComponent comp) {
+  if (m_mainField != comp) {
+    m_mainField = comp;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowModeledCurve(bool show) {
+  if (m_showModeledCurve != show) {
+    m_showModeledCurve = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowMeasuredCurve(bool show) {
+  if (m_showMeasuredCurve != show) {
+    m_showMeasuredCurve = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowDifferenceCurve(bool show) {
+  if (m_showDifferenceCurve != show) {
+    m_showDifferenceCurve = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowSecondaryCurve(bool show) {
+  if (m_showSecondaryCurve != show) {
+    m_showSecondaryCurve = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setSecondaryFieldComponent(std::optional<mod3d::FieldComponent> comp) {
+  m_secondaryField = comp;
+  emit displaySettingsChanged();
+  update();
+}
+
+void ProfileView::setContinuousDrawingMode(bool enabled) {
+  m_continuousDrawingMode = enabled;
+  emit displaySettingsChanged();
+  update();
 }
 
 void ProfileView::setProfileOrientation(ProfileOrientation orient) {
@@ -533,9 +592,12 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
   std::vector<bool> hasObserved(nLines, false);
   std::vector<bool> hasDiff(nLines, false);
 
-  const auto *modGrd = m_doc->activeModeledGrid();
-  const auto *obsGrd = m_doc->activeObservedGrid();
-  const auto *difGrd = m_doc->activeDifferenceGrid();
+  const auto *modGrd = m_doc->modeledGrid(m_mainField);
+  const auto *obsGrd = m_doc->observedGrid(m_mainField);
+  if ((!obsGrd || obsGrd->empty()) && m_mainField == mod3d::FieldComponent::GZ) {
+    obsGrd = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
+  }
+  const auto *difGrd = m_doc->differenceGrid(m_mainField);
 
   int prfIdx = m_profileIndex;
   bool isEW = (m_profileOrient == ProfileOrientation::EastWest);
@@ -573,25 +635,23 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
   double minVal = 1e30;
   double maxVal = -1e30;
 
-  // Use full 2D grid min/max (matches legacy CViewProf / CViewProfPlus scaling)
-  if (m_doc->showModeledField() && modGrd && !modGrd->empty()) {
+  // Use full 2D grid min/max of the main field
+  if (m_showModeledCurve && modGrd && !modGrd->empty()) {
     auto stats = modGrd->compute_stats();
     if (stats.valid_count > 0 && stats.min <= stats.max) {
       minVal = std::min(minVal, stats.min);
       maxVal = std::max(maxVal, stats.max);
     }
   }
-  if (m_doc->showMeasuredField() && obsGrd && !obsGrd->empty()) {
+  if (m_showMeasuredCurve && obsGrd && !obsGrd->empty()) {
     auto stats = obsGrd->compute_stats();
     if (stats.valid_count > 0 && stats.min <= stats.max) {
       minVal = std::min(minVal, stats.min);
       maxVal = std::max(maxVal, stats.max);
     }
   }
-  // Only include difference field if neither modeled nor measured field is
-  // displayed
-  if (minVal >= maxVal && m_doc->showDifferenceField() && difGrd &&
-      !difGrd->empty()) {
+  // Only include difference field if neither modeled nor measured field is displayed
+  if (minVal >= maxVal && m_showDifferenceCurve && difGrd && !difGrd->empty()) {
     auto stats = difGrd->compute_stats();
     if (stats.valid_count > 0 && stats.min <= stats.max) {
       minVal = std::min(minVal, stats.min);
@@ -602,15 +662,15 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
   // Fallback if grids were empty or not yet computed
   if (minVal >= maxVal) {
     for (int i = 0; i < nLines; ++i) {
-      if (m_doc->showModeledField() && hasModeled[i]) {
+      if (m_showModeledCurve && hasModeled[i]) {
         minVal = std::min(minVal, modeledVals[i]);
         maxVal = std::max(maxVal, modeledVals[i]);
       }
-      if (m_doc->showMeasuredField() && hasObserved[i]) {
+      if (m_showMeasuredCurve && hasObserved[i]) {
         minVal = std::min(minVal, observedVals[i]);
         maxVal = std::max(maxVal, observedVals[i]);
       }
-      if (m_doc->showDifferenceField() && hasDiff[i]) {
+      if (m_showDifferenceCurve && hasDiff[i]) {
         minVal = std::min(minVal, diffVals[i]);
         maxVal = std::max(maxVal, diffVals[i]);
       }
@@ -637,7 +697,7 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
   }
 
   // Difference curve (magenta dashed line)
-  if (m_doc->showDifferenceField()) {
+  if (m_showDifferenceCurve) {
     painter.setPen(QPen(QColor(180, 0, 180), 1.5, Qt::DashLine));
     QPolygonF poly;
     for (int i = 0; i < nLines; ++i) {
@@ -656,7 +716,7 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
   }
 
   // Measured Field (connecting line + upright '+' crosses)
-  if (m_doc->showMeasuredField()) {
+  if (m_showMeasuredCurve) {
     painter.setPen(QPen(QColor(200, 20, 20, 180), 1.0, Qt::SolidLine));
     QPolygonF poly;
     for (int i = 0; i < nLines; ++i) {
@@ -685,7 +745,7 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
   }
 
   // Modeled Field (blue solid curve)
-  if (m_doc->showModeledField()) {
+  if (m_showModeledCurve) {
     painter.setPen(QPen(QColor(20, 80, 220), 2.0, Qt::SolidLine));
     QPolygonF poly;
     for (int i = 0; i < nLines; ++i) {
@@ -700,6 +760,49 @@ void ProfileView::drawFieldCurves(QPainter &painter) {
     }
     if (!poly.isEmpty()) {
       painter.drawPolyline(poly);
+    }
+  }
+
+  // Secondary curve overlay (e.g. Magnetics overlay on Gravity)
+  if (m_showSecondaryCurve && m_secondaryField.has_value()) {
+    const auto *secGrd = m_doc->modeledGrid(*m_secondaryField);
+    if (secGrd && !secGrd->empty()) {
+      std::vector<double> secVals(nLines, 0.0);
+      std::vector<bool> hasSec(nLines, false);
+      double secMin = 1e30, secMax = -1e30;
+      for (int i = 0; i < nLines; ++i) {
+        size_t r = isEW ? static_cast<size_t>(prfIdx) : static_cast<size_t>(i);
+        size_t c = isEW ? static_cast<size_t>(i) : static_cast<size_t>(prfIdx);
+        if (r < secGrd->rows() && c < secGrd->cols()) {
+          double v = (*secGrd)(r, c);
+          if (!mod3d::Grid::is_dummy_value(v)) {
+            secVals[i] = v;
+            hasSec[i] = true;
+            secMin = std::min(secMin, v);
+            secMax = std::max(secMax, v);
+          }
+        }
+      }
+      if (secMin < secMax) {
+        double secPad = (secMax - secMin) * 0.05;
+        secMin -= secPad;
+        secMax += secPad;
+        painter.setPen(QPen(QColor(13, 148, 136), 1.8, Qt::DashDotLine)); // Teal dash-dot
+        QPolygonF poly;
+        for (int i = 0; i < nLines; ++i) {
+          if (hasSec[i]) {
+            int sx = worldToScreenX(xCoords[i]);
+            int sy = worldToScreenField(secVals[i], secMin, secMax);
+            poly << QPointF(sx, sy);
+          } else if (!poly.isEmpty()) {
+            painter.drawPolyline(poly);
+            poly.clear();
+          }
+        }
+        if (!poly.isEmpty()) {
+          painter.drawPolyline(poly);
+        }
+      }
     }
   }
 
@@ -735,9 +838,9 @@ void ProfileView::drawFieldAxes(QPainter &painter, double minFld,
     painter.drawText(2, y + 4, m_marginLeft - 8, 16, Qt::AlignRight, label);
   }
 
-  // Vertical axis title with component name and unit
-  QString compName = m_doc->activeFieldComponentName();
-  QString compUnit = m_doc->activeFieldUnit();
+  // Vertical axis title strictly for main field
+  QString compName = ModelDocument::componentName(m_mainField);
+  QString compUnit = ModelDocument::componentUnit(m_mainField);
   QString axisTitle = compUnit.isEmpty()
                           ? compName
                           : QString("%1 (%2)").arg(compName, compUnit);

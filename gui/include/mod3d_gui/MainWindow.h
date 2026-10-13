@@ -7,6 +7,7 @@
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/GL3DView.h"
 #include "mod3d_gui/SpreadsheetView.h"
+#include "mod3d_gui/SettingsPane.h"
 
 #include <QMainWindow>
 #include <QMdiArea>
@@ -23,6 +24,7 @@ public:
 
     ModelDocument *document() const { return m_doc; }
     QMdiArea *mdiArea() const { return m_mdiArea; }
+    SettingsPane *settingsPane() const { return m_settingsPane; }
 
     ProfileView *openProfileView(ProfileOrientation orient = ProfileOrientation::EastWest, int profileIndex = -1);
     ProfileView *activeProfileView() const;
@@ -62,6 +64,7 @@ private:
     QMdiArea *m_mdiArea;
     StatusBarManager *m_statusBarMgr;
     ToolbarsManager *m_toolbarsMgr;
+    SettingsPane *m_settingsPane{nullptr};
 };
 
 } // namespace mod3d_gui

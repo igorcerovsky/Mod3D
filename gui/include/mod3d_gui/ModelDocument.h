@@ -60,8 +60,8 @@ public:
     }
     const mod3d::Grid *activeDifferenceGrid() const { return differenceGrid(m_activeField); }
 
-    QString activeFieldComponentName() const {
-        switch (m_activeField) {
+    static QString componentName(mod3d::FieldComponent comp) {
+        switch (comp) {
         case mod3d::FieldComponent::GX: return "Gx";
         case mod3d::FieldComponent::GY: return "Gy";
         case mod3d::FieldComponent::GZ: return "Gz";
@@ -80,16 +80,19 @@ public:
         }
     }
 
-    QString activeFieldUnit() const {
-        if (mod3d::is_gravity_component(m_activeField)) {
+    static QString componentUnit(mod3d::FieldComponent comp) {
+        if (mod3d::is_gravity_component(comp)) {
             return "mGal";
-        } else if (mod3d::is_magnetic_component(m_activeField)) {
+        } else if (mod3d::is_magnetic_component(comp)) {
             return "nT";
-        } else if (mod3d::is_tensor_component(m_activeField)) {
+        } else if (mod3d::is_tensor_component(comp)) {
             return "E";
         }
         return "";
     }
+
+    QString activeFieldComponentName() const { return componentName(m_activeField); }
+    QString activeFieldUnit() const { return componentUnit(m_activeField); }
 
     bool isModified() const noexcept { return m_modified; }
     void setModified(bool modified = true);
@@ -201,6 +204,7 @@ public:
     void setActiveProfileCursor(const ProfileCursorPoint &pt);
     void clearActiveProfileCursor();
     void updateStationPointForProfileChange();
+    void emitModelGeometryChanged() { emit modelGeometryChanged(); }
 
 signals:
     void documentModifiedChanged(bool modified);
