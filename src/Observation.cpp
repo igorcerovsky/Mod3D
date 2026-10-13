@@ -244,51 +244,129 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
     if (rows_ == 0 || cols_ == 0) return;
 
     ensure_grid_allocated(modeled_grids_, FieldComponent::GZ);
-    Grid &grdGz = modeled_grids_[FieldComponent::GZ];
-    if (zeroFirst) grdGz.zero();
-
     ensure_grid_allocated(modeled_grids_, FieldComponent::GX);
     ensure_grid_allocated(modeled_grids_, FieldComponent::GY);
+    ensure_grid_allocated(modeled_grids_, FieldComponent::G_TOT);
+    Grid &grdGz = modeled_grids_[FieldComponent::GZ];
     Grid &grdGx = modeled_grids_[FieldComponent::GX];
     Grid &grdGy = modeled_grids_[FieldComponent::GY];
     if (zeroFirst) {
         grdGx.zero();
         grdGy.zero();
+        grdGz.zero();
     }
 
-    auto obsPoints = observation_points(FieldComponent::GZ);
-    const size_t nPts = obsPoints.size();
+    ensure_grid_allocated(modeled_grids_, FieldComponent::MZ);
+    ensure_grid_allocated(modeled_grids_, FieldComponent::MX);
+    ensure_grid_allocated(modeled_grids_, FieldComponent::MY);
+    ensure_grid_allocated(modeled_grids_, FieldComponent::DELTA_T);
+    Grid &grdMz = modeled_grids_[FieldComponent::MZ];
+    Grid &grdMx = modeled_grids_[FieldComponent::MX];
+    Grid &grdMy = modeled_grids_[FieldComponent::MY];
+    Grid &grdDeltaT = modeled_grids_[FieldComponent::DELTA_T];
+    if (zeroFirst) {
+        grdMx.zero();
+        grdMy.zero();
+        grdMz.zero();
+        grdDeltaT.zero();
+    }
+
+    bool hasMagnetics = false;
+    for (const auto &fct : facets) {
+        if ((fct.pBody && fct.pBody->IsActive() && !fct.pBody->GetMagnetizationVector().IsZero()) ||
+            (fct.pBodyOpos && fct.pBodyOpos->IsActive() && !fct.pBodyOpos->GetMagnetizationVector().IsZero())) {
+            hasMagnetics = true;
+            break;
+        }
+    }
+
+    auto obsPointsGrv = observation_points(FieldComponent::GZ);
+    std::vector<Point3D> obsPointsMag;
+    if (hasMagnetics) {
+        obsPointsMag = observation_points(FieldComponent::MZ);
+    }
+
+    const size_t nPts = obsPointsGrv.size();
 
     for (size_t p = 0; p < nPts; ++p) {
         Point3D totalG(0.0, 0.0, 0.0);
-        for (const auto &fct : facets) {
-            double densContrast = 0.0;
-            if (fct.pBody) {
-                double bDens = fct.pBody->density();
-                double oposDens = fct.pBodyOpos ? fct.pBodyOpos->density() : ref_density_;
-                densContrast = bDens - oposDens;
-            } else if (fct.densityOpos != 0.0) {
-                densContrast = fct.density - fct.densityOpos;
-            } else {
-                densContrast = fct.density - ref_density_;
-            }
+        Point3D totalM(0.0, 0.0, 0.0);
 
-            Point3D g(0.0, 0.0, 0.0);
-            fct.Fld_G(obsPoints[p], g);
-            totalG += g * (densContrast * fct.dSign);
+        bool validGrv = !Grid::is_dummy_value(obsPointsGrv[p].z);
+        bool validMag = hasMagnetics && p < obsPointsMag.size() && !Grid::is_dummy_value(obsPointsMag[p].z);
+
+        Point3D rMag(0.0, 0.0, 0.0);
+        if (validMag) {
+            rMag = Point3D(obsPointsMag[p].x + 0.001, obsPointsMag[p].y + 0.003, obsPointsMag[p].z);
+        }
+
+        if (validGrv || validMag) {
+            for (const auto &fct : facets) {
+                if (validGrv) {
+                    double densContrast = 0.0;
+                    if (fct.pBody) {
+                        double bDens = fct.pBody->density();
+                        double oposDens = fct.pBodyOpos ? fct.pBodyOpos->density() : ref_density_;
+                        densContrast = bDens - oposDens;
+                    } else if (fct.densityOpos != 0.0) {
+                        densContrast = fct.density - fct.densityOpos;
+                    } else {
+                        densContrast = fct.density - ref_density_;
+                    }
+
+                    Point3D g(0.0, 0.0, 0.0);
+                    fct.Fld_G(obsPointsGrv[p], g);
+                    totalG += g * (densContrast * fct.dSign);
+                }
+
+                if (validMag) {
+                    Point3D fMag(0.0, 0.0, 0.0);
+                    if (fct.pBody && fct.pBody->IsActive() && !fct.pBody->GetMagnetizationVector().IsZero()) {
+                        fct.FldGS(rMag, fct.pBody->GetMagnetizationVector(), fMag, 1.0);
+                    }
+                    if (fct.pBodyOpos && fct.pBodyOpos->IsActive() && !fct.pBodyOpos->GetMagnetizationVector().IsZero()) {
+                        fct.FldGS(rMag, fct.pBodyOpos->GetMagnetizationVector(), fMag, -1.0);
+                    }
+                    totalM -= fMag * (fct.dSign * mag_units_);
+                }
+            }
         }
 
         size_t r = p / cols_;
         size_t c = p % cols_;
         Point3D scaledG = totalG * grv_units_;
+
         if (zeroFirst) {
-            grdGx(r, c) = scaledG.x;
-            grdGy(r, c) = scaledG.y;
-            grdGz(r, c) = scaledG.z;
+            if (validGrv) {
+                grdGx(r, c) = scaledG.x;
+                grdGy(r, c) = scaledG.y;
+                grdGz(r, c) = scaledG.z;
+            } else {
+                grdGx(r, c) = GRID_DUMMY;
+                grdGy(r, c) = GRID_DUMMY;
+                grdGz(r, c) = GRID_DUMMY;
+            }
+
+            if (validMag) {
+                grdMx(r, c) = totalM.x;
+                grdMy(r, c) = totalM.y;
+                grdMz(r, c) = totalM.z;
+            } else if (hasMagnetics) {
+                grdMx(r, c) = GRID_DUMMY;
+                grdMy(r, c) = GRID_DUMMY;
+                grdMz(r, c) = GRID_DUMMY;
+            }
         } else {
-            grdGx(r, c) += scaledG.x;
-            grdGy(r, c) += scaledG.y;
-            grdGz(r, c) += scaledG.z;
+            if (validGrv) {
+                if (!grdGx.is_dummy(r, c)) grdGx(r, c) += scaledG.x;
+                if (!grdGy.is_dummy(r, c)) grdGy(r, c) += scaledG.y;
+                if (!grdGz.is_dummy(r, c)) grdGz(r, c) += scaledG.z;
+            }
+            if (validMag) {
+                if (!grdMx.is_dummy(r, c)) grdMx(r, c) += totalM.x;
+                if (!grdMy.is_dummy(r, c)) grdMy(r, c) += totalM.y;
+                if (!grdMz.is_dummy(r, c)) grdMz(r, c) += totalM.z;
+            }
         }
     }
 
@@ -322,6 +400,27 @@ void ObservationSpace::compute_total_fields()
             }
         }
     }
+
+    Grid *pMx = modeled_grid(FieldComponent::MX);
+    Grid *pMy = modeled_grid(FieldComponent::MY);
+    Grid *pMz = modeled_grid(FieldComponent::MZ);
+    Grid *pDT = modeled_grid(FieldComponent::DELTA_T);
+
+    if (pMx && pMy && pMz && pDT) {
+        Point3D af = ambient_field_vector();
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
+                double mx = (*pMx)(r, c);
+                double my = (*pMy)(r, c);
+                double mz = (*pMz)(r, c);
+                if (pMx->is_dummy(r, c) || pMy->is_dummy(r, c) || pMz->is_dummy(r, c)) {
+                    (*pDT)(r, c) = GRID_DUMMY;
+                } else {
+                    (*pDT)(r, c) = -Mag_dT(mx, my, mz, af.x, af.y, af.z, mag_intensity_);
+                }
+            }
+        }
+    }
 }
 
 void ObservationSpace::compute_difference(FieldComponent comp, bool removeMean)
@@ -332,6 +431,10 @@ void ObservationSpace::compute_difference(FieldComponent comp, bool removeMean)
         pObs = observed_grid(FieldComponent::G_TOT);
     } else if ((!pObs || pObs->empty()) && comp == FieldComponent::G_TOT) {
         pObs = observed_grid(FieldComponent::GZ);
+    } else if ((!pObs || pObs->empty()) && comp == FieldComponent::DELTA_T) {
+        pObs = observed_grid(FieldComponent::MZ);
+    } else if ((!pObs || pObs->empty()) && comp == FieldComponent::MZ) {
+        pObs = observed_grid(FieldComponent::DELTA_T);
     }
     Grid *pDif = difference_grid(comp);
 

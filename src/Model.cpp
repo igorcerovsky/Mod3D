@@ -313,6 +313,20 @@ void Model::updateBodyIndex()
     }
 }
 
+void Model::computeBodyMagnetizationVector(const Point3D &indFld)
+{
+    for (auto &b : m_bodies) {
+        if (b) {
+            b->ComputeMagnetizationVector(indFld);
+        }
+    }
+}
+
+void Model::computeBodyMagnetizationVector(double incDeg, double decDeg, double intensityNT)
+{
+    computeBodyMagnetizationVector(Point3D(incDeg, decDeg, intensityNT));
+}
+
 int Model::getBodyIndex(int bodyId, int row, int col) const
 {
     const size_t cnt = getCount(row, col);

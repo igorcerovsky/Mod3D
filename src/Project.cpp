@@ -529,6 +529,11 @@ bool Project::fromJsonString(const std::string &jsonStr)
             }
         }
 
+        m_model.computeBodyMagnetizationVector(
+            m_observation.inclination_deg(),
+            m_observation.declination_deg(),
+            m_observation.magnetic_intensity());
+
         return true;
     }
     catch (const std::exception &ex) {
@@ -1206,6 +1211,7 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     m_observation.setReferenceDensity(grvDensRef);
     m_observation.setGravityObservation(ObservationMode::SensorHeight, tensHeight);
     m_observation.setMagneticObservation(ObservationMode::FlightElevation, tensFlightElev);
+    m_observation.setAmbientFieldParams(magIndFld.x, magIndFld.y, magIndFld.z);
 
     // Attempt to read grids (Relief, Observation elevations, Modeled, Difference, Measured)
     if (reader.good() && !reader.eof()) {
@@ -1312,6 +1318,10 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     // Regenerate 3D polyhedral facets
     m_model.updateBodyIndex();
     m_model.initFacetList();
+    m_model.computeBodyMagnetizationVector(
+        m_observation.inclination_deg(),
+        m_observation.declination_deg(),
+        m_observation.magnetic_intensity());
 
     return true;
 }

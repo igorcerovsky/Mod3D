@@ -906,6 +906,64 @@ TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
     EXPECT_NE(updatedNextColZ, initialNextColZ);
 }
 
+TEST_F(GuiDocumentTest, MagneticFieldComputedOnSelectionAndUpdatesRealTime) {
+    ModelDocument doc;
+    std::string magPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/TestMag.m3d";
+    ASSERT_TRUE(std::filesystem::exists(magPath));
+    ASSERT_TRUE(doc.openFile(QString::fromStdString(magPath)));
+
+    // Select DELTA_T magnetic component
+    doc.setActiveField(mod3d::FieldComponent::DELTA_T);
+    EXPECT_EQ(doc.activeField(), mod3d::FieldComponent::DELTA_T);
+
+    const auto *modGrid = doc.activeModeledGrid();
+    ASSERT_NE(modGrid, nullptr);
+    EXPECT_FALSE(modGrid->empty());
+    double initialVal = (*modGrid)(11, 11);
+    EXPECT_NEAR(initialVal, -0.496, 0.05);
+
+    // Profile view renders without crashing and displays valid magnetic field
+    ProfileView pv(&doc);
+    pv.resize(800, 600);
+    QPixmap pm(800, 600);
+    pv.render(&pm);
+    EXPECT_FALSE(pm.isNull());
+
+    // Switch to Mx component
+    doc.setActiveField(mod3d::FieldComponent::MX);
+    EXPECT_EQ(doc.activeField(), mod3d::FieldComponent::MX);
+    const auto *mxGrid = doc.activeModeledGrid();
+    ASSERT_NE(mxGrid, nullptr);
+    EXPECT_FALSE(mxGrid->empty());
+
+    // Enable real-time compute, modify vertex and verify modeled magnetic field updates
+    doc.setRealTimeCompute(true);
+    doc.setActiveField(mod3d::FieldComponent::DELTA_T);
+    int bodyId = doc.model().getBodies().front()->GetID();
+    int foundR = -1, foundC = -1, bIdx = -1;
+    for (int r = 1; r < doc.model().getRows() - 1 && foundR < 0; ++r) {
+        for (int c = 1; c < doc.model().getCols() - 1; ++c) {
+            int idx = doc.model().getBodyIndex(bodyId, r, c);
+            if (idx >= 0) {
+                foundR = r;
+                foundC = c;
+                bIdx = idx;
+                break;
+            }
+        }
+    }
+    ASSERT_GE(foundR, 0);
+    ASSERT_GE(foundC, 0);
+    ASSERT_GE(bIdx, 0);
+    double curZ = doc.model().getZ(foundR, foundC, bIdx);
+    doc.moveVertexAtRowCol(foundR, foundC, bIdx, curZ + 50.0);
+
+    const auto *updatedModGrid = doc.activeModeledGrid();
+    ASSERT_NE(updatedModGrid, nullptr);
+    double updatedVal = (*updatedModGrid)(11, 11);
+    EXPECT_NE(updatedVal, initialVal);
+}
+
 
 
 

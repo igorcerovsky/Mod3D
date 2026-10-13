@@ -125,6 +125,8 @@ public:
     int getID(int index, int row, int col) const;
     const std::vector<std::unique_ptr<Body>> &getBodies() const { return m_bodies; }
     void updateBodyIndex();
+    void computeBodyMagnetizationVector(const Point3D &indFld);
+    void computeBodyMagnetizationVector(double incDeg, double decDeg, double intensityNT);
 
     // Facet Generation
     void initFacetList();

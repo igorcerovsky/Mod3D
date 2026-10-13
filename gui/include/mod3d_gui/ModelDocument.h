@@ -52,6 +52,9 @@ public:
         } else if ((!g || g->empty()) && m_activeField == mod3d::FieldComponent::DELTA_T) {
             const auto *mz = observedGrid(mod3d::FieldComponent::MZ);
             if (mz && !mz->empty()) return mz;
+        } else if ((!g || g->empty()) && m_activeField == mod3d::FieldComponent::MZ) {
+            const auto *dt = observedGrid(mod3d::FieldComponent::DELTA_T);
+            if (dt && !dt->empty()) return dt;
         }
         return g;
     }

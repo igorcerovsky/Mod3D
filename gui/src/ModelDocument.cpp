@@ -37,6 +37,7 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
     m_project.model().setComputeRealTime(m_realTimeCompute);
     m_project.observation().init_geometry(rows, cols, x0, y0, dx, dy);
     m_project.observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 0.0);
+    m_project.observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 0.0);
 
     m_profileOrient = ProfileOrientation::EastWest;
     m_profileIndex = rows / 2;
@@ -541,6 +542,10 @@ bool ModelDocument::translateBodyVertical(int bodyId, double deltaZ) {
 }
 
 void ModelDocument::computeAll() {
+    m_project.model().computeBodyMagnetizationVector(
+        m_project.observation().inclination_deg(),
+        m_project.observation().declination_deg(),
+        m_project.observation().magnetic_intensity());
     std::vector<mod3d::Facet3Pt> facets;
     m_project.model().getFacetsComputation(facets);
     m_project.observation().compute_forward_field(facets, true);
@@ -551,6 +556,10 @@ void ModelDocument::computeAll() {
 
 void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets) {
     if (!updateFacets.empty()) {
+        m_project.model().computeBodyMagnetizationVector(
+            m_project.observation().inclination_deg(),
+            m_project.observation().declination_deg(),
+            m_project.observation().magnetic_intensity());
         m_project.observation().update_delta_field(updateFacets);
         m_project.observation().compute_total_fields();
         m_project.observation().compute_difference(m_activeField);
@@ -567,9 +576,15 @@ void ModelDocument::setRealTimeCompute(bool enabled) {
 }
 
 void ModelDocument::setActiveField(mod3d::FieldComponent comp) {
-    if (m_activeField != comp) {
-        m_activeField = comp;
+    bool changed = (m_activeField != comp);
+    m_activeField = comp;
+    const auto *grid = modeledGrid(comp);
+    if (!grid || grid->empty()) {
+        computeAll();
+    } else {
         m_project.observation().compute_difference(m_activeField);
+    }
+    if (changed) {
         emit activeFieldChanged(m_activeField);
     }
 }

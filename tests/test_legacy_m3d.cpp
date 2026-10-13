@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "mod3d/Project.h"
+#include "mod3d/PotField.h"
 #include <filesystem>
 #include <fstream>
 #include <cstring>
@@ -320,11 +321,28 @@ TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
     proj.model().getFacetsComputation(facets);
     EXPECT_GT(facets.size(), 50u);
 
-    // Compute magnetic forward field
-    proj.observation().computeForwardField(facets, true);
-    const Grid *dTModeled = proj.observation().getModeledGrid(FieldComponent::DELTA_T);
-    ASSERT_NE(dTModeled, nullptr);
-    EXPECT_FALSE(dTModeled->empty());
+    // Verify loaded authentic modeled magnetic field from file
+    const Grid *dTLoaded = proj.observation().modeled_grid(FieldComponent::DELTA_T);
+    ASSERT_NE(dTLoaded, nullptr);
+    EXPECT_FALSE(dTLoaded->empty());
+    Grid loadedDT = *dTLoaded;
+    EXPECT_NEAR(loadedDT(11, 11), -0.496, 0.05);
+
+    // Verify body magnetization was computed on load
+    const Body *body = proj.model().getBodies().front().get();
+    ASSERT_NE(body, nullptr);
+    EXPECT_GT(body->GetSusceptibility(), 0.0);
+    EXPECT_FALSE(body->GetMagnetizationVector().IsZero());
+
+    // Recompute magnetic forward field and compare with loaded authentic grid
+    proj.observation().compute_forward_field(facets, true);
+    const Grid *dTRecomputed = proj.observation().modeled_grid(FieldComponent::DELTA_T);
+    ASSERT_NE(dTRecomputed, nullptr);
+    EXPECT_FALSE(dTRecomputed->empty());
+
+    EXPECT_NEAR((*dTRecomputed)(11, 11), loadedDT(11, 11), 0.05);
+    EXPECT_NEAR(dTRecomputed->min(), loadedDT.min(), 0.1);
+    EXPECT_NEAR(dTRecomputed->max(), loadedDT.max(), 0.1);
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_NestedAndInclinedBodies) {
