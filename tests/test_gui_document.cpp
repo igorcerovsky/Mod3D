@@ -1921,3 +1921,60 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     EXPECT_TRUE(chkReliefContours->isChecked());
 }
 
+TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
+    MainWindow mw;
+    mw.resize(1440, 920);
+    mw.show();
+
+    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    if (!std::filesystem::exists(samplePath)) {
+        samplePath = "Examples/Sample.m3d";
+    }
+    bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
+    ASSERT_TRUE(ok);
+
+    mw.arrangeDefaultTiles();
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    pane->selectBodyEditorTab();
+
+    // 1. Full Main Workspace screenshot
+    QPixmap pixMain(1440, 920);
+    pixMain.fill(Qt::white);
+    mw.render(&pixMain);
+    std::filesystem::create_directories("docs/images");
+    pixMain.save("docs/images/mod3d_main_workspace.png");
+
+    // 2. Profile View close-up screenshot
+    auto *pv = mw.activeProfileView();
+    if (pv) {
+        QPixmap pixProfile(pv->size());
+        pixProfile.fill(Qt::white);
+        pv->render(&pixProfile);
+        pixProfile.save("docs/images/mod3d_profile_cross_section.png");
+    }
+
+    // 3. Map View screenshot (with relief contours and body footprints)
+    MapView *mv = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *v = qobject_cast<MapView*>(sub->widget())) {
+            mv = v;
+            break;
+        }
+    }
+    if (mv) {
+        mv->setShowReliefContours(true);
+        mv->setShowBodyFootprints(true);
+        QPixmap pixMap(mv->size());
+        pixMap.fill(Qt::white);
+        mv->render(&pixMap);
+        pixMap.save("docs/images/mod3d_map_view.png");
+    }
+
+    // 4. Settings Pane Geological Body Editor screenshot
+    QPixmap pixPane(pane->width(), pane->height());
+    pixPane.fill(Qt::white);
+    pane->render(&pixPane);
+    pixPane.save("docs/images/mod3d_body_editor.png");
+}
+
