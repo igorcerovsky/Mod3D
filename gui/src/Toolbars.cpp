@@ -2,8 +2,67 @@
 #include "mod3d_gui/ProfileView.h"
 #include <QIcon>
 #include <QStyle>
+#include <QPainter>
+#include <QPixmap>
+#include <QRadialGradient>
+#include <cmath>
 
 namespace mod3d_gui {
+
+QIcon createZoomIcon(bool zoomIn) {
+    QIcon icon;
+    for (int size : {16, 20, 24, 32, 48}) {
+        QPixmap pix(size, size);
+        pix.fill(Qt::transparent);
+        QPainter p(&pix);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        qreal scale = size / 24.0;
+        qreal cx = 9.5 * scale;
+        qreal cy = 9.5 * scale;
+        qreal r = 5.8 * scale;
+        qreal strokeWidth = std::max(1.5, 2.0 * scale);
+
+        // Glass background gradient
+        QRadialGradient glassGrad(QPointF(cx - r * 0.3, cy - r * 0.3), r);
+        glassGrad.setColorAt(0.0, QColor(240, 249, 255, 230));
+        glassGrad.setColorAt(1.0, QColor(186, 230, 253, 170));
+        p.setBrush(glassGrad);
+
+        // Lens rim
+        QPen rimPen(QColor(30, 41, 59), strokeWidth);
+        rimPen.setJoinStyle(Qt::RoundJoin);
+        rimPen.setCapStyle(Qt::RoundCap);
+        p.setPen(rimPen);
+        p.drawEllipse(QPointF(cx, cy), r, r);
+
+        // Handle
+        qreal hx1 = cx + r * 0.7071;
+        qreal hy1 = cy + r * 0.7071;
+        qreal hx2 = size - 2.5 * scale;
+        qreal hy2 = size - 2.5 * scale;
+        QPen handlePen(QColor(30, 41, 59), strokeWidth * 1.3);
+        handlePen.setCapStyle(Qt::RoundCap);
+        p.setPen(handlePen);
+        p.drawLine(QPointF(hx1, hy1), QPointF(hx2, hy2));
+
+        // Sign (+ or -)
+        QPen signPen(QColor(15, 23, 42), std::max(1.5, 1.8 * scale));
+        signPen.setCapStyle(Qt::RoundCap);
+        p.setPen(signPen);
+
+        qreal signR = 3.2 * scale;
+        p.drawLine(QPointF(cx - signR, cy), QPointF(cx + signR, cy));
+        if (zoomIn) {
+            p.drawLine(QPointF(cx, cy - signR), QPointF(cx, cy + signR));
+        }
+
+        p.end();
+        icon.addPixmap(pix);
+    }
+
+    return QIcon::fromTheme(zoomIn ? "zoom-in" : "zoom-out", icon);
+}
 
 ToolbarsManager::ToolbarsManager(ModelDocument *doc, QWidget *parent)
     : QObject(parent)
@@ -12,24 +71,15 @@ ToolbarsManager::ToolbarsManager(ModelDocument *doc, QWidget *parent)
     setupMainToolBar(parent);
     setupProfileToolBar(parent);
     setupMapToolBar(parent);
-    setupFieldToolBar(parent);
 
     connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) {
         updateProfileWidgets();
     });
     connect(m_doc, &ModelDocument::documentReset, this, [this]() {
         updateProfileWidgets();
-        updateFieldWidgets();
-    });
-    connect(m_doc, &ModelDocument::activeFieldChanged, this, [this](mod3d::FieldComponent) {
-        updateFieldWidgets();
-    });
-    connect(m_doc, &ModelDocument::fieldDisplayToggled, this, [this]() {
-        updateFieldWidgets();
     });
 
     updateProfileWidgets();
-    updateFieldWidgets();
 }
 
 void ToolbarsManager::setActiveProfileView(ProfileView *pv) {
@@ -78,12 +128,17 @@ void ToolbarsManager::setupMainToolBar(QWidget *parent) {
 
     m_mainToolBar->addSeparator();
 
-    m_mainToolBar->addAction(parent->style()->standardIcon(QStyle::SP_ArrowUp), tr("Zoom In"), [this]() {
+    auto *actZoomIn = m_mainToolBar->addAction(createZoomIcon(true), tr("Zoom In"), [this]() {
         emit actionTriggered("ZoomIn");
     });
-    m_mainToolBar->addAction(parent->style()->standardIcon(QStyle::SP_ArrowDown), tr("Zoom Out"), [this]() {
+    actZoomIn->setShortcut(QKeySequence::ZoomIn);
+    actZoomIn->setToolTip(tr("Zoom In (Ctrl++)"));
+
+    auto *actZoomOut = m_mainToolBar->addAction(createZoomIcon(false), tr("Zoom Out"), [this]() {
         emit actionTriggered("ZoomOut");
     });
+    actZoomOut->setShortcut(QKeySequence::ZoomOut);
+    actZoomOut->setToolTip(tr("Zoom Out (Ctrl+-)"));
     m_mainToolBar->addAction(tr("Fit Page"), [this]() {
         emit actionTriggered("FitPage");
     });
@@ -187,38 +242,6 @@ void ToolbarsManager::setupProfileToolBar(QWidget *parent) {
     });
     m_actProfNext->setShortcut(QKeySequence(Qt::Key_N));
     m_actProfNext->setToolTip(tr("Navigate to next profile (N)"));
-
-    m_profileToolBar->addSeparator();
-
-    m_actShowPrev = m_profileToolBar->addAction(tr("Ghost Prev"), [this](bool checked) {
-        if (m_activeProfileView) {
-            m_activeProfileView->setShowPreviousProfile(checked);
-        } else {
-            m_doc->setShowPreviousProfile(checked);
-        }
-    });
-    m_actShowPrev->setCheckable(true);
-    m_actShowPrev->setToolTip(tr("Show ghost outlines from previous profile"));
-
-    m_actShowNext = m_profileToolBar->addAction(tr("Ghost Next"), [this](bool checked) {
-        if (m_activeProfileView) {
-            m_activeProfileView->setShowNextProfile(checked);
-        } else {
-            m_doc->setShowNextProfile(checked);
-        }
-    });
-    m_actShowNext->setCheckable(true);
-    m_actShowNext->setToolTip(tr("Show ghost outlines from next profile"));
-
-    m_actShowGridLines = m_profileToolBar->addAction(tr("Grid Lines"), [this](bool checked) {
-        if (m_activeProfileView) {
-            m_activeProfileView->setShowGridLines(checked);
-        } else {
-            m_doc->setShowGridLines(checked);
-        }
-    });
-    m_actShowGridLines->setCheckable(true);
-    m_actShowGridLines->setChecked(true);
 }
 
 void ToolbarsManager::setupMapToolBar(QWidget *parent) {
@@ -256,76 +279,11 @@ void ToolbarsManager::setupMapToolBar(QWidget *parent) {
     actBodyBound->setChecked(true);
 }
 
-void ToolbarsManager::setupFieldToolBar(QWidget *parent) {
-    m_fieldToolBar = new QToolBar(tr("Field Toolbar"), parent);
-    m_fieldToolBar->setObjectName("FieldToolBar");
-
-    m_actShowModeled = m_fieldToolBar->addAction(tr("Modeled"), [this](bool checked) {
-        m_doc->setShowModeledField(checked);
-    });
-    m_actShowModeled->setCheckable(true);
-    m_actShowModeled->setChecked(true);
-
-    m_actShowMeasured = m_fieldToolBar->addAction(tr("Measured"), [this](bool checked) {
-        m_doc->setShowMeasuredField(checked);
-    });
-    m_actShowMeasured->setCheckable(true);
-    m_actShowMeasured->setChecked(true);
-
-    m_actShowDiff = m_fieldToolBar->addAction(tr("Diff"), [this](bool checked) {
-        m_doc->setShowDifferenceField(checked);
-    });
-    m_actShowDiff->setCheckable(true);
-    m_actShowDiff->setChecked(true);
-
-    m_fieldToolBar->addSeparator();
-
-    m_fieldCompGroup = new QActionGroup(this);
-
-    auto addCompAction = [this](const QString &text, mod3d::FieldComponent comp, bool checked = false) {
-        auto *act = m_fieldToolBar->addAction(text, [this, comp]() {
-            m_doc->setActiveField(comp);
-        });
-        act->setCheckable(true);
-        act->setChecked(checked);
-        act->setData(static_cast<int>(comp));
-        m_fieldCompGroup->addAction(act);
-        return act;
-    };
-
-    // Gravity components
-    addCompAction("Gx", mod3d::FieldComponent::GX);
-    addCompAction("Gy", mod3d::FieldComponent::GY);
-    addCompAction("Gz", mod3d::FieldComponent::GZ, true);
-    addCompAction("G tot", mod3d::FieldComponent::G_TOT);
-
-    m_fieldToolBar->addSeparator();
-
-    // Magnetic components
-    addCompAction("Mx", mod3d::FieldComponent::MX);
-    addCompAction("My", mod3d::FieldComponent::MY);
-    addCompAction("Mz", mod3d::FieldComponent::MZ);
-    addCompAction("ΔT", mod3d::FieldComponent::DELTA_T);
-
-    m_fieldToolBar->addSeparator();
-
-    // Tensor components
-    addCompAction("Txx", mod3d::FieldComponent::GXX);
-    addCompAction("Tyy", mod3d::FieldComponent::GYY);
-    addCompAction("Tzz", mod3d::FieldComponent::GZZ);
-    addCompAction("Txy", mod3d::FieldComponent::GXY);
-    addCompAction("Txz", mod3d::FieldComponent::GXZ);
-    addCompAction("Tyz", mod3d::FieldComponent::GYZ);
-}
-
 void ToolbarsManager::updateProfileWidgets() {
     ProfileOrientation orient = m_activeProfileView ? m_activeProfileView->profileOrientation() : m_doc->profileOrientation();
     int prfIdx = m_activeProfileView ? m_activeProfileView->profileIndex() : m_doc->profileIndex();
     int maxIdx = m_activeProfileView ? m_activeProfileView->maxProfileIndex() : m_doc->maxProfileIndex();
     double coord = m_activeProfileView ? m_activeProfileView->currentProfileCoordinate() : m_doc->currentProfileCoordinate();
-    bool showPrev = m_activeProfileView ? m_activeProfileView->showPreviousProfile() : m_doc->showPreviousProfile();
-    bool showNext = m_activeProfileView ? m_activeProfileView->showNextProfile() : m_doc->showNextProfile();
-    bool showGrid = m_activeProfileView ? m_activeProfileView->showGridLines() : m_doc->showGridLines();
 
     bool isEW = (orient == ProfileOrientation::EastWest);
     m_actProfEW->setChecked(isEW);
@@ -337,24 +295,6 @@ void ToolbarsManager::updateProfileWidgets() {
     m_spinProfileIndex->blockSignals(false);
 
     m_lblProfileCoord->setText(QString("(%1 = %2 m)").arg(isEW ? "Y" : "X").arg(coord, 0, 'f', 0));
-
-    m_actShowPrev->setChecked(showPrev);
-    m_actShowNext->setChecked(showNext);
-    m_actShowGridLines->setChecked(showGrid);
-}
-
-void ToolbarsManager::updateFieldWidgets() {
-    m_actShowModeled->setChecked(m_doc->showModeledField());
-    m_actShowMeasured->setChecked(m_doc->showMeasuredField());
-    m_actShowDiff->setChecked(m_doc->showDifferenceField());
-
-    int targetComp = static_cast<int>(m_doc->activeField());
-    for (auto *act : m_fieldCompGroup->actions()) {
-        if (act->data().toInt() == targetComp) {
-            act->setChecked(true);
-            break;
-        }
-    }
 }
 
 } // namespace mod3d_gui

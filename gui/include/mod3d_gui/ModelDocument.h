@@ -60,6 +60,32 @@ public:
     }
     const mod3d::Grid *activeDifferenceGrid() const { return differenceGrid(m_activeField); }
 
+    bool hasObservedGrid(mod3d::FieldComponent comp) const {
+        const auto *g = observedGrid(comp);
+        if (g && !g->empty()) return true;
+        if (comp == mod3d::FieldComponent::GZ) {
+            const auto *gt = observedGrid(mod3d::FieldComponent::G_TOT);
+            return gt && !gt->empty();
+        } else if (comp == mod3d::FieldComponent::G_TOT) {
+            const auto *gz = observedGrid(mod3d::FieldComponent::GZ);
+            return gz && !gz->empty();
+        } else if (comp == mod3d::FieldComponent::DELTA_T) {
+            const auto *mz = observedGrid(mod3d::FieldComponent::MZ);
+            return mz && !mz->empty();
+        } else if (comp == mod3d::FieldComponent::MZ) {
+            const auto *dt = observedGrid(mod3d::FieldComponent::DELTA_T);
+            return dt && !dt->empty();
+        }
+        return false;
+    }
+
+    bool hasAnyObservedGrid() const {
+        for (const auto &[comp, grid] : m_project.observation().observed_grids()) {
+            if (!grid.empty()) return true;
+        }
+        return false;
+    }
+
     static QString componentName(mod3d::FieldComponent comp) {
         switch (comp) {
         case mod3d::FieldComponent::GX: return "Gx";
@@ -234,8 +260,8 @@ private:
     bool m_realTimeCompute{true};
 
     bool m_showModeled{true};
-    bool m_showMeasured{true};
-    bool m_showDiff{true};
+    bool m_showMeasured{false};
+    bool m_showDiff{false};
     bool m_showPrev{false};
     bool m_showNext{false};
     bool m_showGridLines{true};

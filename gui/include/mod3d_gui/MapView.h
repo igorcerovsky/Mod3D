@@ -35,6 +35,8 @@ public:
     mod3d::FieldComponent fieldComponent() const noexcept { return m_fieldComponent; }
     void setFieldComponent(mod3d::FieldComponent comp);
 
+    bool hasMeasuredField() const;
+
     bool showStationPoints() const noexcept { return m_showStationPoints; }
     void setShowStationPoints(bool show);
 
@@ -43,6 +45,9 @@ public:
 
     bool showBodyFootprints() const noexcept { return m_showBodyFootprints; }
     void setShowBodyFootprints(bool show);
+
+    bool showReliefContours() const noexcept { return m_showReliefContours; }
+    void setShowReliefContours(bool show);
 
 signals:
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
@@ -85,6 +90,7 @@ private:
     bool m_showStationPoints{true};
     bool m_showProfiles{true};
     bool m_showBodyFootprints{true};
+    bool m_showReliefContours{true};
     bool m_draggingProfileLine{false};
     bool m_panning{false};
     QPoint m_lastPanPos;

@@ -34,7 +34,15 @@ MapView::MapView(ModelDocument *doc, QWidget *parent)
     fitToWindow();
 }
 
+bool MapView::hasMeasuredField() const {
+    if (!m_doc) return false;
+    return m_doc->hasObservedGrid(m_fieldComponent);
+}
+
 void MapView::setRasterMode(MapRasterMode mode) {
+    if ((mode == MapRasterMode::Observed || mode == MapRasterMode::Difference) && !hasMeasuredField()) {
+        mode = MapRasterMode::Modeled;
+    }
     if (m_rasterMode != mode) {
         m_rasterMode = mode;
         update();
@@ -44,6 +52,9 @@ void MapView::setRasterMode(MapRasterMode mode) {
 void MapView::setFieldComponent(mod3d::FieldComponent comp) {
     if (m_fieldComponent != comp) {
         m_fieldComponent = comp;
+        if ((m_rasterMode == MapRasterMode::Observed || m_rasterMode == MapRasterMode::Difference) && !hasMeasuredField()) {
+            m_rasterMode = MapRasterMode::Modeled;
+        }
         update();
     }
 }
@@ -65,6 +76,13 @@ void MapView::setShowProfiles(bool show) {
 void MapView::setShowBodyFootprints(bool show) {
     if (m_showBodyFootprints != show) {
         m_showBodyFootprints = show;
+        update();
+    }
+}
+
+void MapView::setShowReliefContours(bool show) {
+    if (m_showReliefContours != show) {
+        m_showReliefContours = show;
         update();
     }
 }

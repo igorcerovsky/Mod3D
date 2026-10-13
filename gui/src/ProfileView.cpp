@@ -38,28 +38,63 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
   connect(m_doc, &ModelDocument::fieldDisplayToggled, this,
           QOverload<>::of(&QWidget::update));
   connect(m_doc, &ModelDocument::activeFieldChanged, this,
-          [this](mod3d::FieldComponent) { update(); });
+          [this](mod3d::FieldComponent) {
+            if (!hasMeasuredField()) {
+              m_showMeasuredCurve = false;
+              m_showDifferenceCurve = false;
+            }
+            emit displaySettingsChanged();
+            update();
+          });
   connect(m_doc, &ModelDocument::documentReset, this, [this]() {
     m_profileIndex = std::clamp(m_profileIndex, 0, maxProfileIndex());
+    if (hasMeasuredField()) {
+      m_showMeasuredCurve = m_doc->showMeasuredField();
+      m_showDifferenceCurve = m_doc->showDifferenceField();
+    } else {
+      m_showMeasuredCurve = false;
+      m_showDifferenceCurve = false;
+    }
     fitToWindow();
     updateTitle();
+    emit displaySettingsChanged();
+    update();
+  });
+  connect(m_doc, &ModelDocument::fieldDisplayToggled, this, [this]() {
+    if (hasMeasuredField()) {
+      m_showMeasuredCurve = m_doc->showMeasuredField();
+      m_showDifferenceCurve = m_doc->showDifferenceField();
+    } else {
+      m_showMeasuredCurve = false;
+      m_showDifferenceCurve = false;
+    }
+    emit displaySettingsChanged();
     update();
   });
 
   if (m_doc) {
     m_mainField = m_doc->activeField();
     m_showModeledCurve = m_doc->showModeledField();
-    m_showMeasuredCurve = m_doc->showMeasuredField();
-    m_showDifferenceCurve = m_doc->showDifferenceField();
+    m_showMeasuredCurve = m_doc->showMeasuredField() && hasMeasuredField();
+    m_showDifferenceCurve = m_doc->showDifferenceField() && hasMeasuredField();
   }
 
   fitToWindow();
   updateTitle();
 }
 
+bool ProfileView::hasMeasuredField() const {
+  if (!m_doc) return false;
+  return m_doc->hasObservedGrid(m_mainField);
+}
+
 void ProfileView::setMainFieldComponent(mod3d::FieldComponent comp) {
   if (m_mainField != comp) {
     m_mainField = comp;
+    if (!hasMeasuredField()) {
+      m_showMeasuredCurve = false;
+      m_showDifferenceCurve = false;
+    }
     emit displaySettingsChanged();
     update();
   }
@@ -74,16 +109,18 @@ void ProfileView::setShowModeledCurve(bool show) {
 }
 
 void ProfileView::setShowMeasuredCurve(bool show) {
-  if (m_showMeasuredCurve != show) {
-    m_showMeasuredCurve = show;
+  bool eff = show && hasMeasuredField();
+  if (m_showMeasuredCurve != eff) {
+    m_showMeasuredCurve = eff;
     emit displaySettingsChanged();
     update();
   }
 }
 
 void ProfileView::setShowDifferenceCurve(bool show) {
-  if (m_showDifferenceCurve != show) {
-    m_showDifferenceCurve = show;
+  bool eff = show && hasMeasuredField();
+  if (m_showDifferenceCurve != eff) {
+    m_showDifferenceCurve = eff;
     emit displaySettingsChanged();
     update();
   }
@@ -286,6 +323,30 @@ void ProfileView::setShowNextProfile(bool show) {
 void ProfileView::setShowGridLines(bool show) {
   if (m_showGridLines != show) {
     m_showGridLines = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowObservationPoints(bool show) {
+  if (m_showObservationPoints != show) {
+    m_showObservationPoints = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowRelief(bool show) {
+  if (m_showRelief != show) {
+    m_showRelief = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowProfileIntersections(bool show) {
+  if (m_showProfileIntersections != show) {
+    m_showProfileIntersections = show;
     emit displaySettingsChanged();
     update();
   }
@@ -971,7 +1032,7 @@ void ProfileView::drawProfileIntersections(QPainter &painter) {
     }
     p = p->parentWidget();
   }
-  if (!mdi)
+  if (!mdi || !m_showProfileIntersections)
     return;
 
   for (auto *sub : mdi->subWindowList()) {
@@ -1015,24 +1076,41 @@ void ProfileView::drawReliefAndBottom(QPainter &painter) {
   if (nLines <= 0)
     return;
 
-  QPolygonF reliefPoly;
-  for (int i = 0; i < nLines; ++i) {
-    double xw = columnCoordinate(i);
-    int sx = worldToScreenX(xw);
-    int r = 0, c = 0;
-    getRowCol(i, r, c);
-    double topoZ = m_doc->model().getZ(r, c, 0);
-    int sy = worldToScreenZ(topoZ);
-    reliefPoly << QPointF(sx, sy);
-  }
-  painter.setPen(QPen(QColor(40, 140, 40), 2.0));
-  painter.drawPolyline(reliefPoly);
+  if (m_showRelief) {
+    QPolygonF reliefPoly;
+    for (int i = 0; i < nLines; ++i) {
+      double xw = columnCoordinate(i);
+      int sx = worldToScreenX(xw);
+      int r = 0, c = 0;
+      getRowCol(i, r, c);
+      double topoZ = m_doc->model().getZ(r, c, 0);
+      int sy = worldToScreenZ(topoZ);
+      reliefPoly << QPointF(sx, sy);
+    }
+    painter.setPen(QPen(QColor(40, 140, 40), 2.0));
+    painter.drawPolyline(reliefPoly);
 
-  int botY = worldToScreenZ(m_doc->model().getZMin());
-  painter.setPen(QPen(QColor(100, 100, 110), 2.0, Qt::DashLine));
-  int leftX = worldToScreenX(m_worldXMin);
-  int rightX = worldToScreenX(m_worldXMax);
-  painter.drawLine(leftX, botY, rightX, botY);
+    int botY = worldToScreenZ(m_doc->model().getZMin());
+    painter.setPen(QPen(QColor(100, 100, 110), 2.0, Qt::DashLine));
+    int leftX = worldToScreenX(m_worldXMin);
+    int rightX = worldToScreenX(m_worldXMax);
+    painter.drawLine(leftX, botY, rightX, botY);
+  }
+
+  // Draw observation station points if enabled
+  if (m_showObservationPoints) {
+    painter.setPen(QPen(QColor(30, 120, 30), 1.5));
+    painter.setBrush(QColor(240, 255, 240));
+    for (int i = 0; i < nLines; ++i) {
+      double xw = columnCoordinate(i);
+      int sx = worldToScreenX(xw);
+      int r = 0, c = 0;
+      getRowCol(i, r, c);
+      double topoZ = m_doc->model().getZ(r, c, 0);
+      int sy = worldToScreenZ(topoZ);
+      painter.drawEllipse(QPointF(sx, sy), 3.0, 3.0);
+    }
+  }
 }
 
 void ProfileView::drawBodies(QPainter &painter) {

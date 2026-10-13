@@ -173,18 +173,21 @@ void MainWindow::setupMenus() {
             else if (auto *mv = qobject_cast<MapView*>(sub->widget())) mv->fitToWindow();
         }
     });
-    menuView->addAction(tr("Zoom In"), this, [this]() {
+    auto *actZoomIn = menuView->addAction(createZoomIcon(true), tr("Zoom In"), this, [this]() {
         if (auto *sub = m_mdiArea->activeSubWindow()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) pv->zoomIn();
             else if (auto *mv = qobject_cast<MapView*>(sub->widget())) mv->zoomIn();
         }
     });
-    menuView->addAction(tr("Zoom Out"), this, [this]() {
+    actZoomIn->setShortcut(QKeySequence::ZoomIn);
+
+    auto *actZoomOut = menuView->addAction(createZoomIcon(false), tr("Zoom Out"), this, [this]() {
         if (auto *sub = m_mdiArea->activeSubWindow()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) pv->zoomOut();
             else if (auto *mv = qobject_cast<MapView*>(sub->widget())) mv->zoomOut();
         }
     });
+    actZoomOut->setShortcut(QKeySequence::ZoomOut);
 
     // 3. Edit Menu
     auto *menuEdit = mb->addMenu(tr("&Edit"));

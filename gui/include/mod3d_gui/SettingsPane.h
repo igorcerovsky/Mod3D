@@ -31,34 +31,48 @@ public:
 
     void setActiveSubWindow(QMdiSubWindow *sub);
     void refreshAll();
-    void selectFieldsTab();
+    void selectDisplayTab();
+    void selectFieldsTab() { selectDisplayTab(); }
+    void selectProfilesTab();
     void selectBodyEditorTab();
+    void selectPhysicsTab();
+
+    QCheckBox *measuredCurveCheckBox() const { return m_chkProfMeasured; }
+    QCheckBox *differenceCurveCheckBox() const { return m_chkProfDiff; }
+    QRadioButton *mapObservedRadioButton() const { return m_rbMapObserved; }
+    QRadioButton *mapDifferenceRadioButton() const { return m_rbMapDiff; }
 
 signals:
     void requestBodyPropertiesDialog(int bodyId);
 
 private:
     void setupUi();
-    void setupFieldsTab(QWidget *container);
+    void setupDisplayTab(QWidget *container);
+    void setupProfilesTab(QWidget *container);
     void setupBodyEditorTab(QWidget *container);
+    void setupPhysicsTab(QWidget *container);
     void setupComputeCard(QWidget *container);
     void updateViewContext();
     void updateBodyList();
     void loadBodyData();
     void applyBodyData();
+    void loadPhysicsData();
+    void applyPhysicsData();
 
     ModelDocument *m_doc{nullptr};
     MainWindow *m_mainWindow{nullptr};
     QPointer<QWidget> m_activeView{nullptr};
 
     QTabWidget *m_tabs{nullptr};
-    QWidget *m_tabFields{nullptr};
+    QWidget *m_tabDisplay{nullptr};
+    QWidget *m_tabProfiles{nullptr};
     QWidget *m_tabBodies{nullptr};
+    QWidget *m_tabPhysics{nullptr};
 
-    // Card 1: Fields Display
+    // Tab 1: Display
     QLabel *m_lblViewContext{nullptr};
 
-    // Profile View controls
+    // Profile View Display Controls
     QWidget *m_paneProfileFields{nullptr};
     QComboBox *m_comboProfileMainField{nullptr};
     QLabel *m_lblProfileFieldInfo{nullptr};
@@ -67,16 +81,14 @@ private:
     QCheckBox *m_chkProfDiff{nullptr};
     QCheckBox *m_chkProfSecondary{nullptr};
     QComboBox *m_comboProfileSecField{nullptr};
-    QPushButton *m_btnOrientEW{nullptr};
-    QPushButton *m_btnOrientSN{nullptr};
-    QSpinBox *m_spinProfileIdx{nullptr};
-    QPushButton *m_btnProfPrev{nullptr};
-    QPushButton *m_btnProfNext{nullptr};
+    QCheckBox *m_chkProfShowStationPts{nullptr};
     QCheckBox *m_chkProfGrid{nullptr};
+    QCheckBox *m_chkProfShowRelief{nullptr};
+    QCheckBox *m_chkProfShowIntersects{nullptr};
     QCheckBox *m_chkProfGhostPrev{nullptr};
     QCheckBox *m_chkProfGhostNext{nullptr};
 
-    // Map View controls
+    // Map View Display Controls
     QWidget *m_paneMapFields{nullptr};
     QComboBox *m_comboMapField{nullptr};
     QButtonGroup *m_grpMapRaster{nullptr};
@@ -86,10 +98,11 @@ private:
     QRadioButton *m_rbMapRelief{nullptr};
     QRadioButton *m_rbMapNone{nullptr};
     QCheckBox *m_chkMapStationPoints{nullptr};
-    QCheckBox *m_chkMapBodyFootprints{nullptr};
     QCheckBox *m_chkMapProfiles{nullptr};
+    QCheckBox *m_chkMapBodyFootprints{nullptr};
+    QCheckBox *m_chkMapReliefContours{nullptr};
 
-    // 3D View controls
+    // 3D View Display Controls
     QWidget *m_pane3DView{nullptr};
     QPushButton *m_btn3DTop{nullptr};
     QPushButton *m_btn3DReset{nullptr};
@@ -104,8 +117,28 @@ private:
     QCheckBox *m_chk3DWireframe{nullptr};
     QCheckBox *m_chk3DRelief{nullptr};
 
-    // Card 2: Geological Body Editor
-    QGroupBox *m_grpBodies{nullptr};
+    // Tab 2: Profiles Tab Controls
+    QPushButton *m_btnProfTabOrientEW{nullptr};
+    QPushButton *m_btnProfTabOrientSN{nullptr};
+    QPushButton *m_btnProfTabPrev{nullptr};
+    QSpinBox *m_spinProfTabIdx{nullptr};
+    QPushButton *m_btnProfTabNext{nullptr};
+    QLabel *m_lblProfTabCoord{nullptr};
+    QPushButton *m_btnJumpMin{nullptr};
+    QPushButton *m_btnJumpMax{nullptr};
+    QPushButton *m_btnJumpExtremum{nullptr};
+    QLabel *m_lblProfGeometryInfo{nullptr};
+    QCheckBox *m_chkProfTabGrid{nullptr};
+    QCheckBox *m_chkProfTabStationPts{nullptr};
+    QCheckBox *m_chkProfTabRelief{nullptr};
+    QCheckBox *m_chkProfTabIntersects{nullptr};
+    QCheckBox *m_chkProfTabGhostPrev{nullptr};
+    QCheckBox *m_chkProfTabGhostNext{nullptr};
+    QPushButton *m_btnCopyBodyPrev{nullptr};
+    QPushButton *m_btnCopyBodyNext{nullptr};
+    QPushButton *m_btnOpenPerpendicular{nullptr};
+
+    // Tab 3: Geological Body Editor Controls
     QComboBox *m_comboBodies{nullptr};
     QLineEdit *m_editBodyName{nullptr};
     QDoubleSpinBox *m_spinDensity{nullptr};
@@ -114,12 +147,37 @@ private:
     QCheckBox *m_chkBodyActive{nullptr};
     QCheckBox *m_chkBodyLocked{nullptr};
     QPushButton *m_btnContinuousDrawing{nullptr};
+    QDoubleSpinBox *m_spinGradX{nullptr};
+    QDoubleSpinBox *m_spinGradY{nullptr};
+    QDoubleSpinBox *m_spinGradZ{nullptr};
+    QDoubleSpinBox *m_spinRemJ{nullptr};
+    QDoubleSpinBox *m_spinRemInc{nullptr};
+    QDoubleSpinBox *m_spinRemDec{nullptr};
     QPushButton *m_btnAddBody{nullptr};
     QPushButton *m_btnDeleteBody{nullptr};
     QPushButton *m_btnBodyProperties{nullptr};
     QPushButton *m_btnInvertDensity{nullptr};
 
-    // Card 3: Computation & Status
+    // Tab 4: Physics & Model Controls
+    QDoubleSpinBox *m_spinIndT0{nullptr};
+    QDoubleSpinBox *m_spinIndInc{nullptr};
+    QDoubleSpinBox *m_spinIndDec{nullptr};
+    QDoubleSpinBox *m_spinSensorGrvHeight{nullptr};
+    QDoubleSpinBox *m_spinSensorMagHeight{nullptr};
+    QDoubleSpinBox *m_spinRefDensity{nullptr};
+    QDoubleSpinBox *m_spinModelZMax{nullptr};
+    QDoubleSpinBox *m_spinModelZMin{nullptr};
+    QLabel *m_lblModelDimensions{nullptr};
+    QRadioButton *m_rbOptBrent{nullptr};
+    QRadioButton *m_rbOptGolden{nullptr};
+    QRadioButton *m_rbTargetRms{nullptr};
+    QRadioButton *m_rbTargetRoughness{nullptr};
+    QDoubleSpinBox *m_spinFitTol{nullptr};
+    QSpinBox *m_spinFitMaxIter{nullptr};
+    QPushButton *m_btnFitActiveDensity{nullptr};
+    QPushButton *m_btnFit1DVertices{nullptr};
+
+    // Pinned Bottom Computation Card
     QGroupBox *m_grpCompute{nullptr};
     QPushButton *m_btnComputeAll{nullptr};
     QCheckBox *m_chkRealTimeCompute{nullptr};

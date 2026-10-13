@@ -1400,14 +1400,16 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
     EXPECT_EQ(pv1.mainFieldComponent(), mod3d::FieldComponent::DELTA_T);
     EXPECT_EQ(pv2.mainFieldComponent(), mod3d::FieldComponent::GZ);
 
-    // View-specific curve toggles
+    // View-specific curve toggles: without measured field, measured and diff curves are unchecked/false
     EXPECT_TRUE(pv1.showModeledCurve());
-    EXPECT_TRUE(pv1.showMeasuredCurve());
-    EXPECT_TRUE(pv1.showDifferenceCurve());
+    EXPECT_FALSE(pv1.showMeasuredCurve());
+    EXPECT_FALSE(pv1.showDifferenceCurve());
     EXPECT_FALSE(pv1.showSecondaryCurve());
 
-    pv1.setShowMeasuredCurve(false);
-    pv1.setShowDifferenceCurve(false);
+    // Without measured field, setting show to true has no effect
+    pv1.setShowMeasuredCurve(true);
+    EXPECT_FALSE(pv1.showMeasuredCurve());
+
     pv1.setShowSecondaryCurve(true);
     pv1.setSecondaryFieldComponent(mod3d::FieldComponent::GZ);
 
@@ -1416,16 +1418,30 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
     EXPECT_TRUE(pv1.showSecondaryCurve());
     EXPECT_EQ(pv1.secondaryFieldComponent(), mod3d::FieldComponent::GZ);
 
-    // pv2 curve visibility remains untouched
-    EXPECT_TRUE(pv2.showMeasuredCurve());
-    EXPECT_TRUE(pv2.showDifferenceCurve());
-    EXPECT_FALSE(pv2.showSecondaryCurve());
-
-    // 2. MapView single raster display mode
+    // 2. MapView single raster display mode: without measured field, raster mode falls back to Modeled
     MapView mv(&doc);
     EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Modeled);
     EXPECT_EQ(mv.fieldComponent(), mod3d::FieldComponent::GZ);
 
+    mv.setRasterMode(MapView::MapRasterMode::Observed);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Modeled); // falls back to Modeled
+
+    // Now populate observed grid for GZ
+    mod3d::Grid obsGrd(21, 21, 0.0, 0.0, 500.0, 500.0);
+    obsGrd.fill(12.5);
+    doc.observation().setObservedGrid(mod3d::FieldComponent::GZ, obsGrd);
+    doc.setShowMeasuredField(true);
+    doc.setShowDifferenceField(true);
+
+    // pv2 uses GZ which now has measured field
+    EXPECT_TRUE(pv2.hasMeasuredField());
+    pv2.setShowMeasuredCurve(true);
+    pv2.setShowDifferenceCurve(true);
+    EXPECT_TRUE(pv2.showMeasuredCurve());
+    EXPECT_TRUE(pv2.showDifferenceCurve());
+    EXPECT_FALSE(pv2.showSecondaryCurve());
+
+    // MapView now supports Observed and Difference for GZ
     mv.setRasterMode(MapView::MapRasterMode::Observed);
     EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Observed);
 
@@ -1438,8 +1454,11 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
     mv.setRasterMode(MapView::MapRasterMode::None);
     EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::None);
 
+    // Switching MapView component to DELTA_T (which has no measured field) falls back from Observed
+    mv.setRasterMode(MapView::MapRasterMode::Observed);
     mv.setFieldComponent(mod3d::FieldComponent::DELTA_T);
     EXPECT_EQ(mv.fieldComponent(), mod3d::FieldComponent::DELTA_T);
+    EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Modeled);
 
     // Map overlay toggles
     EXPECT_TRUE(mv.showStationPoints());
@@ -1489,5 +1508,273 @@ TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
     // Activate 3D view
     mw.mdiArea()->setActiveSubWindow(sub3D);
     pane->setActiveSubWindow(sub3D);
+}
+
+TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
+    MainWindow mw;
+    mw.resize(1400, 900);
+    mw.show();
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+
+    // 1. Find profile view subwindow
+    QMdiSubWindow *subPv = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (qobject_cast<ProfileView*>(sub->widget())) {
+            subPv = sub;
+            break;
+        }
+    }
+    ASSERT_NE(subPv, nullptr);
+    mw.mdiArea()->setActiveSubWindow(subPv);
+    pane->setActiveSubWindow(subPv);
+
+    auto *pv = qobject_cast<ProfileView*>(subPv->widget());
+    ASSERT_NE(pv, nullptr);
+
+    // Verify Show Checks on ProfileView
+    EXPECT_TRUE(pv->showObservationPoints());
+    EXPECT_TRUE(pv->showRelief());
+    EXPECT_TRUE(pv->showProfileIntersections());
+    EXPECT_TRUE(pv->showGridLines());
+
+    pv->setShowObservationPoints(false);
+    EXPECT_FALSE(pv->showObservationPoints());
+    pv->setShowObservationPoints(true);
+    EXPECT_TRUE(pv->showObservationPoints());
+
+    pv->setShowRelief(false);
+    EXPECT_FALSE(pv->showRelief());
+    pv->setShowRelief(true);
+    EXPECT_TRUE(pv->showRelief());
+
+    pv->setShowProfileIntersections(false);
+    EXPECT_FALSE(pv->showProfileIntersections());
+    pv->setShowProfileIntersections(true);
+    EXPECT_TRUE(pv->showProfileIntersections());
+
+    // 2. Tab switching & screenshot captures
+    QPixmap pix(mw.size());
+
+    // Tab 1: Display Tab
+    pane->selectDisplayTab();
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_display.png");
+
+    // Tab 2: Profiles Tab
+    pane->selectProfilesTab();
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_profiles.png");
+
+    // Tab 3: Bodies Tab
+    pane->selectBodyEditorTab();
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_bodies.png");
+
+    // Tab 4: Physics Tab
+    pane->selectPhysicsTab();
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_physics.png");
+
+    // 3. Test Physics parameters reflection in ModelDocument
+    auto *doc = mw.document();
+    ASSERT_NE(doc, nullptr);
+
+    // Inducing field
+    doc->observation().set_ambient_field_params(65.0, 12.0, 48500.0);
+    EXPECT_DOUBLE_EQ(doc->observation().magnetic_intensity(), 48500.0);
+    EXPECT_DOUBLE_EQ(doc->observation().inclination_deg(), 65.0);
+    EXPECT_DOUBLE_EQ(doc->observation().declination_deg(), 12.0);
+
+    // Sensor heights
+    doc->observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 150.0);
+    doc->observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 120.0);
+    EXPECT_DOUBLE_EQ(doc->observation().gravity_height(), 150.0);
+    EXPECT_DOUBLE_EQ(doc->observation().magnetic_height(), 120.0);
+
+    // Model vertical limits
+    doc->model().setZMin(-3500.0);
+    doc->model().setZMax(450.0);
+    EXPECT_DOUBLE_EQ(doc->model().getZMin(), -3500.0);
+    EXPECT_DOUBLE_EQ(doc->model().getZMax(), 450.0);
+    EXPECT_DOUBLE_EQ(doc->model().getHell(), -3500.0);
+    EXPECT_DOUBLE_EQ(doc->model().getHeaven(), 450.0);
+
+    // Body density gradient and remanence
+    if (!doc->model().getBodies().empty()) {
+        auto *b = doc->model().getBodies().front().get();
+        b->set_density_gradient(mod3d::Point3D(0.001, -0.002, 0.005));
+        EXPECT_DOUBLE_EQ(b->density_gradient().x, 0.001);
+        EXPECT_DOUBLE_EQ(b->density_gradient().y, -0.002);
+        EXPECT_DOUBLE_EQ(b->density_gradient().z, 0.005);
+
+        b->set_remanent_magnetization(mod3d::Point3D(10.0, 20.0, -30.0));
+        EXPECT_DOUBLE_EQ(b->remanent_magnetization().x, 10.0);
+        EXPECT_DOUBLE_EQ(b->remanent_magnetization().y, 20.0);
+        EXPECT_DOUBLE_EQ(b->remanent_magnetization().z, -30.0);
+    }
+}
+
+TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
+    MainWindow mw;
+    mw.resize(1280, 800);
+    mw.show();
+
+    // Verify all toolbars belonging to MainWindow
+    auto toolbars = mw.findChildren<QToolBar*>();
+    // Exactly 3 toolbars: MainToolBar, ProfileToolBar, MapToolBar
+    EXPECT_EQ(toolbars.size(), 3);
+    for (auto *tb : toolbars) {
+        EXPECT_TRUE(tb->objectName() == "MainToolBar" ||
+                    tb->objectName() == "ProfileToolBar" ||
+                    tb->objectName() == "MapToolBar");
+        // Verify no toolbar has an action named "Measured"
+        for (auto *act : tb->actions()) {
+            EXPECT_FALSE(act->text().contains("Measured", Qt::CaseInsensitive));
+        }
+    }
+
+    // Verify that the first actions of MainToolBar are New, Open, Save
+    auto *mainTb = mw.findChild<QToolBar*>("MainToolBar");
+    ASSERT_NE(mainTb, nullptr);
+    auto acts = mainTb->actions();
+    ASSERT_GE(acts.size(), 3);
+    EXPECT_TRUE(acts[0]->text().contains("New"));
+    EXPECT_TRUE(acts[1]->text().contains("Open"));
+    EXPECT_TRUE(acts[2]->text().contains("Save"));
+
+    // Capture screenshot to visually verify toolbar area
+    QPixmap pix(1280, 800);
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/toolbar_clean_no_measured_overlap.png");
+}
+
+TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceWidgets) {
+    MainWindow mw;
+    mw.resize(1280, 800);
+    mw.show();
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+
+    // Find profile view and map view subwindows
+    QMdiSubWindow *subPv = nullptr;
+    QMdiSubWindow *subMv = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (qobject_cast<ProfileView*>(sub->widget())) subPv = sub;
+        else if (qobject_cast<MapView*>(sub->widget())) subMv = sub;
+    }
+    ASSERT_NE(subPv, nullptr);
+    ASSERT_NE(subMv, nullptr);
+
+    // 1. In default new project with no measured field:
+    // ProfileView: Measured and Difference curve checkboxes must be unchecked AND disabled
+    mw.mdiArea()->setActiveSubWindow(subPv);
+    pane->setActiveSubWindow(subPv);
+
+    auto *chkMeasured = pane->measuredCurveCheckBox();
+    auto *chkDiff = pane->differenceCurveCheckBox();
+    ASSERT_NE(chkMeasured, nullptr);
+    ASSERT_NE(chkDiff, nullptr);
+
+    EXPECT_FALSE(chkMeasured->isEnabled());
+    EXPECT_FALSE(chkMeasured->isChecked());
+    EXPECT_FALSE(chkDiff->isEnabled());
+    EXPECT_FALSE(chkDiff->isChecked());
+
+    auto *pv = qobject_cast<ProfileView*>(subPv->widget());
+    ASSERT_NE(pv, nullptr);
+    EXPECT_FALSE(pv->showMeasuredCurve());
+    EXPECT_FALSE(pv->showDifferenceCurve());
+
+    // MapView: Observed and Difference bitmap radio buttons must be disabled
+    mw.mdiArea()->setActiveSubWindow(subMv);
+    pane->setActiveSubWindow(subMv);
+
+    auto *rbMapObserved = pane->mapObservedRadioButton();
+    auto *rbMapDiff = pane->mapDifferenceRadioButton();
+    ASSERT_NE(rbMapObserved, nullptr);
+    ASSERT_NE(rbMapDiff, nullptr);
+
+    EXPECT_FALSE(rbMapObserved->isEnabled());
+    EXPECT_FALSE(rbMapDiff->isEnabled());
+
+    // Grab screenshot of disabled/unchecked state
+    mw.mdiArea()->setActiveSubWindow(subPv);
+    pane->setActiveSubWindow(subPv);
+    QPixmap pixNoObs(1280, 800);
+    pixNoObs.fill(Qt::white);
+    mw.render(&pixNoObs);
+    pixNoObs.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/no_measured_field_disabled_state.png");
+
+    // 2. Now supply measured data for GZ
+    mod3d::Grid obsGrid(21, 21, 0.0, 0.0, 500.0, 500.0);
+    obsGrid.fill(5.0);
+    mw.document()->observation().setObservedGrid(mod3d::FieldComponent::GZ, obsGrid);
+    mw.document()->setShowMeasuredField(true);
+    mw.document()->setShowDifferenceField(true);
+
+    // Activate ProfileView: widgets should now be enabled and checked
+    mw.mdiArea()->setActiveSubWindow(subPv);
+    pane->setActiveSubWindow(subPv);
+
+    EXPECT_TRUE(chkMeasured->isEnabled());
+    EXPECT_TRUE(chkMeasured->isChecked());
+    EXPECT_TRUE(chkDiff->isEnabled());
+    EXPECT_TRUE(chkDiff->isChecked());
+    EXPECT_TRUE(pv->showMeasuredCurve());
+    EXPECT_TRUE(pv->showDifferenceCurve());
+
+    // Grab screenshot of enabled/checked state
+    QPixmap pixWithObs(1280, 800);
+    pixWithObs.fill(Qt::white);
+    mw.render(&pixWithObs);
+    pixWithObs.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/measured_field_enabled_state.png");
+
+    // Activate MapView: radio buttons should now be enabled
+    mw.mdiArea()->setActiveSubWindow(subMv);
+    pane->setActiveSubWindow(subMv);
+
+    EXPECT_TRUE(rbMapObserved->isEnabled());
+    EXPECT_TRUE(rbMapDiff->isEnabled());
+}
+
+TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
+    MainWindow mw;
+    mw.resize(1400, 900);
+    mw.show();
+
+    bool ok = mw.document()->openFile("Examples/SampleBegin.m3d");
+    EXPECT_TRUE(ok);
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+
+    // SampleBegin has no measured grid
+    EXPECT_FALSE(mw.document()->hasAnyObservedGrid());
+    EXPECT_FALSE(mw.document()->showMeasuredField());
+    EXPECT_FALSE(mw.document()->showDifferenceField());
+
+    auto *chkMeasured = pane->measuredCurveCheckBox();
+    auto *chkDiff = pane->differenceCurveCheckBox();
+    ASSERT_NE(chkMeasured, nullptr);
+    ASSERT_NE(chkDiff, nullptr);
+
+    EXPECT_FALSE(chkMeasured->isEnabled());
+    EXPECT_FALSE(chkMeasured->isChecked());
+    EXPECT_FALSE(chkDiff->isEnabled());
+    EXPECT_FALSE(chkDiff->isChecked());
+
+    mw.arrangeDefaultTiles();
+    QPixmap pix(1400, 900);
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/sample_begin_loaded.png");
 }
 

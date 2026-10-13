@@ -104,12 +104,16 @@ public:
     double getYSize() const { return m_ySize; }
     double getZMin() const { return m_zMin; }
     double getZMax() const { return m_zMax; }
+    void setZMin(double zMin) noexcept { m_zMin = zMin; }
+    void setZMax(double zMax) noexcept { m_zMax = zMax; }
     double getXMin() const { return m_xMin; }
     double getXMax() const { return m_xMax; }
     double getYMin() const { return m_yMin; }
     double getYMax() const { return m_yMax; }
     double getHell() const { return m_zMin; }
     double getHeaven() const { return m_zMax; }
+    void setHell(double hell) noexcept { m_zMin = hell; }
+    void setHeaven(double heaven) noexcept { m_zMax = heaven; }
 
     double getXd(int col) const { return m_x0 + (col - 1) * m_xSize; }
     double getYd(int row) const { return m_y0 + (row - 1) * m_ySize; }

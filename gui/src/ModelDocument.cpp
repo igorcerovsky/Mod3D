@@ -43,6 +43,8 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
     m_profileIndex = rows / 2;
     m_filePath.clear();
     m_modified = false;
+    m_showMeasured = false;
+    m_showDiff = false;
 
     computeAll();
 
@@ -75,6 +77,10 @@ bool ModelDocument::openFile(const QString &path) {
         if ((!gzObs || gzObs->empty()) && (!gtObs || gtObs->empty()) && (magObs && !magObs->empty())) {
             m_activeField = mod3d::FieldComponent::DELTA_T;
         }
+
+        bool hasObs = hasAnyObservedGrid();
+        m_showMeasured = hasObs;
+        m_showDiff = hasObs;
 
         computeAll();
         emit documentReset();
@@ -599,15 +605,17 @@ void ModelDocument::setShowModeledField(bool show) {
 }
 
 void ModelDocument::setShowMeasuredField(bool show) {
-    if (m_showMeasured != show) {
-        m_showMeasured = show;
+    bool eff = show && hasAnyObservedGrid();
+    if (m_showMeasured != eff) {
+        m_showMeasured = eff;
         emit fieldDisplayToggled();
     }
 }
 
 void ModelDocument::setShowDifferenceField(bool show) {
-    if (m_showDiff != show) {
-        m_showDiff = show;
+    bool eff = show && hasAnyObservedGrid();
+    if (m_showDiff != eff) {
+        m_showDiff = eff;
         emit fieldDisplayToggled();
     }
 }
@@ -669,8 +677,11 @@ bool ModelDocument::loadMeasuredGrid(const QString &filePath, std::optional<mod3
     mod3d::FieldComponent targetComp = comp.value_or(m_activeField);
     m_project.observation().setObservedGrid(targetComp, g);
     m_project.observation().computeDifference(targetComp);
+    m_showMeasured = true;
+    m_showDiff = true;
     setModified(true);
     emit activeFieldChanged(targetComp);
+    emit fieldDisplayToggled();
     emit modelGeometryChanged();
     emit statusMessage(tr("Imported measured field (%1x%2 nodes) from %3")
                            .arg(g.rows())

@@ -67,6 +67,15 @@ public:
     bool showGridLines() const noexcept { return m_showGridLines; }
     void setShowGridLines(bool show);
 
+    bool showObservationPoints() const noexcept { return m_showObservationPoints; }
+    void setShowObservationPoints(bool show);
+
+    bool showRelief() const noexcept { return m_showRelief; }
+    void setShowRelief(bool show);
+
+    bool showProfileIntersections() const noexcept { return m_showProfileIntersections; }
+    void setShowProfileIntersections(bool show);
+
     // View-specific Field Curves & Primary Y-Axis Field
     mod3d::FieldComponent mainFieldComponent() const noexcept { return m_mainField; }
     void setMainFieldComponent(mod3d::FieldComponent comp);
@@ -74,11 +83,13 @@ public:
     bool showModeledCurve() const noexcept { return m_showModeledCurve; }
     void setShowModeledCurve(bool show);
 
-    bool showMeasuredCurve() const noexcept { return m_showMeasuredCurve; }
+    bool showMeasuredCurve() const noexcept { return m_showMeasuredCurve && hasMeasuredField(); }
     void setShowMeasuredCurve(bool show);
 
-    bool showDifferenceCurve() const noexcept { return m_showDifferenceCurve; }
+    bool showDifferenceCurve() const noexcept { return m_showDifferenceCurve && hasMeasuredField(); }
     void setShowDifferenceCurve(bool show);
+
+    bool hasMeasuredField() const;
 
     bool showSecondaryCurve() const noexcept { return m_showSecondaryCurve; }
     void setShowSecondaryCurve(bool show);
@@ -195,11 +206,14 @@ private:
     // View-specific Field Curves & Primary Y-Axis Field
     mod3d::FieldComponent m_mainField{mod3d::FieldComponent::GZ};
     bool m_showModeledCurve{true};
-    bool m_showMeasuredCurve{true};
-    bool m_showDifferenceCurve{true};
+    bool m_showMeasuredCurve{false};
+    bool m_showDifferenceCurve{false};
     bool m_showSecondaryCurve{false};
     std::optional<mod3d::FieldComponent> m_secondaryField{std::nullopt};
     bool m_continuousDrawingMode{false};
+    bool m_showObservationPoints{true};
+    bool m_showRelief{true};
+    bool m_showProfileIntersections{true};
 };
 
 } // namespace mod3d_gui
