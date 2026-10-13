@@ -29,6 +29,7 @@ public:
     MapView *openMapView();
     GL3DView *openGL3DView();
     SpreadsheetView *openSpreadsheetView();
+    void arrangeDefaultTiles();
 
 protected:
     void closeEvent(QCloseEvent *event) override;

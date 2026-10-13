@@ -5,6 +5,8 @@
 #include <QOpenGLFunctions>
 #include <QPoint>
 
+class QMdiArea;
+
 namespace mod3d_gui {
 
 class GL3DView : public QOpenGLWidget, protected QOpenGLFunctions {
@@ -42,6 +44,12 @@ public:
     [[nodiscard]] bool showBoundingBox() const noexcept { return m_showBoundingBox; }
     void setShowBoundingBox(bool show);
 
+    [[nodiscard]] bool showOrientationIndicator() const noexcept { return m_showOrientationIndicator; }
+    void setShowOrientationIndicator(bool show);
+    [[nodiscard]] float pitch() const noexcept { return m_pitch; }
+    [[nodiscard]] float azimuth() const noexcept { return m_azimuth; }
+    void setCameraAngles(float pitch, float azimuth) { m_pitch = pitch; m_azimuth = azimuth; update(); }
+
     void invalidateMeshes() noexcept { m_meshDirty = true; update(); }
 
 protected:
@@ -61,7 +69,9 @@ private:
     void drawBodies();
     void drawProfilePlane();
     void drawRelief();
+    void drawOrientationHud();
     void showContextMenu(const QPoint &globalPos);
+    QMdiArea *findMdiArea() const;
 
     ModelDocument *m_doc;
 
@@ -69,10 +79,11 @@ private:
     std::vector<mod3d::BodyMesh3D> m_bodyMeshes;
     bool m_meshDirty{true};
 
-    // Camera trackball state
-    float m_rotX{30.0f};
-    float m_rotY{-45.0f};
-    float m_rotZ{0.0f};
+    // Turntable / Orbit camera state (standard across Blender, CAD, ParaView, Google Earth)
+    // m_pitch: Elevation angle from horizontal plane, in degrees [-89.0f, +89.0f]
+    // m_azimuth: Azimuth angle around vertical Z axis, in degrees (continuous 360)
+    float m_pitch{30.0f};
+    float m_azimuth{-45.0f};
     float m_panX{0.0f};
     float m_panY{0.0f};
     float m_zoom{1.0f};
@@ -90,6 +101,7 @@ private:
     bool m_showRelief{true};
     bool m_showProfilePlane{true};
     bool m_showBoundingBox{true};
+    bool m_showOrientationIndicator{true};
 };
 
 } // namespace mod3d_gui

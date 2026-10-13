@@ -12,6 +12,7 @@
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/SpreadsheetView.h"
 #include "mod3d_gui/GL3DView.h"
+#include "mod3d_gui/MainWindow.h"
 
 using namespace mod3d_gui;
 
@@ -1180,6 +1181,160 @@ TEST_F(GuiDocumentTest, GL3DViewFacetedBodiesAndCameraControls) {
     view.setShowBoundingBox(false);
     EXPECT_FALSE(view.showBoundingBox());
 
+    EXPECT_TRUE(view.showOrientationIndicator());
+    view.setShowOrientationIndicator(false);
+    EXPECT_FALSE(view.showOrientationIndicator());
+    view.setShowOrientationIndicator(true);
+
     // Verify invalidateMeshes
     view.invalidateMeshes();
 }
+
+TEST_F(GuiDocumentTest, GL3DViewProfileSlicesAndReliefGridSanity) {
+    ModelDocument doc;
+    doc.newProject(10, 12, 1000.0, 2000.0, 50.0, 50.0, -3000.0, 250.0);
+
+    const auto &m = doc.model();
+    int rows = m.getRows();
+    int cols = m.getCols();
+    int rMax = rows - 2;
+    int cMax = cols - 2;
+
+    // Verify all core grid points used by relief wireframe are valid and have non-Hell elevation
+    for (int r = 1; r <= rMax; ++r) {
+        for (int c = 1; c <= cMax; ++c) {
+            double z = m.getZ(r, c, 0);
+            EXPECT_NE(z, m.getHell());
+            EXPECT_LE(z, m.getZMax());
+            EXPECT_GE(z, m.getZMin());
+        }
+    }
+
+    // Verify profile slice count matches maxProfileIndex() + 1
+    int expectedProfiles = doc.maxProfileIndex() + 1;
+    EXPECT_EQ(expectedProfiles, 10); // EastWest has 10 profiles (rows - 2 = 10)
+    EXPECT_EQ(doc.profileIndex(), 5);
+
+    // Switch orientation and verify
+    doc.setProfileOrientation(ProfileOrientation::SouthNorth);
+    int expectedNSProfiles = doc.maxProfileIndex() + 1;
+    EXPECT_EQ(expectedNSProfiles, 12); // SouthNorth has 12 profiles (cols - 2 = 12)
+
+    GL3DView view(&doc);
+    view.resize(600, 400);
+    EXPECT_TRUE(view.showOrientationIndicator());
+    EXPECT_TRUE(view.showProfilePlane());
+}
+
+TEST_F(GuiDocumentTest, GL3DViewTurntableOrbitAndCameraPresets) {
+    ModelDocument doc;
+    doc.newProject(8, 10, 0.0, 0.0, 50.0, 50.0, -2000.0, 0.0);
+
+    GL3DView view(&doc);
+    view.resize(640, 480);
+
+    // Initial default turntable camera angles
+    EXPECT_FLOAT_EQ(view.pitch(), 30.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -45.0f);
+
+    // Standard CAD presets
+    view.setViewTopMap();
+    EXPECT_FLOAT_EQ(view.pitch(), 89.9f);
+    EXPECT_FLOAT_EQ(view.azimuth(), 0.0f);
+
+    view.setViewEast();
+    EXPECT_FLOAT_EQ(view.pitch(), 0.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), 90.0f);
+
+    view.setViewWest();
+    EXPECT_FLOAT_EQ(view.pitch(), 0.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -90.0f);
+
+    view.setViewNorth();
+    EXPECT_FLOAT_EQ(view.pitch(), 0.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), 180.0f);
+
+    view.setViewSouth();
+    EXPECT_FLOAT_EQ(view.pitch(), 0.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), 0.0f);
+
+    view.resetCamera();
+    EXPECT_FLOAT_EQ(view.pitch(), 30.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -45.0f);
+
+    view.setCameraAngles(45.0f, -60.0f);
+    EXPECT_FLOAT_EQ(view.pitch(), 45.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -60.0f);
+}
+
+TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    // Verify 4 subwindows opened by default
+    auto subs = mw.mdiArea()->subWindowList();
+    ASSERT_EQ(subs.size(), 4);
+
+    ProfileView *pvEW = nullptr;
+    MapView *mv = nullptr;
+    GL3DView *glv = nullptr;
+    ProfileView *pvNS = nullptr;
+
+    QMdiSubWindow *subEW = nullptr;
+    QMdiSubWindow *subMap = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+    QMdiSubWindow *subNS = nullptr;
+
+    for (auto *sub : subs) {
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest && !pvEW) {
+                pvEW = pv;
+                subEW = sub;
+            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth && !pvNS) {
+                pvNS = pv;
+                subNS = sub;
+            }
+        } else if (auto *m = qobject_cast<MapView*>(sub->widget())) {
+            mv = m;
+            subMap = sub;
+        } else if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = g;
+            sub3D = sub;
+        }
+    }
+
+    ASSERT_NE(pvEW, nullptr);
+    ASSERT_NE(mv, nullptr);
+    ASSERT_NE(glv, nullptr);
+    ASSERT_NE(pvNS, nullptr);
+
+    // Call arrangeDefaultTiles to arrange in 2x2 grid
+    mw.arrangeDefaultTiles();
+
+    // Verify relative positions:
+    // Top-Left: E-W profile
+    EXPECT_EQ(subEW->x(), 0);
+    EXPECT_EQ(subEW->y(), 0);
+
+    // Top-Right: Map view
+    EXPECT_GE(subMap->x(), subEW->width() - 2);
+    EXPECT_EQ(subMap->y(), 0);
+
+    // Bottom-Left: 3D view
+    EXPECT_EQ(sub3D->x(), 0);
+    EXPECT_GE(sub3D->y(), subEW->height() - 2);
+
+    // Bottom-Right: N-S / S-N profile
+    EXPECT_GE(subNS->x(), subEW->width() - 2);
+    EXPECT_GE(subNS->y(), subEW->height() - 2);
+
+    // Active profile view should default to top-left E-W profile
+    EXPECT_EQ(mw.activeProfileView(), pvEW);
+
+    // Save screenshot for visual verification
+    QPixmap pix(1200, 800);
+    pix.fill(Qt::white);
+    mw.render(&pix);
+    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/quad_layout_3d_turntable.png");
+}
+

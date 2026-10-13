@@ -14,6 +14,7 @@
 #include <QMessageBox>
 #include <QCloseEvent>
 #include <QApplication>
+#include <QTimer>
 
 namespace mod3d_gui {
 
@@ -46,15 +47,26 @@ MainWindow::MainWindow(QWidget *parent)
                 m_doc->setProfileIndex(pv->profileIndex());
             }
         }
+        for (auto *s : m_mdiArea->subWindowList()) {
+            if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+                glv->update();
+            }
+        }
     });
 
-    // Default workflow per How_to_begin.htm:
-    // Open Map View and Profile View in tiled arrangement!
+    // Default layout on opening:
+    //  - top left: E-W profile
+    //  - top right: map view
+    //  - bottom left: 3D view
+    //  - bottom right: N-S (perpendicular) profile
+    openProfileView(ProfileOrientation::EastWest);
     openMapView();
-    openProfileView();
-    m_mdiArea->tileSubWindows();
+    openGL3DView();
+    openProfileView(ProfileOrientation::SouthNorth);
 
     resize(1200, 800);
+    arrangeDefaultTiles();
+    QTimer::singleShot(0, this, [this]() { arrangeDefaultTiles(); });
 }
 
 void MainWindow::updateWindowTitle() {
@@ -279,6 +291,7 @@ void MainWindow::setupMenus() {
     menuWindow->addAction(tr("New &3D Window"), this, &MainWindow::openGL3DView);
     menuWindow->addAction(tr("New &Spreadsheet Window"), this, &MainWindow::openSpreadsheetView);
     menuWindow->addSeparator();
+    menuWindow->addAction(tr("&2x2 Quad Tile Layout"), this, &MainWindow::arrangeDefaultTiles);
     menuWindow->addAction(tr("&Cascade"), m_mdiArea, &QMdiArea::cascadeSubWindows);
     menuWindow->addAction(tr("&Tile"), m_mdiArea, &QMdiArea::tileSubWindows);
 
@@ -298,6 +311,14 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
     pv->updateTitle();
     sub->resize(600, 420);
     sub->show();
+
+    connect(sub, &QObject::destroyed, this, [this]() {
+        for (auto *s : m_mdiArea->subWindowList()) {
+            if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+                glv->update();
+            }
+        }
+    });
 
     connect(pv, &ProfileView::cursorStationChanged, this, [this](int r, int c, double x, double y, double z, double) {
         m_statusBarMgr->setRow(r);
@@ -323,11 +344,19 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
                 if (otherPv != pv) otherPv->update();
             } else if (auto *mv = qobject_cast<MapView*>(s->widget())) {
                 mv->update();
+            } else if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+                glv->update();
             }
         }
     });
 
     m_toolbarsMgr->setActiveProfileView(pv);
+
+    for (auto *s : m_mdiArea->subWindowList()) {
+        if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+            glv->update();
+        }
+    }
 
     return pv;
 }
@@ -363,6 +392,75 @@ SpreadsheetView *MainWindow::openSpreadsheetView() {
     sub->resize(540, 360);
     sub->show();
     return sv;
+}
+
+void MainWindow::arrangeDefaultTiles() {
+    QMdiSubWindow *subPvEW = nullptr;
+    QMdiSubWindow *subMap = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+    QMdiSubWindow *subPvNS = nullptr;
+
+    for (auto *sub : m_mdiArea->subWindowList()) {
+        if (!sub || !sub->widget()) continue;
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest && !subPvEW) {
+                subPvEW = sub;
+            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth && !subPvNS) {
+                subPvNS = sub;
+            } else if (!subPvEW) {
+                subPvEW = sub;
+            } else if (!subPvNS) {
+                subPvNS = sub;
+            }
+        } else if (qobject_cast<MapView*>(sub->widget())) {
+            if (!subMap) subMap = sub;
+        } else if (qobject_cast<GL3DView*>(sub->widget())) {
+            if (!sub3D) sub3D = sub;
+        }
+    }
+
+    QRect r = m_mdiArea->viewport()->contentsRect();
+    int w = r.width();
+    int h = r.height();
+    if (w < 200 || h < 200) {
+        w = 1180;
+        h = 720;
+    }
+
+    int halfW = w / 2;
+    int halfH = h / 2;
+
+    // Default layout per user specifications:
+    //  - top left: E-W profile
+    if (subPvEW) {
+        subPvEW->showNormal();
+        subPvEW->setGeometry(0, 0, halfW, halfH);
+    }
+    //  - top right: map view
+    if (subMap) {
+        subMap->showNormal();
+        subMap->setGeometry(halfW, 0, w - halfW, halfH);
+    }
+    //  - bottom left: 3D view
+    if (sub3D) {
+        sub3D->showNormal();
+        sub3D->setGeometry(0, halfH, halfW, h - halfH);
+    }
+    //  - bottom right: N-S / perpendicular profile
+    if (subPvNS) {
+        subPvNS->showNormal();
+        subPvNS->setGeometry(halfW, halfH, w - halfW, h - halfH);
+    }
+
+    // Set Top-Left E-W profile active by default
+    if (subPvEW) {
+        m_mdiArea->setActiveSubWindow(subPvEW);
+        if (auto *pv = qobject_cast<ProfileView*>(subPvEW->widget())) {
+            m_toolbarsMgr->setActiveProfileView(pv);
+            m_doc->setProfileOrientation(pv->profileOrientation());
+            m_doc->setProfileIndex(pv->profileIndex());
+        }
+    }
 }
 
 void MainWindow::onFileNew() {
