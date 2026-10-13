@@ -11,6 +11,7 @@
 #include "mod3d_gui/ProfileView.h"
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/SpreadsheetView.h"
+#include "mod3d_gui/GL3DView.h"
 
 using namespace mod3d_gui;
 
@@ -1122,4 +1123,63 @@ TEST_F(GuiDocumentTest, ProfileToMapViewCursorSyncAndMarkerRendering) {
     // Clear cursor
     doc.clearActiveProfileCursor();
     EXPECT_FALSE(doc.activeProfileCursor().active);
+}
+
+TEST_F(GuiDocumentTest, GL3DViewFacetedBodiesAndCameraControls) {
+    ModelDocument doc;
+    doc.newProject(6, 6, 0.0, 0.0, 50.0, 50.0, -1000.0, 0.0);
+
+    auto *b = doc.createNewBody();
+    ASSERT_NE(b, nullptr);
+    b->SetName("SaltDome");
+    int bId = b->GetID();
+
+    for (int r = 1; r <= 3; ++r) {
+        for (int c = 1; c <= 3; ++c) {
+            doc.insertBodyAtRowCol(r, c, -400.0, 80.0, bId);
+        }
+    }
+
+    GL3DView view(&doc);
+    view.resize(600, 400);
+
+    // Camera presets
+    view.setViewEast();
+    view.setViewWest();
+    view.setViewNorth();
+    view.setViewSouth();
+    view.setViewTopMap();
+    view.resetCamera();
+
+    // Display toggles
+    EXPECT_TRUE(view.showFeatureEdges());
+    view.setShowFeatureEdges(false);
+    EXPECT_FALSE(view.showFeatureEdges());
+
+    EXPECT_FALSE(view.wireframeMode());
+    view.setWireframeMode(true);
+    EXPECT_TRUE(view.wireframeMode());
+
+    EXPECT_FALSE(view.showBottom());
+    view.setShowBottom(true);
+    EXPECT_TRUE(view.showBottom());
+
+    EXPECT_FALSE(view.showOuterFacets());
+    view.setShowOuterFacets(true);
+    EXPECT_TRUE(view.showOuterFacets());
+
+    EXPECT_TRUE(view.showRelief());
+    view.setShowRelief(false);
+    EXPECT_FALSE(view.showRelief());
+
+    EXPECT_TRUE(view.showProfilePlane());
+    view.setShowProfilePlane(false);
+    EXPECT_FALSE(view.showProfilePlane());
+
+    EXPECT_TRUE(view.showBoundingBox());
+    view.setShowBoundingBox(false);
+    EXPECT_FALSE(view.showBoundingBox());
+
+    // Verify invalidateMeshes
+    view.invalidateMeshes();
 }

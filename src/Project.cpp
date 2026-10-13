@@ -585,15 +585,19 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
     ofs << "# Unit: meters\n\n";
 
     std::vector<Facet3Pt> facets;
-    m_model.getFacetsComputation(facets);
-
-    // Group facets by body ID
     std::map<int, std::vector<const Facet3Pt*>> bodyFacetMap;
-    for (const auto &fct : facets) {
-        if (!fct.pBody) continue;
-        int id = fct.pBody->GetID();
-        if (bodyId == -1 || id == bodyId) {
+
+    if (bodyId == -1) {
+        m_model.getFacetsComputation(facets);
+        for (const auto &fct : facets) {
+            if (!fct.pBody) continue;
+            int id = fct.pBody->GetID();
             bodyFacetMap[id].push_back(&fct);
+        }
+    } else {
+        m_model.getBodyFacets(bodyId, facets, false);
+        for (const auto &fct : facets) {
+            bodyFacetMap[bodyId].push_back(&fct);
         }
     }
 
@@ -633,12 +637,18 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
 bool Project::exportStl(const std::string &filePath, int bodyId, bool binary) const
 {
     std::vector<Facet3Pt> facets;
-    m_model.getFacetsComputation(facets);
-
     std::vector<const Facet3Pt*> exportList;
-    for (const auto &fct : facets) {
-        if (!fct.pBody) continue;
-        if (bodyId == -1 || fct.pBody->GetID() == bodyId) {
+
+    if (bodyId == -1) {
+        m_model.getFacetsComputation(facets);
+        for (const auto &fct : facets) {
+            if (fct.pBody) {
+                exportList.push_back(&fct);
+            }
+        }
+    } else {
+        m_model.getBodyFacets(bodyId, facets, false);
+        for (const auto &fct : facets) {
             exportList.push_back(&fct);
         }
     }
@@ -697,12 +707,18 @@ bool Project::exportVtk(const std::string &filePath, int bodyId) const
     if (!ofs.is_open()) return false;
 
     std::vector<Facet3Pt> facets;
-    m_model.getFacetsComputation(facets);
-
     std::vector<const Facet3Pt*> exportList;
-    for (const auto &fct : facets) {
-        if (!fct.pBody) continue;
-        if (bodyId == -1 || fct.pBody->GetID() == bodyId) {
+
+    if (bodyId == -1) {
+        m_model.getFacetsComputation(facets);
+        for (const auto &fct : facets) {
+            if (fct.pBody) {
+                exportList.push_back(&fct);
+            }
+        }
+    } else {
+        m_model.getBodyFacets(bodyId, facets, false);
+        for (const auto &fct : facets) {
             exportList.push_back(&fct);
         }
     }

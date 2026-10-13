@@ -57,6 +57,22 @@ struct BodyBoundarySegment {
     Point3D pt1;
 };
 
+// 3D Polyhedral Body Mesh representation for visualization and CAD export (OBJ, STL, VTK)
+struct BodyMesh3D {
+    int bodyId{-1};
+    std::string bodyName;
+    BodyColor color;
+    float alpha{1.0f};
+    bool isVisible{true};
+    bool isTransparent{false};
+
+    // Watertight triangulated boundary representation (all normals point outward from this body)
+    std::vector<Facet3Pt> facets;
+
+    // Feature / boundary edges (for crisp CAD-style rendering on top of shaded facets)
+    std::vector<std::pair<Point3D, Point3D>> featureEdges;
+};
+
 /**
  * @brief Stratigraphic Geological Model & 3D Polyhedral Facet Engine.
  * 
@@ -143,6 +159,11 @@ public:
     int getFacetsComputation(std::vector<Facet3Pt> &outList) const;
     std::vector<Facet3Pt> *getFacetList(int row, int col);
     const std::vector<Facet3Pt> *getFacetList(int row, int col) const;
+
+    // 3D Polyhedral Body Meshes & Facet Representation for Rendering and Export
+    std::vector<BodyMesh3D> generateBodyMeshes(int bodyId = -1, bool includeOuter = false) const;
+    int getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter = false) const;
+    int getFacetsFor3DView(std::vector<Facet3Pt> &outList, bool includeOuter = false) const;
 
     // Body Boundaries (2D Horizontal Projection for Map View)
     const std::vector<BodyBoundarySegment> *getBodyBoundAt(int row, int col) const;

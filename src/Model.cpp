@@ -2,6 +2,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cassert>
+#include <map>
+#include <tuple>
 
 namespace mod3d {
 
@@ -1012,6 +1014,143 @@ int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
         }
     }
     return static_cast<int>(outList.size());
+}
+
+int Model::getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter) const
+{
+    outList.clear();
+    int rMin = 0;
+    int rMax = m_nRows - 2;
+    int cMin = 0;
+    int cMax = m_nCols - 2;
+
+    if (!includeOuter && m_nRows > 3 && m_nCols > 3) {
+        rMin = 1;
+        rMax = m_nRows - 3;
+        cMin = 1;
+        cMax = m_nCols - 3;
+    }
+
+    for (int r = rMin; r <= rMax; ++r) {
+        for (int c = cMin; c <= cMax; ++c) {
+            const auto *lst = getFacetList(r, c);
+            if (!lst) continue;
+            for (const auto &fct : *lst) {
+                if (bodyId == -1) {
+                    outList.push_back(fct);
+                } else {
+                    if (fct.pBody && fct.pBody->GetID() == bodyId) {
+                        outList.push_back(fct);
+                    } else if (fct.pBodyOpos && fct.pBodyOpos->GetID() == bodyId) {
+                        // Contact interface: invert winding and normal so it faces outward from this body
+                        Facet3Pt copy = fct;
+                        copy.pBody = fct.pBodyOpos;
+                        copy.pBodyOpos = fct.pBody;
+                        copy.pts[1] = fct.pts[2];
+                        copy.pts[2] = fct.pts[1];
+                        copy.v_n = -fct.v_n;
+                        outList.push_back(copy);
+                    }
+                }
+            }
+        }
+    }
+    return static_cast<int>(outList.size());
+}
+
+int Model::getFacetsFor3DView(std::vector<Facet3Pt> &outList, bool includeOuter) const
+{
+    return getBodyFacets(-1, outList, includeOuter);
+}
+
+std::vector<BodyMesh3D> Model::generateBodyMeshes(int bodyId, bool includeOuter) const
+{
+    std::vector<BodyMesh3D> meshes;
+    for (const auto &bPtr : m_bodies) {
+        if (!bPtr) continue;
+        int bId = bPtr->GetID();
+        if (bodyId != -1 && bId != bodyId) continue;
+
+        BodyMesh3D mesh;
+        mesh.bodyId = bId;
+        mesh.bodyName = bPtr->GetName();
+        mesh.color = bPtr->GetColor();
+        mesh.alpha = bPtr->IsTransparent() ? bPtr->GetTransparency() : 1.0f;
+        mesh.isVisible = bPtr->IsVisible();
+        mesh.isTransparent = bPtr->IsTransparent();
+
+        // Get watertight facets for this body
+        getBodyFacets(bId, mesh.facets, includeOuter);
+
+        // Extract feature crease & boundary edges for crisp CAD rendering
+        struct CanonicalEdge {
+            long long x0, y0, z0;
+            long long x1, y1, z1;
+            Point3D pt0, pt1;
+
+            bool operator<(const CanonicalEdge &o) const {
+                if (x0 != o.x0) return x0 < o.x0;
+                if (y0 != o.y0) return y0 < o.y0;
+                if (z0 != o.z0) return z0 < o.z0;
+                if (x1 != o.x1) return x1 < o.x1;
+                if (y1 != o.y1) return y1 < o.y1;
+                return z1 < o.z1;
+            }
+        };
+
+        struct EdgeInfo {
+            Point3D pt0, pt1;
+            std::vector<Point3D> facetNormals;
+        };
+
+        std::map<CanonicalEdge, EdgeInfo> edgeMap;
+
+        auto quant = [](double v) -> long long {
+            return static_cast<long long>(std::round(v * 100.0));
+        };
+
+        for (const auto &f : mesh.facets) {
+            for (int k = 0; k < 3; ++k) {
+                const Point3D &pA = f.pts[k];
+                const Point3D &pB = f.pts[(k + 1) % 3];
+
+                long long qAx = quant(pA.x), qAy = quant(pA.y), qAz = quant(pA.z);
+                long long qBx = quant(pB.x), qBy = quant(pB.y), qBz = quant(pB.z);
+
+                CanonicalEdge key;
+                Point3D startPt, endPt;
+                if (std::tie(qAx, qAy, qAz) <= std::tie(qBx, qBy, qBz)) {
+                    key = { qAx, qAy, qAz, qBx, qBy, qBz, pA, pB };
+                    startPt = pA; endPt = pB;
+                } else {
+                    key = { qBx, qBy, qBz, qAx, qAy, qAz, pB, pA };
+                    startPt = pB; endPt = pA;
+                }
+
+                auto &info = edgeMap[key];
+                info.pt0 = startPt;
+                info.pt1 = endPt;
+                info.facetNormals.push_back(f.v_n);
+            }
+        }
+
+        mesh.featureEdges.reserve(edgeMap.size() / 2);
+        for (const auto &[key, info] : edgeMap) {
+            if (info.facetNormals.size() == 1) {
+                // Boundary / silhouette edge
+                mesh.featureEdges.push_back({info.pt0, info.pt1});
+            } else if (info.facetNormals.size() >= 2) {
+                // Dihedral angle check between adjacent facets: crease edge if angle > ~20 deg
+                double dot = info.facetNormals[0].dot(info.facetNormals[1]);
+                if (dot < 0.94) {
+                    mesh.featureEdges.push_back({info.pt0, info.pt1});
+                }
+            }
+        }
+
+        meshes.push_back(std::move(mesh));
+    }
+    return meshes;
 }
 
 const std::vector<BodyBoundarySegment> *Model::getBodyBoundAt(int row, int col) const

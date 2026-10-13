@@ -483,3 +483,71 @@ TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     }
 }
 
+TEST(ModelTest, GenerateBodyMeshesAndFacets3D) {
+    Model model;
+    model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    Body *b1 = model.newBody();
+    ASSERT_NE(b1, nullptr);
+    b1->SetName("Granite");
+    int id1 = b1->GetID();
+
+    Body *b2 = model.newBody();
+    ASSERT_NE(b2, nullptr);
+    b2->SetName("Basalt");
+    int id2 = b2->GetID();
+
+    // Insert body 1 at depth -500 to -700
+    for (int r = 1; r <= 3; ++r) {
+        for (int c = 1; c <= 3; ++c) {
+            model.insertBody(r, c, -600.0, 100.0, false, id1);
+        }
+    }
+
+    // Insert body 2 adjacent below body 1 (contact at -700 down to -1000)
+    for (int r = 1; r <= 3; ++r) {
+        for (int c = 1; c <= 3; ++c) {
+            model.insertBody(r, c, -850.0, 150.0, false, id2);
+        }
+    }
+
+    model.initFacetList();
+
+    // 1. Test getBodyFacets for body 1
+    std::vector<Facet3Pt> b1Facets;
+    int c1 = model.getBodyFacets(id1, b1Facets, false);
+    EXPECT_GT(c1, 0);
+
+    // 2. Test getBodyFacets for body 2
+    std::vector<Facet3Pt> b2Facets;
+    int c2 = model.getBodyFacets(id2, b2Facets, false);
+    EXPECT_GT(c2, 0);
+
+    // Verify all facets have unit normal
+    for (const auto &f : b1Facets) {
+        EXPECT_NEAR(f.v_n.norm(), 1.0, 1e-5);
+    }
+    for (const auto &f : b2Facets) {
+        EXPECT_NEAR(f.v_n.norm(), 1.0, 1e-5);
+    }
+
+    // 3. Test generateBodyMeshes
+    auto meshes = model.generateBodyMeshes(-1, false);
+    ASSERT_EQ(meshes.size(), 2u);
+
+    EXPECT_EQ(meshes[0].bodyId, id1);
+    EXPECT_EQ(meshes[0].bodyName, "Granite");
+    EXPECT_GT(meshes[0].facets.size(), 0u);
+    EXPECT_GT(meshes[0].featureEdges.size(), 0u);
+
+    EXPECT_EQ(meshes[1].bodyId, id2);
+    EXPECT_EQ(meshes[1].bodyName, "Basalt");
+    EXPECT_GT(meshes[1].facets.size(), 0u);
+    EXPECT_GT(meshes[1].featureEdges.size(), 0u);
+
+    // Verify feature edges have non-zero length
+    for (const auto &edge : meshes[0].featureEdges) {
+        EXPECT_GT((edge.first - edge.second).norm(), 0.0);
+    }
+}
+
