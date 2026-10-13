@@ -42,6 +42,10 @@ public:
     QRadioButton *mapObservedRadioButton() const { return m_rbMapObserved; }
     QRadioButton *mapDifferenceRadioButton() const { return m_rbMapDiff; }
 
+    QComboBox *bodyComboBox() const { return m_comboBodies; }
+    QDoubleSpinBox *bodyDensitySpinBox() const { return m_spinDensity; }
+    QDoubleSpinBox *bodySusceptibilitySpinBox() const { return m_spinSusceptibility; }
+
 signals:
     void requestBodyPropertiesDialog(int bodyId);
 

@@ -780,17 +780,17 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
     form->addRow(tr("Name:"), m_editBodyName);
 
     m_spinDensity = new QDoubleSpinBox(inner);
-    m_spinDensity->setRange(-15.0, 15.0);
-    m_spinDensity->setSingleStep(0.05);
-    m_spinDensity->setDecimals(3);
-    m_spinDensity->setSuffix(tr(" g/cm³"));
+    m_spinDensity->setRange(-10000.0, 10000.0);
+    m_spinDensity->setSingleStep(50.0);
+    m_spinDensity->setDecimals(1);
+    m_spinDensity->setSuffix(tr(" kg/m³"));
     form->addRow(tr("Density:"), m_spinDensity);
 
     m_spinSusceptibility = new QDoubleSpinBox(inner);
-    m_spinSusceptibility->setRange(0.0, 2000.0);
-    m_spinSusceptibility->setSingleStep(0.1);
-    m_spinSusceptibility->setDecimals(2);
-    m_spinSusceptibility->setSuffix(tr(" ×10⁻³ SI"));
+    m_spinSusceptibility->setRange(-10.0, 10.0);
+    m_spinSusceptibility->setSingleStep(0.001);
+    m_spinSusceptibility->setDecimals(5);
+    m_spinSusceptibility->setSuffix(tr(" SI"));
     form->addRow(tr("Susceptibility:"), m_spinSusceptibility);
 
     m_btnBodyColor = new QPushButton(tr("Select Color..."), inner);
@@ -1322,7 +1322,7 @@ void SettingsPane::updateBodyList() {
     const auto &bodies = m_doc->model().getBodies();
     for (const auto &b : bodies) {
         QColor col(b->color().r, b->color().g, b->color().b);
-        QString itemText = QString("Body %1: %2 (ρ=%3)").arg(b->id()).arg(QString::fromStdString(b->name())).arg(b->density(), 0, 'f', 2);
+        QString itemText = QString("Body %1: %2 (ρ=%3 kg/m³)").arg(b->id()).arg(QString::fromStdString(b->name())).arg(b->raw_density(), 0, 'f', 1);
         m_comboBodies->addItem(createColorIcon(col), itemText, b->id());
     }
 
@@ -1354,8 +1354,8 @@ void SettingsPane::loadBodyData() {
 
     m_blockSync = true;
     m_editBodyName->setText(QString::fromStdString(b->name()));
-    m_spinDensity->setValue(b->density());
-    m_spinSusceptibility->setValue(b->susceptibility() * 1000.0);
+    m_spinDensity->setValue(b->raw_density());
+    m_spinSusceptibility->setValue(b->susceptibility());
     QColor col(b->color().r, b->color().g, b->color().b);
     m_btnBodyColor->setIcon(createColorIcon(col, 20));
     m_btnBodyColor->setText(QString("#%1%2%3")
@@ -1389,7 +1389,7 @@ void SettingsPane::applyBodyData() {
 
     b->set_name(m_editBodyName->text().toStdString());
     b->set_density(m_spinDensity->value());
-    b->set_susceptibility(m_spinSusceptibility->value() / 1000.0);
+    b->set_susceptibility(m_spinSusceptibility->value());
     b->set_active(m_chkBodyActive->isChecked());
     b->set_locked(m_chkBodyLocked->isChecked());
 

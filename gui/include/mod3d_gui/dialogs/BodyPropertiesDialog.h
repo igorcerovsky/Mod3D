@@ -19,6 +19,9 @@ public:
     explicit BodyPropertiesDialog(mod3d::Body *body, QWidget *parent = nullptr);
     ~BodyPropertiesDialog() override = default;
 
+    QDoubleSpinBox *densitySpinBox() const { return m_spinDensity; }
+    QDoubleSpinBox *susceptibilitySpinBox() const { return m_spinKappa; }
+
 private:
     void setupGravityTab(QTabWidget *tabs);
     void setupMagneticsTab(QTabWidget *tabs);

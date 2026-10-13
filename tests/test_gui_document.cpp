@@ -13,6 +13,8 @@
 #include "mod3d_gui/SpreadsheetView.h"
 #include "mod3d_gui/GL3DView.h"
 #include "mod3d_gui/MainWindow.h"
+#include "mod3d_gui/SettingsPane.h"
+#include "mod3d_gui/dialogs/BodyPropertiesDialog.h"
 
 using namespace mod3d_gui;
 
@@ -1780,5 +1782,69 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
     pix.fill(Qt::white);
     mw.render(&pix);
     pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/sample_begin_loaded.png");
+}
+
+TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
+    MainWindow mw;
+    mw.resize(1400, 900);
+    mw.show();
+
+    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    if (!std::filesystem::exists(samplePath)) {
+        samplePath = "Examples/Sample.m3d";
+    }
+    bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
+    ASSERT_TRUE(ok);
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+
+    // Verify model has 3 bodies and Body 2 has authentic raw density 3400 kg/m3 and susc 0.01 SI
+    auto *b2 = mw.document()->model().getBody(2);
+    ASSERT_NE(b2, nullptr);
+    EXPECT_DOUBLE_EQ(b2->raw_density(), 3400.0);
+    EXPECT_DOUBLE_EQ(b2->susceptibility(), 0.01);
+
+    // Switch to Geological Body Editor tab in SettingsPane
+    pane->selectBodyEditorTab();
+
+    auto *comboBodies = pane->bodyComboBox();
+    auto *spinDensity = pane->bodyDensitySpinBox();
+    auto *spinSusc = pane->bodySusceptibilitySpinBox();
+
+    ASSERT_NE(comboBodies, nullptr);
+    ASSERT_NE(spinDensity, nullptr);
+    ASSERT_NE(spinSusc, nullptr);
+
+    // Suffixes must use SI units
+    EXPECT_EQ(spinDensity->suffix(), " kg/m³");
+    EXPECT_EQ(spinSusc->suffix(), " SI");
+
+    // Select Body 2 in SettingsPane
+    int idx2 = comboBodies->findData(2);
+    ASSERT_GE(idx2, 0);
+    comboBodies->setCurrentIndex(idx2);
+
+    // Values in Body tab must match authentic SI values exactly
+    EXPECT_DOUBLE_EQ(spinDensity->value(), 3400.0);
+    EXPECT_DOUBLE_EQ(spinSusc->value(), 0.01);
+    EXPECT_TRUE(comboBodies->itemText(idx2).contains("3400.0 kg/m³"));
+
+    // Verify BodyPropertiesDialog displays the exact same SI values and units
+    BodyPropertiesDialog dlg(b2, &mw);
+    ASSERT_NE(dlg.densitySpinBox(), nullptr);
+    ASSERT_NE(dlg.susceptibilitySpinBox(), nullptr);
+    EXPECT_EQ(dlg.densitySpinBox()->suffix(), " kg/m³");
+    EXPECT_EQ(dlg.susceptibilitySpinBox()->suffix(), " SI");
+    EXPECT_DOUBLE_EQ(dlg.densitySpinBox()->value(), 3400.0);
+    EXPECT_DOUBLE_EQ(dlg.susceptibilitySpinBox()->value(), 0.01);
+
+    // Edit density and susceptibility in SettingsPane and verify SI persistence
+    spinDensity->setValue(3550.0);
+    spinSusc->setValue(0.025);
+
+    EXPECT_DOUBLE_EQ(b2->raw_density(), 3550.0);
+    EXPECT_DOUBLE_EQ(b2->susceptibility(), 0.025);
+    EXPECT_TRUE(comboBodies->itemText(idx2).contains("3550.0 kg/m³"));
 }
 

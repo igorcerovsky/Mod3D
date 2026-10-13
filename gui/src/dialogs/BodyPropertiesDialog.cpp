@@ -43,6 +43,7 @@ void BodyPropertiesDialog::setupGravityTab(QTabWidget *tabs) {
 
     m_spinDensity = new QDoubleSpinBox(page);
     m_spinDensity->setRange(-10000.0, 10000.0);
+    m_spinDensity->setSingleStep(50.0);
     m_spinDensity->setDecimals(1);
     m_spinDensity->setSuffix(" kg/m³");
     m_spinDensity->setValue(m_body ? m_body->raw_density() : 2670.0);
@@ -89,8 +90,10 @@ void BodyPropertiesDialog::setupMagneticsTab(QTabWidget *tabs) {
     auto *layout = new QFormLayout(page);
 
     m_spinKappa = new QDoubleSpinBox(page);
-    m_spinKappa->setRange(0.0, 10.0);
+    m_spinKappa->setRange(-10.0, 10.0);
+    m_spinKappa->setSingleStep(0.001);
     m_spinKappa->setDecimals(5);
+    m_spinKappa->setSuffix(" SI");
     m_spinKappa->setValue(m_body ? m_body->susceptibility() : 0.0);
     layout->addRow(tr("Susceptibility κ (SI):"), m_spinKappa);
 
