@@ -74,6 +74,34 @@ add_executable(mod3d_gui
     src/main.cpp
 )
 
+if (EXISTS "${CMAKE_SOURCE_DIR}/resources/resources.qrc")
+    target_sources(mod3d_gui PRIVATE "${CMAKE_SOURCE_DIR}/resources/resources.qrc")
+endif()
+
+if (APPLE)
+    set_target_properties(mod3d_gui PROPERTIES
+        OUTPUT_NAME "Mod3D"
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_BUNDLE_NAME "Mod3D"
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.geophysics.mod3d"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
+    )
+    if (EXISTS "${CMAKE_SOURCE_DIR}/resources/Mod3D.icns")
+        set_source_files_properties("${CMAKE_SOURCE_DIR}/resources/Mod3D.icns" PROPERTIES
+            MACOSX_PACKAGE_LOCATION "Resources"
+        )
+        target_sources(mod3d_gui PRIVATE "${CMAKE_SOURCE_DIR}/resources/Mod3D.icns")
+        set_target_properties(mod3d_gui PROPERTIES
+            MACOSX_BUNDLE_ICON_FILE "Mod3D.icns"
+        )
+    endif()
+elseif (WIN32)
+    set_target_properties(mod3d_gui PROPERTIES
+        WIN32_EXECUTABLE TRUE
+    )
+endif()
+
 target_link_libraries(mod3d_gui PRIVATE
     mod3d_gui_lib
 )

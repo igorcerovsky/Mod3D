@@ -1,0 +1,205 @@
+name: Build & Release Mod3D
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # =========================================================================
+  # macOS Build (Apple Silicon & Intel)
+  # =========================================================================
+  build-macos:
+    name: macOS (${{ matrix.os == 'macos-14' && 'Apple Silicon' || 'Intel' }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-13]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies via Homebrew
+        run: |
+          brew update
+          brew install cmake ninja qt@6
+
+      - name: Configure CMake
+        run: |
+          QT_PATH="$(brew --prefix qt@6)"
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_PREFIX_PATH="$QT_PATH"
+
+      - name: Build Mod3D
+        run: cmake --build build --parallel
+
+      - name: Run Test Suite
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package macOS App Bundle & DMG
+        run: |
+          QT_BIN="$(brew --prefix qt@6)/bin"
+          ARCH="${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }}"
+
+          # Deploy Qt frameworks into Mod3D.app
+          "$QT_BIN/macdeployqt" build/gui/Mod3D.app -always-overwrite
+
+          # Create zip archive of the app bundle
+          ditto -c -k --sequesterRsrc --keepParent build/gui/Mod3D.app "Mod3D-macOS-${ARCH}.zip"
+
+          # Create distributable DMG disk image
+          hdiutil create -volname "Mod3D" -srcfolder build/gui/Mod3D.app -ov -format UDZO "Mod3D-macOS-${ARCH}.dmg"
+
+      - name: Upload macOS Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mod3D-macOS-${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }}
+          path: |
+            Mod3D-macOS-*.dmg
+            Mod3D-macOS-*.zip
+
+  # =========================================================================
+  # Linux Build (Ubuntu x86_64)
+  # =========================================================================
+  build-linux:
+    name: Linux (Ubuntu x86_64)
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies & Qt 6
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            cmake \
+            ninja-build \
+            qt6-base-dev \
+            qt6-base-dev-tools \
+            libgl1-mesa-dev \
+            libglu1-mesa-dev \
+            libxkbcommon-dev
+
+      - name: Configure CMake
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build Mod3D
+        run: cmake --build build --parallel
+
+      - name: Run Test Suite
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Package Linux Binary Tarball
+        run: |
+          DIST_DIR="Mod3D-Linux-x86_64"
+          mkdir -p "$DIST_DIR/bin"
+          cp build/gui/mod3d_gui "$DIST_DIR/bin/"
+          cp -r Examples "$DIST_DIR/"
+          cp README.md LICENSE "$DIST_DIR/"
+          tar -czvf "Mod3D-Linux-x86_64.tar.gz" "$DIST_DIR"
+
+      - name: Upload Linux Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mod3D-Linux-x86_64
+          path: Mod3D-Linux-x86_64.tar.gz
+
+  # =========================================================================
+  # Windows Build (MSVC 2022 x64)
+  # =========================================================================
+  build-windows:
+    name: Windows (MSVC x64)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt 6
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.7.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtbase'
+
+      - name: Configure CMake
+        run: |
+          cmake -B build `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build Mod3D
+        run: cmake --build build --config Release --parallel
+
+      - name: Run Test Suite
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Package Windows Distribution with windeployqt
+        shell: pwsh
+        run: |
+          $DistDir = "Mod3D-Windows-x64"
+          New-Item -ItemType Directory -Path $DistDir -Force
+
+          # Deploy Qt dependencies using windeployqt
+          & "$env:QT_ROOT_DIR\bin\windeployqt.exe" --release --compiler-runtime build\gui\Release\mod3d_gui.exe
+
+          # Copy binaries and bundled assets
+          Copy-Item -Path build\gui\Release\* -Destination $DistDir -Recurse
+          Copy-Item -Path Examples -Destination "$DistDir\Examples" -Recurse
+          Copy-Item -Path README.md, LICENSE -Destination $DistDir
+
+          # Create zip package
+          Compress-Archive -Path $DistDir -DestinationPath "Mod3D-Windows-x64.zip"
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mod3D-Windows-x64
+          path: Mod3D-Windows-x64.zip
+
+  # =========================================================================
+  # GitHub Release (Triggered on git tag v*)
+  # =========================================================================
+  release:
+    name: Publish GitHub Release
+    needs: [build-macos, build-linux, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p assets
+          find release-artifacts -type f \( -name "*.dmg" -o -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} assets/ \;
+          ls -lh assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
