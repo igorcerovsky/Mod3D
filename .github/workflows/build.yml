@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   # =========================================================================
-  # macOS Build (Apple Silicon & Intel)
+  # macOS Build (Apple Silicon; Intel macos-13 disabled due to queue delays)
   # =========================================================================
   build-macos:
     name: macOS (${{ matrix.os == 'macos-14' && 'Apple Silicon' || 'Intel' }})
@@ -21,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-13]
+        os: [macos-14] # Note: macos-13 (Intel) can be re-enabled here in the future
 
     steps:
       - name: Checkout repository
