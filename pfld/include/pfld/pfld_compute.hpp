@@ -12,6 +12,39 @@ namespace pfld {
 
 namespace detail {
 
+#if defined(__cpp_lib_jthread) && __cpp_lib_jthread >= 201911L
+using jthread_type = std::jthread;
+#else
+// RAII thread wrapper for platforms/compilers where libc++ lacks std::jthread (e.g. Apple Clang on macOS)
+class jthread_type {
+    std::thread m_thread;
+public:
+    jthread_type() noexcept = default;
+    template <typename Callable, typename... Args>
+    explicit jthread_type(Callable&& f, Args&&... args)
+        : m_thread(std::forward<Callable>(f), std::forward<Args>(args)...) {}
+    ~jthread_type() {
+        if (m_thread.joinable()) {
+            m_thread.join();
+        }
+    }
+    jthread_type(const jthread_type&) = delete;
+    jthread_type& operator=(const jthread_type&) = delete;
+    jthread_type(jthread_type&& other) noexcept : m_thread(std::move(other.m_thread)) {}
+    jthread_type& operator=(jthread_type&& other) noexcept {
+        if (this != &other) {
+            if (m_thread.joinable()) {
+                m_thread.join();
+            }
+            m_thread = std::move(other.m_thread);
+        }
+        return *this;
+    }
+    bool joinable() const noexcept { return m_thread.joinable(); }
+    void join() { m_thread.join(); }
+};
+#endif
+
 struct ThreadPartition {
 	size_t num_threads{1};
 };
@@ -51,7 +84,7 @@ inline void parallel_init_facets(FacetRange& facets) {
 		return;
 	}
 
-	std::vector<std::jthread> threads;
+	std::vector<jthread_type> threads;
 	threads.reserve(num_threads);
 
 	for (size_t i = 0; i < num_threads; ++i) {
@@ -66,6 +99,8 @@ inline void parallel_init_facets(FacetRange& facets) {
 }
 
 } // namespace detail
+
+using detail::jthread_type;
 
 /**
  * @brief Serial 3D vector gravity field computation for all field points.
@@ -103,7 +138,7 @@ inline void Field_G_parallel(const FacetRange& facets, const pfld::ptvec& field_
 	}
 
 	const size_t chunk_size = (length + threads_count - 1) / threads_count;
-	std::vector<std::jthread> threads;
+	std::vector<jthread_type> threads;
 	threads.reserve(threads_count);
 
 	for (size_t i = 0; i < threads_count; ++i) {
@@ -163,7 +198,7 @@ inline void Field_Gz(const FacetRange& facets, const pfld::ptvec& fldPoints, pfl
 	}
 
 	const size_t chunk_size = (length + threads_count - 1) / threads_count;
-	std::vector<std::jthread> threads;
+	std::vector<jthread_type> threads;
 	threads.reserve(threads_count);
 
 	for (size_t i = 0; i < threads_count; ++i) {
@@ -218,7 +253,7 @@ inline void Field_Gz_linear_parallel(const FacetRange& facets, const pfld::ptvec
 	}
 
 	const size_t chunk_size = (length + threads_count - 1) / threads_count;
-	std::vector<std::jthread> threads;
+	std::vector<jthread_type> threads;
 	threads.reserve(threads_count);
 
 	for (size_t i = 0; i < threads_count; ++i) {
@@ -266,7 +301,7 @@ inline void Field_Gz_(pfld::facet_vec& facets, pfld::ptvec& fldPoints, pfld::val
 	}
 
 	std::vector<std::future<valvec>> futures(num_threads);
-	std::vector<std::jthread> threads;
+	std::vector<jthread_type> threads;
 	threads.reserve(num_threads);
 
 	for (size_t i = 0; i < num_threads; ++i) {
@@ -369,7 +404,7 @@ inline void Field_Gz(std::span<const facet> facets, std::span<const point> field
 		return;
 	}
 
-	std::vector<std::jthread> threads;
+	std::vector<jthread_type> threads;
 	threads.reserve(num_threads);
 
 	for (size_t i = 0; i < num_threads; ++i) {
