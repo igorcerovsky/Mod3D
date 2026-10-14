@@ -59,6 +59,7 @@ TEST(MeshExportersTest, ExportWavefrontOBJ) {
     EXPECT_TRUE(hasFace);
     EXPECT_TRUE(hasObject);
 
+    ifs.close();
     fs::remove(objPath);
 }
 
@@ -86,6 +87,7 @@ TEST(MeshExportersTest, ExportStlAsciiAndBinary) {
     EXPECT_TRUE(hasSolid);
     EXPECT_TRUE(hasFacet);
     EXPECT_TRUE(hasEndSolid);
+    ifsAscii.close();
     fs::remove(stlAsciiPath);
 
     // 2. Binary STL
@@ -105,6 +107,7 @@ TEST(MeshExportersTest, ExportStlAsciiAndBinary) {
     // Standard binary STL size = 84 + 50 * N
     EXPECT_EQ(binSize, 84u + 50u * numTriangles);
 
+    ifsBin.close();
     fs::remove(stlBinaryPath);
 }
 
@@ -145,5 +148,6 @@ TEST(MeshExportersTest, ExportParaViewVTK) {
     EXPECT_TRUE(hasSusceptibility);
     EXPECT_TRUE(hasBodyID);
 
+    ifs.close();
     fs::remove(vtkPath);
 }
