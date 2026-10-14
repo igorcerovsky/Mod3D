@@ -1787,7 +1787,6 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
 TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
     MainWindow mw;
     mw.resize(1400, 900);
-    mw.show();
 
     std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
     if (!std::filesystem::exists(samplePath)) {
@@ -1830,14 +1829,16 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     EXPECT_DOUBLE_EQ(spinSusc->value(), 0.01);
     EXPECT_TRUE(comboBodies->itemText(idx2).contains("3400.0 kg/m³"));
 
-    // Verify BodyPropertiesDialog displays the exact same SI values and units
-    BodyPropertiesDialog dlg(b2, &mw);
-    ASSERT_NE(dlg.densitySpinBox(), nullptr);
-    ASSERT_NE(dlg.susceptibilitySpinBox(), nullptr);
-    EXPECT_EQ(dlg.densitySpinBox()->suffix(), " kg/m³");
-    EXPECT_EQ(dlg.susceptibilitySpinBox()->suffix(), " SI");
-    EXPECT_DOUBLE_EQ(dlg.densitySpinBox()->value(), 3400.0);
-    EXPECT_DOUBLE_EQ(dlg.susceptibilitySpinBox()->value(), 0.01);
+    // Verify BodyPropertiesDialog displays the exact same SI values and units in its own scope
+    {
+        BodyPropertiesDialog dlg(b2, nullptr);
+        ASSERT_NE(dlg.densitySpinBox(), nullptr);
+        ASSERT_NE(dlg.susceptibilitySpinBox(), nullptr);
+        EXPECT_EQ(dlg.densitySpinBox()->suffix(), " kg/m³");
+        EXPECT_EQ(dlg.susceptibilitySpinBox()->suffix(), " SI");
+        EXPECT_DOUBLE_EQ(dlg.densitySpinBox()->value(), 3400.0);
+        EXPECT_DOUBLE_EQ(dlg.susceptibilitySpinBox()->value(), 0.01);
+    }
 
     // Edit density and susceptibility in SettingsPane and verify SI persistence
     spinDensity->setValue(3550.0);
@@ -1845,7 +1846,12 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
 
     EXPECT_DOUBLE_EQ(b2->raw_density(), 3550.0);
     EXPECT_DOUBLE_EQ(b2->susceptibility(), 0.025);
-    EXPECT_TRUE(comboBodies->itemText(idx2).contains("3550.0 kg/m³"));
+
+    int curIdx = comboBodies->findData(2);
+    ASSERT_GE(curIdx, 0);
+    EXPECT_TRUE(comboBodies->itemText(curIdx).contains("3550.0 kg/m³"));
+
+    QApplication::processEvents();
 }
 
 TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {

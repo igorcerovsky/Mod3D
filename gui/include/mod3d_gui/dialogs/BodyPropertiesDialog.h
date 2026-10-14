@@ -30,36 +30,36 @@ private:
     void setupDescriptionTab(QTabWidget *tabs);
     void applyChanges();
 
-    mod3d::Body *m_body;
+    mod3d::Body *m_body{nullptr};
 
     // Gravity
-    QDoubleSpinBox *m_spinDensity;
-    QDoubleSpinBox *m_spinGradX;
-    QDoubleSpinBox *m_spinGradY;
-    QDoubleSpinBox *m_spinGradZ;
-    QDoubleSpinBox *m_spinGradOriginX;
-    QDoubleSpinBox *m_spinGradOriginY;
-    QDoubleSpinBox *m_spinGradOriginZ;
+    QDoubleSpinBox *m_spinDensity{nullptr};
+    QDoubleSpinBox *m_spinGradX{nullptr};
+    QDoubleSpinBox *m_spinGradY{nullptr};
+    QDoubleSpinBox *m_spinGradZ{nullptr};
+    QDoubleSpinBox *m_spinGradOriginX{nullptr};
+    QDoubleSpinBox *m_spinGradOriginY{nullptr};
+    QDoubleSpinBox *m_spinGradOriginZ{nullptr};
 
     // Magnetics
-    QDoubleSpinBox *m_spinKappa;
-    QDoubleSpinBox *m_spinRemJ;
-    QDoubleSpinBox *m_spinRemInc;
-    QDoubleSpinBox *m_spinRemDec;
+    QDoubleSpinBox *m_spinKappa{nullptr};
+    QDoubleSpinBox *m_spinRemJ{nullptr};
+    QDoubleSpinBox *m_spinRemInc{nullptr};
+    QDoubleSpinBox *m_spinRemDec{nullptr};
 
     // Drawing
-    QPushButton *m_btnColor;
+    QPushButton *m_btnColor{nullptr};
     QColor m_selectedColor;
-    QCheckBox *m_chkFill;
-    QSlider *m_sliderAlpha;
+    QCheckBox *m_chkFill{nullptr};
+    QSlider *m_sliderAlpha{nullptr};
 
     // Computation
-    QCheckBox *m_chkActive;
-    QCheckBox *m_chkLocked;
+    QCheckBox *m_chkActive{nullptr};
+    QCheckBox *m_chkLocked{nullptr};
 
     // Description
-    QLineEdit *m_editName;
-    QTextEdit *m_editDescription;
+    QLineEdit *m_editName{nullptr};
+    QTextEdit *m_editDescription{nullptr};
 };
 
 } // namespace mod3d_gui

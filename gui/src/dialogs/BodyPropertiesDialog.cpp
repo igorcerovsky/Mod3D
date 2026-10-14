@@ -32,7 +32,9 @@ BodyPropertiesDialog::BodyPropertiesDialog(mod3d::Body *body, QWidget *parent)
         accept();
     });
     connect(btnBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    connect(btnBox->button(QDialogButtonBox::Apply), &QPushButton::clicked, this, &BodyPropertiesDialog::applyChanges);
+    if (auto *btnApply = btnBox->button(QDialogButtonBox::Apply)) {
+        connect(btnApply, &QPushButton::clicked, this, &BodyPropertiesDialog::applyChanges);
+    }
 
     mainLayout->addWidget(btnBox);
 }
