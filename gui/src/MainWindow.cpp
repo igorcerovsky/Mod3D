@@ -291,8 +291,8 @@ void MainWindow::setupMenus() {
     menuBody->addAction(tr("Properties..."), [this]() { onBodyProperties(); });
     menuBody->addSeparator();
     menuBody->addAction(tr("Copy to Previous Profile\tCtrl+Shift+P"), [this]() {
-        if (!m_doc->model().getBodies().empty()) {
-            int bId = m_doc->model().getBodies().front()->id();
+        if (!m_doc->model().bodies().empty()) {
+            int bId = m_doc->model().bodies().front()->id();
             if (auto *pv = activeProfileView()) {
                 m_doc->copyBodyBetweenProfiles(bId, pv->profileOrientation(), pv->profileIndex(), pv->profileIndex() - 1);
             } else {
@@ -301,8 +301,8 @@ void MainWindow::setupMenus() {
         }
     });
     menuBody->addAction(tr("Copy to Next Profile\tCtrl+Shift+N"), [this]() {
-        if (!m_doc->model().getBodies().empty()) {
-            int bId = m_doc->model().getBodies().front()->id();
+        if (!m_doc->model().bodies().empty()) {
+            int bId = m_doc->model().bodies().front()->id();
             if (auto *pv = activeProfileView()) {
                 m_doc->copyBodyBetweenProfiles(bId, pv->profileOrientation(), pv->profileIndex(), pv->profileIndex() + 1);
             } else {
@@ -312,10 +312,10 @@ void MainWindow::setupMenus() {
     });
     menuBody->addSeparator();
     menuBody->addAction(tr("Invert Density"), [this]() {
-        if (!m_doc->model().getBodies().empty()) {
-            auto *b = m_doc->model().getBodies().front().get();
+        if (!m_doc->model().bodies().empty()) {
+            auto *b = m_doc->model().bodies().front().get();
             std::vector<mod3d::Facet3Pt> facets;
-            m_doc->model().getFacetsComputation(facets);
+            m_doc->model().facets_computation(facets);
             m_doc->observation().fit_density(b, facets, m_doc->activeField());
             m_doc->computeAll();
         }
@@ -613,11 +613,11 @@ void MainWindow::onActiveGrids() {
 }
 
 void MainWindow::onBodyProperties(int bodyId) {
-    if (m_doc->model().getBodies().empty()) {
+    if (m_doc->model().bodies().empty()) {
         QMessageBox::information(this, tr("Body Properties"), tr("No bodies exist in the current model."));
         return;
     }
-    mod3d::Body *b = (bodyId >= 0) ? m_doc->model().getBody(bodyId) : m_doc->model().getBodies().front().get();
+    mod3d::Body *b = (bodyId >= 0) ? m_doc->model().body(bodyId) : m_doc->model().bodies().front().get();
     if (b) {
         BodyPropertiesDialog dlg(b, this);
         if (dlg.exec() == QDialog::Accepted) {

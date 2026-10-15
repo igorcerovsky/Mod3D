@@ -92,10 +92,10 @@ void MapView::setShowReliefContours(bool show) {
 void MapView::fitToWindow() {
     if (!m_doc) return;
     const auto &m = m_doc->model();
-    m_worldXMin = m.getXMin();
-    m_worldXMax = m.getXMax();
-    m_worldYMin = m.getYMin();
-    m_worldYMax = m.getYMax();
+    m_worldXMin = m.x_min();
+    m_worldXMax = m.x_max();
+    m_worldYMin = m.y_min();
+    m_worldYMax = m.y_max();
     update();
 }
 
@@ -487,15 +487,15 @@ void MapView::drawReliefContours(QPainter &painter) {
 
 void MapView::drawStationPoints(QPainter &painter) {
     if (!m_showStationPoints) return;
-    int rows = m_doc->model().getRows();
-    int cols = m_doc->model().getCols();
+    int rows = m_doc->model().rows();
+    int cols = m_doc->model().cols();
 
     painter.setPen(QColor(140, 140, 150));
     for (int r = 1; r <= rows; ++r) {
-        double y = m_doc->model().getYd(r);
+        double y = m_doc->model().yd(r);
         int sy = worldToScreenY(y);
         for (int c = 1; c <= cols; ++c) {
-            double x = m_doc->model().getXd(c);
+            double x = m_doc->model().xd(c);
             int sx = worldToScreenX(x);
             painter.drawPoint(sx, sy);
         }
@@ -505,14 +505,14 @@ void MapView::drawStationPoints(QPainter &painter) {
 void MapView::drawBodyOutlines(QPainter &painter) {
     if (!m_showBodyFootprints) return;
     const auto &model = m_doc->model();
-    auto boundaries = model.getAllBodyBoundaries();
+    auto boundaries = model.all_body_boundaries();
     if (boundaries.empty()) return;
 
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, true);
 
     for (const auto &seg : boundaries) {
-        const auto *body = model.getBody(seg.bodyId);
+        const auto *body = model.body(seg.bodyId);
         if (body && !body->is_visible()) continue;
         QColor col = body ? QColor(body->color().r, body->color().g, body->color().b) : QColor(0, 0, 180);
         painter.setPen(QPen(col, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
@@ -722,7 +722,7 @@ void MapView::drawActiveProfilePointMarker(QPainter &painter) {
 
     QColor bodyCol(235, 40, 40);
     if (pt.bodyId >= 0) {
-        if (const auto *b = m_doc->model().getBody(pt.bodyId)) {
+        if (const auto *b = m_doc->model().body(pt.bodyId)) {
             bodyCol = QColor(b->color().r, b->color().g, b->color().b);
         }
     }
@@ -878,22 +878,22 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
     if (m_draggingProfileLine) {
         if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
             // Find closest row
-            int rows = m_doc->model().getRows();
+            int rows = m_doc->model().rows();
             int bestRow = 0;
             double bestDist = 1e30;
             for (int r = 1; r <= rows; ++r) {
-                double yd = m_doc->model().getYd(r);
+                double yd = m_doc->model().yd(r);
                 double d = std::abs(yd - wy);
                 if (d < bestDist) {
                     bestDist = d;
                     bestRow = r - 1;
                 }
             }
-            int cols = m_doc->model().getCols();
+            int cols = m_doc->model().cols();
             int bestCol = 1;
             double bestColDist = 1e30;
             for (int c = 1; c < cols - 1; ++c) {
-                double xd = m_doc->model().getXd(c);
+                double xd = m_doc->model().xd(c);
                 double d = std::abs(xd - wx);
                 if (d < bestColDist) {
                     bestColDist = d;
@@ -906,22 +906,22 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
             m_doc->setProfileIndex(bestRow);
         } else {
             // Find closest col
-            int cols = m_doc->model().getCols();
+            int cols = m_doc->model().cols();
             int bestCol = 0;
             double bestDist = 1e30;
             for (int c = 1; c <= cols; ++c) {
-                double xd = m_doc->model().getXd(c);
+                double xd = m_doc->model().xd(c);
                 double d = std::abs(xd - wx);
                 if (d < bestDist) {
                     bestDist = d;
                     bestCol = c - 1;
                 }
             }
-            int rows = m_doc->model().getRows();
+            int rows = m_doc->model().rows();
             int bestRow = 1;
             double bestRowDist = 1e30;
             for (int r = 1; r < rows - 1; ++r) {
-                double yd = m_doc->model().getYd(r);
+                double yd = m_doc->model().yd(r);
                 double d = std::abs(yd - wy);
                 if (d < bestRowDist) {
                     bestRowDist = d;

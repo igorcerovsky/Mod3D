@@ -179,9 +179,9 @@ void ProfileView::moveProfile(int delta) {
 int ProfileView::maxProfileIndex() const noexcept {
   if (!m_doc) return 0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    return std::max(0, m_doc->model().getRows() - 3);
+    return std::max(0, m_doc->model().rows() - 3);
   } else {
-    return std::max(0, m_doc->model().getCols() - 3);
+    return std::max(0, m_doc->model().cols() - 3);
   }
 }
 
@@ -189,9 +189,9 @@ double ProfileView::currentProfileCoordinate() const noexcept {
   if (!m_doc)
     return 0.0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    return m_doc->model().getYd(m_profileIndex + 1);
+    return m_doc->model().yd(m_profileIndex + 1);
   } else {
-    return m_doc->model().getXd(m_profileIndex + 1);
+    return m_doc->model().xd(m_profileIndex + 1);
   }
 }
 
@@ -199,9 +199,9 @@ int ProfileView::profileColumnLineCount() const noexcept {
   if (!m_doc)
     return 0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    return std::max(0, m_doc->model().getCols() - 2);
+    return std::max(0, m_doc->model().cols() - 2);
   } else {
-    return std::max(0, m_doc->model().getRows() - 2);
+    return std::max(0, m_doc->model().rows() - 2);
   }
 }
 
@@ -209,9 +209,9 @@ double ProfileView::columnCoordinate(int colIdx) const noexcept {
   if (!m_doc)
     return 0.0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    return m_doc->model().getXd(colIdx + 1);
+    return m_doc->model().xd(colIdx + 1);
   } else {
-    return m_doc->model().getYd(colIdx + 1);
+    return m_doc->model().yd(colIdx + 1);
   }
 }
 
@@ -261,10 +261,10 @@ void ProfileView::updateStationPointOnProfileChange() {
   bool foundBody = false;
 
   if (bId >= 0) {
-    int bIdx = m_doc->model().getBodyIndex(bId, rStation, cStation);
+    int bIdx = m_doc->model().body_index(bId, rStation, cStation);
     if (bIdx >= 0) {
-      wz = m_doc->model().getZ(rStation, cStation, bIdx);
-      if (const auto *b = m_doc->model().getBody(bId)) {
+      wz = m_doc->model().z(rStation, cStation, bIdx);
+      if (const auto *b = m_doc->model().body(bId)) {
         bName = b->name();
       }
       foundBody = true;
@@ -274,12 +274,12 @@ void ProfileView::updateStationPointOnProfileChange() {
   }
 
   if (!foundBody) {
-    for (const auto &b : m_doc->model().getBodies()) {
-      int bIdx = m_doc->model().getBodyIndex(b->id(), rStation, cStation);
+    for (const auto &b : m_doc->model().bodies()) {
+      int bIdx = m_doc->model().body_index(b->id(), rStation, cStation);
       if (bIdx >= 0) {
         bId = b->id();
         bName = b->name();
-        wz = m_doc->model().getZ(rStation, cStation, bIdx);
+        wz = m_doc->model().z(rStation, cStation, bIdx);
         foundBody = true;
         break;
       }
@@ -287,7 +287,7 @@ void ProfileView::updateStationPointOnProfileChange() {
   }
 
   if (!foundBody) {
-    wz = m_doc->model().getZ(rStation, cStation, 0);
+    wz = m_doc->model().z(rStation, cStation, 0);
   }
 
   emit cursorStationChanged(rStation, cStation, wx, wy, wz, 0.0);
@@ -473,14 +473,14 @@ void ProfileView::fitToWindow() {
     return;
   const auto &m = m_doc->model();
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    m_worldXMin = m.getXMin();
-    m_worldXMax = m.getXMax();
+    m_worldXMin = m.x_min();
+    m_worldXMax = m.x_max();
   } else {
-    m_worldXMin = m.getYMin();
-    m_worldXMax = m.getYMax();
+    m_worldXMin = m.y_min();
+    m_worldXMax = m.y_max();
   }
-  m_worldZMin = m.getZMin();
-  m_worldZMax = m.getZMax();
+  m_worldZMin = m.z_min();
+  m_worldZMax = m.z_max();
   update();
 }
 
@@ -1083,14 +1083,14 @@ void ProfileView::drawReliefAndBottom(QPainter &painter) {
       int sx = worldToScreenX(xw);
       int r = 0, c = 0;
       getRowCol(i, r, c);
-      double topoZ = m_doc->model().getZ(r, c, 0);
+      double topoZ = m_doc->model().z(r, c, 0);
       int sy = worldToScreenZ(topoZ);
       reliefPoly << QPointF(sx, sy);
     }
     painter.setPen(QPen(QColor(40, 140, 40), 2.0));
     painter.drawPolyline(reliefPoly);
 
-    int botY = worldToScreenZ(m_doc->model().getZMin());
+    int botY = worldToScreenZ(m_doc->model().z_min());
     painter.setPen(QPen(QColor(100, 100, 110), 2.0, Qt::DashLine));
     int leftX = worldToScreenX(m_worldXMin);
     int rightX = worldToScreenX(m_worldXMax);
@@ -1106,7 +1106,7 @@ void ProfileView::drawReliefAndBottom(QPainter &painter) {
       int sx = worldToScreenX(xw);
       int r = 0, c = 0;
       getRowCol(i, r, c);
-      double topoZ = m_doc->model().getZ(r, c, 0);
+      double topoZ = m_doc->model().z(r, c, 0);
       int sy = worldToScreenZ(topoZ);
       painter.drawEllipse(QPointF(sx, sy), 3.0, 3.0);
     }
@@ -1119,7 +1119,7 @@ void ProfileView::drawBodies(QPainter &painter) {
   int prfIdx = m_profileIndex;
   bool isEW = (m_profileOrient == ProfileOrientation::EastWest);
 
-  for (const auto &bodyPtr : model.getBodies()) {
+  for (const auto &bodyPtr : model.bodies()) {
     int bId = bodyPtr->id();
     auto bc = bodyPtr->color();
     QColor bColor(bc.r, bc.g, bc.b, 190);
@@ -1132,8 +1132,8 @@ void ProfileView::drawBodies(QPainter &painter) {
       int r1 = isEW ? (prfIdx + 1) : (c + 2);
       int col1 = isEW ? (c + 2) : (prfIdx + 1);
 
-      int idx0 = model.getBodyIndex(bId, r0, col0);
-      int idx1 = model.getBodyIndex(bId, r1, col1);
+      int idx0 = model.body_index(bId, r0, col0);
+      int idx1 = model.body_index(bId, r1, col1);
 
       if (idx0 >= 0 && idx1 >= 0) {
         double x0w = columnCoordinate(c);
@@ -1142,11 +1142,11 @@ void ProfileView::drawBodies(QPainter &painter) {
         int sx0 = worldToScreenX(x0w);
         int sx1 = worldToScreenX(x1w);
 
-        int topY0 = worldToScreenZ(model.getZ(r0, col0, idx0));
-        int botY0 = worldToScreenZ(model.getZ(r0, col0, idx0 + 1));
+        int topY0 = worldToScreenZ(model.z(r0, col0, idx0));
+        int botY0 = worldToScreenZ(model.z(r0, col0, idx0 + 1));
 
-        int topY1 = worldToScreenZ(model.getZ(r1, col1, idx1));
-        int botY1 = worldToScreenZ(model.getZ(r1, col1, idx1 + 1));
+        int topY1 = worldToScreenZ(model.z(r1, col1, idx1));
+        int botY1 = worldToScreenZ(model.z(r1, col1, idx1 + 1));
 
         QPolygonF slicePoly;
         slicePoly << QPointF(sx0, topY0) << QPointF(sx1, topY1)
@@ -1165,12 +1165,12 @@ void ProfileView::drawBodies(QPainter &painter) {
     for (int c = 0; c < nLines; ++c) {
       int r = isEW ? (prfIdx + 1) : (c + 1);
       int col = isEW ? (c + 1) : (prfIdx + 1);
-      int idx = model.getBodyIndex(bId, r, col);
+      int idx = model.body_index(bId, r, col);
       if (idx >= 0) {
         double xw = columnCoordinate(c);
         int sx = worldToScreenX(xw);
-        int topY = worldToScreenZ(model.getZ(r, col, idx));
-        int botY = worldToScreenZ(model.getZ(r, col, idx + 1));
+        int topY = worldToScreenZ(model.z(r, col, idx));
+        int botY = worldToScreenZ(model.z(r, col, idx + 1));
 
         // Vertical column segment connecting top and bottom vertices
         painter.setPen(QPen(bColor.darker(140), 3.0));
@@ -1194,7 +1194,7 @@ void ProfileView::drawGhostBodies(QPainter &painter, int ghostProfileIdx,
   painter.setPen(pen);
   painter.setBrush(Qt::NoBrush);
 
-  for (const auto &bodyPtr : model.getBodies()) {
+  for (const auto &bodyPtr : model.bodies()) {
     int bId = bodyPtr->id();
     for (int c = 0; c < nLines - 1; ++c) {
       int r0 = isEW ? (ghostProfileIdx + 1) : (c + 1);
@@ -1203,8 +1203,8 @@ void ProfileView::drawGhostBodies(QPainter &painter, int ghostProfileIdx,
       int r1 = isEW ? (ghostProfileIdx + 1) : (c + 2);
       int col1 = isEW ? (c + 2) : (ghostProfileIdx + 1);
 
-      int idx0 = model.getBodyIndex(bId, r0, col0);
-      int idx1 = model.getBodyIndex(bId, r1, col1);
+      int idx0 = model.body_index(bId, r0, col0);
+      int idx1 = model.body_index(bId, r1, col1);
 
       if (idx0 >= 0 && idx1 >= 0) {
         double x0w = columnCoordinate(c);
@@ -1213,11 +1213,11 @@ void ProfileView::drawGhostBodies(QPainter &painter, int ghostProfileIdx,
         int sx0 = worldToScreenX(x0w);
         int sx1 = worldToScreenX(x1w);
 
-        int topY0 = worldToScreenZ(model.getZ(r0, col0, idx0));
-        int botY0 = worldToScreenZ(model.getZ(r0, col0, idx0 + 1));
+        int topY0 = worldToScreenZ(model.z(r0, col0, idx0));
+        int botY0 = worldToScreenZ(model.z(r0, col0, idx0 + 1));
 
-        int topY1 = worldToScreenZ(model.getZ(r1, col1, idx1));
-        int botY1 = worldToScreenZ(model.getZ(r1, col1, idx1 + 1));
+        int topY1 = worldToScreenZ(model.z(r1, col1, idx1));
+        int botY1 = worldToScreenZ(model.z(r1, col1, idx1 + 1));
 
         QPolygonF slicePoly;
         slicePoly << QPointF(sx0, topY0) << QPointF(sx1, topY1)
@@ -1250,17 +1250,17 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
   int prfIdx = m_profileIndex;
   bool isEW = (m_profileOrient == ProfileOrientation::EastWest);
 
-  for (const auto &bodyPtr : model.getBodies()) {
+  for (const auto &bodyPtr : model.bodies()) {
     int bId = bodyPtr->id();
     for (int c = 0; c < nLines; ++c) {
       int r = isEW ? (prfIdx + 1) : (c + 1);
       int col = isEW ? (c + 1) : (prfIdx + 1);
-      int idx = model.getBodyIndex(bId, r, col);
+      int idx = model.body_index(bId, r, col);
       if (idx >= 0) {
         double xw = columnCoordinate(c);
         int sx = worldToScreenX(xw);
-        int topY = worldToScreenZ(model.getZ(r, col, idx));
-        int botY = worldToScreenZ(model.getZ(r, col, idx + 1));
+        int topY = worldToScreenZ(model.z(r, col, idx));
+        int botY = worldToScreenZ(model.z(r, col, idx + 1));
 
         if (std::abs(pos.x() - sx) <= 8) {
           if (std::abs(pos.y() - topY) <= 8) {
@@ -1280,24 +1280,24 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
     }
   }
 
-  for (const auto &bodyPtr : model.getBodies()) {
+  for (const auto &bodyPtr : model.bodies()) {
     int bId = bodyPtr->id();
     for (int c = 0; c < nLines; ++c) {
       int r = isEW ? (prfIdx + 1) : (c + 1);
       int col = isEW ? (c + 1) : (prfIdx + 1);
-      int idx = model.getBodyIndex(bId, r, col);
+      int idx = model.body_index(bId, r, col);
       if (idx >= 0) {
-        bool hasLeft = (c > 0 && model.getBodyIndex(bId, isEW ? r : c,
+        bool hasLeft = (c > 0 && model.body_index(bId, isEW ? r : c,
                                                     isEW ? c : col) >= 0);
         bool hasRight =
-            (c < nLines - 1 && model.getBodyIndex(bId, isEW ? r : (c + 2),
+            (c < nLines - 1 && model.body_index(bId, isEW ? r : (c + 2),
                                                   isEW ? (c + 2) : col) >= 0);
 
         if (!hasLeft || !hasRight) {
           double xw = columnCoordinate(c);
           int sx = worldToScreenX(xw);
-          int topY = worldToScreenZ(model.getZ(r, col, idx));
-          int botY = worldToScreenZ(model.getZ(r, col, idx + 1));
+          int topY = worldToScreenZ(model.z(r, col, idx));
+          int botY = worldToScreenZ(model.z(r, col, idx + 1));
           if (std::abs(pos.x() - sx) <= 6 && pos.y() >= topY &&
               pos.y() <= botY) {
             hitLineIdx = c;
@@ -1310,7 +1310,7 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
     }
   }
 
-  for (const auto &bodyPtr : model.getBodies()) {
+  for (const auto &bodyPtr : model.bodies()) {
     int bId = bodyPtr->id();
     for (int c = 0; c < nLines - 1; ++c) {
       int r0 = isEW ? (prfIdx + 1) : (c + 1);
@@ -1318,16 +1318,16 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
       int r1 = isEW ? (prfIdx + 1) : (c + 2);
       int col1 = isEW ? (c + 2) : (prfIdx + 1);
 
-      int idx0 = model.getBodyIndex(bId, r0, col0);
-      int idx1 = model.getBodyIndex(bId, r1, col1);
+      int idx0 = model.body_index(bId, r0, col0);
+      int idx1 = model.body_index(bId, r1, col1);
 
       if (idx0 >= 0 && idx1 >= 0) {
         int sx0 = worldToScreenX(columnCoordinate(c));
         int sx1 = worldToScreenX(columnCoordinate(c + 1));
-        int topY0 = worldToScreenZ(model.getZ(r0, col0, idx0));
-        int botY0 = worldToScreenZ(model.getZ(r0, col0, idx0 + 1));
-        int topY1 = worldToScreenZ(model.getZ(r1, col1, idx1));
-        int botY1 = worldToScreenZ(model.getZ(r1, col1, idx1 + 1));
+        int topY0 = worldToScreenZ(model.z(r0, col0, idx0));
+        int botY0 = worldToScreenZ(model.z(r0, col0, idx0 + 1));
+        int topY1 = worldToScreenZ(model.z(r1, col1, idx1));
+        int botY1 = worldToScreenZ(model.z(r1, col1, idx1 + 1));
 
         QPolygonF poly;
         poly << QPointF(sx0, topY0) << QPointF(sx1, topY1)
@@ -1425,8 +1425,8 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
 
   if (m_dragOp == DragOperation::MoveVertex) {
     double newZ = screenToWorldZ(event->pos().y());
-    double zMin = m_doc->model().getZMin();
-    double zMax = m_doc->model().getZMax();
+    double zMin = m_doc->model().z_min();
+    double zMax = m_doc->model().z_max();
     newZ = std::clamp(newZ, zMin, zMax);
 
     bool ctrlPressed = (event->modifiers() & Qt::ControlModifier);
@@ -1435,11 +1435,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
 
     double xw = screenToWorldX(event->pos().x());
     double startCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                            ? m_doc->model().getX0()
-                            : m_doc->model().getY0();
+                            ? m_doc->model().x0()
+                            : m_doc->model().y0();
     double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                           ? m_doc->model().getXSize()
-                           : m_doc->model().getYSize();
+                           ? m_doc->model().dx()
+                           : m_doc->model().dy();
     int nLines = profileColumnLineCount();
     int targetLineIdx = std::clamp(
         static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
@@ -1448,7 +1448,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
     if (m_dragBodyId < 0) {
       int r = 0, c = 0;
       getRowCol(m_dragLineIdx, r, c);
-      m_dragBodyId = m_doc->model().getID(m_dragVertexIdx, r, c);
+      m_dragBodyId = m_doc->model().id(m_dragVertexIdx, r, c);
     }
 
     if (targetLineIdx != m_dragLineIdx && m_dragBodyId >= 0) {
@@ -1458,7 +1458,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
         int nextLine = currLine + step;
         int nextR = 0, nextC = 0;
         getRowCol(nextLine, nextR, nextC);
-        int nextVIdx = m_doc->model().updateMoveIndex(
+        int nextVIdx = m_doc->model().update_move_index(
             m_dragVertexIdx, nextR, nextC, m_dragBodyId);
         if (nextVIdx < 0) {
           break;
@@ -1489,7 +1489,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
     }
     emit cursorStationChanged(rStation, cStation, wxCoord, wy, newZ, 0.0);
     std::string bName;
-    if (auto *b = m_doc->model().getBody(m_dragBodyId)) {
+    if (auto *b = m_doc->model().body(m_dragBodyId)) {
       bName = b->name();
     }
     m_doc->setActiveProfileCursor({
@@ -1521,7 +1521,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
         std::swap(wxCoord, wy);
       }
       std::string bName;
-      if (auto *b = m_doc->model().getBody(m_dragBodyId)) {
+      if (auto *b = m_doc->model().body(m_dragBodyId)) {
         bName = b->name();
       }
       m_doc->setActiveProfileCursor({
@@ -1542,11 +1542,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   if (m_dragOp == DragOperation::ExtendBodyLateral) {
     double xw = screenToWorldX(event->pos().x());
     double startCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                            ? m_doc->model().getX0()
-                            : m_doc->model().getY0();
+                            ? m_doc->model().x0()
+                            : m_doc->model().y0();
     double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                            ? m_doc->model().getXSize()
-                            : m_doc->model().getYSize();
+                            ? m_doc->model().dx()
+                            : m_doc->model().dy();
     int nLines = profileColumnLineCount();
     int currentLine = std::clamp(
         static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
@@ -1563,11 +1563,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
 
         double currentMouseZ = screenToWorldZ(event->pos().y());
         double startMouseZ = screenToWorldZ(m_dragStartPos.y());
-        int bIdx = m_doc->model().getBodyIndex(m_dragBodyId, srcR, srcC);
+        int bIdx = m_doc->model().body_index(m_dragBodyId, srcR, srcC);
         double targetZ = std::numeric_limits<double>::quiet_NaN();
         if (bIdx >= 0) {
-          double topZ = m_doc->model().getZ(srcR, srcC, bIdx);
-          double botZ = m_doc->model().getZ(srcR, srcC, bIdx + 1);
+          double topZ = m_doc->model().z(srcR, srcC, bIdx);
+          double botZ = m_doc->model().z(srcR, srcC, bIdx + 1);
           targetZ = (topZ + botZ) / 2.0 + (currentMouseZ - startMouseZ);
         }
 
@@ -1586,7 +1586,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
         std::swap(wxCoord, wy);
       }
       std::string bName;
-      if (auto *b = m_doc->model().getBody(m_dragBodyId)) {
+      if (auto *b = m_doc->model().body(m_dragBodyId)) {
         bName = b->name();
       }
       m_doc->setActiveProfileCursor({
@@ -1615,11 +1615,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   if (mode == CursorMode::OverVertex && lineIdx >= 0 && vIdx > 0) {
     int r = 0, c = 0;
     getRowCol(lineIdx, r, c);
-    double curZ = m_doc->model().getZ(r, c, vIdx);
+    double curZ = m_doc->model().z(r, c, vIdx);
     bool isSnapped =
-        (vIdx > 1 && m_doc->model().getZ(r, c, vIdx - 1) == curZ) ||
-        (vIdx < static_cast<int>(m_doc->model().getCount(r, c)) - 1 &&
-         m_doc->model().getZ(r, c, vIdx + 1) == curZ);
+        (vIdx > 1 && m_doc->model().z(r, c, vIdx - 1) == curZ) ||
+        (vIdx < static_cast<int>(m_doc->model().count(r, c)) - 1 &&
+         m_doc->model().z(r, c, vIdx + 1) == curZ);
     if (isSnapped) {
       setToolTip(tr("Snapped Contact (Hold Ctrl+drag to unsnap / split)"));
     } else {
@@ -1641,7 +1641,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   double wx = (lineIdx >= 0) ? columnCoordinate(lineIdx) : screenToWorldX(event->pos().x());
   double wz = screenToWorldZ(event->pos().y());
   if (vIdx >= 0 && lineIdx >= 0) {
-    wz = m_doc->model().getZ(rStation, cStation, vIdx);
+    wz = m_doc->model().z(rStation, cStation, vIdx);
   }
   double wy = currentProfileCoordinate();
   if (m_profileOrient == ProfileOrientation::SouthNorth) {
@@ -1652,7 +1652,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   if (m_rectSectionPane.contains(event->pos()) || lineIdx >= 0) {
     std::string bName;
     if (bId >= 0) {
-      if (auto *b = m_doc->model().getBody(bId)) {
+      if (auto *b = m_doc->model().body(bId)) {
         bName = b->name();
       }
     }
@@ -1807,9 +1807,9 @@ void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {
       double targetZ = screenToWorldZ(event->pos().y());
       int row = 0, col = 0;
       getRowCol(lineIdx, row, col);
-      double zMin = m_doc->model().getZMin();
-      double zSurface = m_doc->model().getZ(row, col, 0);
-      double defThickness = m_doc->model().getDefaultThickness();
+      double zMin = m_doc->model().z_min();
+      double zSurface = m_doc->model().z(row, col, 0);
+      double defThickness = m_doc->model().default_thickness();
       double halfT = defThickness / 2.0;
       if (halfT <= 0.0 || halfT >= (zSurface - zMin) / 2.0) {
         halfT = (zSurface - zMin) * 0.1;
@@ -1818,8 +1818,8 @@ void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {
 
       if (event->modifiers() & Qt::ShiftModifier) {
         int existingId = (m_hoverBodyId >= 0) ? m_hoverBodyId : -1;
-        if (existingId < 0 && !m_doc->model().getBodies().empty()) {
-          existingId = m_doc->model().getBodies().front()->id();
+        if (existingId < 0 && !m_doc->model().bodies().empty()) {
+          existingId = m_doc->model().bodies().front()->id();
         }
         m_doc->insertBodyAtRowCol(row, col, targetZ, -1.0, existingId);
       } else {
@@ -1894,9 +1894,9 @@ void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
   }
   int row = 0, col = 0;
   getRowCol(lineIdx, row, col);
-  double zMin = m_doc->model().getZMin();
-  double zSurface = m_doc->model().getZ(row, col, 0);
-  double defThickness = m_doc->model().getDefaultThickness();
+  double zMin = m_doc->model().z_min();
+  double zSurface = m_doc->model().z(row, col, 0);
+  double defThickness = m_doc->model().default_thickness();
   double halfT = defThickness / 2.0;
   if (halfT <= 0.0 || halfT >= (zSurface - zMin) / 2.0) {
     halfT = (zSurface - zMin) * 0.1;
@@ -1908,9 +1908,9 @@ void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
     m_doc->insertBodyAtRowCol(row, col, targetZ);
   });
 
-  if (!m_doc->model().getBodies().empty()) {
+  if (!m_doc->model().bodies().empty()) {
     auto *menuExist = menu.addMenu(tr("Insert Existing Body"));
-    for (const auto &b : m_doc->model().getBodies()) {
+    for (const auto &b : m_doc->model().bodies()) {
       int bId = b->id();
       QString bName = QString::fromStdString(b->name());
       menuExist->addAction(QString("Body %1 (%2)").arg(bId).arg(bName),
@@ -1945,7 +1945,7 @@ void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,
   QMenu menu(this);
   menu.addAction(tr("Properties..."),
                  [this, bodyId]() { emit requestBodyProperties(bodyId); });
-  auto *b = m_doc->model().getBody(bodyId);
+  auto *b = m_doc->model().body(bodyId);
   auto *actFill = menu.addAction(tr("Fill"), [this, b]() {
     if (b) {
       const_cast<mod3d::Body *>(b)->set_filled(!b->is_filled());
@@ -1978,10 +1978,10 @@ void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,
   });
   menu.addSeparator();
   menu.addAction(tr("Invert Density"), [this, bodyId]() {
-    auto *b = m_doc->model().getBody(bodyId);
+    auto *b = m_doc->model().body(bodyId);
     if (b) {
       std::vector<mod3d::Facet3Pt> facets;
-      m_doc->model().getFacetsComputation(facets);
+      m_doc->model().facets_computation(facets);
       m_doc->observation().fit_density(b, facets, m_doc->activeField());
       m_doc->computeAll();
     }
@@ -1994,11 +1994,11 @@ void ProfileView::showVertexContextMenu(const QPoint &globalPos, int lineIdx,
   QMenu menu(this);
   int row = 0, col = 0;
   getRowCol(lineIdx, row, col);
-  double curZ = m_doc->model().getZ(row, col, vertexIdx);
+  double curZ = m_doc->model().z(row, col, vertexIdx);
   bool isSnapped =
-      (vertexIdx > 1 && m_doc->model().getZ(row, col, vertexIdx - 1) == curZ) ||
-      (vertexIdx < static_cast<int>(m_doc->model().getCount(row, col)) - 1 &&
-       m_doc->model().getZ(row, col, vertexIdx + 1) == curZ);
+      (vertexIdx > 1 && m_doc->model().z(row, col, vertexIdx - 1) == curZ) ||
+      (vertexIdx < static_cast<int>(m_doc->model().count(row, col)) - 1 &&
+       m_doc->model().z(row, col, vertexIdx + 1) == curZ);
   if (isSnapped) {
     menu.addAction(tr("Unsnap Contact (Split)\tCtrl+Drag"),
                    [this, row, col, vertexIdx]() {

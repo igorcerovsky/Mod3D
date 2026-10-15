@@ -73,8 +73,8 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *
             if (m_btnProfTabOrientEW) m_btnProfTabOrientEW->setChecked(orient == ProfileOrientation::EastWest);
             if (m_btnProfTabOrientSN) m_btnProfTabOrientSN->setChecked(orient == ProfileOrientation::SouthNorth);
             double coord = (orient == ProfileOrientation::EastWest)
-                ? m_doc->model().getYd(idx + 1)
-                : m_doc->model().getXd(idx + 1);
+                ? m_doc->model().yd(idx + 1)
+                : m_doc->model().xd(idx + 1);
             QString coordName = (orient == ProfileOrientation::EastWest) ? "Y" : "X";
             if (m_lblProfTabCoord) {
                 m_lblProfTabCoord->setText(QString("%1 = %2 m").arg(coordName).arg(coord, 0, 'f', 1));
@@ -709,8 +709,8 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
 
     connect(m_btnCopyBodyPrev, &QPushButton::clicked, this, [this]() {
         int bId = m_comboBodies->currentData().toInt();
-        if (bId < 0 && !m_doc->model().getBodies().empty()) {
-            bId = m_doc->model().getBodies().front()->id();
+        if (bId < 0 && !m_doc->model().bodies().empty()) {
+            bId = m_doc->model().bodies().front()->id();
         }
         if (bId >= 0) {
             if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
@@ -723,8 +723,8 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
 
     connect(m_btnCopyBodyNext, &QPushButton::clicked, this, [this]() {
         int bId = m_comboBodies->currentData().toInt();
-        if (bId < 0 && !m_doc->model().getBodies().empty()) {
-            bId = m_doc->model().getBodies().front()->id();
+        if (bId < 0 && !m_doc->model().bodies().empty()) {
+            bId = m_doc->model().bodies().front()->id();
         }
         if (bId >= 0) {
             if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
@@ -916,7 +916,7 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
 
     connect(m_btnBodyColor, &QPushButton::clicked, this, [this]() {
         int bId = m_comboBodies->currentData().toInt();
-        auto *b = m_doc->model().getBody(bId);
+        auto *b = m_doc->model().body(bId);
         if (!b) return;
         QColor curCol(b->color().r, b->color().g, b->color().b);
         QColor chosen = QColorDialog::getColor(curCol, this, tr("Select Body Color"));
@@ -946,7 +946,7 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
             tr("Are you sure you want to delete Body %1?").arg(bId),
             QMessageBox::Yes | QMessageBox::No);
         if (res == QMessageBox::Yes) {
-            m_doc->model().deleteBody(bId);
+            m_doc->model().delete_body(bId);
             m_doc->setModified(true);
             m_doc->computeAll();
             updateBodyList();
@@ -963,10 +963,10 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
 
     connect(m_btnInvertDensity, &QPushButton::clicked, this, [this]() {
         int bId = m_comboBodies->currentData().toInt();
-        auto *b = m_doc->model().getBody(bId);
+        auto *b = m_doc->model().body(bId);
         if (!b) return;
         std::vector<mod3d::Facet3Pt> facets;
-        m_doc->model().getFacetsComputation(facets);
+        m_doc->model().facets_computation(facets);
         m_doc->observation().fit_density(b, facets, m_doc->activeField());
         m_doc->computeAll();
         loadBodyData();
@@ -1099,10 +1099,10 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
 
     connect(m_btnFitActiveDensity, &QPushButton::clicked, this, [this]() {
         int bId = m_comboBodies->currentData().toInt();
-        auto *b = m_doc->model().getBody(bId);
+        auto *b = m_doc->model().body(bId);
         if (!b) return;
         std::vector<mod3d::Facet3Pt> facets;
-        m_doc->model().getFacetsComputation(facets);
+        m_doc->model().facets_computation(facets);
         auto method = m_rbOptBrent->isChecked() ? mod3d::FitMethod::Brent : mod3d::FitMethod::Golden;
         m_doc->observation().fit_density(b, facets, m_doc->activeField(), b->density(), m_spinFitTol->value(), method);
         m_doc->computeAll();
@@ -1117,13 +1117,13 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
             auto method = m_rbOptBrent->isChecked() ? mod3d::FitMethod::Brent : mod3d::FitMethod::Golden;
             double tol = m_spinFitTol->value();
 
-            int nLines = (orient == ProfileOrientation::EastWest) ? m_doc->model().getCols() : m_doc->model().getRows();
+            int nLines = (orient == ProfileOrientation::EastWest) ? m_doc->model().cols() : m_doc->model().rows();
             for (int colOrRow = 1; colOrRow <= nLines; ++colOrRow) {
                 int r = (orient == ProfileOrientation::EastWest) ? (profIdx + 1) : colOrRow;
                 int c = (orient == ProfileOrientation::EastWest) ? colOrRow : (profIdx + 1);
-                int count = m_doc->model().getCount(r, c);
+                int count = m_doc->model().count(r, c);
                 for (int vi = 0; vi < count; ++vi) {
-                    auto *cp = m_doc->model().getAt(r, c, vi);
+                    auto *cp = m_doc->model().at(r, c, vi);
                     if (cp && cp->body_id() == bId) {
                         m_doc->observation().fit_vertex(m_doc->model(), r, c, vi, m_doc->activeField(), tol, method);
                     }
@@ -1243,16 +1243,16 @@ void SettingsPane::updateViewContext() {
         m_spinProfTabIdx->setValue(pv->profileIndex());
 
         double coord = (pv->profileOrientation() == ProfileOrientation::EastWest)
-            ? m_doc->model().getYd(pv->profileIndex() + 1)
-            : m_doc->model().getXd(pv->profileIndex() + 1);
+            ? m_doc->model().yd(pv->profileIndex() + 1)
+            : m_doc->model().xd(pv->profileIndex() + 1);
         QString coordName = (pv->profileOrientation() == ProfileOrientation::EastWest) ? "Y" : "X";
         m_lblProfTabCoord->setText(QString("%1 = %2 m").arg(coordName).arg(coord, 0, 'f', 1));
 
         double spacing = (pv->profileOrientation() == ProfileOrientation::EastWest)
-            ? m_doc->model().getYSize() : m_doc->model().getXSize();
+            ? m_doc->model().dy() : m_doc->model().dx();
         double len = (pv->profileOrientation() == ProfileOrientation::EastWest)
-            ? (m_doc->model().getXMax() - m_doc->model().getXMin())
-            : (m_doc->model().getYMax() - m_doc->model().getYMin());
+            ? (m_doc->model().x_max() - m_doc->model().x_min())
+            : (m_doc->model().y_max() - m_doc->model().y_min());
         m_lblProfGeometryInfo->setText(QString("Spacing: %1 m | Length: %2 m | Total: %3")
             .arg(spacing, 0, 'f', 1).arg(len, 0, 'f', 1).arg(pv->maxProfileIndex() + 1));
 
@@ -1319,7 +1319,7 @@ void SettingsPane::updateBodyList() {
     int prevBodyId = m_comboBodies->currentData().toInt();
     m_comboBodies->clear();
 
-    const auto &bodies = m_doc->model().getBodies();
+    const auto &bodies = m_doc->model().bodies();
     for (const auto &b : bodies) {
         QColor col(b->color().r, b->color().g, b->color().b);
         QString itemText = QString("Body %1: %2 (ρ=%3 kg/m³)").arg(b->id()).arg(QString::fromStdString(b->name())).arg(b->raw_density(), 0, 'f', 1);
@@ -1337,7 +1337,7 @@ void SettingsPane::updateBodyList() {
 
 void SettingsPane::loadBodyData() {
     int bId = m_comboBodies->currentData().toInt();
-    auto *b = m_doc->model().getBody(bId);
+    auto *b = m_doc->model().body(bId);
     if (!b) {
         m_editBodyName->clear();
         m_spinDensity->setValue(0.0);
@@ -1384,7 +1384,7 @@ void SettingsPane::loadBodyData() {
 void SettingsPane::applyBodyData() {
     if (m_blockSync) return;
     int bId = m_comboBodies->currentData().toInt();
-    auto *b = m_doc->model().getBody(bId);
+    auto *b = m_doc->model().body(bId);
     if (!b) return;
 
     b->set_name(m_editBodyName->text().toStdString());
@@ -1425,15 +1425,15 @@ void SettingsPane::loadPhysicsData() {
     m_spinRefDensity->setValue(2670.0);
 
     // Model Boundaries
-    m_spinModelZMax->setValue(m_doc->model().getZMax());
-    m_spinModelZMin->setValue(m_doc->model().getZMin());
+    m_spinModelZMax->setValue(m_doc->model().z_max());
+    m_spinModelZMin->setValue(m_doc->model().z_min());
 
     const auto &m = m_doc->model();
     m_lblModelDimensions->setText(QString("%1 × %2 cells (%3 × %4 m)\nX: [%5, %6] m\nY: [%7, %8] m")
-        .arg(m.getRows()).arg(m.getCols())
-        .arg(m.getXSize(), 0, 'f', 1).arg(m.getYSize(), 0, 'f', 1)
-        .arg(m.getXMin(), 0, 'f', 1).arg(m.getXMax(), 0, 'f', 1)
-        .arg(m.getYMin(), 0, 'f', 1).arg(m.getYMax(), 0, 'f', 1));
+        .arg(m.rows()).arg(m.cols())
+        .arg(m.dx(), 0, 'f', 1).arg(m.dy(), 0, 'f', 1)
+        .arg(m.x_min(), 0, 'f', 1).arg(m.x_max(), 0, 'f', 1)
+        .arg(m.y_min(), 0, 'f', 1).arg(m.y_max(), 0, 'f', 1));
 
     m_blockSync = false;
 }
@@ -1445,8 +1445,8 @@ void SettingsPane::applyPhysicsData() {
     m_doc->observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, m_spinSensorGrvHeight->value());
     m_doc->observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, m_spinSensorMagHeight->value());
 
-    m_doc->model().setZMax(m_spinModelZMax->value());
-    m_doc->model().setZMin(m_spinModelZMin->value());
+    m_doc->model().set_z_max(m_spinModelZMax->value());
+    m_doc->model().set_z_min(m_spinModelZMin->value());
 
     m_doc->setModified(true);
     if (m_doc->isRealTimeCompute()) {

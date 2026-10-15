@@ -71,7 +71,7 @@ QVariant SpreadsheetModel::data(const QModelIndex &index, int role) const {
         case 6: { // Number of bodies at this column
             int modelR = static_cast<int>(r + 1);
             int modelC = static_cast<int>(c + 1);
-            return static_cast<int>(m_doc->model().getCount(modelR, modelC));
+            return static_cast<int>(m_doc->model().count(modelR, modelC));
         }
         default:
             break;

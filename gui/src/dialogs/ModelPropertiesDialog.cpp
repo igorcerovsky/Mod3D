@@ -17,25 +17,25 @@ ModelPropertiesDialog::ModelPropertiesDialog(ModelDocument *doc, QWidget *parent
 
     const auto &m = m_doc->model();
 
-    form->addRow(tr("Rows:"), new QLabel(QString::number(m.getRows()), this));
-    form->addRow(tr("Columns:"), new QLabel(QString::number(m.getCols()), this));
-    form->addRow(tr("X min:"), new QLabel(QString("%1 m").arg(m.getXMin(), 0, 'f', 1), this));
-    form->addRow(tr("X max:"), new QLabel(QString("%1 m").arg(m.getXMax(), 0, 'f', 1), this));
-    form->addRow(tr("Y min:"), new QLabel(QString("%1 m").arg(m.getYMin(), 0, 'f', 1), this));
-    form->addRow(tr("Y max:"), new QLabel(QString("%1 m").arg(m.getYMax(), 0, 'f', 1), this));
-    form->addRow(tr("Cell dX:"), new QLabel(QString("%1 m").arg(m.getXSize(), 0, 'f', 1), this));
-    form->addRow(tr("Cell dY:"), new QLabel(QString("%1 m").arg(m.getYSize(), 0, 'f', 1), this));
+    form->addRow(tr("Rows:"), new QLabel(QString::number(m.rows()), this));
+    form->addRow(tr("Columns:"), new QLabel(QString::number(m.cols()), this));
+    form->addRow(tr("X min:"), new QLabel(QString("%1 m").arg(m.x_min(), 0, 'f', 1), this));
+    form->addRow(tr("X max:"), new QLabel(QString("%1 m").arg(m.x_max(), 0, 'f', 1), this));
+    form->addRow(tr("Y min:"), new QLabel(QString("%1 m").arg(m.y_min(), 0, 'f', 1), this));
+    form->addRow(tr("Y max:"), new QLabel(QString("%1 m").arg(m.y_max(), 0, 'f', 1), this));
+    form->addRow(tr("Cell dX:"), new QLabel(QString("%1 m").arg(m.dx(), 0, 'f', 1), this));
+    form->addRow(tr("Cell dY:"), new QLabel(QString("%1 m").arg(m.dy(), 0, 'f', 1), this));
 
     m_spinZMin = new QDoubleSpinBox(this);
     m_spinZMin->setRange(-1e6, 1e6);
     m_spinZMin->setSuffix(" m");
-    m_spinZMin->setValue(m.getZMin());
+    m_spinZMin->setValue(m.z_min());
     form->addRow(tr("Model Bottom (Z min):"), m_spinZMin);
 
     m_spinZMax = new QDoubleSpinBox(this);
     m_spinZMax->setRange(-1e6, 1e6);
     m_spinZMax->setSuffix(" m");
-    m_spinZMax->setValue(m.getZMax());
+    m_spinZMax->setValue(m.z_max());
     form->addRow(tr("Model Top (Z max):"), m_spinZMax);
 
     m_editDescription = new QTextEdit(this);

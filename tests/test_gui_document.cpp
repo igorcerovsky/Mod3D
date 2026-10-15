@@ -37,10 +37,10 @@ TEST_F(GuiDocumentTest, NewProjectInitializesCorrectState) {
     doc.newProject(8, 10, 1000.0, 2000.0, 50.0, 50.0, -2000.0, 0.0);
 
     // Model grid includes 1-cell border on each side: rows + 2 and cols + 2
-    EXPECT_EQ(doc.model().getRows(), 8 + 2);
-    EXPECT_EQ(doc.model().getCols(), 10 + 2);
-    EXPECT_DOUBLE_EQ(doc.model().getXSize(), 50.0);
-    EXPECT_DOUBLE_EQ(doc.model().getYSize(), 50.0);
+    EXPECT_EQ(doc.model().rows(), 8 + 2);
+    EXPECT_EQ(doc.model().cols(), 10 + 2);
+    EXPECT_DOUBLE_EQ(doc.model().dx(), 50.0);
+    EXPECT_DOUBLE_EQ(doc.model().dy(), 50.0);
 
     // Default orientation is East-West -> row profiles (8 profiles, maxProfileIndex() == 7)
     EXPECT_EQ(doc.profileOrientation(), ProfileOrientation::EastWest);
@@ -91,12 +91,12 @@ TEST_F(GuiDocumentTest, InsertBodyAndEditVerticesWithRealtimeRecalc) {
     doc.newProject(8, 8, 0.0, 0.0, 50.0, 50.0, -2000.0, 0.0);
     doc.setProfileIndex(0); // Profile 0 -> row 1
 
-    EXPECT_EQ(doc.model().getBodies().size(), 0);
+    EXPECT_EQ(doc.model().bodies().size(), 0);
 
     // Insert new body at line index 2 (col 3)
     int bodyId = doc.insertBodyAt(2, -500.0, 200.0);
     EXPECT_GT(bodyId, 0);
-    EXPECT_EQ(doc.model().getBodies().size(), 1);
+    EXPECT_EQ(doc.model().bodies().size(), 1);
     EXPECT_TRUE(doc.isModified());
 
     // Extend body to line index 3 (col 4)
@@ -104,18 +104,18 @@ TEST_F(GuiDocumentTest, InsertBodyAndEditVerticesWithRealtimeRecalc) {
     EXPECT_EQ(extId, bodyId);
 
     // In EastWest, profile 0 (row 1): col 3 has index idxCol3, col 4 has index idxCol4
-    int idxCol3 = doc.model().getBodyIndex(bodyId, 1, 3);
-    int idxCol4 = doc.model().getBodyIndex(bodyId, 1, 4);
+    int idxCol3 = doc.model().body_index(bodyId, 1, 3);
+    int idxCol4 = doc.model().body_index(bodyId, 1, 4);
     EXPECT_GE(idxCol3, 0);
     EXPECT_GE(idxCol4, 0);
 
     // Body at col 3 has center -500 and half-thickness 100 -> top -400, bot -600
-    EXPECT_NEAR(doc.model().getZ(1, 3, idxCol3), -400.0, 1e-4);
-    EXPECT_NEAR(doc.model().getZ(1, 3, idxCol3 + 1), -600.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(1, 3, idxCol3), -400.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(1, 3, idxCol3 + 1), -600.0, 1e-4);
 
     // Interactive vertex dragging: commit change
     doc.moveVertex(2, idxCol3, -450.0);
-    EXPECT_NEAR(doc.model().getZ(1, 3, idxCol3), -450.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(1, 3, idxCol3), -450.0, 1e-4);
 }
 
 TEST_F(GuiDocumentTest, CopyBodyAcrossProfiles) {
@@ -127,25 +127,25 @@ TEST_F(GuiDocumentTest, CopyBodyAcrossProfiles) {
     doc.insertBodyAt(3, -600.0, 300.0, bodyId);
 
     // Verify present on row 2
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 2, 3), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 2, 3), 0);
     // Not present on row 3 yet
-    EXPECT_LT(doc.model().getBodyIndex(bodyId, 3, 3), 0);
+    EXPECT_LT(doc.model().body_index(bodyId, 3, 3), 0);
 
     // Copy to Next Profile (row 3)
     doc.copyBodyToNextProfile(bodyId);
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 3, 3), 0);
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 3, 4), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 3, 3), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 3, 4), 0);
 
     // Copy to Previous Profile (row 1)
     doc.copyBodyToPreviousProfile(bodyId);
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 1, 3), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 1, 3), 0);
 
     // Remove from current profile (row 2)
     doc.removeBodyFromCurrentProfile(bodyId);
-    EXPECT_LT(doc.model().getBodyIndex(bodyId, 2, 3), 0);
+    EXPECT_LT(doc.model().body_index(bodyId, 2, 3), 0);
     // Still present on row 1 and row 3
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 1, 3), 0);
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 3, 3), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 1, 3), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 3, 3), 0);
 }
 
 TEST_F(GuiDocumentTest, LoadLegacyProjectAndComputeField) {
@@ -158,16 +158,16 @@ TEST_F(GuiDocumentTest, LoadLegacyProjectAndComputeField) {
     if (std::filesystem::exists(samplePath)) {
         bool ok = doc.openFile(QString::fromStdString(samplePath));
         EXPECT_TRUE(ok);
-        EXPECT_GT(doc.model().getRows(), 0);
-        EXPECT_GT(doc.model().getCols(), 0);
+        EXPECT_GT(doc.model().rows(), 0);
+        EXPECT_GT(doc.model().cols(), 0);
 
         // Compute forward field
         doc.computeAll();
         // Modeled grid should be allocated
         const auto *modGrid = doc.modeledGrid(mod3d::FieldComponent::GZ);
         if (modGrid) {
-            EXPECT_EQ(static_cast<int>(modGrid->rows()), doc.model().getRows() - 2);
-            EXPECT_EQ(static_cast<int>(modGrid->cols()), doc.model().getCols() - 2);
+            EXPECT_EQ(static_cast<int>(modGrid->rows()), doc.model().rows() - 2);
+            EXPECT_EQ(static_cast<int>(modGrid->cols()), doc.model().cols() - 2);
         }
     }
 }
@@ -237,7 +237,7 @@ TEST_F(GuiDocumentTest, RealtimeModeledFieldUpdateOnProfileVertexMove) {
     ASSERT_GT(bodyId, 0);
     doc.insertBodyAt(3, -500.0, 200.0, bodyId);
     doc.copyBodyToNextProfile(bodyId); // Copy to profile 3 (row 4)
-    auto *b = doc.model().getBody(bodyId);
+    auto *b = doc.model().body(bodyId);
     ASSERT_NE(b, nullptr);
     const_cast<mod3d::Body*>(b)->set_density(3200.0);
 
@@ -249,12 +249,12 @@ TEST_F(GuiDocumentTest, RealtimeModeledFieldUpdateOnProfileVertexMove) {
     EXPECT_GT(initialVal, 0.0);
 
     // In EastWest, profile 2 is row 3; lineIdx 2 is col 3
-    int vIdx = doc.model().getBodyIndex(bodyId, 3, 3);
+    int vIdx = doc.model().body_index(bodyId, 3, 3);
     ASSERT_GE(vIdx, 0);
 
     // Moving vertex should automatically update the modeled field in real-time
     EXPECT_TRUE(doc.isRealTimeCompute());
-    EXPECT_TRUE(doc.model().isComputeRealTime());
+    EXPECT_TRUE(doc.model().is_compute_real_time());
     bool moved = doc.moveVertex(2, vIdx, -300.0);
     EXPECT_TRUE(moved);
 
@@ -346,13 +346,13 @@ TEST_F(GuiDocumentTest, NewBodyInsertionCreatesPointOnProfile) {
     // 1. Test standard project with default depth range [-2000, 0]
     doc.newProject(8, 10, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
     doc.setProfileIndex(2); // profile 2
-    size_t initialBodies = doc.model().getBodies().size();
+    size_t initialBodies = doc.model().bodies().size();
 
     auto *b = doc.createNewBody();
     ASSERT_NE(b, nullptr);
     int bId = b->id();
     EXPECT_GT(bId, 0);
-    EXPECT_EQ(doc.model().getBodies().size(), initialBodies + 1);
+    EXPECT_EQ(doc.model().bodies().size(), initialBodies + 1);
 
     // createNewBody inserts at the center column of the current profile
     int curLine = doc.profileColumnLineCount() / 2;
@@ -362,7 +362,7 @@ TEST_F(GuiDocumentTest, NewBodyInsertionCreatesPointOnProfile) {
     EXPECT_GT(col, 0);
 
     // Verify vertices were created on profile column
-    int vIdx = doc.model().getBodyIndex(bId, row, col);
+    int vIdx = doc.model().body_index(bId, row, col);
     EXPECT_GE(vIdx, 0);
 
     // Also test inserting at a specific column line (e.g. line 0)
@@ -370,7 +370,7 @@ TEST_F(GuiDocumentTest, NewBodyInsertionCreatesPointOnProfile) {
     EXPECT_GT(line0Body, 0);
     int row0 = -1, col0 = -1;
     doc.getRowCol(0, row0, col0);
-    EXPECT_GE(doc.model().getBodyIndex(line0Body, row0, col0), 0);
+    EXPECT_GE(doc.model().body_index(line0Body, row0, col0), 0);
 
     // 2. Test shallow depth model like Test.m3d [-100, 0]
     std::string testPath = std::string(MOD3D_EXAMPLES_DIR) + "/Test.m3d";
@@ -378,20 +378,20 @@ TEST_F(GuiDocumentTest, NewBodyInsertionCreatesPointOnProfile) {
         bool ok = doc.openFile(QString::fromStdString(testPath));
         ASSERT_TRUE(ok);
 
-        double zMin = doc.model().getZMin();
-        double zMax = doc.model().getZMax();
+        double zMin = doc.model().z_min();
+        double zMax = doc.model().z_max();
         EXPECT_GT(zMax, zMin);
 
-        size_t countBefore = doc.model().getBodies().size();
+        size_t countBefore = doc.model().bodies().size();
         auto *newBody = doc.createNewBody();
         ASSERT_NE(newBody, nullptr);
         int newId = newBody->id();
         EXPECT_GT(newId, 0);
-        EXPECT_EQ(doc.model().getBodies().size(), countBefore + 1);
+        EXPECT_EQ(doc.model().bodies().size(), countBefore + 1);
 
         curLine = doc.profileColumnLineCount() / 2;
         doc.getRowCol(curLine, row, col);
-        int shallowVIdx = doc.model().getBodyIndex(newId, row, col);
+        int shallowVIdx = doc.model().body_index(newId, row, col);
         EXPECT_GE(shallowVIdx, 0);
     }
 }
@@ -406,34 +406,34 @@ TEST_F(GuiDocumentTest, UnsnapVertexAtAndSplitDrag) {
 
     int row = -1, col = -1;
     doc.getRowCol(2, row, col);
-    int topIdx = doc.model().getBodyIndex(bId, row, col);
+    int topIdx = doc.model().body_index(bId, row, col);
     int botIdx = topIdx + 1;
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, topIdx), -400.0);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, botIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, topIdx), -400.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, botIdx), -600.0);
 
     // 1. Snap them together
     bool moved = doc.moveVertex(2, topIdx, -600.0, mod3d::BodyMoveType::Normal);
     EXPECT_TRUE(moved);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, topIdx), -600.0);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, botIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, topIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, botIdx), -600.0);
 
     // 2. Unsnap via Split move (Ctrl+Drag)
     int vIdx = topIdx;
     moved = doc.moveVertex(2, vIdx, -450.0, mod3d::BodyMoveType::Split, &vIdx);
     EXPECT_TRUE(moved);
     EXPECT_EQ(vIdx, topIdx);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, topIdx), -450.0);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, botIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, topIdx), -450.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, botIdx), -600.0);
 
     // 3. Snap together again
     doc.moveVertex(2, topIdx, -600.0, mod3d::BodyMoveType::Normal);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, topIdx), -600.0);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(row, col, botIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, topIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(row, col, botIdx), -600.0);
 
     // 4. Unsnap via unsnapVertexAt() (right-click menu action)
     bool unsnapped = doc.unsnapVertexAt(2, topIdx, 150.0);
     EXPECT_TRUE(unsnapped);
-    EXPECT_GT(doc.model().getZ(row, col, topIdx), doc.model().getZ(row, col, botIdx));
+    EXPECT_GT(doc.model().z(row, col, topIdx), doc.model().z(row, col, botIdx));
 }
 
 TEST_F(GuiDocumentTest, BodyColorAndFillApplication) {
@@ -443,7 +443,7 @@ TEST_F(GuiDocumentTest, BodyColorAndFillApplication) {
     int bId = doc.insertBodyAt(2, -500.0, 200.0);
     ASSERT_GT(bId, 0);
 
-    auto *b = doc.model().getBody(bId);
+    auto *b = doc.model().body(bId);
     ASSERT_NE(b, nullptr);
 
     // Initial palette color is valid
@@ -560,7 +560,7 @@ TEST_F(GuiDocumentTest, IndependentPerpendicularProfileViews) {
     EXPECT_GT(bId, 0);
 
     // Verify intersection has body index in model
-    int bIdx = doc.model().getBodyIndex(bId, rowIntersect, colIntersect);
+    int bIdx = doc.model().body_index(bId, rowIntersect, colIntersect);
     EXPECT_GE(bIdx, 0);
 
     // Verify both perpendicular views render successfully
@@ -579,7 +579,7 @@ TEST_F(GuiDocumentTest, IndependentPerpendicularProfileViews) {
     // 3. Move vertex at the intersection from pvEW, check model updates and pvSN sees it
     bool moved = doc.moveVertexAtRowCol(rowIntersect, colIntersect, bIdx, -600.0);
     EXPECT_TRUE(moved);
-    EXPECT_DOUBLE_EQ(doc.model().getZ(rowIntersect, colIntersect, bIdx), -600.0);
+    EXPECT_DOUBLE_EQ(doc.model().z(rowIntersect, colIntersect, bIdx), -600.0);
 
     // Render again to verify real-time update
     pvEW.render(&pixEW);
@@ -636,8 +636,8 @@ TEST_F(GuiDocumentTest, MapViewEqualScaleBothAxes) {
     EXPECT_EQ(canvasWide.width(), canvasWide.height());
 
     // Verify scale: 100 meters in X must equal exactly the same number of pixels as 100 meters in Y
-    double spanX = doc.model().getXMax() - doc.model().getXMin();
-    double spanY = doc.model().getYMax() - doc.model().getYMin();
+    double spanX = doc.model().x_max() - doc.model().x_min();
+    double spanY = doc.model().y_max() - doc.model().y_min();
     EXPECT_DOUBLE_EQ(spanX, spanY);
 
     // 500 meters along X vs 500 meters along Y
@@ -728,20 +728,20 @@ TEST_F(GuiDocumentTest, ExtendBodySidePreservesHeightAndCollapses) {
     int bodyId = doc.insertBodyAtRowCol(1, 3, -500.0, 200.0);
     ASSERT_GT(bodyId, 0);
 
-    int idxCol3 = doc.model().getBodyIndex(bodyId, 1, 3);
+    int idxCol3 = doc.model().body_index(bodyId, 1, 3);
     ASSERT_GE(idxCol3, 0);
-    double initialTop = doc.model().getZ(1, 3, idxCol3);
-    double initialBot = doc.model().getZ(1, 3, idxCol3 + 1);
+    double initialTop = doc.model().z(1, 3, idxCol3);
+    double initialBot = doc.model().z(1, 3, idxCol3 + 1);
     double initialHeight = std::abs(initialTop - initialBot);
     EXPECT_NEAR(initialHeight, 200.0, 1e-4);
 
     // Extend to column 4 (horizontal extension)
     bool extOk = doc.extendBodySideAtRowCol(1, 3, 1, 4, bodyId);
     EXPECT_TRUE(extOk);
-    int idxCol4 = doc.model().getBodyIndex(bodyId, 1, 4);
+    int idxCol4 = doc.model().body_index(bodyId, 1, 4);
     ASSERT_GE(idxCol4, 0);
-    double col4Top = doc.model().getZ(1, 4, idxCol4);
-    double col4Bot = doc.model().getZ(1, 4, idxCol4 + 1);
+    double col4Top = doc.model().z(1, 4, idxCol4);
+    double col4Bot = doc.model().z(1, 4, idxCol4 + 1);
     double col4Height = std::abs(col4Top - col4Bot);
     // Height must remain 200, NOT double or increase
     EXPECT_NEAR(col4Height, 200.0, 1e-4);
@@ -751,16 +751,16 @@ TEST_F(GuiDocumentTest, ExtendBodySidePreservesHeightAndCollapses) {
     // Extend to column 5
     extOk = doc.extendBodySideAtRowCol(1, 4, 1, 5, bodyId);
     EXPECT_TRUE(extOk);
-    int idxCol5 = doc.model().getBodyIndex(bodyId, 1, 5);
+    int idxCol5 = doc.model().body_index(bodyId, 1, 5);
     ASSERT_GE(idxCol5, 0);
-    double col5Height = std::abs(doc.model().getZ(1, 5, idxCol5) - doc.model().getZ(1, 5, idxCol5 + 1));
+    double col5Height = std::abs(doc.model().z(1, 5, idxCol5) - doc.model().z(1, 5, idxCol5 + 1));
     EXPECT_NEAR(col5Height, 200.0, 1e-4);
 
     // Drag backwards (collapse from 5 into 4)
     bool colOk = doc.extendBodySideAtRowCol(1, 5, 1, 4, bodyId);
     EXPECT_TRUE(colOk);
-    EXPECT_LT(doc.model().getBodyIndex(bodyId, 1, 5), 0);
-    EXPECT_GE(doc.model().getBodyIndex(bodyId, 1, 4), 0);
+    EXPECT_LT(doc.model().body_index(bodyId, 1, 5), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 1, 4), 0);
 }
 
 TEST_F(GuiDocumentTest, MoveUpperBoundaryDrawingMode) {
@@ -773,42 +773,42 @@ TEST_F(GuiDocumentTest, MoveUpperBoundaryDrawingMode) {
     doc.insertBodyAtRowCol(1, 3, -500.0, 200.0, bodyId);
     doc.insertBodyAtRowCol(1, 4, -500.0, 200.0, bodyId);
 
-    // Check updateMoveIndex functionality
-    int vIdxCol2Top = doc.model().getBodyIndex(bodyId, 1, 2);
+    // Check update_move_index functionality
+    int vIdxCol2Top = doc.model().body_index(bodyId, 1, 2);
     int vIdxCol2Bot = vIdxCol2Top + 1;
 
     // Moving top boundary (odd index) across columns
-    int vIdxCol3Top = doc.model().updateMoveIndex(vIdxCol2Top, 1, 3, bodyId);
-    EXPECT_EQ(vIdxCol3Top, doc.model().getBodyIndex(bodyId, 1, 3));
+    int vIdxCol3Top = doc.model().update_move_index(vIdxCol2Top, 1, 3, bodyId);
+    EXPECT_EQ(vIdxCol3Top, doc.model().body_index(bodyId, 1, 3));
     EXPECT_EQ(vIdxCol3Top % 2, 1); // Upper boundary is odd
 
     // Moving bottom boundary (even index) across columns
-    int vIdxCol3Bot = doc.model().updateMoveIndex(vIdxCol2Bot, 1, 3, bodyId);
-    EXPECT_EQ(vIdxCol3Bot, doc.model().getBodyIndex(bodyId, 1, 3) + 1);
+    int vIdxCol3Bot = doc.model().update_move_index(vIdxCol2Bot, 1, 3, bodyId);
+    EXPECT_EQ(vIdxCol3Bot, doc.model().body_index(bodyId, 1, 3) + 1);
     EXPECT_EQ(vIdxCol3Bot % 2, 0); // Lower boundary is even
 
     // Column 5 does not have bodyId -> returns -1
-    EXPECT_EQ(doc.model().updateMoveIndex(vIdxCol2Top, 1, 5, bodyId), -1);
+    EXPECT_EQ(doc.model().update_move_index(vIdxCol2Top, 1, 5, bodyId), -1);
 
     // Test stepping drawing mode across columns 2 -> 3 -> 4
     int currVIdx = vIdxCol2Top;
     double newZ = -350.0;
     for (int col = 2; col <= 4; ++col) {
         if (col > 2) {
-            currVIdx = doc.model().updateMoveIndex(currVIdx, 1, col, bodyId);
+            currVIdx = doc.model().update_move_index(currVIdx, 1, col, bodyId);
             ASSERT_GT(currVIdx, 0);
         }
         bool moved = doc.moveVertexAtRowCol(1, col, currVIdx, newZ);
         EXPECT_TRUE(moved);
-        EXPECT_NEAR(doc.model().getZ(1, col, currVIdx), newZ, 1e-4);
+        EXPECT_NEAR(doc.model().z(1, col, currVIdx), newZ, 1e-4);
     }
 
     // Verify all 3 columns now have upper boundary sculpted to -350.0
-    EXPECT_NEAR(doc.model().getZ(1, 2, vIdxCol2Top), -350.0, 1e-4);
-    int vIdxCol3 = doc.model().getBodyIndex(bodyId, 1, 3);
-    EXPECT_NEAR(doc.model().getZ(1, 3, vIdxCol3), -350.0, 1e-4);
-    int vIdxCol4 = doc.model().getBodyIndex(bodyId, 1, 4);
-    EXPECT_NEAR(doc.model().getZ(1, 4, vIdxCol4), -350.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(1, 2, vIdxCol2Top), -350.0, 1e-4);
+    int vIdxCol3 = doc.model().body_index(bodyId, 1, 3);
+    EXPECT_NEAR(doc.model().z(1, 3, vIdxCol3), -350.0, 1e-4);
+    int vIdxCol4 = doc.model().body_index(bodyId, 1, 4);
+    EXPECT_NEAR(doc.model().z(1, 4, vIdxCol4), -350.0, 1e-4);
 
     // ProfileView offscreen render works cleanly with the sculpted model
     ProfileView pv(&doc, ProfileOrientation::EastWest, 0);
@@ -846,16 +846,16 @@ TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
     ASSERT_TRUE(std::filesystem::exists(testPath));
     ASSERT_TRUE(doc.openFile(QString::fromStdString(testPath)));
 
-    ASSERT_FALSE(doc.model().getBodies().empty());
-    int loadedBodyId = doc.model().getBodies().front()->id();
+    ASSERT_FALSE(doc.model().bodies().empty());
+    int loadedBodyId = doc.model().bodies().front()->id();
     EXPECT_EQ(loadedBodyId, 0); // Confirms loaded body has ID 0
 
     // Find a row and col where loadedBodyId exists with an adjacent column
     int foundRow = -1, foundCol = -1;
-    for (int r = 1; r < doc.model().getRows() - 1; ++r) {
-        for (int c = 1; c < doc.model().getCols() - 2; ++c) {
-            int idx1 = doc.model().getBodyIndex(loadedBodyId, r, c);
-            int idx2 = doc.model().getBodyIndex(loadedBodyId, r, c + 1);
+    for (int r = 1; r < doc.model().rows() - 1; ++r) {
+        for (int c = 1; c < doc.model().cols() - 2; ++c) {
+            int idx1 = doc.model().body_index(loadedBodyId, r, c);
+            int idx2 = doc.model().body_index(loadedBodyId, r, c + 1);
             if (idx1 >= 0 && idx2 >= 0) {
                 foundRow = r;
                 foundCol = c;
@@ -867,8 +867,8 @@ TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
     ASSERT_GE(foundRow, 0);
     ASSERT_GE(foundCol, 0);
 
-    int vIdx = doc.model().getBodyIndex(loadedBodyId, foundRow, foundCol);
-    int vIdxNext = doc.model().getBodyIndex(loadedBodyId, foundRow, foundCol + 1);
+    int vIdx = doc.model().body_index(loadedBodyId, foundRow, foundCol);
+    int vIdxNext = doc.model().body_index(loadedBodyId, foundRow, foundCol + 1);
     ASSERT_GE(vIdx, 0);
     ASSERT_GE(vIdxNext, 0);
 
@@ -880,8 +880,8 @@ TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
     QPixmap pm(1000, 600);
     pv.render(&pm);
 
-    double initialColZ = doc.model().getZ(foundRow, foundCol, vIdx);
-    double initialNextColZ = doc.model().getZ(foundRow, foundCol + 1, vIdxNext);
+    double initialColZ = doc.model().z(foundRow, foundCol, vIdx);
+    double initialNextColZ = doc.model().z(foundRow, foundCol + 1, vIdxNext);
 
     int lineIdxStart = foundCol - 1;
     int lineIdxTarget = (foundCol + 1) - 1;
@@ -905,7 +905,7 @@ TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
     pv.sendMouseRelease(QPoint(sxTarget, syTarget));
 
     // Verify drawing mode successfully moved the upper boundary of body 0 in the adjacent column!
-    double updatedNextColZ = doc.model().getZ(foundRow, foundCol + 1, vIdxNext);
+    double updatedNextColZ = doc.model().z(foundRow, foundCol + 1, vIdxNext);
     EXPECT_NEAR(updatedNextColZ, newZ, 0.5);
     EXPECT_NE(updatedNextColZ, initialNextColZ);
 }
@@ -943,11 +943,11 @@ TEST_F(GuiDocumentTest, MagneticFieldComputedOnSelectionAndUpdatesRealTime) {
     // Enable real-time compute, modify vertex and verify modeled magnetic field updates
     doc.setRealTimeCompute(true);
     doc.setActiveField(mod3d::FieldComponent::DELTA_T);
-    int bodyId = doc.model().getBodies().front()->id();
+    int bodyId = doc.model().bodies().front()->id();
     int foundR = -1, foundC = -1, bIdx = -1;
-    for (int r = 1; r < doc.model().getRows() - 1 && foundR < 0; ++r) {
-        for (int c = 1; c < doc.model().getCols() - 1; ++c) {
-            int idx = doc.model().getBodyIndex(bodyId, r, c);
+    for (int r = 1; r < doc.model().rows() - 1 && foundR < 0; ++r) {
+        for (int c = 1; c < doc.model().cols() - 1; ++c) {
+            int idx = doc.model().body_index(bodyId, r, c);
             if (idx >= 0) {
                 foundR = r;
                 foundC = c;
@@ -959,7 +959,7 @@ TEST_F(GuiDocumentTest, MagneticFieldComputedOnSelectionAndUpdatesRealTime) {
     ASSERT_GE(foundR, 0);
     ASSERT_GE(foundC, 0);
     ASSERT_GE(bIdx, 0);
-    double curZ = doc.model().getZ(foundR, foundC, bIdx);
+    double curZ = doc.model().z(foundR, foundC, bIdx);
     doc.moveVertexAtRowCol(foundR, foundC, bIdx, curZ + 50.0);
 
     const auto *updatedModGrid = doc.activeModeledGrid();
@@ -976,10 +976,10 @@ TEST_F(GuiDocumentTest, MapViewColorScaleLegendAndBodyContourProjection) {
     ASSERT_TRUE(doc.openFile(QString::fromStdString(path)));
 
     // 1. Verify loaded body attributes
-    ASSERT_EQ(doc.model().getBodies().size(), 3u);
-    const auto *b0 = doc.model().getBody(0);
-    const auto *b1 = doc.model().getBody(1);
-    const auto *b2 = doc.model().getBody(2);
+    ASSERT_EQ(doc.model().bodies().size(), 3u);
+    const auto *b0 = doc.model().body(0);
+    const auto *b1 = doc.model().body(1);
+    const auto *b2 = doc.model().body(2);
     ASSERT_NE(b0, nullptr);
     ASSERT_NE(b1, nullptr);
     ASSERT_NE(b2, nullptr);
@@ -990,7 +990,7 @@ TEST_F(GuiDocumentTest, MapViewColorScaleLegendAndBodyContourProjection) {
     EXPECT_FALSE(b0->is_filled());
 
     // 2. Verify 2D body boundary contours exist
-    const auto &boundaries = doc.model().getAllBodyBoundaries();
+    const auto &boundaries = doc.model().all_body_boundaries();
     EXPECT_GT(boundaries.size(), 0u);
     for (const auto &seg : boundaries) {
         EXPECT_TRUE(seg.bodyId == 0 || seg.bodyId == 1 || seg.bodyId == 2);
@@ -1112,7 +1112,7 @@ TEST_F(GuiDocumentTest, ProfileToMapViewCursorSyncAndMarkerRendering) {
     EXPECT_TRUE(doc.activeProfileCursor().active);
     EXPECT_EQ(doc.activeProfileCursor().row, 4); // row 4 for profile 3
     EXPECT_NE(doc.activeProfileCursor().y, prevY);
-    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().getYd(4));
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().yd(4));
     EXPECT_DOUBLE_EQ(doc.activeProfileCursor().x, xw); // X position along column is preserved
 
     // Wheel scrolling updates profile and station point
@@ -1121,7 +1121,7 @@ TEST_F(GuiDocumentTest, ProfileToMapViewCursorSyncAndMarkerRendering) {
     QApplication::sendEvent(&pv, &wheelUp);
     EXPECT_TRUE(doc.activeProfileCursor().active);
     EXPECT_EQ(doc.activeProfileCursor().row, 5); // profile 4 -> row 5
-    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().getYd(5));
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().yd(5));
 
     // Clear cursor
     doc.clearActiveProfileCursor();
@@ -1197,18 +1197,18 @@ TEST_F(GuiDocumentTest, GL3DViewProfileSlicesAndReliefGridSanity) {
     doc.newProject(10, 12, 1000.0, 2000.0, 50.0, 50.0, -3000.0, 250.0);
 
     const auto &m = doc.model();
-    int rows = m.getRows();
-    int cols = m.getCols();
+    int rows = m.rows();
+    int cols = m.cols();
     int rMax = rows - 2;
     int cMax = cols - 2;
 
     // Verify all core grid points used by relief wireframe are valid and have non-Hell elevation
     for (int r = 1; r <= rMax; ++r) {
         for (int c = 1; c <= cMax; ++c) {
-            double z = m.getZ(r, c, 0);
-            EXPECT_NE(z, m.getHell());
-            EXPECT_LE(z, m.getZMax());
-            EXPECT_GE(z, m.getZMin());
+            double z = m.z(r, c, 0);
+            EXPECT_NE(z, m.z_min());
+            EXPECT_LE(z, m.z_max());
+            EXPECT_GE(z, m.z_min());
         }
     }
 
@@ -1600,16 +1600,16 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
     EXPECT_DOUBLE_EQ(doc->observation().magnetic_height(), 120.0);
 
     // Model vertical limits
-    doc->model().setZMin(-3500.0);
-    doc->model().setZMax(450.0);
-    EXPECT_DOUBLE_EQ(doc->model().getZMin(), -3500.0);
-    EXPECT_DOUBLE_EQ(doc->model().getZMax(), 450.0);
-    EXPECT_DOUBLE_EQ(doc->model().getHell(), -3500.0);
-    EXPECT_DOUBLE_EQ(doc->model().getHeaven(), 450.0);
+    doc->model().set_z_min(-3500.0);
+    doc->model().set_z_max(450.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_min(), -3500.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_max(), 450.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_min(), -3500.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_max(), 450.0);
 
     // Body density gradient and remanence
-    if (!doc->model().getBodies().empty()) {
-        auto *b = doc->model().getBodies().front().get();
+    if (!doc->model().bodies().empty()) {
+        auto *b = doc->model().bodies().front().get();
         b->set_density_gradient(mod3d::Point3D(0.001, -0.002, 0.005));
         EXPECT_DOUBLE_EQ(b->density_gradient().x, 0.001);
         EXPECT_DOUBLE_EQ(b->density_gradient().y, -0.002);
@@ -1799,7 +1799,7 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     ASSERT_NE(pane, nullptr);
 
     // Verify model has 3 bodies and Body 2 has authentic raw density 3400 kg/m3 and susc 0.01 SI
-    auto *b2 = mw.document()->model().getBody(2);
+    auto *b2 = mw.document()->model().body(2);
     ASSERT_NE(b2, nullptr);
     EXPECT_DOUBLE_EQ(b2->raw_density(), 3400.0);
     EXPECT_DOUBLE_EQ(b2->susceptibility(), 0.01);

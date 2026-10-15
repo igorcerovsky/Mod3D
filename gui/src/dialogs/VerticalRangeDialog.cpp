@@ -18,13 +18,13 @@ VerticalRangeDialog::VerticalRangeDialog(ModelDocument *doc, QWidget *parent)
     m_spinZMin = new QDoubleSpinBox(this);
     m_spinZMin->setRange(-1e6, 1e6);
     m_spinZMin->setSuffix(" m");
-    m_spinZMin->setValue(m_doc->model().getZMin());
+    m_spinZMin->setValue(m_doc->model().z_min());
     form->addRow(tr("Z min (Hell):"), m_spinZMin);
 
     m_spinZMax = new QDoubleSpinBox(this);
     m_spinZMax->setRange(-1e6, 1e6);
     m_spinZMax->setSuffix(" m");
-    m_spinZMax->setValue(m_doc->model().getZMax());
+    m_spinZMax->setValue(m_doc->model().z_max());
     form->addRow(tr("Z max (Heaven):"), m_spinZMax);
 
     mainLayout->addLayout(form);

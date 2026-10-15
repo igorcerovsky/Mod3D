@@ -290,12 +290,12 @@ void GL3DView::paintGL() {
     glLightfv(GL_LIGHT1, GL_DIFFUSE, light1Diff);
 
     // Center model at origin
-    double midX = (model.getXMin() + model.getXMax()) * 0.5;
-    double midY = (model.getYMin() + model.getYMax()) * 0.5;
-    double midZ = (model.getZMin() + model.getZMax()) * 0.5;
-    double maxDim = std::max({ model.getXMax() - model.getXMin(),
-                               model.getYMax() - model.getYMin(),
-                               model.getZMax() - model.getZMin() });
+    double midX = (model.x_min() + model.x_max()) * 0.5;
+    double midY = (model.y_min() + model.y_max()) * 0.5;
+    double midZ = (model.z_min() + model.z_max()) * 0.5;
+    double maxDim = std::max({ model.x_max() - model.x_min(),
+                               model.y_max() - model.y_min(),
+                               model.z_max() - model.z_min() });
     if (maxDim <= 0.0) maxDim = 10000.0;
 
     // Camera eye position back along Z
@@ -335,12 +335,12 @@ void GL3DView::drawBoundingBox() {
     glLineWidth(1.0f);
 
     const auto &m = m_doc->model();
-    float x0 = static_cast<float>(m.getXMin());
-    float x1 = static_cast<float>(m.getXMax());
-    float y0 = static_cast<float>(m.getYMin());
-    float y1 = static_cast<float>(m.getYMax());
-    float z0 = static_cast<float>(m.getZMin());
-    float z1 = static_cast<float>(m.getZMax());
+    float x0 = static_cast<float>(m.x_min());
+    float x1 = static_cast<float>(m.x_max());
+    float y0 = static_cast<float>(m.y_min());
+    float y1 = static_cast<float>(m.y_max());
+    float z0 = static_cast<float>(m.z_min());
+    float z1 = static_cast<float>(m.z_max());
 
     glBegin(GL_LINES);
     // Bottom
@@ -414,8 +414,8 @@ void GL3DView::drawRelief() {
     glLineWidth(1.0f);
 
     const auto &m = m_doc->model();
-    int rows = m.getRows();
-    int cols = m.getCols();
+    int rows = m.rows();
+    int cols = m.cols();
     int rMax = rows - 2;
     int cMax = cols - 2;
     if (rMax < 1 || cMax < 1) return;
@@ -424,24 +424,24 @@ void GL3DView::drawRelief() {
     glBegin(GL_LINES);
     // Grid lines along X (running West-East at each core row)
     for (int r = 1; r <= rMax; ++r) {
-        float y = static_cast<float>(m.getYd(r));
+        float y = static_cast<float>(m.yd(r));
         for (int c = 1; c < cMax; ++c) {
-            float xA = static_cast<float>(m.getXd(c));
-            float xB = static_cast<float>(m.getXd(c + 1));
-            float zA = static_cast<float>(m.getZ(r, c, 0));
-            float zB = static_cast<float>(m.getZ(r, c + 1, 0));
+            float xA = static_cast<float>(m.xd(c));
+            float xB = static_cast<float>(m.xd(c + 1));
+            float zA = static_cast<float>(m.z(r, c, 0));
+            float zB = static_cast<float>(m.z(r, c + 1, 0));
             glVertex3f(xA, y, zA);
             glVertex3f(xB, y, zB);
         }
     }
     // Grid lines along Y (running South-North at each core col)
     for (int c = 1; c <= cMax; ++c) {
-        float x = static_cast<float>(m.getXd(c));
+        float x = static_cast<float>(m.xd(c));
         for (int r = 1; r < rMax; ++r) {
-            float yA = static_cast<float>(m.getYd(r));
-            float yB = static_cast<float>(m.getYd(r + 1));
-            float zA = static_cast<float>(m.getZ(r, c, 0));
-            float zB = static_cast<float>(m.getZ(r + 1, c, 0));
+            float yA = static_cast<float>(m.yd(r));
+            float yB = static_cast<float>(m.yd(r + 1));
+            float zA = static_cast<float>(m.z(r, c, 0));
+            float zB = static_cast<float>(m.z(r + 1, c, 0));
             glVertex3f(x, yA, zA);
             glVertex3f(x, yB, zB);
         }
@@ -453,13 +453,13 @@ void GL3DView::drawRelief() {
 
 void GL3DView::drawBodies() {
     if (m_meshDirty) {
-        m_bodyMeshes = m_doc->model().generateBodyMeshes(-1, m_showOuterFacets);
+        m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
         m_meshDirty = false;
     }
 
     if (m_bodyMeshes.empty()) return;
 
-    double dBot = m_doc->model().getHell();
+    double dBot = m_doc->model().z_min();
 
     // 1. Opaque bodies pass
     glEnable(GL_LIGHTING);
@@ -621,12 +621,12 @@ void GL3DView::drawProfilePlane() {
     if (!m_doc) return;
     const auto &m = m_doc->model();
 
-    float z0 = static_cast<float>(m.getZMin());
-    float z1 = static_cast<float>(m.getZMax());
-    float x0 = static_cast<float>(m.getXMin());
-    float x1 = static_cast<float>(m.getXMax());
-    float y0 = static_cast<float>(m.getYMin());
-    float y1 = static_cast<float>(m.getYMax());
+    float z0 = static_cast<float>(m.z_min());
+    float z1 = static_cast<float>(m.z_max());
+    float x0 = static_cast<float>(m.x_min());
+    float x1 = static_cast<float>(m.x_max());
+    float y0 = static_cast<float>(m.y_min());
+    float y1 = static_cast<float>(m.y_max());
 
     struct ProfileSliceToDraw {
         ProfileOrientation orient;
@@ -680,13 +680,13 @@ void GL3DView::drawProfilePlane() {
         if (sl.isActive) continue;
         glColor4f(0.35f, 0.55f, 0.85f, 0.08f);
         if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.getYd(sl.index + 1));
+            float y = static_cast<float>(m.yd(sl.index + 1));
             glVertex3f(x0, y, z0);
             glVertex3f(x1, y, z0);
             glVertex3f(x1, y, z1);
             glVertex3f(x0, y, z1);
         } else {
-            float x = static_cast<float>(m.getXd(sl.index + 1));
+            float x = static_cast<float>(m.xd(sl.index + 1));
             glVertex3f(x, y0, z0);
             glVertex3f(x, y1, z0);
             glVertex3f(x, y1, z1);
@@ -699,13 +699,13 @@ void GL3DView::drawProfilePlane() {
         if (!sl.isActive) continue;
         glColor4f(0.96f, 0.28f, 0.22f, 0.26f);
         if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.getYd(sl.index + 1));
+            float y = static_cast<float>(m.yd(sl.index + 1));
             glVertex3f(x0, y, z0);
             glVertex3f(x1, y, z0);
             glVertex3f(x1, y, z1);
             glVertex3f(x0, y, z1);
         } else {
-            float x = static_cast<float>(m.getXd(sl.index + 1));
+            float x = static_cast<float>(m.xd(sl.index + 1));
             glVertex3f(x, y0, z0);
             glVertex3f(x, y1, z0);
             glVertex3f(x, y1, z1);
@@ -723,13 +723,13 @@ void GL3DView::drawProfilePlane() {
         if (sl.isActive) continue;
         glBegin(GL_LINE_LOOP);
         if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.getYd(sl.index + 1));
+            float y = static_cast<float>(m.yd(sl.index + 1));
             glVertex3f(x0, y, z0);
             glVertex3f(x1, y, z0);
             glVertex3f(x1, y, z1);
             glVertex3f(x0, y, z1);
         } else {
-            float x = static_cast<float>(m.getXd(sl.index + 1));
+            float x = static_cast<float>(m.xd(sl.index + 1));
             glVertex3f(x, y0, z0);
             glVertex3f(x, y1, z0);
             glVertex3f(x, y1, z1);
@@ -745,13 +745,13 @@ void GL3DView::drawProfilePlane() {
         glColor4f(0.96f, 0.20f, 0.15f, 0.95f);
         glBegin(GL_LINE_LOOP);
         if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.getYd(sl.index + 1));
+            float y = static_cast<float>(m.yd(sl.index + 1));
             glVertex3f(x0, y, z0);
             glVertex3f(x1, y, z0);
             glVertex3f(x1, y, z1);
             glVertex3f(x0, y, z1);
         } else {
-            float x = static_cast<float>(m.getXd(sl.index + 1));
+            float x = static_cast<float>(m.xd(sl.index + 1));
             glVertex3f(x, y0, z0);
             glVertex3f(x, y1, z0);
             glVertex3f(x, y1, z1);
@@ -764,11 +764,11 @@ void GL3DView::drawProfilePlane() {
         glColor4f(1.0f, 0.85f, 0.20f, 0.95f);
         glBegin(GL_LINES);
         if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.getYd(sl.index + 1));
+            float y = static_cast<float>(m.yd(sl.index + 1));
             glVertex3f(x0, y, z1);
             glVertex3f(x1, y, z1);
         } else {
-            float x = static_cast<float>(m.getXd(sl.index + 1));
+            float x = static_cast<float>(m.xd(sl.index + 1));
             glVertex3f(x, y0, z1);
             glVertex3f(x, y1, z1);
         }
@@ -942,9 +942,9 @@ void GL3DView::mouseMoveEvent(QMouseEvent *event) {
             double maxDim = 10000.0;
             if (m_doc) {
                 const auto &model = m_doc->model();
-                maxDim = std::max({ model.getXMax() - model.getXMin(),
-                                    model.getYMax() - model.getYMin(),
-                                    model.getZMax() - model.getZMin() });
+                maxDim = std::max({ model.x_max() - model.x_min(),
+                                    model.y_max() - model.y_min(),
+                                    model.z_max() - model.z_min() });
             }
             if (maxDim <= 0.0) maxDim = 10000.0;
             float dist = static_cast<float>(maxDim * 1.8 / m_zoom);

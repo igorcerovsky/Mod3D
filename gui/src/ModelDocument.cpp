@@ -34,7 +34,7 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
     m_undoStack.clear();
 
     bool okModel = m_project.model().init(rows, cols, x0, y0, dx, dy, zMin, zMax);
-    m_project.model().setComputeRealTime(m_realTimeCompute);
+    m_project.model().set_compute_real_time(m_realTimeCompute);
     m_project.observation().init_geometry(rows, cols, x0, y0, dx, dy);
     m_project.observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 0.0);
     m_project.observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 0.0);
@@ -64,7 +64,7 @@ bool ModelDocument::openFile(const QString &path) {
     }
 
     if (ok) {
-        m_project.model().setComputeRealTime(m_realTimeCompute);
+        m_project.model().set_compute_real_time(m_realTimeCompute);
         m_filePath = path;
         m_modified = false;
         m_undoStack.clear();
@@ -108,33 +108,33 @@ bool ModelDocument::saveFile(const QString &path) {
 
 int ModelDocument::maxProfileIndex() const noexcept {
     if (m_profileOrient == ProfileOrientation::EastWest) {
-        return std::max(0, m_project.model().getRows() - 3);
+        return std::max(0, m_project.model().rows() - 3);
     } else {
-        return std::max(0, m_project.model().getCols() - 3);
+        return std::max(0, m_project.model().cols() - 3);
     }
 }
 
 double ModelDocument::currentProfileCoordinate() const noexcept {
     if (m_profileOrient == ProfileOrientation::EastWest) {
-        return m_project.model().getYd(m_profileIndex + 1);
+        return m_project.model().yd(m_profileIndex + 1);
     } else {
-        return m_project.model().getXd(m_profileIndex + 1);
+        return m_project.model().xd(m_profileIndex + 1);
     }
 }
 
 int ModelDocument::profileColumnLineCount() const noexcept {
     if (m_profileOrient == ProfileOrientation::EastWest) {
-        return std::max(0, m_project.model().getCols() - 2);
+        return std::max(0, m_project.model().cols() - 2);
     } else {
-        return std::max(0, m_project.model().getRows() - 2);
+        return std::max(0, m_project.model().rows() - 2);
     }
 }
 
 double ModelDocument::columnCoordinate(int colIdx) const noexcept {
     if (m_profileOrient == ProfileOrientation::EastWest) {
-        return m_project.model().getXd(colIdx + 1);
+        return m_project.model().xd(colIdx + 1);
     } else {
-        return m_project.model().getYd(colIdx + 1);
+        return m_project.model().yd(colIdx + 1);
     }
 }
 
@@ -239,9 +239,9 @@ mod3d::Body *ModelDocument::createNewBody() {
     int curLine = profileColumnLineCount() / 2;
     int row = 0, col = 0;
     getRowCol(curLine, row, col);
-    double zMin = m_project.model().getZMin();
-    double zSurface = m_project.model().getZ(row, col, 0);
-    double defThickness = m_project.model().getDefaultThickness();
+    double zMin = m_project.model().z_min();
+    double zSurface = m_project.model().z(row, col, 0);
+    double defThickness = m_project.model().default_thickness();
     double halfT = defThickness / 2.0;
     if (halfT <= 0.0 || halfT >= (zSurface - zMin) / 2.0) {
         halfT = (zSurface - zMin) * 0.1;
@@ -251,9 +251,9 @@ mod3d::Body *ModelDocument::createNewBody() {
 
     int bodyId = insertBodyAt(curLine, midZ);
     if (bodyId >= 0) {
-        return m_project.model().getBody(bodyId);
+        return m_project.model().body(bodyId);
     }
-    auto *b = m_project.model().newBody();
+    auto *b = m_project.model().create_body();
     setModified(true);
     emit modelGeometryChanged();
     return b;
@@ -261,20 +261,20 @@ mod3d::Body *ModelDocument::createNewBody() {
 
 int ModelDocument::insertBodyAtRowCol(int row, int col, double z, double thickness, int bodyId) {
     if (thickness <= 0.0) {
-        thickness = m_project.model().getDefaultThickness();
+        thickness = m_project.model().default_thickness();
     }
 
     bool isNew = (bodyId < 0);
     double halfT = thickness / 2.0;
-    int res = m_project.model().insertBody(row, col, z, halfT, isNew, bodyId);
+    int res = m_project.model().insert_body(row, col, z, halfT, isNew, bodyId);
     if (res >= 0) {
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
-        const auto *pt = m_project.model().getAt(row, col, res);
+        const auto *pt = m_project.model().at(row, col, res);
         return pt ? pt->body_id() : res;
     }
     return -1;
@@ -287,12 +287,12 @@ int ModelDocument::insertBodyAt(int lineIdx, double z, double thickness, int bod
 }
 
 bool ModelDocument::removeBodyAtRowCol(int row, int col, int vertexIdx) {
-    int res = m_project.model().removeBody(vertexIdx, row, col);
+    int res = m_project.model().remove_body(vertexIdx, row, col);
     if (res >= 0) {
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
         return true;
@@ -308,22 +308,22 @@ bool ModelDocument::removeBodyAt(int lineIdx, int vertexIdx) {
 
 bool ModelDocument::removeBodyFromProfile(int bodyId, ProfileOrientation orient, int prfIdx) {
     bool isEW = (orient == ProfileOrientation::EastWest);
-    int nLines = isEW ? std::max(0, m_project.model().getCols() - 2) : std::max(0, m_project.model().getRows() - 2);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
     bool anyRemoved = false;
     for (int l = 0; l < nLines; ++l) {
         int row = isEW ? (prfIdx + 1) : (l + 1);
         int col = isEW ? (l + 1) : (prfIdx + 1);
-        int bIdx = m_project.model().getBodyIndex(bodyId, row, col);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
         if (bIdx >= 0) {
-            m_project.model().removeBody(bIdx, row, col);
+            m_project.model().remove_body(bIdx, row, col);
             anyRemoved = true;
         }
     }
     if (anyRemoved) {
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
     }
@@ -336,23 +336,23 @@ bool ModelDocument::removeBodyFromCurrentProfile(int bodyId) {
 
 bool ModelDocument::copyBodyBetweenProfiles(int bodyId, ProfileOrientation orient, int srcPrfIdx, int dstPrfIdx) {
     bool isEW = (orient == ProfileOrientation::EastWest);
-    int maxIdx = isEW ? std::max(0, m_project.model().getRows() - 3) : std::max(0, m_project.model().getCols() - 3);
+    int maxIdx = isEW ? std::max(0, m_project.model().rows() - 3) : std::max(0, m_project.model().cols() - 3);
     if (dstPrfIdx < 0 || dstPrfIdx > maxIdx) {
         return false;
     }
-    int nLines = isEW ? std::max(0, m_project.model().getCols() - 2) : std::max(0, m_project.model().getRows() - 2);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
     bool anyCopied = false;
 
     for (int l = 0; l < nLines; ++l) {
         int srcRow = isEW ? (srcPrfIdx + 1) : (l + 1);
         int srcCol = isEW ? (l + 1) : (srcPrfIdx + 1);
-        int bIdx = m_project.model().getBodyIndex(bodyId, srcRow, srcCol);
+        int bIdx = m_project.model().body_index(bodyId, srcRow, srcCol);
         if (bIdx >= 0) {
-            double zT = m_project.model().getZ(srcRow, srcCol, bIdx);
-            double zB = m_project.model().getZ(srcRow, srcCol, bIdx + 1);
+            double zT = m_project.model().z(srcRow, srcCol, bIdx);
+            double zB = m_project.model().z(srcRow, srcCol, bIdx + 1);
             int dstRow = isEW ? (dstPrfIdx + 1) : (l + 1);
             int dstCol = isEW ? (l + 1) : (dstPrfIdx + 1);
-            m_project.model().insertBody(dstRow, dstCol, 0.0, 0.0, false, bodyId, zT, zB, false);
+            m_project.model().insert_body(dstRow, dstCol, 0.0, 0.0, false, bodyId, zT, zB, false);
             anyCopied = true;
         }
     }
@@ -360,8 +360,8 @@ bool ModelDocument::copyBodyBetweenProfiles(int bodyId, ProfileOrientation orien
     if (anyCopied) {
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
     }
@@ -382,15 +382,15 @@ bool ModelDocument::copyBodyToPreviousProfile(int bodyId) {
 
 bool ModelDocument::moveVertexAtRowCol(int row, int col, int vertexIdx, double newZ, mod3d::BodyMoveType moveType, int *outUpdatedIdx) {
     int vIdx = vertexIdx;
-    int res = m_project.model().moveVertex(vIdx, row, col, newZ, moveType);
+    int res = m_project.model().move_vertex(vIdx, row, col, newZ, moveType);
     if (res >= 0) {
         if (outUpdatedIdx) {
             *outUpdatedIdx = vIdx;
         }
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
         return true;
@@ -405,19 +405,19 @@ bool ModelDocument::moveVertex(int lineIdx, int vertexIdx, double newZ, mod3d::B
 }
 
 bool ModelDocument::unsnapVertexAtRowCol(int row, int col, int vertexIdx, double separation) {
-    if (vertexIdx <= 0 || vertexIdx >= static_cast<int>(m_project.model().getCount(row, col)) - 1) {
+    if (vertexIdx <= 0 || vertexIdx >= static_cast<int>(m_project.model().count(row, col)) - 1) {
         return false;
     }
 
-    double zC = m_project.model().getZ(row, col, vertexIdx);
+    double zC = m_project.model().z(row, col, vertexIdx);
     int i = vertexIdx;
-    while (i > 1 && m_project.model().getZ(row, col, i - 1) == zC) {
+    while (i > 1 && m_project.model().z(row, col, i - 1) == zC) {
         --i;
     }
     int j = vertexIdx + 1;
-    int indexMax = static_cast<int>(m_project.model().getCount(row, col)) - 1;
+    int indexMax = static_cast<int>(m_project.model().count(row, col)) - 1;
     while (j < indexMax + 1) {
-        if (zC > m_project.model().getZ(row, col, j)) break;
+        if (zC > m_project.model().z(row, col, j)) break;
         if (j == indexMax) break;
         j++;
     }
@@ -426,11 +426,11 @@ bool ModelDocument::unsnapVertexAtRowCol(int row, int col, int vertexIdx, double
         return false;
     }
 
-    double zU = m_project.model().getZ(row, col, i - 1);
-    double zD = m_project.model().getZ(row, col, j);
+    double zU = m_project.model().z(row, col, i - 1);
+    double zD = m_project.model().z(row, col, j);
 
     if (separation <= 0.0) {
-        separation = m_project.model().getDefaultThickness();
+        separation = m_project.model().default_thickness();
         if (separation <= 0.0 || separation > (zU - zD) * 0.8) {
             separation = (zU - zD) * 0.2;
         }
@@ -441,14 +441,14 @@ bool ModelDocument::unsnapVertexAtRowCol(int row, int col, int vertexIdx, double
     double newBotZ = std::max(zC - halfSep, zD + (zC - zD) * 0.05);
 
     int topIdx = i;
-    m_project.model().moveVertex(topIdx, row, col, newTopZ, mod3d::BodyMoveType::Split);
+    m_project.model().move_vertex(topIdx, row, col, newTopZ, mod3d::BodyMoveType::Split);
     int botIdx = j - 1;
-    m_project.model().moveVertex(botIdx, row, col, newBotZ, mod3d::BodyMoveType::Split);
+    m_project.model().move_vertex(botIdx, row, col, newBotZ, mod3d::BodyMoveType::Split);
 
     setModified(true);
     if (m_realTimeCompute) {
-        computeDelta(m_project.model().getFacetsUpdate());
-        m_project.model().clearFacetsUpdate();
+        computeDelta(m_project.model().facets_update());
+        m_project.model().clear_facets_update();
     }
     emit modelGeometryChanged();
     return true;
@@ -461,28 +461,28 @@ bool ModelDocument::unsnapVertexAt(int lineIdx, int vertexIdx, double separation
 }
 
 bool ModelDocument::extendBodySideAtRowCol(int srcRow, int srcCol, int tgtRow, int tgtCol, int bodyId, double targetZ) {
-    if (m_project.model().getBodyIndex(bodyId, tgtRow, tgtCol) >= 0) {
+    if (m_project.model().body_index(bodyId, tgtRow, tgtCol) >= 0) {
         return collapseBodyEdgeAtRowCol(srcRow, srcCol, bodyId);
     }
 
-    int bIdx = m_project.model().getBodyIndex(bodyId, srcRow, srcCol);
+    int bIdx = m_project.model().body_index(bodyId, srcRow, srcCol);
     if (bIdx < 0) return false;
 
-    double topZ = m_project.model().getZ(srcRow, srcCol, bIdx);
-    double botZ = m_project.model().getZ(srcRow, srcCol, bIdx + 1);
+    double topZ = m_project.model().z(srcRow, srcCol, bIdx);
+    double botZ = m_project.model().z(srcRow, srcCol, bIdx + 1);
     double th = std::abs(topZ - botZ);
     double halfT = th / 2.0;
     double midZ = std::isnan(targetZ) ? ((topZ + botZ) / 2.0) : targetZ;
 
-    int res = m_project.model().insertBody(tgtRow, tgtCol, midZ, halfT, false, bodyId);
+    int res = m_project.model().insert_body(tgtRow, tgtCol, midZ, halfT, false, bodyId);
     if (res < 0 && !std::isnan(targetZ)) {
-        res = m_project.model().insertBody(tgtRow, tgtCol, (topZ + botZ) / 2.0, halfT, false, bodyId);
+        res = m_project.model().insert_body(tgtRow, tgtCol, (topZ + botZ) / 2.0, halfT, false, bodyId);
     }
     if (res >= 0) {
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
         return true;
@@ -499,13 +499,13 @@ bool ModelDocument::extendBodySide(int bodyId, int sourceLineIdx, int targetLine
 }
 
 bool ModelDocument::collapseBodyEdgeAtRowCol(int row, int col, int bodyId) {
-    int bIdx = m_project.model().getBodyIndex(bodyId, row, col);
+    int bIdx = m_project.model().body_index(bodyId, row, col);
     if (bIdx >= 0) {
-        m_project.model().removeBody(bIdx, row, col);
+        m_project.model().remove_body(bIdx, row, col);
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
         return true;
@@ -521,24 +521,24 @@ bool ModelDocument::collapseBodyEdge(int bodyId, int lineIdx) {
 
 bool ModelDocument::translateBodyVerticalOnProfile(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ) {
     bool isEW = (orient == ProfileOrientation::EastWest);
-    int nLines = isEW ? std::max(0, m_project.model().getCols() - 2) : std::max(0, m_project.model().getRows() - 2);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
     bool anyMoved = false;
     for (int l = 0; l < nLines; ++l) {
         int row = isEW ? (prfIdx + 1) : (l + 1);
         int col = isEW ? (l + 1) : (prfIdx + 1);
-        int bIdx = m_project.model().getBodyIndex(bodyId, row, col);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
         if (bIdx >= 0) {
-            double currentZ = m_project.model().getZ(row, col, bIdx);
+            double currentZ = m_project.model().z(row, col, bIdx);
             double newZ = currentZ + deltaZ;
-            m_project.model().moveVertex(bIdx, row, col, newZ);
+            m_project.model().move_vertex(bIdx, row, col, newZ);
             anyMoved = true;
         }
     }
     if (anyMoved) {
         setModified(true);
         if (m_realTimeCompute) {
-            computeDelta(m_project.model().getFacetsUpdate());
-            m_project.model().clearFacetsUpdate();
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
         }
         emit modelGeometryChanged();
     }
@@ -550,12 +550,12 @@ bool ModelDocument::translateBodyVertical(int bodyId, double deltaZ) {
 }
 
 void ModelDocument::computeAll() {
-    m_project.model().computeBodyMagnetizationVector(
+    m_project.model().compute_body_magnetization_vector(
         m_project.observation().inclination_deg(),
         m_project.observation().declination_deg(),
         m_project.observation().magnetic_intensity());
     std::vector<mod3d::Facet3Pt> facets;
-    m_project.model().getFacetsComputation(facets);
+    m_project.model().facets_computation(facets);
     m_project.observation().compute_forward_field(facets, true);
     m_project.observation().compute_total_fields();
     m_project.observation().compute_difference(m_activeField);
@@ -564,7 +564,7 @@ void ModelDocument::computeAll() {
 
 void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets) {
     if (!updateFacets.empty()) {
-        m_project.model().computeBodyMagnetizationVector(
+        m_project.model().compute_body_magnetization_vector(
             m_project.observation().inclination_deg(),
             m_project.observation().declination_deg(),
             m_project.observation().magnetic_intensity());
@@ -578,7 +578,7 @@ void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacet
 void ModelDocument::setRealTimeCompute(bool enabled) {
     if (m_realTimeCompute != enabled) {
         m_realTimeCompute = enabled;
-        m_project.model().setComputeRealTime(enabled);
+        m_project.model().set_compute_real_time(enabled);
         emit statusMessage(enabled ? tr("Real-time computation enabled.") : tr("Real-time computation disabled."));
     }
 }
@@ -719,8 +719,8 @@ void ModelDocument::clearActiveProfileCursor() {
 }
 
 void ModelDocument::updateStationPointForProfileChange() {
-    int rows = m_project.model().getRows();
-    int cols = m_project.model().getCols();
+    int rows = m_project.model().rows();
+    int cols = m_project.model().cols();
     if (rows <= 2 || cols <= 2) return;
 
     int rStation = 1;
@@ -742,8 +742,8 @@ void ModelDocument::updateStationPointForProfileChange() {
         }
     }
 
-    double wx = m_project.model().getXd(cStation);
-    double wy = m_project.model().getYd(rStation);
+    double wx = m_project.model().xd(cStation);
+    double wy = m_project.model().yd(rStation);
     double wz = 0.0;
 
     int bId = m_activeProfileCursor.bodyId;
@@ -752,10 +752,10 @@ void ModelDocument::updateStationPointForProfileChange() {
 
     // Check if the previous body exists at this new station on the profile
     if (bId >= 0) {
-        int bIdx = m_project.model().getBodyIndex(bId, rStation, cStation);
+        int bIdx = m_project.model().body_index(bId, rStation, cStation);
         if (bIdx >= 0) {
-            wz = m_project.model().getZ(rStation, cStation, bIdx);
-            if (const auto *b = m_project.model().getBody(bId)) {
+            wz = m_project.model().z(rStation, cStation, bIdx);
+            if (const auto *b = m_project.model().body(bId)) {
                 bName = b->name();
             }
             foundBody = true;
@@ -766,12 +766,12 @@ void ModelDocument::updateStationPointForProfileChange() {
 
     // If same body not present, check if any body exists at this station
     if (!foundBody) {
-        for (const auto &b : m_project.model().getBodies()) {
-            int bIdx = m_project.model().getBodyIndex(b->id(), rStation, cStation);
+        for (const auto &b : m_project.model().bodies()) {
+            int bIdx = m_project.model().body_index(b->id(), rStation, cStation);
             if (bIdx >= 0) {
                 bId = b->id();
                 bName = b->name();
-                wz = m_project.model().getZ(rStation, cStation, bIdx);
+                wz = m_project.model().z(rStation, cStation, bIdx);
                 foundBody = true;
                 break;
             }
@@ -779,7 +779,7 @@ void ModelDocument::updateStationPointForProfileChange() {
     }
 
     if (!foundBody) {
-        wz = m_project.model().getZ(rStation, cStation, 0);
+        wz = m_project.model().z(rStation, cStation, 0);
     }
 
     m_activeProfileCursor = {
