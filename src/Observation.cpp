@@ -540,23 +540,23 @@ FitResult ObservationSpace::fit_vertex(
         return FitResult{};
     }
 
-    double originalZ = model.getZ(row, col, index);
-    double zU = (index > 0) ? model.getZ(row, col, index - 1) : model.getHeaven();
-    double zD = (index + 1 < static_cast<int>(model.getCount(row, col))) ? model.getZ(row, col, index + 1) : model.getHell();
+    double originalZ = model.z(row, col, index);
+    double zU = (index > 0) ? model.z(row, col, index - 1) : model.z_max();
+    double zD = (index + 1 < static_cast<int>(model.count(row, col))) ? model.z(row, col, index + 1) : model.z_min();
 
     // Objective function evaluating RMS of (modeled - observed) when vertex is at z
-    auto objFunc = [&](double z) -> double {
-        if (z <= zD + 1e-6 || z >= zU - 1e-6) {
+    auto objFunc = [&](double zVal) -> double {
+        if (zVal <= zD + 1e-6 || zVal >= zU - 1e-6) {
             return 1e9;
         }
         int vIdx = index;
-        int moveRes = model.moveVertex(vIdx, row, col, z, BodyMoveType::Constrained);
+        int moveRes = model.move_vertex(vIdx, row, col, zVal, BodyMoveType::Constrained);
         if (moveRes != 0) {
             return 1e9;
         }
 
         std::vector<Facet3Pt> currentFacets;
-        model.getFacetsComputation(currentFacets);
+        model.facets_computation(currentFacets);
 
         compute_forward_field(currentFacets, true);
         const Grid *pMod = modeled_grid(comp);
@@ -586,7 +586,7 @@ FitResult ObservationSpace::fit_vertex(
         startA, startB, objFunc, method, tol, 100, "Vertex inversion");
 
     int vIdx = index;
-    model.moveVertex(vIdx, row, col, res.optimal_parameter, BodyMoveType::Normal);
+    model.move_vertex(vIdx, row, col, res.optimal_parameter, BodyMoveType::Normal);
 
     return res;
 }
