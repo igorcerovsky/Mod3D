@@ -178,7 +178,7 @@ void MainWindow::setupMenus() {
         QString fn = QFileDialog::getSaveFileName(this, tr("Export Modeled Field"), QString(), tr("Surfer Binary Grid (*.grd);;All Files (*)"));
         if (!fn.isEmpty()) {
             const auto *grd = m_doc->activeModeledGrid();
-            if (grd) grd->saveSrf6Binary(fn.toStdString());
+            if (grd) grd->save_srf6_binary(fn.toStdString());
         }
     });
     menuExport->addAction(tr("Body Mesh (OBJ)..."), [this]() {

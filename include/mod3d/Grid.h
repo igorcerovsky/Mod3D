@@ -206,38 +206,8 @@ public:
 
     friend std::ostream &operator<<(std::ostream &os, const Grid &grid);
 
-    // ========================================================================
-    // Legacy API (CamelCase compatibility wrappers for MFC Mod3D codebase)
-    // ========================================================================
-    [[nodiscard]] constexpr double xSize() const noexcept { return dx(); }
-    [[nodiscard]] constexpr double ySize() const noexcept { return dy(); }
-    [[nodiscard]] constexpr double rotation() const noexcept { return rotation_deg(); }
-
-    [[nodiscard]] double getX(size_t row, size_t col) const noexcept { return x(row, col); }
-    [[nodiscard]] double getY(size_t row, size_t col) const noexcept { return y(row, col); }
-    [[nodiscard]] Point3D getPoint(size_t row, size_t col) const noexcept { return point(row, col); }
-
-    [[nodiscard]] double getValue(size_t row, size_t col) const noexcept { return operator()(row, col); }
-    void setValue(size_t row, size_t col, double val) noexcept { operator()(row, col) = val; }
-
-    [[nodiscard]] static bool isDummyValue(double val) noexcept { return is_dummy_value(val); }
-    [[nodiscard]] bool isDummy(size_t row, size_t col) const noexcept { return is_dummy(row, col); }
-
-    void zeroData() { zero(); }
-
-    [[nodiscard]] double getMin() const { return min(); }
-    [[nodiscard]] double getMax() const { return max(); }
-    [[nodiscard]] double getMean() const { return mean(); }
-    [[nodiscard]] double getRMS() const { return rms(); }
-
-    bool loadSrf6Binary(const std::filesystem::path &filePath) { return load_srf6_binary(filePath); }
-    bool saveSrf6Binary(const std::filesystem::path &filePath) const { return save_srf6_binary(filePath); }
-    bool loadSrf6Ascii(const std::filesystem::path &filePath) { return load_srf6_ascii(filePath); }
-    bool saveSrf6Ascii(const std::filesystem::path &filePath) const { return save_srf6_ascii(filePath); }
-
 private:
     void update_precomputed_trig();
-    void updatePrecomputedTrig() { update_precomputed_trig(); }
 
     size_t rows_{0};
     size_t cols_{0};

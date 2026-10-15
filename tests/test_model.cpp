@@ -140,15 +140,15 @@ TEST(GridTest, BasicOperationsAndSurferAscii) {
     grd(2, 2) = 50.0;
     grd(4, 4) = 100.0;
 
-    EXPECT_DOUBLE_EQ(grd.getMin(), 0.0);
-    EXPECT_DOUBLE_EQ(grd.getMax(), 100.0);
+    EXPECT_DOUBLE_EQ(grd.min(), 0.0);
+    EXPECT_DOUBLE_EQ(grd.max(), 100.0);
 
     // Surfer ASCII roundtrip
     std::string tmpFile = "scratch_test_grid.grd";
-    EXPECT_TRUE(grd.saveSrf6Ascii(tmpFile));
+    EXPECT_TRUE(grd.save_srf6_ascii(tmpFile));
 
     Grid loaded;
-    EXPECT_TRUE(loaded.loadSrf6Ascii(tmpFile));
+    EXPECT_TRUE(loaded.load_srf6_ascii(tmpFile));
     EXPECT_EQ(loaded.rows(), grd.rows());
     EXPECT_EQ(loaded.cols(), grd.cols());
     EXPECT_DOUBLE_EQ(loaded(0, 0), 10.0);

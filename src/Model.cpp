@@ -100,8 +100,8 @@ bool Model::init(const Grid &reliefGrid, double zMin, double zMax)
     m_nCols = nCols + 2;
     m_x0 = reliefGrid.x0();
     m_y0 = reliefGrid.y0();
-    m_xSize = reliefGrid.xSize();
-    m_ySize = reliefGrid.ySize();
+    m_xSize = reliefGrid.dx();
+    m_ySize = reliefGrid.dy();
     m_xMin = m_x0;
     m_xMax = m_x0 + (m_nCols - 3) * m_xSize;
     m_yMin = m_y0;

@@ -24,7 +24,7 @@ TEST(GridComprehensiveTest, ConstructionAndRotatedCoordinates) {
     EXPECT_EQ(g.cols(), cols);
     EXPECT_EQ(g.size(), rows * cols);
     EXPECT_FALSE(g.empty());
-    EXPECT_DOUBLE_EQ(g.rotation(), rotDeg);
+    EXPECT_DOUBLE_EQ(g.rotation_deg(), rotDeg);
 
     // Analytical verification of rotated coordinates:
     // X = x0 + (col*dx)*cos(rad) - (row*dy)*sin(rad)
@@ -39,10 +39,10 @@ TEST(GridComprehensiveTest, ConstructionAndRotatedCoordinates) {
             double expectedX = x0 + (c * dx) * cRot - (r * dy) * sRot;
             double expectedY = y0 + (c * dx) * sRot + (r * dy) * cRot;
 
-            EXPECT_NEAR(g.getX(r, c), expectedX, 1e-12);
-            EXPECT_NEAR(g.getY(r, c), expectedY, 1e-12);
+            EXPECT_NEAR(g.x(r, c), expectedX, 1e-12);
+            EXPECT_NEAR(g.y(r, c), expectedY, 1e-12);
 
-            Point3D pt = g.getPoint(r, c);
+            Point3D pt = g.point(r, c);
             EXPECT_NEAR(pt.x, expectedX, 1e-12);
             EXPECT_NEAR(pt.y, expectedY, 1e-12);
             EXPECT_DOUBLE_EQ(pt.z, 0.0);
@@ -66,18 +66,18 @@ TEST(GridComprehensiveTest, StatisticsAndDummyExclusion) {
     }
     g(2, 2) = GRID_DUMMY; // Last cell is dummy
 
-    EXPECT_TRUE(g.isDummy(2, 2));
-    EXPECT_FALSE(g.isDummy(0, 0));
+    EXPECT_TRUE(g.is_dummy(2, 2));
+    EXPECT_FALSE(g.is_dummy(0, 0));
 
     // Stats must strictly exclude dummy:
     // Active values: 1, 2, 3, 4, 5, 6, 7, 8 (count = 8)
     // Min = 1.0, Max = 8.0, Sum = 36.0, Mean = 36 / 8 = 4.5
     // SumSq = 1 + 4 + 9 + 16 + 25 + 36 + 49 + 64 = 204
     // RMS = sqrt(204 / 8) = sqrt(25.5) = 5.049752469
-    EXPECT_DOUBLE_EQ(g.getMin(), 1.0);
-    EXPECT_DOUBLE_EQ(g.getMax(), 8.0);
-    EXPECT_DOUBLE_EQ(g.getMean(), 4.5);
-    EXPECT_NEAR(g.getRMS(), std::sqrt(25.5), 1e-10);
+    EXPECT_DOUBLE_EQ(g.min(), 1.0);
+    EXPECT_DOUBLE_EQ(g.max(), 8.0);
+    EXPECT_DOUBLE_EQ(g.mean(), 4.5);
+    EXPECT_NEAR(g.rms(), std::sqrt(25.5), 1e-10);
 }
 
 // ============================================================================
@@ -94,14 +94,14 @@ TEST(GridComprehensiveTest, ScalarAndGridArithmetic) {
     EXPECT_DOUBLE_EQ(g1(0, 0), 15.0);
     EXPECT_DOUBLE_EQ(g1(0, 1), 25.0);
     EXPECT_DOUBLE_EQ(g1(1, 0), 35.0);
-    EXPECT_TRUE(g1.isDummy(1, 1)); // Dummies must remain untouched
+    EXPECT_TRUE(g1.is_dummy(1, 1)); // Dummies must remain untouched
 
     // Scalar *= 2
     g1 *= 2.0;
     EXPECT_DOUBLE_EQ(g1(0, 0), 30.0);
     EXPECT_DOUBLE_EQ(g1(0, 1), 50.0);
     EXPECT_DOUBLE_EQ(g1(1, 0), 70.0);
-    EXPECT_TRUE(g1.isDummy(1, 1));
+    EXPECT_TRUE(g1.is_dummy(1, 1));
 
     // Grid-to-Grid subtraction (g1 - g2)
     Grid g2(2, 2, 0.0, 0.0, 10.0, 10.0);
@@ -112,7 +112,7 @@ TEST(GridComprehensiveTest, ScalarAndGridArithmetic) {
     EXPECT_DOUBLE_EQ(g1(0, 0), 25.0);
     EXPECT_DOUBLE_EQ(g1(0, 1), 40.0);
     EXPECT_DOUBLE_EQ(g1(1, 0), 55.0);
-    EXPECT_TRUE(g1.isDummy(1, 1));
+    EXPECT_TRUE(g1.is_dummy(1, 1));
 }
 
 // ============================================================================
@@ -131,17 +131,17 @@ TEST(GridComprehensiveTest, Surfer6BinaryRoundtrip) {
     }
 
     const std::string tmpBinFile = "scratch_test_grid.bin.grd";
-    ASSERT_TRUE(original.saveSrf6Binary(tmpBinFile));
+    ASSERT_TRUE(original.save_srf6_binary(tmpBinFile));
 
     Grid loaded;
-    ASSERT_TRUE(loaded.loadSrf6Binary(tmpBinFile));
+    ASSERT_TRUE(loaded.load_srf6_binary(tmpBinFile));
 
     EXPECT_EQ(loaded.rows(), original.rows());
     EXPECT_EQ(loaded.cols(), original.cols());
     EXPECT_DOUBLE_EQ(loaded.x0(), original.x0());
     EXPECT_DOUBLE_EQ(loaded.y0(), original.y0());
-    EXPECT_DOUBLE_EQ(loaded.xSize(), original.xSize());
-    EXPECT_DOUBLE_EQ(loaded.ySize(), original.ySize());
+    EXPECT_DOUBLE_EQ(loaded.dx(), original.dx());
+    EXPECT_DOUBLE_EQ(loaded.dy(), original.dy());
 
     // Single precision float storage in Surfer 6 binary: expect 1e-4 relative precision
     for (size_t r = 0; r < rows; ++r) {

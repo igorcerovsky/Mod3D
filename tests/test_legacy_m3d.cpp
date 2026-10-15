@@ -379,22 +379,22 @@ TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
     ASSERT_TRUE(fs::exists(reliefPath));
 
     Grid relief;
-    EXPECT_TRUE(relief.loadSrf6Binary(reliefPath));
+    EXPECT_TRUE(relief.load_srf6_binary(reliefPath));
     EXPECT_EQ(relief.rows(), 21u);
     EXPECT_EQ(relief.cols(), 21u);
     EXPECT_DOUBLE_EQ(relief.x0(), 0.0);
     EXPECT_DOUBLE_EQ(relief.y0(), 0.0);
-    EXPECT_DOUBLE_EQ(relief.xSize(), 400.0);
-    EXPECT_DOUBLE_EQ(relief.ySize(), 400.0);
-    EXPECT_NEAR(relief.getMin(), 131.45, 0.1);
-    EXPECT_NEAR(relief.getMax(), 484.95, 0.1);
+    EXPECT_DOUBLE_EQ(relief.dx(), 400.0);
+    EXPECT_DOUBLE_EQ(relief.dy(), 400.0);
+    EXPECT_NEAR(relief.min(), 131.45, 0.1);
+    EXPECT_NEAR(relief.max(), 484.95, 0.1);
 
     // Test grid with dummy (nodata) values
     std::string dummyPath = std::string(MOD3D_TEST_DATA_DIR) + "/grids/gz_dummy.grd";
     ASSERT_TRUE(fs::exists(dummyPath));
 
     Grid gzDummy;
-    EXPECT_TRUE(gzDummy.loadSrf6Binary(dummyPath));
+    EXPECT_TRUE(gzDummy.load_srf6_binary(dummyPath));
     EXPECT_EQ(gzDummy.rows(), 21u);
     EXPECT_EQ(gzDummy.cols(), 21u);
 
@@ -402,7 +402,7 @@ TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
     size_t dummyCount = 0;
     for (size_t r = 0; r < gzDummy.rows(); ++r) {
         for (size_t c = 0; c < gzDummy.cols(); ++c) {
-            if (gzDummy.isDummy(r, c)) {
+            if (gzDummy.is_dummy(r, c)) {
                 ++dummyCount;
             }
         }
@@ -410,8 +410,8 @@ TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
     EXPECT_EQ(dummyCount, 42u);
 
     // Min and max must properly exclude dummy values
-    EXPECT_NEAR(gzDummy.getMin(), -12.06, 0.1);
-    EXPECT_NEAR(gzDummy.getMax(), 7.82, 0.1);
+    EXPECT_NEAR(gzDummy.min(), -12.06, 0.1);
+    EXPECT_NEAR(gzDummy.max(), 7.82, 0.1);
 }
 
 TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {

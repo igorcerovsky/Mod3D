@@ -77,9 +77,9 @@ nlohmann::json gridToJson(const Grid &grid) {
     j["cols"] = grid.cols();
     j["x0"] = grid.x0();
     j["y0"] = grid.y0();
-    j["x_size"] = grid.xSize();
-    j["y_size"] = grid.ySize();
-    j["rotation_deg"] = grid.rotation();
+    j["x_size"] = grid.dx();
+    j["y_size"] = grid.dy();
+    j["rotation_deg"] = grid.rotation_deg();
     j["values"] = grid.data();
     return j;
 }
