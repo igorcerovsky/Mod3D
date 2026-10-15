@@ -91,7 +91,7 @@ TEST(ModelTest, FacetGenerationMultiColumnPrism) {
 
     // Verify all generated facets have valid outward normals
     for (const auto &fct : allFacets) {
-        Point3D n = fct.Normal();
+        Point3D n = fct.normal();
         EXPECT_NEAR(n.Abs(), 1.0, 1e-6);
     }
 }
@@ -184,8 +184,8 @@ TEST(ModelGate2Test, LoadAndVerifyLegacySampleFacetList) {
             Facet3Pt fct(Point3D(x0, y0, z0), Point3D(x1, y1, z1), Point3D(x2, y2, z2));
             facets.push_back(fct);
 
-            // Centroid sum check: Centroid() = pt0 + pt1 + pt2
-            Point3D cntr = fct.Centroid();
+            // Centroid sum check: centroid() = pt0 + pt1 + pt2
+            Point3D cntr = fct.centroid();
             EXPECT_NEAR(cntr.x, x0 + x1 + x2, 1e-9);
             EXPECT_NEAR(cntr.y, y0 + y1 + y2, 1e-9);
             EXPECT_NEAR(cntr.z, z0 + z1 + z2, 1e-9);
@@ -202,7 +202,7 @@ TEST(ModelGate2Test, LoadAndVerifyLegacySampleFacetList) {
     Point3D obsPt(3000.0, 3000.0, 100.0);
     double gz = 0.0;
     for (const auto &fct : facets) {
-        fct.Fld_Gz(obsPt, gz);
+        fct.fld_gz(obsPt, gz);
     }
     // Gz should be a finite non-zero value
     EXPECT_TRUE(std::isfinite(gz));
@@ -217,7 +217,7 @@ TEST(FacetOrientationTest, WindingOrderAndNormalDirection) {
     Point3D top2(0.0, 1000.0, 0.0);
     Facet3Pt fctTop(top0, top1, top2);
 
-    Point3D nTop = fctTop.Normal();
+    Point3D nTop = fctTop.normal();
     EXPECT_NEAR(nTop.x, 0.0, 1e-12);
     EXPECT_NEAR(nTop.y, 0.0, 1e-12);
     EXPECT_NEAR(nTop.z, 1.0, 1e-12); // Must point UPWARD (+Z)
@@ -229,15 +229,15 @@ TEST(FacetOrientationTest, WindingOrderAndNormalDirection) {
     Point3D bot2(0.0, 1000.0, -1000.0);
     Facet3Pt fctBot(bot0, bot2, bot1); // swapped
 
-    Point3D nBot = fctBot.Normal();
+    Point3D nBot = fctBot.normal();
     EXPECT_NEAR(nBot.x, 0.0, 1e-12);
     EXPECT_NEAR(nBot.y, 0.0, 1e-12);
     EXPECT_NEAR(nBot.z, -1.0, 1e-12); // Must point DOWNWARD (-Z)
 
     // 3. Facet reversal test
     Facet3Pt fctReversed = fctTop;
-    fctReversed.Reverse();
-    Point3D nRev = fctReversed.Normal();
+    fctReversed.reverse();
+    Point3D nRev = fctReversed.normal();
     EXPECT_NEAR(nRev.x, -nTop.x, 1e-12);
     EXPECT_NEAR(nRev.y, -nTop.y, 1e-12);
     EXPECT_NEAR(nRev.z, -nTop.z, 1e-12); // Exactly inverted
@@ -247,8 +247,8 @@ TEST(FacetOrientationTest, WindingOrderAndNormalDirection) {
     Point3D gOriginal(0, 0, 0);
     Point3D gReversed(0, 0, 0);
 
-    fctTop.Fld_G(obsPt, gOriginal);
-    fctReversed.Fld_G(obsPt, gReversed);
+    fctTop.fld_g(obsPt, gOriginal);
+    fctReversed.fld_g(obsPt, gReversed);
 
     // The field integral from the reversed facet is the exact negative of the original
     EXPECT_NEAR(gOriginal.x, -gReversed.x, 1e-15);
@@ -283,7 +283,7 @@ TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
     // For every facet belonging to this body:
     // The outward normal must point AWAY from the body center: (centroid - center) * normal >= 0
     for (const auto &fct : facets) {
-        Point3D n = fct.Normal();
+        Point3D n = fct.normal();
         EXPECT_NEAR(n.Abs(), 1.0, 1e-9);
 
         Point3D cntr(

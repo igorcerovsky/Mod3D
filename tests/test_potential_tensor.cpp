@@ -113,8 +113,8 @@ static std::vector<Facet3Pt> CreateClosedCube(double x0, double x1, double y0,
   auto addQuad = [&](const Point3D &a, const Point3D &b, const Point3D &c,
                      const Point3D &d) {
     Facet3Pt f1, f2;
-    f1.Init(a, b, c, density, 0.0);
-    f2.Init(a, c, d, density, 0.0);
+    f1.init(a, b, c, density, 0.0);
+    f2.init(a, c, d, density, 0.0);
     facets.push_back(f1);
     facets.push_back(f2);
   };
@@ -148,7 +148,7 @@ TEST(PotentialTensorTest, GravityGradientTensorLaplaceInvarianceInFreeSpace) {
   for (const auto &fct : cube) {
     Point3D fctCenter = (fct.pts[0] + fct.pts[1] + fct.pts[2]) / 3.0;
     Point3D outward = fctCenter - center;
-    EXPECT_GT(outward * fct.Normal(), 0.0);
+    EXPECT_GT(outward * fct.normal(), 0.0);
   }
 
   // Test observation points in external free space
@@ -165,7 +165,7 @@ TEST(PotentialTensorTest, GravityGradientTensorLaplaceInvarianceInFreeSpace) {
 
     for (const auto &fct : cube) {
       double fxx = 0, fyy = 0, fzz = 0, fxy = 0, fxz = 0, fyz = 0;
-      fct.FldVladoGrd(obs, 0.0, fxx, fyy, fzz, fxy, fxz, fyz);
+      fct.fld_vlado_grd(obs, 0.0, fxx, fyy, fzz, fxy, fxz, fyz);
       gxx += fxx;
       gyy += fyy;
       gzz += fzz;

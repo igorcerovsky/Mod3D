@@ -399,14 +399,12 @@ TEST(Facet3PtTest, GeometryNormalsAreaAndCentroids) {
     EXPECT_NEAR(n.x, 0.0, 1e-12);
     EXPECT_NEAR(n.y, 0.0, 1e-12);
     EXPECT_NEAR(n.z, 1.0, 1e-12);
-    EXPECT_EQ(f.Normal(), f.normal());
 
     // Triangle area: base 10, height 10 => 0.5 * 10 * 10 = 50.0
     EXPECT_NEAR(f.area(), 50.0, 1e-12);
 
     // Mean elevation
     EXPECT_DOUBLE_EQ(f.mean_elevation(), 100.0);
-    EXPECT_DOUBLE_EQ(f.GetMeanElevation(), 100.0);
 
     // True center (geometric centroid)
     Point3D c = f.center();
@@ -414,18 +412,15 @@ TEST(Facet3PtTest, GeometryNormalsAreaAndCentroids) {
     EXPECT_NEAR(c.y, 10.0 / 3.0, 1e-12);
     EXPECT_NEAR(c.z, 100.0, 1e-12);
 
-    // Legacy Centroid() (unnormalized sum: p0 + p1 + p2)
-    Point3D legacyCntr = f.Centroid();
-    EXPECT_EQ(legacyCntr, Point3D(10.0, 10.0, 300.0));
-    EXPECT_EQ(f.centroid(), legacyCntr);
+    // Centroid (unnormalized sum: p0 + p1 + p2)
+    Point3D cntr = f.centroid();
+    EXPECT_EQ(cntr, Point3D(10.0, 10.0, 300.0));
 
     // Vertex containment
     EXPECT_TRUE(f.contains_vertex(p0));
     EXPECT_TRUE(f.contains_vertex(p1));
     EXPECT_TRUE(f.contains_vertex(p2));
     EXPECT_FALSE(f.contains_vertex(Point3D(5.0, 5.0, 100.0)));
-    EXPECT_NE(f.ContainsVertex(&p1), nullptr);
-    EXPECT_EQ(f.ContainsVertex(nullptr), nullptr);
 }
 
 TEST(Facet3PtTest, ReverseAndOpposites) {
@@ -445,7 +440,7 @@ TEST(Facet3PtTest, ReverseAndOpposites) {
     EXPECT_EQ(f.pBodyOpos, &b2);
 
     // Reverse facet
-    f.Reverse();
+    f.reverse();
     EXPECT_EQ(f[0], p2);
     EXPECT_EQ(f[1], p1);
     EXPECT_EQ(f[2], p0);
@@ -456,7 +451,6 @@ TEST(Facet3PtTest, ReverseAndOpposites) {
     // Opposite facet test
     Facet3Pt original(p0, p1, p2);
     EXPECT_TRUE(f.is_opposite(original));
-    EXPECT_TRUE(f.IsOposit(original));
 }
 
 TEST(Facet3PtTest, PfldIntegrationAndFieldConsistency) {
@@ -468,13 +462,13 @@ TEST(Facet3PtTest, PfldIntegrationAndFieldConsistency) {
 
     Point3D obs(50.0, 50.0, -100.0); // observation point above facet
     double gzMod3d = 0.0;
-    f.Fld_Gz(obs, gzMod3d);
+    f.fld_gz(obs, gzMod3d);
 
     double gzPfld = f.field_gz(obs);
     EXPECT_NEAR(gzMod3d, gzPfld, 1e-14);
 
     Point3D gMod3d(0, 0, 0);
-    f.Fld_G(obs, gMod3d);
+    f.fld_g(obs, gMod3d);
 
     Point3D gPfld = f.field_g(obs);
     EXPECT_NEAR(gMod3d.x, gPfld.x, 1e-14);

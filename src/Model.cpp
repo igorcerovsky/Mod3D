@@ -758,17 +758,17 @@ void Model::initFacet(const FctGen &pU, const FctGen &pL, std::vector<Facet3Pt> 
     if (pU.bot[i0] == pL.top[i0] && pU.bot[i1] == pL.top[i1] && pU.bot[i2] == pL.top[i2]) {
         fct.pBodyOpos = getBody(pU.id);
         fct.pBody = getBody(pL.id);
-        fct.Init(pL.top[i0], pL.top[i1], pL.top[i2]);
+        fct.init(pL.top[i0], pL.top[i1], pL.top[i2]);
         facetList.push_back(fct);
     } else {
         if (pU.b[i0] && pU.b[i1]) {
             fct.pBody = getBody(pU.id);
-            fct.Init(pU.bot[i0], pU.bot[i2], pU.bot[i1]);
+            fct.init(pU.bot[i0], pU.bot[i2], pU.bot[i1]);
             facetList.push_back(fct);
         }
         if (pL.b[i0] && pL.b[i1]) {
             fct.pBody = getBody(pL.id);
-            fct.Init(pL.top[i0], pL.top[i1], pL.top[i2]);
+            fct.init(pL.top[i0], pL.top[i1], pL.top[i2]);
             facetList.push_back(fct);
         }
     }
@@ -781,9 +781,9 @@ void Model::initFacetTBM(const FctGen &fg, std::vector<Facet3Pt> &facetList, int
     fct.pBody = getBody(fg.id);
 
     if (tag == FgType::TopMost) {
-        fct.Init(fg.top[i0], fg.top[i1], fg.top[i2]);
+        fct.init(fg.top[i0], fg.top[i1], fg.top[i2]);
     } else if (tag == FgType::BotMost) {
-        fct.Init(fg.bot[i0], fg.bot[i2], fg.bot[i1]);
+        fct.init(fg.bot[i0], fg.bot[i2], fg.bot[i1]);
     }
     facetList.push_back(fct);
 }
@@ -934,7 +934,7 @@ void Model::updateFacetColumn(int row, int col)
     if (m_computeRealTime) {
         for (auto &fct : *pFctLst) {
             Facet3Pt fCopy = fct;
-            fCopy.SetSign(-1.0);
+            fCopy.set_sign(-1.0);
             if (fCopy.pBody) {
                 fCopy.density = fCopy.pBody->density();
                 fCopy.v_densGrad = fCopy.pBody->density_gradient();
@@ -953,7 +953,7 @@ void Model::updateFacetColumn(int row, int col)
     if (m_computeRealTime) {
         for (const auto &fct : *pFctLst) {
             Facet3Pt fCopy = fct;
-            fCopy.SetSign(1.0);
+            fCopy.set_sign(1.0);
             if (fCopy.pBody) {
                 fCopy.density = fCopy.pBody->density();
                 fCopy.v_densGrad = fCopy.pBody->density_gradient();
@@ -983,7 +983,7 @@ void Model::initFacetList()
             std::vector<Facet3Pt> *lst = getFacetList(r, c);
             if (lst) {
                 for (auto &fct : *lst) {
-                    fct.SetSign(-1.0);
+                    fct.set_sign(-1.0);
                 }
             }
         }
@@ -999,7 +999,7 @@ int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
             if (lst) {
                 for (const auto &fct : *lst) {
                     Facet3Pt copy = fct;
-                    copy.SetSign(1.0);
+                    copy.set_sign(1.0);
                     if (copy.pBody) {
                         copy.density = copy.pBody->density();
                         copy.v_densGrad = copy.pBody->density_gradient();

@@ -314,17 +314,17 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
                     }
 
                     Point3D g(0.0, 0.0, 0.0);
-                    fct.Fld_G(obsPointsGrv[p], g);
+                    fct.fld_g(obsPointsGrv[p], g);
                     totalG += g * (densContrast * fct.dSign);
                 }
 
                 if (validMag) {
                     Point3D fMag(0.0, 0.0, 0.0);
                     if (fct.pBody && fct.pBody->is_active() && !fct.pBody->magnetization_vector().is_zero()) {
-                        fct.FldGS(rMag, fct.pBody->magnetization_vector(), fMag, 1.0);
+                        fct.fld_gs(rMag, fct.pBody->magnetization_vector(), fMag, 1.0);
                     }
                     if (fct.pBodyOpos && fct.pBodyOpos->is_active() && !fct.pBodyOpos->magnetization_vector().is_zero()) {
-                        fct.FldGS(rMag, fct.pBodyOpos->magnetization_vector(), fMag, -1.0);
+                        fct.fld_gs(rMag, fct.pBodyOpos->magnetization_vector(), fMag, -1.0);
                     }
                     totalM -= fMag * (fct.dSign * mag_units_);
                 }
@@ -487,7 +487,7 @@ FitResult ObservationSpace::fit_density(
         double unitGz = 0.0;
         for (const auto &fct : bodyFacets) {
             Point3D g(0, 0, 0);
-            fct.Fld_G(obsPoints[p], g);
+            fct.fld_g(obsPoints[p], g);
             unitGz += g.z * fct.dSign;
         }
         size_t r = p / cols_;

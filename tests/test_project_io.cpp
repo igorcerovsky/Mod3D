@@ -154,7 +154,7 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
         EXPECT_DOUBLE_EQ(loadedFacets[i].pts[0].x, origFacets[i].pts[0].x);
         EXPECT_DOUBLE_EQ(loadedFacets[i].pts[0].y, origFacets[i].pts[0].y);
         EXPECT_DOUBLE_EQ(loadedFacets[i].pts[0].z, origFacets[i].pts[0].z);
-        EXPECT_DOUBLE_EQ(loadedFacets[i].Normal().z, origFacets[i].Normal().z);
+        EXPECT_DOUBLE_EQ(loadedFacets[i].normal().z, origFacets[i].normal().z);
     }
 
     // Verify Observation Space

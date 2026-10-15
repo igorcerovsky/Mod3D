@@ -84,7 +84,7 @@ TEST(PfldGroundTruthTest, Test_Body) {
 
     std::vector<Facet3Pt> facets(4);
     for (size_t i = 0; i < 4; ++i) {
-        facets[i].Init(vf[i]);
+        facets[i].init(vf[i]);
     }
 
     Point3D r(500, 500, 1);
@@ -93,10 +93,10 @@ TEST(PfldGroundTruthTest, Test_Body) {
     double gzV = 0.0, gzGS = 0.0;
 
     for (auto &fct : facets) {
-        fct.Fld_G(r, g);
-        fct.Fld_Gz(r, gzV);
-        fct.FldGS(r, M, m, gGS);
-        fct.FldGS_Gz(r, gzGS);
+        fct.fld_g(r, g);
+        fct.fld_gz(r, gzV);
+        fct.fld_gs(r, M, m, gGS);
+        fct.fld_gs_gz(r, gzGS);
     }
 
     const Point3D expected(5.1341030021201644e-009, 5.1341030021201644e-009, 1.2401175118216113e-008);
@@ -119,11 +119,11 @@ TEST(PfldGroundTruthTest, Test_Facet) {
     };
 
     Facet3Pt fct;
-    fct.Init(v);
+    fct.init(v);
 
     Point3D r(0, 0, 1);
     Point3D g(0, 0, 0);
-    fct.Fld_G(r, g);
+    fct.fld_g(r, g);
 
     const double resval = 4.8207079871718046e-008;
     Point3D expected(-resval, -resval, resval);
@@ -141,13 +141,13 @@ TEST(PfldGroundTruthTest, Test_Facet_Lin0) {
     };
 
     Facet3Pt fct;
-    fct.Init(v);
+    fct.init(v);
 
     const double ro0 = 1.0;
     Point3D ro(0, 0, 0);
     Point3D r(0, 0, 1);
     Point3D g(0, 0, 0);
-    fct.Fld_G(r, ro, ro0, g);
+    fct.fld_g(r, ro, ro0, g);
 
     const double resval = 4.8207079871718046e-008;
     Point3D expected(-resval, -resval, resval);
@@ -165,19 +165,19 @@ TEST(PfldGroundTruthTest, Test_Facet_Lin) {
     };
 
     Facet3Pt fct;
-    fct.Init(v);
+    fct.init(v);
 
     const double ro0 = 1000.0;
     Point3D ro(0, 0, 1.0);
     Point3D r(0, 0, 1.0);
     Point3D g(0, 0, 0);
-    fct.Fld_G(r, ro, ro0, g);
+    fct.fld_g(r, ro, ro0, g);
 
     Point3D expected(-3.2142476436014269e-005, -3.2142476436014269e-005, 5.6270119911809142e-005);
     AssertPoints(g, expected, eps);
 
     double gz = 0.0;
-    fct.Fld_Gz(r, ro, ro0, gz);
+    fct.fld_gz(r, ro, ro0, gz);
     EXPECT_NEAR(gz, expected.z, eps);
 }
 
@@ -207,7 +207,7 @@ TEST(PfldGroundTruthTest, Test_DatasetComparison_UnitTest100) {
     for (size_t p = 0; p < fldPts.size(); ++p) {
         double gz = 0.0;
         for (const auto &fct : facets) {
-            fct.Fld_Gz(fldPts[p], gz);
+            fct.fld_gz(fldPts[p], gz);
         }
         computedResults[p] = gz;
     }
@@ -247,7 +247,7 @@ TEST(PfldGroundTruthTest, Test_DatasetComparison_App1000) {
     for (size_t p = 0; p < fldPts.size(); ++p) {
         double gz = 0.0;
         for (const auto &fct : facets) {
-            fct.Fld_Gz(fldPts[p], gz);
+            fct.fld_gz(fldPts[p], gz);
         }
         computedResults[p] = gz;
     }

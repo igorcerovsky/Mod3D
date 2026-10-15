@@ -98,81 +98,64 @@ public:
         return !(*this == fct);
     }
 
-    // ========================================================================
-    // Legacy API (Compatibility wrappers and legacy potential field functions)
-    // ========================================================================
-    void Init();
-    void Init(const Point3D *ppts);
-    void Init(std::span<const Point3D, 3> ppts);
-    void Init(const std::array<Point3D, 3> &ppts);
-    void Init(const std::vector<Point3D> &ppts);
-    void Init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
-    void Init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW = 0.0);
-    void Init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, Point3D v_densGradCCW);
+    // Initialization / reinitialization
+    void init();
+    void init(const Point3D *ppts);
+    void init(std::span<const Point3D, 3> ppts);
+    void init(const std::array<Point3D, 3> &ppts);
+    void init(const std::vector<Point3D> &ppts);
+    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
+    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, double density_cw = 0.0);
+    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, Point3D dens_grad_ccw);
 
-    void SetOpositDensity(double dDensity, Point3D v_grad = Point3D());
+    void set_opposite_density(double d_density, Point3D v_grad = Point3D());
 
     // Analytical potential field formulas
-    void FldVlado(const Point3D &v_r, Point3D &v_Grv) const;
-    void FldVlado(const Point3D &v_r, Point3D &v_Grv, Point3D ro, double ro0) const;
-    void FldVladoGrd(const Point3D &v_r, double refDensity,
-                     double &gxx, double &gyy, double &gzz,
-                     double &gxy, double &gxz, double &gyz) const;
+    void fld_vlado(const Point3D &v_r, Point3D &v_grv) const;
+    void fld_vlado(const Point3D &v_r, Point3D &v_grv, Point3D ro, double ro0) const;
+    void fld_vlado_grd(const Point3D &v_r, double ref_density,
+                       double &gxx, double &gyy, double &gzz,
+                       double &gxy, double &gxz, double &gyz) const;
 
-    void FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point3D &v_Grv) const;
-    void FldGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, double dSign = 1.0) const;
+    void fld_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, Point3D &v_grv) const;
+    void fld_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, double sign_multiplier = 1.0) const;
 
-    void FldSpherVlado(const Point3D &v_r, Point3D &v_Grv) const;
-    void FldSpherGS(const Point3D &v_r, Point3D v_M, Point3D &v_Mag, Point3D &v_Grv) const;
+    void fld_spher_vlado(const Point3D &v_r, Point3D &v_grv) const;
+    void fld_spher_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, Point3D &v_grv) const;
 
-    // Direct compatibility wrappers for pfld_UnitTest and legacy Mod3D
-    void Fld_G(const Point3D &v_r, Point3D &v_Grv) const { FldVlado(v_r, v_Grv); }
-    void Fld_G(const Point3D &v_r, Point3D ro, double ro0, Point3D &v_Grv) const { FldVlado(v_r, v_Grv, ro, ro0); }
-    void Fld_Gz(const Point3D &v_r, double &gz) const {
+    // Field evaluation wrappers
+    void fld_g(const Point3D &v_r, Point3D &v_grv) const { fld_vlado(v_r, v_grv); }
+    void fld_g(const Point3D &v_r, Point3D ro, double ro0, Point3D &v_grv) const { fld_vlado(v_r, v_grv, ro, ro0); }
+    void fld_gz(const Point3D &v_r, double &gz) const {
         Point3D g_vec(0, 0, 0);
-        FldVlado(v_r, g_vec);
+        fld_vlado(v_r, g_vec);
         gz += g_vec.z;
     }
-    void Fld_Gz(const Point3D &v_r, Point3D ro, double ro0, double &gz) const {
+    void fld_gz(const Point3D &v_r, Point3D ro, double ro0, double &gz) const {
         Point3D g_vec(0, 0, 0);
-        FldVlado(v_r, g_vec, ro, ro0);
+        fld_vlado(v_r, g_vec, ro, ro0);
         gz += g_vec.z;
     }
-    void FldGS_Gz(const Point3D &v_r, double &gz) const {
+    void fld_gs_gz(const Point3D &v_r, double &gz) const {
         Point3D m(0, 0, 0), g_vec(0, 0, 0);
-        FldGS(v_r, Point3D(0, 0, 0), m, g_vec);
+        fld_gs(v_r, Point3D(0, 0, 0), m, g_vec);
         gz += g_vec.z;
     }
-
-    [[nodiscard]] bool IsOposit(const Facet3Pt &fct) const noexcept { return is_opposite(fct); }
-    [[nodiscard]] bool IsNull() const noexcept { return is_null(); }
-    [[nodiscard]] bool IsOuter() const noexcept { return is_outer(); }
-
-    void SetType(FacetType type) noexcept { set_type(type); }
-    [[nodiscard]] FacetType GetType() const noexcept { return type(); }
-
-    [[nodiscard]] double GetSign() const noexcept { return sign(); }
-    void SetSign(double s) noexcept { set_sign(s); }
-
-    [[nodiscard]] double SolidAngle(const Point3D *spts) const { return solid_angle(spts); }
-    [[nodiscard]] double SolidAngle(std::span<const Point3D, 3> spts) const { return solid_angle(spts); }
-
-    [[nodiscard]] double GetMeanElevation() const noexcept { return mean_elevation(); }
-    [[nodiscard]] Point3D Centroid() const noexcept { return centroid(); }
-
-    [[nodiscard]] const Point3D *ContainsVertex(const Point3D *pt) const noexcept;
-    void Reverse() { reverse(); }
-
-    [[nodiscard]] const Point3D &Normal() const noexcept { return normal(); }
 
     // High-level field calculation with reference model and body interaction
-    void Compute(
+    void compute(
         double *gx, double *gy, double *gz,
         double *gxx, double *gyy, double *gzz, double *gxy, double *gxz, double *gyz,
         double *mx, double *my, double *mz,
-        double &dRefDens, double &dRefDensOrg, Point3D &v_refDens, int nRdm,
-        Point3D &v_rGrv, Point3D &v_rTen, Point3D &v_rMag,
-        double &dUnitGrv, double &dUnitMag, double &dUnitTns);
+        double &ref_density, double &ref_density_org, Point3D &v_ref_dens, int n_rdm,
+        Point3D &v_r_grv, Point3D &v_r_ten, Point3D &v_r_mag,
+        double &unit_grv, double &unit_mag, double &unit_tns);
+
+    // Body associations
+    [[nodiscard]] Body *body() const noexcept { return pBody; }
+    void set_body(Body *b) noexcept { pBody = b; }
+    [[nodiscard]] Body *opposite_body() const noexcept { return pBodyOpos; }
+    void set_opposite_body(Body *b) noexcept { pBodyOpos = b; }
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};
