@@ -1,6 +1,5 @@
 #include "mod3d/Observation.h"
 #include "mod3d/Magnetics.h"
-#include "mod3d/FieldCompute.h"
 #include "mod3d/Body.h"
 #include <cmath>
 #include <stdexcept>

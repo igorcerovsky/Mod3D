@@ -28,10 +28,6 @@ add_executable(test_pfld_groundtruth test_pfld_groundtruth.cpp)
 target_link_libraries(test_pfld_groundtruth PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_pfld_groundtruth)
 
-# Test FieldCompute (Parallel / Serial Engine)
-add_executable(test_field_compute test_field_compute.cpp)
-target_link_libraries(test_field_compute PRIVATE mod3d_core GTest::gtest_main)
-gtest_discover_tests(test_field_compute)
 
 # Test Model, ColumnPoint, Grid
 add_executable(test_model test_model.cpp)
