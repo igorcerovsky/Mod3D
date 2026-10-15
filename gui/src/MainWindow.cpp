@@ -184,7 +184,7 @@ void MainWindow::setupMenus() {
     menuExport->addAction(tr("Body Mesh (OBJ)..."), [this]() {
         QString fn = QFileDialog::getSaveFileName(this, tr("Export Body Mesh"), QString(), tr("Wavefront OBJ (*.obj);;All Files (*)"));
         if (!fn.isEmpty()) {
-            m_doc->project().exportObj(fn.toStdString());
+            m_doc->project().export_obj(fn.toStdString());
         }
     });
 

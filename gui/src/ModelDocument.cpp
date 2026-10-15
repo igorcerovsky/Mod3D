@@ -58,9 +58,9 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
 bool ModelDocument::openFile(const QString &path) {
     bool ok = false;
     if (path.endsWith(".m3d", Qt::CaseInsensitive)) {
-        ok = m_project.loadLegacyM3D(path.toStdString());
+        ok = m_project.load_legacy_m3d(path.toStdString());
     } else {
-        ok = m_project.loadJson(path.toStdString());
+        ok = m_project.load_json(path.toStdString());
     }
 
     if (ok) {
@@ -97,7 +97,7 @@ bool ModelDocument::saveFile(const QString &path) {
         return false;
     }
 
-    bool ok = m_project.saveJson(savePath.toStdString());
+    bool ok = m_project.save_json(savePath.toStdString());
     if (ok) {
         m_filePath = savePath;
         setModified(false);

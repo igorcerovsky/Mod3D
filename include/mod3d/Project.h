@@ -86,34 +86,6 @@ public:
     // Clear project state
     void clear();
 
-    // ========================================================================
-    // Legacy API Wrappers
-    // ========================================================================
-    bool saveJson(const std::filesystem::path &filePath, int indent = 2) const {
-        return save_json(filePath, indent);
-    }
-    bool loadJson(const std::filesystem::path &filePath) {
-        return load_json(filePath);
-    }
-    [[nodiscard]] std::string toJsonString(int indent = 2) const {
-        return to_json_string(indent);
-    }
-    bool fromJsonString(const std::string &jsonStr) {
-        return from_json_string(jsonStr);
-    }
-    bool exportObj(const std::filesystem::path &filePath, int bodyId = -1) const {
-        return export_obj(filePath, bodyId);
-    }
-    bool exportStl(const std::filesystem::path &filePath, int bodyId = -1, bool binary = true) const {
-        return export_stl(filePath, bodyId, binary);
-    }
-    bool exportVtk(const std::filesystem::path &filePath, int bodyId = -1) const {
-        return export_vtk(filePath, bodyId);
-    }
-    bool loadLegacyM3D(const std::filesystem::path &filePath) {
-        return load_legacy_m3d(filePath);
-    }
-
 private:
     ProjectMetadata m_metadata;
     ProjectSettings m_settings;
