@@ -19,18 +19,18 @@ TEST(ModelTest, InitializationAndDimensions) {
     const double zMax = 500.0;
 
     EXPECT_TRUE(model.init(nRows, nCols, x0, y0, dx, dy, zMin, zMax));
-    EXPECT_TRUE(model.isInitialized());
+    EXPECT_TRUE(model.is_initialized());
 
     // Internal model dimensions have 1 border cell on each side
-    EXPECT_EQ(model.getRows(), nRows + 2);
-    EXPECT_EQ(model.getCols(), nCols + 2);
+    EXPECT_EQ(model.rows(), nRows + 2);
+    EXPECT_EQ(model.cols(), nCols + 2);
 
     // Each column point must initially have 2 points (relief top and hell bottom)
-    for (int r = 0; r < model.getRows(); ++r) {
-        for (int c = 0; c < model.getCols(); ++c) {
-            EXPECT_EQ(model.getCount(r, c), 2u);
-            EXPECT_DOUBLE_EQ(model.getZ(r, c, 0), zMax);
-            EXPECT_DOUBLE_EQ(model.getZ(r, c, 1), zMin);
+    for (int r = 0; r < model.rows(); ++r) {
+        for (int c = 0; c < model.cols(); ++c) {
+            EXPECT_EQ(model.count(r, c), 2u);
+            EXPECT_DOUBLE_EQ(model.z(r, c, 0), zMax);
+            EXPECT_DOUBLE_EQ(model.z(r, c, 1), zMin);
         }
     }
 }
@@ -42,29 +42,29 @@ TEST(ModelTest, InsertBodyAndStratigraphy) {
     // Insert body into column (2, 2)
     const double zCenter = -500.0;
     const double thickness = 100.0; // t = 100 -> top = -400, bot = -600
-    int idx = model.insertBody(2, 2, zCenter, thickness, true);
+    int idx = model.insert_body(2, 2, zCenter, thickness, true);
     EXPECT_GT(idx, 0);
 
     // Column (2, 2) should now have 4 points: relief (0), body top (1), body bot (2), hell (3)
-    EXPECT_EQ(model.getCount(2, 2), 4u);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 0), 0.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -400.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -600.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 3), -2000.0);
-    EXPECT_EQ(model.getThickness(2, 2, 1), 200.0);
+    EXPECT_EQ(model.count(2, 2), 4u);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 0), 0.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -400.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -600.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 3), -2000.0);
+    EXPECT_EQ(model.thickness(2, 2, 1), 200.0);
 }
 
 TEST(ModelTest, MoveVertexNormal) {
     Model model;
     model.init(4, 4, 0.0, 0.0, 200.0, 200.0, -2000.0, 0.0);
 
-    int idx = model.insertBody(2, 2, -500.0, 100.0, true);
+    int idx = model.insert_body(2, 2, -500.0, 100.0, true);
     ASSERT_EQ(idx, 1);
 
     // Move top vertex from -400 to -350
-    int moveRes = model.moveVertex(idx, 2, 2, -350.0, BodyMoveType::Normal);
+    int moveRes = model.move_vertex(idx, 2, 2, -350.0, BodyMoveType::Normal);
     EXPECT_EQ(moveRes, 0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -350.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -350.0);
 }
 
 TEST(ModelTest, FacetGenerationMultiColumnPrism) {
@@ -72,21 +72,21 @@ TEST(ModelTest, FacetGenerationMultiColumnPrism) {
     model.init(3, 3, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
 
     // Insert body across a 2x2 grid of columns
-    Body *body = model.newBody();
+    Body *body = model.create_body();
     ASSERT_NE(body, nullptr);
     const int bId = body->id();
 
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
-            model.insertBody(r, c, -400.0, 50.0, false, bId);
+            model.insert_body(r, c, -400.0, 50.0, false, bId);
         }
     }
 
     // Generate all facets
-    model.initFacetList();
+    model.init_facet_list();
 
     std::vector<Facet3Pt> allFacets;
-    int count = model.getFacetsComputation(allFacets);
+    int count = model.facets_computation(allFacets);
     EXPECT_GT(count, 0);
 
     // Verify all generated facets have valid outward normals
@@ -100,24 +100,24 @@ TEST(ModelTest, RealTimeDeltaFacetTracking) {
     Model model;
     model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
 
-    Body *body = model.newBody();
+    Body *body = model.create_body();
     const int bId = body->id();
     for (int r = 1; r <= 3; ++r) {
         for (int c = 1; c <= 3; ++c) {
-            model.insertBody(r, c, -400.0, 50.0, false, bId);
+            model.insert_body(r, c, -400.0, 50.0, false, bId);
         }
     }
 
-    model.initFacetList();
+    model.init_facet_list();
 
     // Enable real-time computation tracking
-    model.setComputeRealTime(true);
-    model.clearFacetsUpdate();
+    model.set_compute_real_time(true);
+    model.clear_facets_update();
 
     int vIdx = 1;
-    model.moveVertex(vIdx, 2, 2, -350.0, BodyMoveType::Normal);
+    model.move_vertex(vIdx, 2, 2, -350.0, BodyMoveType::Normal);
 
-    const auto &deltas = model.getFacetsUpdate();
+    const auto &deltas = model.facets_update();
     EXPECT_FALSE(deltas.empty());
 
     // Deltas must contain both old facets (sign -1) and new facets (sign +1)
@@ -260,21 +260,21 @@ TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
     Model model;
     model.init(3, 3, 0.0, 0.0, 500.0, 500.0, -2000.0, 0.0);
 
-    Body *body = model.newBody();
+    Body *body = model.create_body();
     body->set_density(2670.0);
     const int bId = body->id();
 
     // Create a 2x2 column prism from z = -400 to z = -800
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
-            model.insertBody(r, c, -600.0, 200.0, false, bId);
+            model.insert_body(r, c, -600.0, 200.0, false, bId);
         }
     }
 
-    model.initFacetList();
+    model.init_facet_list();
 
     std::vector<Facet3Pt> facets;
-    model.getFacetsComputation(facets);
+    model.facets_computation(facets);
     ASSERT_GT(facets.size(), 0u);
 
     // Center of mass of the modeled body: columns (1,1) to (2,2) span [0, 500] in X and Y
@@ -318,20 +318,20 @@ TEST(ModelEdgeCasesTest, InitWithVariedReliefGrid) {
     const double zMin = -3000.0;
     const double zMax = 1000.0;
     EXPECT_TRUE(model.init(relief, zMin, zMax));
-    EXPECT_TRUE(model.isInitialized());
+    EXPECT_TRUE(model.is_initialized());
 
     // Internal model dimensions are (3+2) x (3+2) = 5 x 5
-    EXPECT_EQ(model.getRows(), 5);
-    EXPECT_EQ(model.getCols(), 5);
+    EXPECT_EQ(model.rows(), 5);
+    EXPECT_EQ(model.cols(), 5);
 
     // Inner cell (r=2, c=2) corresponds to relief grid cell (1, 1)
     // Value should be 200 + 1*50 + 1*30 = 280.0
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 0), 280.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), zMin);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 0), 280.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), zMin);
 
     // Border cell (r=0, c=0) clamps to relief cell (0, 0) = 200.0
-    EXPECT_DOUBLE_EQ(model.getZ(0, 0, 0), 200.0);
-    EXPECT_DOUBLE_EQ(model.getZ(0, 0, 1), zMin);
+    EXPECT_DOUBLE_EQ(model.z(0, 0, 0), 200.0);
+    EXPECT_DOUBLE_EQ(model.z(0, 0, 1), zMin);
 }
 
 TEST(ModelEdgeCasesTest, MoveVertexConstrainedAndSplit) {
@@ -343,30 +343,30 @@ TEST(ModelEdgeCasesTest, MoveVertexConstrainedAndSplit) {
     // Index 1: body top (-400.0)
     // Index 2: body bot (-600.0)
     // Index 3: hell (-2000.0)
-    int idx = model.insertBody(2, 2, -500.0, 100.0, true);
+    int idx = model.insert_body(2, 2, -500.0, 100.0, true);
     ASSERT_EQ(idx, 1);
 
     // 1. Constrained Move: valid within (-600.0, 0.0)
     int vIdx = 1;
-    int res = model.moveVertex(vIdx, 2, 2, -300.0, BodyMoveType::Constrained);
+    int res = model.move_vertex(vIdx, 2, 2, -300.0, BodyMoveType::Constrained);
     EXPECT_EQ(res, 0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -300.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -300.0);
 
     // Constrained Move: violating upper bound (z >= 0.0) must be rejected
-    res = model.moveVertex(vIdx, 2, 2, 50.0, BodyMoveType::Constrained);
+    res = model.move_vertex(vIdx, 2, 2, 50.0, BodyMoveType::Constrained);
     EXPECT_EQ(res, 2); // Error code 2 = constraint violated
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -300.0); // Z unchanged
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -300.0); // Z unchanged
 
     // Constrained Move: violating lower bound (z <= -600.0) must be rejected
-    res = model.moveVertex(vIdx, 2, 2, -650.0, BodyMoveType::Constrained);
+    res = model.move_vertex(vIdx, 2, 2, -650.0, BodyMoveType::Constrained);
     EXPECT_EQ(res, 2);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -300.0); // Z unchanged
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -300.0); // Z unchanged
 
     // 2. Split Move
     // Moving top vertex up towards relief:
-    res = model.moveVertex(vIdx, 2, 2, -200.0, BodyMoveType::Split);
+    res = model.move_vertex(vIdx, 2, 2, -200.0, BodyMoveType::Split);
     EXPECT_EQ(res, 0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -200.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -200.0);
 }
 
 TEST(ModelEdgeCasesTest, SnappedVerticesNormalAndSplitUnsnap) {
@@ -374,105 +374,105 @@ TEST(ModelEdgeCasesTest, SnappedVerticesNormalAndSplitUnsnap) {
     model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
 
     // Insert body at (2, 2)
-    int idx = model.insertBody(2, 2, -500.0, 100.0, true);
+    int idx = model.insert_body(2, 2, -500.0, 100.0, true);
     ASSERT_EQ(idx, 1);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -400.0); // Top
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -600.0); // Bot
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -400.0); // Top
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -600.0); // Bot
 
     // 1. Snap them together by moving top down to bottom (-600.0)
     int topIdx = 1;
-    int res = model.moveVertex(topIdx, 2, 2, -600.0, BodyMoveType::Normal);
+    int res = model.move_vertex(topIdx, 2, 2, -600.0, BodyMoveType::Normal);
     EXPECT_EQ(res, 0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -600.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -600.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -600.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -600.0);
 
     // 2. Normal move on snapped points: moves both together (maintains pinch-out)
     int vIdx = 1;
-    res = model.moveVertex(vIdx, 2, 2, -700.0, BodyMoveType::Normal);
+    res = model.move_vertex(vIdx, 2, 2, -700.0, BodyMoveType::Normal);
     EXPECT_EQ(res, 0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -700.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -700.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -700.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -700.0);
 
     // 3. Split move (Ctrl+Drag) UPWARDS: unsnaps top vertex upwards towards relief
     vIdx = 1;
-    res = model.moveVertex(vIdx, 2, 2, -450.0, BodyMoveType::Split);
+    res = model.move_vertex(vIdx, 2, 2, -450.0, BodyMoveType::Split);
     EXPECT_EQ(res, 0);
     EXPECT_EQ(vIdx, 1);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -450.0); // Top moved up
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -700.0); // Bot remained in place! Unsnapped!
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -450.0); // Top moved up
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -700.0); // Bot remained in place! Unsnapped!
 
     // 4. Snap them together again at -450.0
     int botIdx = 2;
-    res = model.moveVertex(botIdx, 2, 2, -450.0, BodyMoveType::Normal);
+    res = model.move_vertex(botIdx, 2, 2, -450.0, BodyMoveType::Normal);
     EXPECT_EQ(res, 0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -450.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -450.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -450.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -450.0);
 
     // 5. Split move (Ctrl+Drag) DOWNWARDS: unsnaps bottom vertex downwards
     vIdx = 1; // start from top index
-    res = model.moveVertex(vIdx, 2, 2, -800.0, BodyMoveType::Split);
+    res = model.move_vertex(vIdx, 2, 2, -800.0, BodyMoveType::Split);
     EXPECT_EQ(res, 0);
     EXPECT_EQ(vIdx, 2); // updated to bottom index!
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -450.0); // Top remained in place!
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -800.0); // Bot moved down! Unsnapped!
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -450.0); // Top remained in place!
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -800.0); // Bot moved down! Unsnapped!
 
     // 6. Snap together at -800.0 and test unsnapping when starting from bottom index (2)
     topIdx = 1;
-    model.moveVertex(topIdx, 2, 2, -800.0, BodyMoveType::Normal);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -800.0);
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -800.0);
+    model.move_vertex(topIdx, 2, 2, -800.0, BodyMoveType::Normal);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -800.0);
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -800.0);
 
     vIdx = 2; // clicked bottom index
-    res = model.moveVertex(vIdx, 2, 2, -550.0, BodyMoveType::Split);
+    res = model.move_vertex(vIdx, 2, 2, -550.0, BodyMoveType::Split);
     EXPECT_EQ(res, 0);
     EXPECT_EQ(vIdx, 1); // shifted to top index
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 1), -550.0); // Top moved up!
-    EXPECT_DOUBLE_EQ(model.getZ(2, 2, 2), -800.0); // Bot remained at -800.0!
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 1), -550.0); // Top moved up!
+    EXPECT_DOUBLE_EQ(model.z(2, 2, 2), -800.0); // Bot remained at -800.0!
 }
 
 TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     Model model;
     model.init(3, 3, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
 
-    Body *b1 = model.newBody();
+    Body *b1 = model.create_body();
     b1->set_density(2500.0);
     int bId1 = b1->id();
 
-    Body *b2 = model.newBody();
+    Body *b2 = model.create_body();
     b2->set_density(2900.0);
     int bId2 = b2->id();
 
-    EXPECT_EQ(model.getBodies().size(), 2u);
+    EXPECT_EQ(model.bodies().size(), 2u);
 
     // Insert body 1 at column (1, 1) and (1, 2)
-    model.insertBody(1, 1, -400.0, 50.0, false, bId1);
-    model.insertBody(1, 2, -400.0, 50.0, false, bId1);
+    model.insert_body(1, 1, -400.0, 50.0, false, bId1);
+    model.insert_body(1, 2, -400.0, 50.0, false, bId1);
 
     // Insert body 2 at column (2, 1) and (2, 2)
-    model.insertBody(2, 1, -700.0, 50.0, false, bId2);
-    model.insertBody(2, 2, -700.0, 50.0, false, bId2);
+    model.insert_body(2, 1, -700.0, 50.0, false, bId2);
+    model.insert_body(2, 2, -700.0, 50.0, false, bId2);
 
-    model.initFacetList();
+    model.init_facet_list();
 
     std::vector<Facet3Pt> initialFacets;
-    int initialCount = model.getFacetsComputation(initialFacets);
+    int initialCount = model.facets_computation(initialFacets);
     EXPECT_GT(initialCount, 0);
 
     // Delete Body 1
-    int delRes = model.deleteBody(bId1);
+    int delRes = model.delete_body(bId1);
     EXPECT_EQ(delRes, 1);
-    EXPECT_EQ(model.getBodies().size(), 1u);
-    EXPECT_EQ(model.getBodies()[0]->id(), bId2);
+    EXPECT_EQ(model.bodies().size(), 1u);
+    EXPECT_EQ(model.bodies()[0]->id(), bId2);
 
     // Column (1, 1) must now only have 2 points (relief and hell), body 1 points removed
-    EXPECT_EQ(model.getCount(1, 1), 2u);
+    EXPECT_EQ(model.count(1, 1), 2u);
 
     // Column (2, 1) must still contain body 2
-    EXPECT_EQ(model.getCount(2, 1), 4u);
+    EXPECT_EQ(model.count(2, 1), 4u);
 
     // Meshed facets after deletion should only reference body 2
     std::vector<Facet3Pt> updatedFacets;
-    model.getFacetsComputation(updatedFacets);
+    model.facets_computation(updatedFacets);
     for (const auto &fct : updatedFacets) {
         if (fct.pBody) {
             EXPECT_EQ(fct.pBody->id(), bId2);
@@ -487,12 +487,12 @@ TEST(ModelTest, GenerateBodyMeshesAndFacets3D) {
     Model model;
     model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
 
-    Body *b1 = model.newBody();
+    Body *b1 = model.create_body();
     ASSERT_NE(b1, nullptr);
     b1->set_name("Granite");
     int id1 = b1->id();
 
-    Body *b2 = model.newBody();
+    Body *b2 = model.create_body();
     ASSERT_NE(b2, nullptr);
     b2->set_name("Basalt");
     int id2 = b2->id();
@@ -500,27 +500,27 @@ TEST(ModelTest, GenerateBodyMeshesAndFacets3D) {
     // Insert body 1 at depth -500 to -700
     for (int r = 1; r <= 3; ++r) {
         for (int c = 1; c <= 3; ++c) {
-            model.insertBody(r, c, -600.0, 100.0, false, id1);
+            model.insert_body(r, c, -600.0, 100.0, false, id1);
         }
     }
 
     // Insert body 2 adjacent below body 1 (contact at -700 down to -1000)
     for (int r = 1; r <= 3; ++r) {
         for (int c = 1; c <= 3; ++c) {
-            model.insertBody(r, c, -850.0, 150.0, false, id2);
+            model.insert_body(r, c, -850.0, 150.0, false, id2);
         }
     }
 
-    model.initFacetList();
+    model.init_facet_list();
 
-    // 1. Test getBodyFacets for body 1
+    // 1. Test body_facets for body 1
     std::vector<Facet3Pt> b1Facets;
-    int c1 = model.getBodyFacets(id1, b1Facets, false);
+    int c1 = model.body_facets(id1, b1Facets, false);
     EXPECT_GT(c1, 0);
 
-    // 2. Test getBodyFacets for body 2
+    // 2. Test body_facets for body 2
     std::vector<Facet3Pt> b2Facets;
-    int c2 = model.getBodyFacets(id2, b2Facets, false);
+    int c2 = model.body_facets(id2, b2Facets, false);
     EXPECT_GT(c2, 0);
 
     // Verify all facets have unit normal
@@ -531,8 +531,8 @@ TEST(ModelTest, GenerateBodyMeshesAndFacets3D) {
         EXPECT_NEAR(f.v_n.norm(), 1.0, 1e-5);
     }
 
-    // 3. Test generateBodyMeshes
-    auto meshes = model.generateBodyMeshes(-1, false);
+    // 3. Test generate_body_meshes
+    auto meshes = model.generate_body_meshes(-1, false);
     ASSERT_EQ(meshes.size(), 2u);
 
     EXPECT_EQ(meshes[0].bodyId, id1);

@@ -91,104 +91,194 @@ public:
     // Initialization
     bool init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
     bool init(const Grid &reliefGrid, double zMin, double zMax);
-    bool initEmpty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
+    bool init_empty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
     void clear();
-    bool isInitialized() const { return m_initialized; }
+    [[nodiscard]] bool is_initialized() const noexcept { return m_initialized; }
 
     // Dimensions and Coordinates
-    int getRows() const { return m_nRows; }
-    int getCols() const { return m_nCols; }
-    double getX0() const { return m_x0; }
-    double getY0() const { return m_y0; }
-    double getXSize() const { return m_xSize; }
-    double getYSize() const { return m_ySize; }
-    double getZMin() const { return m_zMin; }
-    double getZMax() const { return m_zMax; }
-    void setZMin(double zMin) noexcept { m_zMin = zMin; }
-    void setZMax(double zMax) noexcept { m_zMax = zMax; }
-    double getXMin() const { return m_xMin; }
-    double getXMax() const { return m_xMax; }
-    double getYMin() const { return m_yMin; }
-    double getYMax() const { return m_yMax; }
-    double getHell() const { return m_zMin; }
-    double getHeaven() const { return m_zMax; }
-    void setHell(double hell) noexcept { m_zMin = hell; }
-    void setHeaven(double heaven) noexcept { m_zMax = heaven; }
+    [[nodiscard]] int rows() const noexcept { return m_nRows; }
+    [[nodiscard]] int cols() const noexcept { return m_nCols; }
+    [[nodiscard]] double x0() const noexcept { return m_x0; }
+    [[nodiscard]] double y0() const noexcept { return m_y0; }
+    [[nodiscard]] double dx() const noexcept { return m_xSize; }
+    [[nodiscard]] double dy() const noexcept { return m_ySize; }
+    [[nodiscard]] double x_size() const noexcept { return m_xSize; }
+    [[nodiscard]] double y_size() const noexcept { return m_ySize; }
+    [[nodiscard]] double z_min() const noexcept { return m_zMin; }
+    [[nodiscard]] double z_max() const noexcept { return m_zMax; }
+    void set_z_min(double zMin) noexcept { m_zMin = zMin; }
+    void set_z_max(double zMax) noexcept { m_zMax = zMax; }
+    [[nodiscard]] double x_min() const noexcept { return m_xMin; }
+    [[nodiscard]] double x_max() const noexcept { return m_xMax; }
+    [[nodiscard]] double y_min() const noexcept { return m_yMin; }
+    [[nodiscard]] double y_max() const noexcept { return m_yMax; }
 
-    double getXd(int col) const { return m_x0 + (col - 1) * m_xSize; }
-    double getYd(int row) const { return m_y0 + (row - 1) * m_ySize; }
-    double getXe(int col) const;
-    double getYe(int row) const;
-    double getX2e(int col) const;
-    double getY2e(int row) const;
+    [[nodiscard]] double xd(int col) const noexcept { return m_x0 + (col - 1) * m_xSize; }
+    [[nodiscard]] double yd(int row) const noexcept { return m_y0 + (row - 1) * m_ySize; }
+    [[nodiscard]] double xe(int col) const;
+    [[nodiscard]] double ye(int row) const;
+    [[nodiscard]] double x2e(int col) const;
+    [[nodiscard]] double y2e(int row) const;
 
     // Column Point Access
-    size_t getCount(int row, int col) const;
-    int getUpperBound(int row, int col) const;
-    const ColumnPoint *getAt(int row, int col, int index) const;
-    ColumnPoint *getAt(int row, int col, int index);
+    [[nodiscard]] size_t count(int row, int col) const;
+    [[nodiscard]] int upper_bound(int row, int col) const;
+    [[nodiscard]] const ColumnPoint *at(int row, int col, int index) const;
+    [[nodiscard]] ColumnPoint *at(int row, int col, int index);
     void add(int row, int col, const ColumnPoint &pt);
-    void insertAt(int row, int col, int index, const ColumnPoint &pt);
-    void removeAt(int row, int col, int index, int count = 1);
+    void insert_at(int row, int col, int index, const ColumnPoint &pt);
+    void remove_at(int row, int col, int index, int count = 1);
 
-    double getZ(int row, int col, int index) const;
-    void setZ(int row, int col, int index, double z);
-    double getThickness(int row, int col, int index) const;
-    double getDefaultThickness() const { return (m_zMax - m_zMin) / 10.0; }
+    [[nodiscard]] double z(int row, int col, int index) const;
+    void set_z(int row, int col, int index, double z);
+    [[nodiscard]] double thickness(int row, int col, int index) const;
+    [[nodiscard]] double default_thickness() const noexcept { return (m_zMax - m_zMin) / 10.0; }
 
     // Vertex Manipulation
-    int moveVertex(int &index, int row, int col, double z, BodyMoveType moveType = BodyMoveType::Normal);
+    int move_vertex(int &index, int row, int col, double z, BodyMoveType moveType = BodyMoveType::Normal);
 
     // Body Management
-    Body *newBody();
-    void addBody(std::unique_ptr<Body> body);
-    int insertBody(int row, int col, double z, double thickness = -1.0, bool isNew = true, int bodyId = -1, double zT = 0.0, double zB = 0.0, bool bZ = true);
-    int removeBody(int index, int row, int col);
-    int deleteBody(int bodyId);
-    Body *getBody(int bodyId);
-    const Body *getBody(int bodyId) const;
-    int getBodyIndex(int bodyId, int row, int col) const;
-    int updateMoveIndex(int indexOld, int row, int col, int bodyId) const;
-    int getID(int index, int row, int col) const;
-    const std::vector<std::unique_ptr<Body>> &getBodies() const { return m_bodies; }
-    void updateBodyIndex();
-    void computeBodyMagnetizationVector(const Point3D &indFld);
-    void computeBodyMagnetizationVector(double incDeg, double decDeg, double intensityNT);
+    Body *create_body();
+    void add_body(std::unique_ptr<Body> body);
+    int insert_body(int row, int col, double z, double thickness = -1.0, bool isNew = true, int bodyId = -1, double zT = 0.0, double zB = 0.0, bool bZ = true);
+    int remove_body(int index, int row, int col);
+    int delete_body(int bodyId);
+    [[nodiscard]] Body *body(int bodyId);
+    [[nodiscard]] const Body *body(int bodyId) const;
+    [[nodiscard]] int body_index(int bodyId, int row, int col) const;
+    [[nodiscard]] int update_move_index(int indexOld, int row, int col, int bodyId) const;
+    [[nodiscard]] int id(int index, int row, int col) const;
+    [[nodiscard]] const std::vector<std::unique_ptr<Body>> &bodies() const noexcept { return m_bodies; }
+    void update_body_index();
+    void compute_body_magnetization_vector(const Point3D &indFld);
+    void compute_body_magnetization_vector(double incDeg, double decDeg, double intensityNT);
 
     // Facet Generation
-    void initFacetList();
-    int generateFacets(std::vector<Facet3Pt> &facetList, int row, int col);
-    void updateFacetColumn(int row, int col);
-    void updateFacetList(int row, int col);
-    int getFacetsComputation(std::vector<Facet3Pt> &outList) const;
-    std::vector<Facet3Pt> *getFacetList(int row, int col);
-    const std::vector<Facet3Pt> *getFacetList(int row, int col) const;
+    void init_facet_list();
+    int generate_facets(std::vector<Facet3Pt> &facetList, int row, int col);
+    void update_facet_column(int row, int col);
+    void update_facet_list(int row, int col);
+    int facets_computation(std::vector<Facet3Pt> &outList) const;
+    [[nodiscard]] std::vector<Facet3Pt> *facet_list(int row, int col);
+    [[nodiscard]] const std::vector<Facet3Pt> *facet_list(int row, int col) const;
 
     // 3D Polyhedral Body Meshes & Facet Representation for Rendering and Export
-    std::vector<BodyMesh3D> generateBodyMeshes(int bodyId = -1, bool includeOuter = false) const;
-    int getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter = false) const;
-    int getFacetsFor3DView(std::vector<Facet3Pt> &outList, bool includeOuter = false) const;
+    [[nodiscard]] std::vector<BodyMesh3D> generate_body_meshes(int bodyId = -1, bool includeOuter = false) const;
+    int body_facets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter = false) const;
+    int facets_for_3d_view(std::vector<Facet3Pt> &outList, bool includeOuter = false) const;
 
     // Body Boundaries (2D Horizontal Projection for Map View)
-    const std::vector<BodyBoundarySegment> *getBodyBoundAt(int row, int col) const;
-    std::vector<BodyBoundarySegment> getAllBodyBoundaries() const;
+    [[nodiscard]] const std::vector<BodyBoundarySegment> *body_bound_at(int row, int col) const;
+    [[nodiscard]] std::vector<BodyBoundarySegment> all_body_boundaries() const;
 
     // Real-Time Delta Updates
-    void setComputeRealTime(bool realTime = true) { m_computeRealTime = realTime; }
-    bool isComputeRealTime() const { return m_computeRealTime; }
-    std::vector<Facet3Pt> &getFacetsUpdate() { return m_fctLstUpdate; }
-    const std::vector<Facet3Pt> &getFacetsUpdate() const { return m_fctLstUpdate; }
-    void clearFacetsUpdate() { m_fctLstUpdate.clear(); }
+    void set_compute_real_time(bool realTime = true) noexcept { m_computeRealTime = realTime; }
+    [[nodiscard]] bool is_compute_real_time() const noexcept { return m_computeRealTime; }
+    [[nodiscard]] std::vector<Facet3Pt> &facets_update() noexcept { return m_fctLstUpdate; }
+    [[nodiscard]] const std::vector<Facet3Pt> &facets_update() const noexcept { return m_fctLstUpdate; }
+    void clear_facets_update() noexcept { m_fctLstUpdate.clear(); }
 
     // Boundary Extensions
-    void setExtensions(double exN, double exS, double exE, double exW, bool enable = true) {
+    void set_extensions(double exN, double exS, double exE, double exW, bool enable = true) noexcept {
         m_dExN = exN; m_dExS = exS; m_dExE = exE; m_dExW = exW; m_extend = enable;
     }
-    bool isExtend() const { return m_extend; }
-    double getExN() const { return m_dExN; }
-    double getExS() const { return m_dExS; }
-    double getExE() const { return m_dExE; }
-    double getExW() const { return m_dExW; }
+    [[nodiscard]] bool is_extend() const noexcept { return m_extend; }
+    [[nodiscard]] double ex_n() const noexcept { return m_dExN; }
+    [[nodiscard]] double ex_s() const noexcept { return m_dExS; }
+    [[nodiscard]] double ex_e() const noexcept { return m_dExE; }
+    [[nodiscard]] double ex_w() const noexcept { return m_dExW; }
+
+    // ========================================================================
+    // Legacy API Wrappers
+    // ========================================================================
+    [[nodiscard]] bool initEmpty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax) {
+        return init_empty(totalRows, totalCols, x0, y0, xSize, ySize, zMin, zMax);
+    }
+    [[nodiscard]] bool isInitialized() const noexcept { return is_initialized(); }
+    [[nodiscard]] int getRows() const noexcept { return rows(); }
+    [[nodiscard]] int getCols() const noexcept { return cols(); }
+    [[nodiscard]] double getX0() const noexcept { return x0(); }
+    [[nodiscard]] double getY0() const noexcept { return y0(); }
+    [[nodiscard]] double getXSize() const noexcept { return dx(); }
+    [[nodiscard]] double getYSize() const noexcept { return dy(); }
+    [[nodiscard]] double getZMin() const noexcept { return z_min(); }
+    [[nodiscard]] double getZMax() const noexcept { return z_max(); }
+    void setZMin(double zMin) noexcept { set_z_min(zMin); }
+    void setZMax(double zMax) noexcept { set_z_max(zMax); }
+    [[nodiscard]] double getXMin() const noexcept { return x_min(); }
+    [[nodiscard]] double getXMax() const noexcept { return x_max(); }
+    [[nodiscard]] double getYMin() const noexcept { return y_min(); }
+    [[nodiscard]] double getYMax() const noexcept { return y_max(); }
+    [[nodiscard]] double getHell() const noexcept { return z_min(); }
+    [[nodiscard]] double getHeaven() const noexcept { return z_max(); }
+    void setHell(double hell) noexcept { set_z_min(hell); }
+    void setHeaven(double heaven) noexcept { set_z_max(heaven); }
+    [[nodiscard]] double getXd(int col) const noexcept { return xd(col); }
+    [[nodiscard]] double getYd(int row) const noexcept { return yd(row); }
+    [[nodiscard]] double getXe(int col) const { return xe(col); }
+    [[nodiscard]] double getYe(int row) const { return ye(row); }
+    [[nodiscard]] double getX2e(int col) const { return x2e(col); }
+    [[nodiscard]] double getY2e(int row) const { return y2e(row); }
+    [[nodiscard]] size_t getCount(int row, int col) const { return count(row, col); }
+    [[nodiscard]] int getUpperBound(int row, int col) const { return upper_bound(row, col); }
+    [[nodiscard]] const ColumnPoint *getAt(int row, int col, int index) const { return at(row, col, index); }
+    [[nodiscard]] ColumnPoint *getAt(int row, int col, int index) { return at(row, col, index); }
+    void insertAt(int row, int col, int index, const ColumnPoint &pt) { insert_at(row, col, index, pt); }
+    void removeAt(int row, int col, int index, int count = 1) { remove_at(row, col, index, count); }
+    [[nodiscard]] double getZ(int row, int col, int index) const { return z(row, col, index); }
+    void setZ(int row, int col, int index, double z) { set_z(row, col, index, z); }
+    [[nodiscard]] double getThickness(int row, int col, int index) const { return thickness(row, col, index); }
+    [[nodiscard]] double getDefaultThickness() const noexcept { return default_thickness(); }
+    int moveVertex(int &index, int row, int col, double z, BodyMoveType moveType = BodyMoveType::Normal) {
+        return move_vertex(index, row, col, z, moveType);
+    }
+    Body *newBody() { return create_body(); }
+    void addBody(std::unique_ptr<Body> body) { add_body(std::move(body)); }
+    int insertBody(int row, int col, double z, double thickness = -1.0, bool isNew = true, int bodyId = -1, double zT = 0.0, double zB = 0.0, bool bZ = true) {
+        return insert_body(row, col, z, thickness, isNew, bodyId, zT, zB, bZ);
+    }
+    int removeBody(int index, int row, int col) { return remove_body(index, row, col); }
+    int deleteBody(int bodyId) { return delete_body(bodyId); }
+    [[nodiscard]] Body *getBody(int bodyId) { return body(bodyId); }
+    [[nodiscard]] const Body *getBody(int bodyId) const { return body(bodyId); }
+    [[nodiscard]] int getBodyIndex(int bodyId, int row, int col) const { return body_index(bodyId, row, col); }
+    [[nodiscard]] int updateMoveIndex(int indexOld, int row, int col, int bodyId) const { return update_move_index(indexOld, row, col, bodyId); }
+    [[nodiscard]] int getID(int index, int row, int col) const { return id(index, row, col); }
+    [[nodiscard]] const std::vector<std::unique_ptr<Body>> &getBodies() const noexcept { return bodies(); }
+    void updateBodyIndex() { update_body_index(); }
+    void computeBodyMagnetizationVector(const Point3D &indFld) { compute_body_magnetization_vector(indFld); }
+    void computeBodyMagnetizationVector(double incDeg, double decDeg, double intensityNT) { compute_body_magnetization_vector(incDeg, decDeg, intensityNT); }
+    void initFacetList() { init_facet_list(); }
+    int generateFacets(std::vector<Facet3Pt> &facetList, int row, int col) { return generate_facets(facetList, row, col); }
+    void updateFacetColumn(int row, int col) { update_facet_column(row, col); }
+    void updateFacetList(int row, int col) { update_facet_list(row, col); }
+    int getFacetsComputation(std::vector<Facet3Pt> &outList) const { return facets_computation(outList); }
+    [[nodiscard]] std::vector<Facet3Pt> *getFacetList(int row, int col) { return facet_list(row, col); }
+    [[nodiscard]] const std::vector<Facet3Pt> *getFacetList(int row, int col) const { return facet_list(row, col); }
+    [[nodiscard]] std::vector<BodyMesh3D> generateBodyMeshes(int bodyId = -1, bool includeOuter = false) const {
+        return generate_body_meshes(bodyId, includeOuter);
+    }
+    int getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter = false) const {
+        return body_facets(bodyId, outList, includeOuter);
+    }
+    int getFacetsFor3DView(std::vector<Facet3Pt> &outList, bool includeOuter = false) const {
+        return facets_for_3d_view(outList, includeOuter);
+    }
+    [[nodiscard]] const std::vector<BodyBoundarySegment> *getBodyBoundAt(int row, int col) const { return body_bound_at(row, col); }
+    [[nodiscard]] std::vector<BodyBoundarySegment> getAllBodyBoundaries() const { return all_body_boundaries(); }
+    void setComputeRealTime(bool realTime = true) noexcept { set_compute_real_time(realTime); }
+    [[nodiscard]] bool isComputeRealTime() const noexcept { return is_compute_real_time(); }
+    [[nodiscard]] std::vector<Facet3Pt> &getFacetsUpdate() noexcept { return facets_update(); }
+    [[nodiscard]] const std::vector<Facet3Pt> &getFacetsUpdate() const noexcept { return facets_update(); }
+    void clearFacetsUpdate() noexcept { clear_facets_update(); }
+    void setExtensions(double exN, double exS, double exE, double exW, bool enable = true) noexcept {
+        set_extensions(exN, exS, exE, exW, enable);
+    }
+    [[nodiscard]] bool isExtend() const noexcept { return is_extend(); }
+    [[nodiscard]] double getExN() const noexcept { return ex_n(); }
+    [[nodiscard]] double getExS() const noexcept { return ex_s(); }
+    [[nodiscard]] double getExE() const noexcept { return ex_e(); }
+    [[nodiscard]] double getExW() const noexcept { return ex_w(); }
 
 private:
     int getFlatIndex(int row, int col) const;

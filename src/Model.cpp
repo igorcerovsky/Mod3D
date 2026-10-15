@@ -17,28 +17,28 @@ int Model::getFlatIndex(int row, int col) const
     return row * m_nCols + col;
 }
 
-double Model::getXe(int col) const
+double Model::xe(int col) const
 {
     if (col == 0) return m_x0 - m_dExW;
     if (col == m_nCols - 1) return m_x0 + (col - 2) * m_xSize + m_dExE;
     return m_x0 + (col - 1) * m_xSize;
 }
 
-double Model::getYe(int row) const
+double Model::ye(int row) const
 {
     if (row == 0) return m_y0 - m_dExS;
     if (row == m_nRows - 1) return m_y0 + (row - 2) * m_ySize + m_dExN;
     return m_y0 + (row - 1) * m_ySize;
 }
 
-double Model::getX2e(int col) const
+double Model::x2e(int col) const
 {
     if (col == 0) return m_x0 - m_dExW / 2.0;
     if (col == m_nCols - 2) return m_x0 + (col - 1) * m_xSize + m_dExE / 2.0;
     return m_x0 + (col - 1) * m_xSize + m_xSize / 2.0;
 }
 
-double Model::getY2e(int row) const
+double Model::y2e(int row) const
 {
     if (row == 0) return m_y0 - m_dExS / 2.0;
     if (row == m_nRows - 2) return m_y0 + (row - 1) * m_ySize + m_dExN / 2.0;
@@ -47,8 +47,8 @@ double Model::getY2e(int row) const
 
 void Model::setColumnPointCoords(ColumnPoint &pt, int row, int col, double z)
 {
-    pt.point().x = getXe(col);
-    pt.point().y = getYe(row);
+    pt.point().x = xe(col);
+    pt.point().y = ye(row);
     pt.set_z(z);
 }
 
@@ -138,7 +138,7 @@ bool Model::init(const Grid &reliefGrid, double zMin, double zMax)
     return true;
 }
 
-bool Model::initEmpty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
+bool Model::init_empty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
 {
     m_nRows = totalRows;
     m_nCols = totalCols;
@@ -180,20 +180,20 @@ void Model::clear()
     m_nextBodyId = 1;
 }
 
-size_t Model::getCount(int row, int col) const
+size_t Model::count(int row, int col) const
 {
     int idx = getFlatIndex(row, col);
     if (idx < 0) return 0;
     return m_data[idx].size();
 }
 
-int Model::getUpperBound(int row, int col) const
+int Model::upper_bound(int row, int col) const
 {
-    int count = static_cast<int>(getCount(row, col));
-    return count - 1;
+    int cnt = static_cast<int>(count(row, col));
+    return cnt - 1;
 }
 
-const ColumnPoint *Model::getAt(int row, int col, int index) const
+const ColumnPoint *Model::at(int row, int col, int index) const
 {
     int idx = getFlatIndex(row, col);
     if (idx < 0 || index < 0 || static_cast<size_t>(index) >= m_data[idx].size()) {
@@ -202,7 +202,7 @@ const ColumnPoint *Model::getAt(int row, int col, int index) const
     return &m_data[idx][index];
 }
 
-ColumnPoint *Model::getAt(int row, int col, int index)
+ColumnPoint *Model::at(int row, int col, int index)
 {
     int idx = getFlatIndex(row, col);
     if (idx < 0 || index < 0 || static_cast<size_t>(index) >= m_data[idx].size()) {
@@ -220,7 +220,7 @@ void Model::add(int row, int col, const ColumnPoint &pt)
     m_data[idx].push_back(pCopy);
 }
 
-void Model::insertAt(int row, int col, int index, const ColumnPoint &pt)
+void Model::insert_at(int row, int col, int index, const ColumnPoint &pt)
 {
     int idx = getFlatIndex(row, col);
     if (idx < 0) return;
@@ -231,7 +231,7 @@ void Model::insertAt(int row, int col, int index, const ColumnPoint &pt)
     }
 }
 
-void Model::removeAt(int row, int col, int index, int count)
+void Model::remove_at(int row, int col, int index, int count)
 {
     int idx = getFlatIndex(row, col);
     if (idx < 0) return;
@@ -240,32 +240,32 @@ void Model::removeAt(int row, int col, int index, int count)
     }
 }
 
-double Model::getZ(int row, int col, int index) const
+double Model::z(int row, int col, int index) const
 {
-    if (index < 0) return getHeaven();
-    if (index > getUpperBound(row, col)) return getHell();
-    const ColumnPoint *pt = getAt(row, col, index);
+    if (index < 0) return z_max();
+    if (index > upper_bound(row, col)) return z_min();
+    const ColumnPoint *pt = at(row, col, index);
     return pt ? pt->z() : 0.0;
 }
 
-void Model::setZ(int row, int col, int index, double z)
+void Model::set_z(int row, int col, int index, double z_val)
 {
-    ColumnPoint *pt = getAt(row, col, index);
+    ColumnPoint *pt = at(row, col, index);
     if (pt) {
-        pt->set_z(z);
+        pt->set_z(z_val);
     }
 }
 
-double Model::getThickness(int row, int col, int index) const
+double Model::thickness(int row, int col, int index) const
 {
     if (index <= 0 || (index % 2) == 0) return 0.0;
-    const ColumnPoint *top = getAt(row, col, index);
-    const ColumnPoint *bot = getAt(row, col, index + 1);
+    const ColumnPoint *top = at(row, col, index);
+    const ColumnPoint *bot = at(row, col, index + 1);
     if (!top || !bot) return 0.0;
     return std::abs(top->z() - bot->z());
 }
 
-Body *Model::newBody()
+Body *Model::create_body()
 {
     auto b = std::make_unique<Body>();
     int newId = m_nextBodyId++;
@@ -284,22 +284,22 @@ Body *Model::newBody()
     b->set_color(defaultPalette[pIdx]);
     Body *raw = b.get();
     m_bodies.push_back(std::move(b));
-    updateBodyIndex();
+    update_body_index();
     return raw;
 }
 
-void Model::addBody(std::unique_ptr<Body> body)
+void Model::add_body(std::unique_ptr<Body> body)
 {
     if (body) {
         if (body->id() >= m_nextBodyId) {
             m_nextBodyId = body->id() + 1;
         }
         m_bodies.push_back(std::move(body));
-        updateBodyIndex();
+        update_body_index();
     }
 }
 
-Body *Model::getBody(int bodyId)
+Body *Model::body(int bodyId)
 {
     for (auto &b : m_bodies) {
         if (b->id() == bodyId) return b.get();
@@ -307,7 +307,7 @@ Body *Model::getBody(int bodyId)
     return nullptr;
 }
 
-const Body *Model::getBody(int bodyId) const
+const Body *Model::body(int bodyId) const
 {
     for (const auto &b : m_bodies) {
         if (b->id() == bodyId) return b.get();
@@ -315,14 +315,14 @@ const Body *Model::getBody(int bodyId) const
     return nullptr;
 }
 
-void Model::updateBodyIndex()
+void Model::update_body_index()
 {
     for (size_t i = 0; i < m_bodies.size(); ++i) {
         m_bodies[i]->set_index(static_cast<int>(i));
     }
 }
 
-void Model::computeBodyMagnetizationVector(const Point3D &indFld)
+void Model::compute_body_magnetization_vector(const Point3D &indFld)
 {
     for (auto &b : m_bodies) {
         if (b) {
@@ -331,16 +331,16 @@ void Model::computeBodyMagnetizationVector(const Point3D &indFld)
     }
 }
 
-void Model::computeBodyMagnetizationVector(double incDeg, double decDeg, double intensityNT)
+void Model::compute_body_magnetization_vector(double incDeg, double decDeg, double intensityNT)
 {
-    computeBodyMagnetizationVector(Point3D(incDeg, decDeg, intensityNT));
+    compute_body_magnetization_vector(Point3D(incDeg, decDeg, intensityNT));
 }
 
-int Model::getBodyIndex(int bodyId, int row, int col) const
+int Model::body_index(int bodyId, int row, int col) const
 {
-    const size_t cnt = getCount(row, col);
+    const size_t cnt = count(row, col);
     for (size_t i = 1; i < cnt; i += 2) {
-        const ColumnPoint *pt = getAt(row, col, static_cast<int>(i));
+        const ColumnPoint *pt = at(row, col, static_cast<int>(i));
         if (pt && pt->body_id() == bodyId) {
             return static_cast<int>(i);
         }
@@ -348,13 +348,13 @@ int Model::getBodyIndex(int bodyId, int row, int col) const
     return -1;
 }
 
-int Model::updateMoveIndex(int indexOld, int row, int col, int bodyId) const
+int Model::update_move_index(int indexOld, int row, int col, int bodyId) const
 {
     int iPlus = (indexOld + 1) % 2;
-    int indexMax = static_cast<int>(getCount(row, col));
+    int indexMax = static_cast<int>(count(row, col));
     int i = 1;
     while (i < indexMax) {
-        if (bodyId == getID(i, row, col)) {
+        if (bodyId == id(i, row, col)) {
             return i + iPlus;
         }
         i += 2;
@@ -362,11 +362,11 @@ int Model::updateMoveIndex(int indexOld, int row, int col, int bodyId) const
     return -1;
 }
 
-int Model::getID(int index, int row, int col) const
+int Model::id(int index, int row, int col) const
 {
-    const int count = static_cast<int>(getCount(row, col));
-    if (index > 0 && index < count - 1) {
-        const ColumnPoint *pt = getAt(row, col, index);
+    const int cnt = static_cast<int>(count(row, col));
+    if (index > 0 && index < cnt - 1) {
+        const ColumnPoint *pt = at(row, col, index);
         if (pt) return pt->body_id();
     }
     return -1;
@@ -383,7 +383,7 @@ bool Model::isInsPosOK(int index, int bodyId, int row, int col) const
 
     for (int i = 1; i < cnt - 1; i += 2) {
         int tag = (i < index) ? 1 : 0;
-        int idCheck = getID(i, row, col);
+        int idCheck = id(i, row, col);
         if (!isInsPosOK_1(tag, bodyId, idCheck, row - 1, col)) return false;
         if (!isInsPosOK_1(tag, bodyId, idCheck, row + 1, col)) return false;
         if (!isInsPosOK_1(tag, bodyId, idCheck, row, col - 1)) return false;
@@ -399,9 +399,9 @@ bool Model::isInsPosOK(int index, int bodyId, int row, int col) const
 bool Model::isInsPosOK_1(int tag, int bodyId, int idCheck, int row, int col) const
 {
     if (row < 0 || col < 0 || row >= m_nRows || col >= m_nCols) return true;
-    const int cnt = static_cast<int>(getCount(row, col));
+    const int cnt = static_cast<int>(count(row, col));
     for (int i = 0; i < cnt - 1; i += 2) {
-        if (bodyId == getID(i, row, col)) {
+        if (bodyId == id(i, row, col)) {
             return isInsPosOK_2(tag, bodyId, idCheck, row, col);
         }
     }
@@ -411,30 +411,30 @@ bool Model::isInsPosOK_1(int tag, int bodyId, int idCheck, int row, int col) con
 bool Model::isInsPosOK_2(int tag, int bodyId, int idCheck, int row, int col) const
 {
     int tagHere = 0;
-    const int cnt = static_cast<int>(getCount(row, col));
+    const int cnt = static_cast<int>(count(row, col));
     for (int i = 0; i < cnt - 1; i += 2) {
-        if (bodyId == getID(i, row, col)) {
+        if (bodyId == id(i, row, col)) {
             tagHere = 1;
         }
-        if (tag == tagHere && idCheck == getID(i, row, col)) {
+        if (tag == tagHere && idCheck == id(i, row, col)) {
             return false;
         }
     }
     return true;
 }
 
-int Model::insertBody(int row, int col, double z, double thickness, bool isNew, int bodyId, double zT, double zB, bool bZ)
+int Model::insert_body(int row, int col, double z, double thickness, bool isNew, int bodyId, double zT, double zB, bool bZ)
 {
     Body *pBody = nullptr;
     if (isNew) {
-        pBody = newBody();
+        pBody = create_body();
     } else {
-        pBody = getBody(bodyId);
+        pBody = body(bodyId);
     }
     if (!pBody) return -1;
     bodyId = pBody->id();
 
-    double t = (thickness == -1.0) ? getDefaultThickness() : thickness;
+    double t = (thickness == -1.0) ? default_thickness() : thickness;
     if (bZ) {
         zT = z + t;
         zB = z - t;
@@ -445,14 +445,14 @@ int Model::insertBody(int row, int col, double z, double thickness, bool isNew, 
     if (m_constBot) zB = m_dConstBot;
 
     double zD = m_zMin;
-    double zU = getZ(row, col, 0);
+    double zU = this->z(row, col, 0);
     if (!(zD < z && z < zU)) return -1;
 
     int nIndex = 1;
-    const int iMax = static_cast<int>(getCount(row, col));
+    const int iMax = static_cast<int>(count(row, col));
     while (nIndex < iMax) {
-        zU = getZ(row, col, nIndex - 1);
-        zD = getZ(row, col, nIndex);
+        zU = this->z(row, col, nIndex - 1);
+        zD = this->z(row, col, nIndex);
         if (zD < z && z < zU) break;
         nIndex += 2;
     }
@@ -472,32 +472,32 @@ int Model::insertBody(int row, int col, double z, double thickness, bool isNew, 
 
     ColumnPoint ptBot(bodyId, zB, pBody);
     ColumnPoint ptTop(bodyId, zT, pBody);
-    insertAt(row, col, nIndex, ptBot);
-    insertAt(row, col, nIndex, ptTop);
+    insert_at(row, col, nIndex, ptBot);
+    insert_at(row, col, nIndex, ptTop);
 
     m_currentRow = row;
     m_currentCol = col;
-    updateFacetList(row, col);
+    update_facet_list(row, col);
 
     return nIndex;
 }
 
-int Model::removeBody(int index, int row, int col)
+int Model::remove_body(int index, int row, int col)
 {
     m_currentRow = row;
     m_currentCol = col;
-    removeAt(row, col, index, 2);
-    updateFacetList(row, col);
+    remove_at(row, col, index, 2);
+    update_facet_list(row, col);
     return 1;
 }
 
-int Model::deleteBody(int bodyId)
+int Model::delete_body(int bodyId)
 {
     for (int r = 0; r < m_nRows; ++r) {
         for (int c = 0; c < m_nCols; ++c) {
-            int idx = getBodyIndex(bodyId, r, c);
+            int idx = body_index(bodyId, r, c);
             if (idx != -1) {
-                removeBody(idx, r, c);
+                remove_body(idx, r, c);
             }
         }
     }
@@ -507,83 +507,83 @@ int Model::deleteBody(int bodyId)
     });
     if (it != m_bodies.end()) {
         m_bodies.erase(it, m_bodies.end());
-        updateBodyIndex();
+        update_body_index();
         bool oldRealTime = m_computeRealTime;
         m_computeRealTime = false;
-        initFacetList();
+        init_facet_list();
         m_computeRealTime = oldRealTime;
         return 1;
     }
     return 0;
 }
 
-int Model::moveVertex(int &index, int row, int col, double z, BodyMoveType moveType)
+int Model::move_vertex(int &index, int row, int col, double zVal, BodyMoveType moveType)
 {
     if (index <= 0) return -1;
 
-    const int indexMax = static_cast<int>(getCount(row, col)) - 1;
+    const int indexMax = static_cast<int>(count(row, col)) - 1;
     if (index >= indexMax) return -1;
 
-    const double zR = getZ(row, col, 0);
-    const double zC = getZ(row, col, index);
+    const double zR = z(row, col, 0);
+    const double zC = z(row, col, index);
 
     // Identify contiguous cluster of vertices [i, j) that share the same Z as index
     int i = index;
-    while (i > 1 && getZ(row, col, i - 1) == zC) {
+    while (i > 1 && z(row, col, i - 1) == zC) {
         --i;
     }
-    double zU = getZ(row, col, i - 1);
+    double zU = z(row, col, i - 1);
 
     int j = index + 1;
     while (j < indexMax + 1) {
-        double nextZ = getZ(row, col, j);
+        double nextZ = z(row, col, j);
         if (zC > nextZ) break;
         if (j == indexMax) break;
         j++;
     }
-    double zD = getZ(row, col, j);
+    double zD = z(row, col, j);
 
     m_currentRow = row;
     m_currentCol = col;
 
     if (moveType == BodyMoveType::Normal) {
-        if (z >= zU) {
-            z = zU;
+        if (zVal >= zU) {
+            zVal = zU;
             index--;
         }
-        if (z <= zD) {
-            z = zD;
+        if (zVal <= zD) {
+            zVal = zD;
         }
         while (i < j) {
-            setZ(row, col, i, z);
+            set_z(row, col, i, zVal);
             i++;
         }
-        if (z == zR) {
+        if (zVal == zR) {
             index = 1;
             return 0;
         }
-        if (z == m_zMin) {
+        if (zVal == m_zMin) {
             return 0;
         }
     } else if (moveType == BodyMoveType::Split) {
-        if (z > zC) {
-            double targetZ = std::min(z, zU);
+        if (zVal > zC) {
+            double targetZ = std::min(zVal, zU);
             index = i;
-            setZ(row, col, index, targetZ);
-        } else if (z < zC) {
-            double targetZ = std::max(z, zD);
+            set_z(row, col, index, targetZ);
+        } else if (zVal < zC) {
+            double targetZ = std::max(zVal, zD);
             index = j - 1;
-            setZ(row, col, index, targetZ);
+            set_z(row, col, index, targetZ);
         }
     } else if (moveType == BodyMoveType::Constrained) {
-        if (z > zD && z < zU) {
-            setZ(row, col, index, z);
+        if (zVal > zD && zVal < zU) {
+            set_z(row, col, index, zVal);
         } else {
             return 2;
         }
     }
 
-    updateFacetList(row, col);
+    update_facet_list(row, col);
     return 0;
 }
 
@@ -591,7 +591,7 @@ int Model::moveVertex(int &index, int row, int col, double z, BodyMoveType moveT
 // Facet Generation Engine
 // ---------------------------------------------------------------------------
 
-std::vector<Facet3Pt> *Model::getFacetList(int row, int col)
+std::vector<Facet3Pt> *Model::facet_list(int row, int col)
 {
     if (row < 0 || col < 0 || row > m_nRows - 2 || col > m_nCols - 2) return nullptr;
     int idx = row * m_nCols + col;
@@ -599,7 +599,7 @@ std::vector<Facet3Pt> *Model::getFacetList(int row, int col)
     return nullptr;
 }
 
-const std::vector<Facet3Pt> *Model::getFacetList(int row, int col) const
+const std::vector<Facet3Pt> *Model::facet_list(int row, int col) const
 {
     if (row < 0 || col < 0 || row > m_nRows - 2 || col > m_nCols - 2) return nullptr;
     int idx = row * m_nCols + col;
@@ -609,16 +609,16 @@ const std::vector<Facet3Pt> *Model::getFacetList(int row, int col) const
 
 int Model::addFctGen(std::vector<FctGen> &fga, int row, int col, int tag)
 {
-    const int count = static_cast<int>(getCount(row, col));
+    const int count = static_cast<int>(this->count(row, col));
     for (int i = 1; i < count - 1; i += 2) {
-        int id = getID(i, row, col);
+        int bodyId = id(i, row, col);
         bool added = false;
         for (auto &fg : fga) {
-            if (fg.id == id) {
-                fg.idPrev[tag] = getID(i - 1, row, col);
-                fg.idNext[tag] = getID(i + 1, row, col);
-                fg.top[tag] = getAt(row, col, i)->point();
-                fg.bot[tag] = getAt(row, col, i + 1)->point();
+            if (fg.id == bodyId) {
+                fg.idPrev[tag] = id(i - 1, row, col);
+                fg.idNext[tag] = id(i + 1, row, col);
+                fg.top[tag] = at(row, col, i)->point();
+                fg.bot[tag] = at(row, col, i + 1)->point();
                 fg.b[tag] = true;
                 fg.l++;
                 added = true;
@@ -627,11 +627,11 @@ int Model::addFctGen(std::vector<FctGen> &fga, int row, int col, int tag)
         }
         if (!added) {
             FctGen fg;
-            fg.id = id;
-            fg.idPrev[tag] = getID(i - 1, row, col);
-            fg.idNext[tag] = getID(i + 1, row, col);
-            fg.top[tag] = getAt(row, col, i)->point();
-            fg.bot[tag] = getAt(row, col, i + 1)->point();
+            fg.id = bodyId;
+            fg.idPrev[tag] = id(i - 1, row, col);
+            fg.idNext[tag] = id(i + 1, row, col);
+            fg.top[tag] = at(row, col, i)->point();
+            fg.bot[tag] = at(row, col, i + 1)->point();
             fg.b[tag] = true;
             fg.l = 1;
             fga.push_back(fg);
@@ -648,7 +648,7 @@ void Model::initSideFacetsBound(const FctGen &fg, std::vector<Facet3Pt> &facetLi
         m_currentBoundCol->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
     }
 
-    Body *pBd = getBody(fg.id);
+    Body *pBd = body(fg.id);
     if (fg.top[i0] != fg.bot[i0]) {
         Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
         fct.pBody = pBd;
@@ -682,7 +682,7 @@ void Model::initSideFacets_2(const FctGen &fg, std::vector<Facet3Pt> &facetList,
         if (m_currentBoundCol) {
             m_currentBoundCol->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
         }
-        Body *pBd = getBody(fg.id);
+        Body *pBd = body(fg.id);
         if (fg.top[i0] != fg.bot[i0]) {
             Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
@@ -705,7 +705,7 @@ void Model::initSideFacets_3(const FctGen &fg, std::vector<Facet3Pt> &facetList,
     }
 
     if ((fg.top[i0] != fg.bot[i0]) || (fg.top[i1] != fg.bot[i1])) {
-        Body *pBd = getBody(fg.id);
+        Body *pBd = body(fg.id);
         if (fg.top[i0] != fg.bot[i0]) {
             Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
@@ -753,21 +753,21 @@ void Model::initFacet(const FctGen &pU, const FctGen &pL, std::vector<Facet3Pt> 
 {
     const int i2 = 4;
     Facet3Pt fct;
-    fct.pBody = getBody(pU.id);
+    fct.pBody = body(pU.id);
 
     if (pU.bot[i0] == pL.top[i0] && pU.bot[i1] == pL.top[i1] && pU.bot[i2] == pL.top[i2]) {
-        fct.pBodyOpos = getBody(pU.id);
-        fct.pBody = getBody(pL.id);
+        fct.pBodyOpos = body(pU.id);
+        fct.pBody = body(pL.id);
         fct.init(pL.top[i0], pL.top[i1], pL.top[i2]);
         facetList.push_back(fct);
     } else {
         if (pU.b[i0] && pU.b[i1]) {
-            fct.pBody = getBody(pU.id);
+            fct.pBody = body(pU.id);
             fct.init(pU.bot[i0], pU.bot[i2], pU.bot[i1]);
             facetList.push_back(fct);
         }
         if (pL.b[i0] && pL.b[i1]) {
-            fct.pBody = getBody(pL.id);
+            fct.pBody = body(pL.id);
             fct.init(pL.top[i0], pL.top[i1], pL.top[i2]);
             facetList.push_back(fct);
         }
@@ -778,7 +778,7 @@ void Model::initFacetTBM(const FctGen &fg, std::vector<Facet3Pt> &facetList, int
 {
     const int i2 = 4;
     Facet3Pt fct;
-    fct.pBody = getBody(fg.id);
+    fct.pBody = body(fg.id);
 
     if (tag == FgType::TopMost) {
         fct.init(fg.top[i0], fg.top[i1], fg.top[i2]);
@@ -826,7 +826,7 @@ void Model::fgToFct(std::vector<FctGen> &fga, std::vector<Facet3Pt> &facetList, 
     }
 }
 
-int Model::generateFacets(std::vector<Facet3Pt> &facetList, int row, int col)
+int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col)
 {
     if (row < 0 || col < 0 || row > m_nRows - 2 || col > m_nCols - 2) return 0;
 
@@ -859,8 +859,8 @@ int Model::generateFacets(std::vector<Facet3Pt> &facetList, int row, int col)
             if ((t - b) == 0.0) {
                 fga.erase(fga.begin() + i);
             } else {
-                fg.top[4].x = fg.bot[4].x = getX2e(col);
-                fg.top[4].y = fg.bot[4].y = getY2e(row);
+                fg.top[4].x = fg.bot[4].x = x2e(col);
+                fg.top[4].y = fg.bot[4].y = y2e(row);
                 fg.top[4].z = t / l;
                 fg.bot[4].z = b / l;
                 if (fg.l == 3 &&
@@ -918,9 +918,9 @@ int Model::generateFacets(std::vector<Facet3Pt> &facetList, int row, int col)
     return static_cast<int>(facetList.size());
 }
 
-void Model::updateFacetColumn(int row, int col)
+void Model::update_facet_column(int row, int col)
 {
-    std::vector<Facet3Pt> *pFctLst = getFacetList(row, col);
+    std::vector<Facet3Pt> *pFctLst = facet_list(row, col);
     if (!pFctLst) return;
 
     int bIdx = row * m_nCols + col;
@@ -948,7 +948,7 @@ void Model::updateFacetColumn(int row, int col)
     }
 
     pFctLst->clear();
-    generateFacets(*pFctLst, row, col);
+    generate_facets(*pFctLst, row, col);
 
     if (m_computeRealTime) {
         for (const auto &fct : *pFctLst) {
@@ -967,20 +967,20 @@ void Model::updateFacetColumn(int row, int col)
     }
 }
 
-void Model::updateFacetList(int row, int col)
+void Model::update_facet_list(int row, int col)
 {
-    updateFacetColumn(row - 1, col - 1);
-    updateFacetColumn(row - 1, col);
-    updateFacetColumn(row, col - 1);
-    updateFacetColumn(row, col);
+    update_facet_column(row - 1, col - 1);
+    update_facet_column(row - 1, col);
+    update_facet_column(row, col - 1);
+    update_facet_column(row, col);
 }
 
-void Model::initFacetList()
+void Model::init_facet_list()
 {
     for (int r = 0; r < m_nRows - 1; ++r) {
         for (int c = 0; c < m_nCols - 1; ++c) {
-            updateFacetColumn(r, c);
-            std::vector<Facet3Pt> *lst = getFacetList(r, c);
+            update_facet_column(r, c);
+            std::vector<Facet3Pt> *lst = facet_list(r, c);
             if (lst) {
                 for (auto &fct : *lst) {
                     fct.set_sign(-1.0);
@@ -990,12 +990,12 @@ void Model::initFacetList()
     }
 }
 
-int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
+int Model::facets_computation(std::vector<Facet3Pt> &outList) const
 {
     outList.clear();
     for (int r = 0; r < m_nRows - 1; ++r) {
         for (int c = 0; c < m_nCols - 1; ++c) {
-            const std::vector<Facet3Pt> *lst = getFacetList(r, c);
+            const std::vector<Facet3Pt> *lst = facet_list(r, c);
             if (lst) {
                 for (const auto &fct : *lst) {
                     Facet3Pt copy = fct;
@@ -1016,7 +1016,7 @@ int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
     return static_cast<int>(outList.size());
 }
 
-int Model::getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter) const
+int Model::body_facets(int bodyId, std::vector<Facet3Pt> &outList, bool includeOuter) const
 {
     outList.clear();
     int rMin = 0;
@@ -1033,7 +1033,7 @@ int Model::getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includ
 
     for (int r = rMin; r <= rMax; ++r) {
         for (int c = cMin; c <= cMax; ++c) {
-            const auto *lst = getFacetList(r, c);
+            const auto *lst = facet_list(r, c);
             if (!lst) continue;
             for (const auto &fct : *lst) {
                 if (bodyId == -1) {
@@ -1058,12 +1058,12 @@ int Model::getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includ
     return static_cast<int>(outList.size());
 }
 
-int Model::getFacetsFor3DView(std::vector<Facet3Pt> &outList, bool includeOuter) const
+int Model::facets_for_3d_view(std::vector<Facet3Pt> &outList, bool includeOuter) const
 {
-    return getBodyFacets(-1, outList, includeOuter);
+    return body_facets(-1, outList, includeOuter);
 }
 
-std::vector<BodyMesh3D> Model::generateBodyMeshes(int bodyId, bool includeOuter) const
+std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId, bool includeOuter) const
 {
     std::vector<BodyMesh3D> meshes;
     for (const auto &bPtr : m_bodies) {
@@ -1080,7 +1080,7 @@ std::vector<BodyMesh3D> Model::generateBodyMeshes(int bodyId, bool includeOuter)
         mesh.isTransparent = bPtr->is_transparent();
 
         // Get watertight facets for this body
-        getBodyFacets(bId, mesh.facets, includeOuter);
+        body_facets(bId, mesh.facets, includeOuter);
 
         // Extract feature crease & boundary edges for crisp CAD rendering
         struct CanonicalEdge {
@@ -1153,7 +1153,7 @@ std::vector<BodyMesh3D> Model::generateBodyMeshes(int bodyId, bool includeOuter)
     return meshes;
 }
 
-const std::vector<BodyBoundarySegment> *Model::getBodyBoundAt(int row, int col) const
+const std::vector<BodyBoundarySegment> *Model::body_bound_at(int row, int col) const
 {
     if (row < 0 || col < 0 || row > m_nRows - 2 || col > m_nCols - 2) return nullptr;
     int idx = row * m_nCols + col;
@@ -1163,7 +1163,7 @@ const std::vector<BodyBoundarySegment> *Model::getBodyBoundAt(int row, int col) 
     return nullptr;
 }
 
-std::vector<BodyBoundarySegment> Model::getAllBodyBoundaries() const
+std::vector<BodyBoundarySegment> Model::all_body_boundaries() const
 {
     std::vector<BodyBoundarySegment> all;
     for (const auto &colBounds : m_bodyBounds) {
