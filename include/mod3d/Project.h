@@ -17,10 +17,6 @@ struct ProjectMetadata {
     std::string created_at{""};
     std::string modified_at{""};
     std::string version{"2.1.1"};
-
-    // Legacy member access
-    std::string createdAt{""};
-    std::string modifiedAt{""};
 };
 
 struct ProjectSettings {
@@ -28,12 +24,6 @@ struct ProjectSettings {
     int gravity_formula{0};
     int magnetic_formula{0};
     std::vector<std::string> active_components;
-
-    // Legacy member access
-    bool computeRealTime{false};
-    int gravityFormula{0};
-    int magneticFormula{0};
-    std::vector<std::string> activeComponents;
 };
 
 /**

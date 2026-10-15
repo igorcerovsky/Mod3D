@@ -202,28 +202,21 @@ std::string Project::to_json_string(int indent) const
     root["format"] = "Mod3D";
     root["version"] = metadata_.version;
 
-    std::string createdAt = metadata_.created_at.empty() ? metadata_.createdAt : metadata_.created_at;
-    std::string modifiedAt = metadata_.modified_at.empty() ? metadata_.modifiedAt : metadata_.modified_at;
-    bool computeRealTime = settings_.compute_real_time || settings_.computeRealTime;
-    int grvFormula = settings_.gravity_formula != 0 ? settings_.gravity_formula : settings_.gravityFormula;
-    int magFormula = settings_.magnetic_formula != 0 ? settings_.magnetic_formula : settings_.magneticFormula;
-    auto activeComps = !settings_.active_components.empty() ? settings_.active_components : settings_.activeComponents;
-
     // Metadata
     root["metadata"] = {
         {"title", metadata_.title},
         {"author", metadata_.author},
         {"description", metadata_.description},
-        {"created_at", createdAt},
-        {"modified_at", modifiedAt}
+        {"created_at", metadata_.created_at},
+        {"modified_at", metadata_.modified_at}
     };
 
     // Settings
     root["settings"] = {
-        {"compute_real_time", computeRealTime},
-        {"gravity_formula", grvFormula},
-        {"magnetic_formula", magFormula},
-        {"active_components", activeComps}
+        {"compute_real_time", settings_.compute_real_time},
+        {"gravity_formula", settings_.gravity_formula},
+        {"magnetic_formula", settings_.magnetic_formula},
+        {"active_components", settings_.active_components}
     };
 
     // Model
@@ -383,19 +376,19 @@ bool Project::from_json_string(std::string_view jsonStr)
             metadata_.title = jm.value("title", "Untitled Project");
             metadata_.author = jm.value("author", "");
             metadata_.description = jm.value("description", "");
-            metadata_.created_at = metadata_.createdAt = jm.value("created_at", "");
-            metadata_.modified_at = metadata_.modifiedAt = jm.value("modified_at", "");
+            metadata_.created_at = jm.value("created_at", "");
+            metadata_.modified_at = jm.value("modified_at", "");
             metadata_.version = root.value("version", "2.1.1");
         }
 
         // Settings
         if (root.contains("settings")) {
             const auto &js = root["settings"];
-            settings_.compute_real_time = settings_.computeRealTime = js.value("compute_real_time", false);
-            settings_.gravity_formula = settings_.gravityFormula = js.value("gravity_formula", 0);
-            settings_.magnetic_formula = settings_.magneticFormula = js.value("magnetic_formula", 0);
+            settings_.compute_real_time = js.value("compute_real_time", false);
+            settings_.gravity_formula = js.value("gravity_formula", 0);
+            settings_.magnetic_formula = js.value("magnetic_formula", 0);
             if (js.contains("active_components") && js["active_components"].is_array()) {
-                settings_.active_components = settings_.activeComponents = js["active_components"].get<std::vector<std::string>>();
+                settings_.active_components = js["active_components"].get<std::vector<std::string>>();
             }
         }
 
@@ -1062,12 +1055,12 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
     (void)dMinX; (void)dMaxX; (void)dMinY; (void)dMaxY; (void)dMinZ; (void)dMaxZ;
 
     // Computation
-    settings_.compute_real_time = settings_.computeRealTime = (reader.read<int32_t>() != 0);
+    settings_.compute_real_time = (reader.read<int32_t>() != 0);
     int32_t sherComp = reader.read<int32_t>();
     (void)sherComp;
 
     // Gravity
-    settings_.gravityFormula = reader.read<int32_t>();
+    settings_.gravity_formula = reader.read<int32_t>();
     double grvDensRef = reader.read<double>();
     double grvUnits = reader.read<double>();
     if (grvUnits > 0.0) {
@@ -1104,7 +1097,7 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
     }
 
     // Magnetic
-    settings_.magneticFormula = reader.read<int32_t>();
+    settings_.magnetic_formula = reader.read<int32_t>();
     double magSens = reader.read<double>();
     double magElev = reader.read<double>();
     Point3D magIndFld;
