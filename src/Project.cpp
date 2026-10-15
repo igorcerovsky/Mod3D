@@ -590,8 +590,8 @@ bool Project::export_obj(const std::filesystem::path &filePath, int bodyId) cons
     if (bodyId == -1) {
         model_.facets_computation(facets);
         for (const auto &fct : facets) {
-            if (!fct.pBody) continue;
-            int id = fct.pBody->id();
+            if (!fct.primary.body) continue;
+            int id = fct.primary.body->id();
             bodyFacetMap[id].push_back(&fct);
         }
     } else {
@@ -642,7 +642,7 @@ bool Project::export_stl(const std::filesystem::path &filePath, int bodyId, bool
     if (bodyId == -1) {
         model_.facets_computation(facets);
         for (const auto &fct : facets) {
-            if (fct.pBody) {
+            if (fct.primary.body) {
                 exportList.push_back(&fct);
             }
         }
@@ -712,7 +712,7 @@ bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) cons
     if (bodyId == -1) {
         model_.facets_computation(facets);
         for (const auto &fct : facets) {
-            if (fct.pBody) {
+            if (fct.primary.body) {
                 exportList.push_back(&fct);
             }
         }
@@ -755,7 +755,7 @@ bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) cons
     ofs << "SCALARS Density float 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        float dens = static_cast<float>(fct->pBody ? fct->pBody->raw_density() : 0.0);
+        float dens = static_cast<float>(fct->primary.body ? fct->primary.body->raw_density() : 0.0);
         ofs << dens << "\n";
     }
 
@@ -763,7 +763,7 @@ bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) cons
     ofs << "\nSCALARS Susceptibility float 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        float susc = static_cast<float>(fct->pBody ? fct->pBody->susceptibility() : 0.0);
+        float susc = static_cast<float>(fct->primary.body ? fct->primary.body->susceptibility() : 0.0);
         ofs << susc << "\n";
     }
 
@@ -771,7 +771,7 @@ bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) cons
     ofs << "\nSCALARS BodyID int 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        int id = fct->pBody ? fct->pBody->id() : 0;
+        int id = fct->primary.body ? fct->primary.body->id() : 0;
         ofs << id << "\n";
     }
 

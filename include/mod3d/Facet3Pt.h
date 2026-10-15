@@ -1,16 +1,20 @@
 #pragma once
 
 #include "mod3d/Point3D.h"
+#include "mod3d/Body.h"
 #include "pfld/facet.hpp"
 #include <vector>
 #include <array>
 #include <memory>
 #include <span>
 #include <algorithm>
+#include <type_traits>
 
 namespace mod3d {
 
 class Body;
+
+using Triangle3D = std::array<Point3D, 3>;
 
 enum class FacetType {
     FCT_NULL = 0,
@@ -25,6 +29,30 @@ enum class FacetType {
 };
 
 /**
+ * @brief Physical and body parameters on one side of a facet interface.
+ */
+struct FacetSide {
+    double density{0.0};
+    Point3D gradient{0, 0, 0};
+    bool is_linear{false};
+    Body *body{nullptr};
+
+    [[nodiscard]] constexpr bool has_gradient() const noexcept {
+        return !gradient.is_zero();
+    }
+
+    void sync_from_body() noexcept {
+        if (body) {
+            density = body->density();
+            gradient = body->density_gradient();
+            is_linear = !gradient.is_zero();
+        }
+    }
+
+    [[nodiscard]] constexpr bool operator==(const FacetSide &other) const noexcept = default;
+};
+
+/**
  * @brief Triangular facet element in 3D space.
  * 
  * Represents a planar triangle with outward normal, edge vectors, physical properties (density, magnetization),
@@ -32,6 +60,8 @@ enum class FacetType {
  */
 class Facet3Pt {
 public:
+    using Vertices = std::array<Point3D, 3>;
+
     // ========================================================================
     // Lifecycle & Rule of 5
     // ========================================================================
@@ -39,7 +69,7 @@ public:
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW = 0.0);
     explicit Facet3Pt(std::span<const Point3D, 3> points);
-    explicit Facet3Pt(const std::array<Point3D, 3> &points);
+    explicit Facet3Pt(const Vertices &points);
     ~Facet3Pt() = default;
 
     Facet3Pt(const Facet3Pt &) = default;
@@ -54,8 +84,8 @@ public:
     // Vertex Element Access
     [[nodiscard]] constexpr Point3D &operator[](size_t index) noexcept { return pts[index]; }
     [[nodiscard]] constexpr const Point3D &operator[](size_t index) const noexcept { return pts[index]; }
-    [[nodiscard]] constexpr std::array<Point3D, 3> &points() noexcept { return pts; }
-    [[nodiscard]] constexpr const std::array<Point3D, 3> &points() const noexcept { return pts; }
+    [[nodiscard]] constexpr Vertices &points() noexcept { return pts; }
+    [[nodiscard]] constexpr const Vertices &points() const noexcept { return pts; }
     [[nodiscard]] static constexpr size_t size() noexcept { return 3; }
     [[nodiscard]] static constexpr bool empty() noexcept { return false; }
 
@@ -102,13 +132,13 @@ public:
     void init();
     void init(const Point3D *ppts);
     void init(std::span<const Point3D, 3> ppts);
-    void init(const std::array<Point3D, 3> &ppts);
+    void init(const Vertices &ppts);
     void init(const std::vector<Point3D> &ppts);
     void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
     void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, double density_cw = 0.0);
     void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, Point3D dens_grad_ccw);
 
-    void set_opposite_density(double d_density, Point3D v_grad = Point3D());
+    void set_opposite_density(double d_density, Point3D v_grad = Point3D()) noexcept;
 
     // Analytical potential field formulas
     void fld_vlado(const Point3D &v_r, Point3D &v_grv) const;
@@ -151,39 +181,37 @@ public:
         Point3D &v_r_grv, Point3D &v_r_ten, Point3D &v_r_mag,
         double &unit_grv, double &unit_mag, double &unit_tns);
 
-    // Body associations
-    [[nodiscard]] Body *body() const noexcept { return pBody; }
-    void set_body(Body *b) noexcept { pBody = b; }
-    [[nodiscard]] Body *opposite_body() const noexcept { return pBodyOpos; }
-    void set_opposite_body(Body *b) noexcept { pBodyOpos = b; }
+    // Body & Density Forwarders
+    [[nodiscard]] Body *body() const noexcept { return primary.body; }
+    void set_body(Body *b) noexcept { primary.body = b; }
+    [[nodiscard]] Body *opposite_body() const noexcept { return opposite.body; }
+    void set_opposite_body(Body *b) noexcept { opposite.body = b; }
+
+    [[nodiscard]] double density() const noexcept { return primary.density; }
+    void set_density(double d) noexcept { primary.density = d; }
+    [[nodiscard]] double opposite_density() const noexcept { return opposite.density; }
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};
-    std::array<Point3D, 3> pts{};
-    std::array<Point3D, 3> v_L{};
-    std::array<Point3D, 3> v_mi{};
-    std::array<Point3D, 3> v_ni{};
+    Vertices pts{};
+    Vertices v_L{};
+    Vertices v_mi{};
+    Vertices v_ni{};
     Point3D v_n{};
     std::array<double, 3> len{0.0, 0.0, 0.0};
     std::array<double, 9> g{0.0};
 
-    double density{1000.0};
-    Point3D v_densGrad{0, 0, 0};
-    bool bLin{false};
-
-    double densityOpos{0.0};
-    Point3D v_densGradOpos{0, 0, 0};
-    bool bLinOpos{false};
+    FacetSide primary{1000.0};
+    FacetSide opposite{0.0};
 
     double dSign{1.0}; // +1 to add, -1 to subtract (delta updating)
-
-    // Body associations
-    Body *pBody{nullptr};
-    Body *pBodyOpos{nullptr};
 
     // Modern header-only pfld facet representation
     pfld::Facet<double> pfld_;
 };
+
+static_assert(!std::is_polymorphic_v<FacetSide>, "FacetSide must not be polymorphic");
+static_assert(!std::is_polymorphic_v<Facet3Pt>, "Facet3Pt must not be polymorphic");
 
 using FacetList = std::vector<Facet3Pt>;
 using facetvec = std::vector<Facet3Pt>; // Alias for pfld_UnitTest compatibility

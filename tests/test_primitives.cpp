@@ -372,11 +372,11 @@ TEST(Facet3PtTest, ConstructorsAndAccessors) {
     EXPECT_EQ(f1[1], p1);
     EXPECT_EQ(f1[2], p2);
     EXPECT_EQ(f1.points()[0], p0);
-    EXPECT_DOUBLE_EQ(f1.density, 2670.0);
-    EXPECT_DOUBLE_EQ(f1.densityOpos, 1000.0);
+    EXPECT_DOUBLE_EQ(f1.primary.density, 2670.0);
+    EXPECT_DOUBLE_EQ(f1.opposite.density, 1000.0);
 
-    // Constructor with std::array
-    std::array<Point3D, 3> arr{p0, p1, p2};
+    // Constructor with Vertices (std::array)
+    Facet3Pt::Vertices arr{p0, p1, p2};
     Facet3Pt f2(arr);
     EXPECT_EQ(f2, f1);
 
@@ -432,12 +432,12 @@ TEST(Facet3PtTest, ReverseAndOpposites) {
     Body b2(2, "BotBody", 2700.0);
 
     Facet3Pt f(p0, p1, p2);
-    f.pBody = &b1;
-    f.pBodyOpos = &b2;
+    f.primary.body = &b1;
+    f.opposite.body = &b2;
 
     EXPECT_NEAR(f.normal().z, 1.0, 1e-12);
-    EXPECT_EQ(f.pBody, &b1);
-    EXPECT_EQ(f.pBodyOpos, &b2);
+    EXPECT_EQ(f.primary.body, &b1);
+    EXPECT_EQ(f.opposite.body, &b2);
 
     // Reverse facet
     f.reverse();
@@ -445,8 +445,8 @@ TEST(Facet3PtTest, ReverseAndOpposites) {
     EXPECT_EQ(f[1], p1);
     EXPECT_EQ(f[2], p0);
     EXPECT_NEAR(f.normal().z, -1.0, 1e-12);
-    EXPECT_EQ(f.pBody, &b2);
-    EXPECT_EQ(f.pBodyOpos, &b1);
+    EXPECT_EQ(f.primary.body, &b2);
+    EXPECT_EQ(f.opposite.body, &b1);
 
     // Opposite facet test
     Facet3Pt original(p0, p1, p2);

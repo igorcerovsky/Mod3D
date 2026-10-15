@@ -474,11 +474,11 @@ TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     std::vector<Facet3Pt> updatedFacets;
     model.facets_computation(updatedFacets);
     for (const auto &fct : updatedFacets) {
-        if (fct.pBody) {
-            EXPECT_EQ(fct.pBody->id(), bId2);
+        if (fct.primary.body) {
+            EXPECT_EQ(fct.primary.body->id(), bId2);
         }
-        if (fct.pBodyOpos) {
-            EXPECT_EQ(fct.pBodyOpos->id(), bId2);
+        if (fct.opposite.body) {
+            EXPECT_EQ(fct.opposite.body->id(), bId2);
         }
     }
 }

@@ -32,7 +32,7 @@ Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
 }
 
 Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, double density_cw)
-    : pts{pt0, pt1, pt2}, density(density_ccw), densityOpos(density_cw)
+    : pts{pt0, pt1, pt2}, primary{density_ccw}, opposite{density_cw}
 {
     init();
 }
@@ -43,7 +43,7 @@ Facet3Pt::Facet3Pt(std::span<const Point3D, 3> points)
     init();
 }
 
-Facet3Pt::Facet3Pt(const std::array<Point3D, 3> &points)
+Facet3Pt::Facet3Pt(const Vertices &points)
     : pts(points)
 {
     init();
@@ -62,8 +62,8 @@ void Facet3Pt::init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, 
     pts[0] = pt0;
     pts[1] = pt1;
     pts[2] = pt2;
-    density = density_ccw;
-    densityOpos = density_cw;
+    primary.density = density_ccw;
+    opposite.density = density_cw;
     init();
 }
 
@@ -72,8 +72,8 @@ void Facet3Pt::init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, 
     pts[0] = pt0;
     pts[1] = pt1;
     pts[2] = pt2;
-    density = density_ccw;
-    v_densGrad = dens_grad_ccw;
+    primary.density = density_ccw;
+    primary.gradient = dens_grad_ccw;
     init();
 }
 
@@ -95,7 +95,7 @@ void Facet3Pt::init(std::span<const Point3D, 3> ppts)
     init();
 }
 
-void Facet3Pt::init(const std::array<Point3D, 3> &ppts)
+void Facet3Pt::init(const Vertices &ppts)
 {
     pts = ppts;
     init();
@@ -111,11 +111,11 @@ void Facet3Pt::init(const std::vector<Point3D> &ppts)
     }
 }
 
-void Facet3Pt::set_opposite_density(double d_density, Point3D v_grad)
+void Facet3Pt::set_opposite_density(double d_density, Point3D v_grad) noexcept
 {
-    densityOpos = d_density;
-    v_densGradOpos = v_grad;
-    bLinOpos = v_densGradOpos.is_zero();
+    opposite.density = d_density;
+    opposite.gradient = v_grad;
+    opposite.is_linear = opposite.has_gradient();
 }
 
 void Facet3Pt::init()
@@ -132,8 +132,8 @@ void Facet3Pt::init()
         v_ni[i] = v_mi[i].cross(v_n);
     }
 
-    bLin = v_densGrad.is_zero();
-    bLinOpos = v_densGradOpos.is_zero();
+    primary.is_linear = primary.has_gradient();
+    opposite.is_linear = opposite.has_gradient();
 
     // Initialize modern header-only pfld facet representation
     pfld_.Init(std::span<const Point3D, 3>(pts));
@@ -156,7 +156,7 @@ void Facet3Pt::fld_vlado_grd(const Point3D &v_r, double ref_density,
                              double &gxx, double &gyy, double &gzz,
                              double &gxy, double &gxz, double &gyz) const
 {
-    pfld_.FldVladoGrd(v_r, ref_density, gxx, gyy, gzz, gxy, gxz, gyz, densityOpos, density);
+    pfld_.FldVladoGrd(v_r, ref_density, gxx, gyy, gzz, gxy, gxz, gyz, opposite.density, primary.density);
 }
 
 void Facet3Pt::fld_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, Point3D &v_grv) const
@@ -234,15 +234,15 @@ bool Facet3Pt::is_opposite(const Facet3Pt &fct) const noexcept
 void Facet3Pt::reverse()
 {
     std::swap(pts[0], pts[2]);
-    std::swap(pBody, pBodyOpos);
+    std::swap(primary, opposite);
     init();
 }
 
 static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet, Point3D &f_grv,
                                 double ref_density, int n_tag, Point3D v_ref_dens_grad, double ref_dens_org)
 {
-    const Body *pBody = facet.pBody;
-    const Body *pBodyOpos = facet.pBodyOpos;
+    const Body *pBody = facet.primary.body;
+    const Body *pBodyOpos = facet.opposite.body;
     Point3D fb(0, 0, 0), fOb(0, 0, 0);
 
     if (pBodyOpos == nullptr) {
@@ -305,8 +305,8 @@ void Facet3Pt::compute(
     double txx = 0, tyy = 0, tzz = 0, txy = 0, txz = 0, tyz = 0;
 
     // Gravity field
-    if ((pBody && (pBody->density() != 0.0 || ref_density != 0.0)) ||
-        (pBodyOpos && (pBodyOpos->density() != 0.0 || ref_density != 0.0)))
+    if ((primary.body && (primary.body->density() != 0.0 || ref_density != 0.0)) ||
+        (opposite.body && (opposite.body->density() != 0.0 || ref_density != 0.0)))
     {
         if (gxx || gyy || gzz || gxy || gxz || gyz) {
             fld_vlado_grd(v_r_ten, ref_density, txx, tyy, tzz, txy, txz, tyz);
@@ -329,11 +329,11 @@ void Facet3Pt::compute(
     // Magnetic field
     if (mx || my || mz) {
         fMag.zero();
-        if (pBody && !pBody->magnetization_vector().is_zero() && pBody->is_active()) {
-            fld_gs(v_r_mag, pBody->magnetization_vector(), fMag, 1.0);
+        if (primary.body && !primary.body->magnetization_vector().is_zero() && primary.body->is_active()) {
+            fld_gs(v_r_mag, primary.body->magnetization_vector(), fMag, 1.0);
         }
-        if (pBodyOpos && !pBodyOpos->magnetization_vector().is_zero() && pBodyOpos->is_active()) {
-            fld_gs(v_r_mag, pBodyOpos->magnetization_vector(), fMag, -1.0);
+        if (opposite.body && !opposite.body->magnetization_vector().is_zero() && opposite.body->is_active()) {
+            fld_gs(v_r_mag, opposite.body->magnetization_vector(), fMag, -1.0);
         }
         if (mx != nullptr) *mx -= unit_mag * dSign * fMag.x;
         if (my != nullptr) *my -= unit_mag * dSign * fMag.y;
