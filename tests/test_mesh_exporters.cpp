@@ -13,17 +13,17 @@ Project createSampleProjectWithBody() {
     proj.metadata().title = "Exporters Test Project";
     proj.model().init(3, 3, 0.0, 0.0, 1000.0, 1000.0, -2000.0, 0.0);
 
-    Body *b = proj.model().newBody();
+    Body *b = proj.model().create_body();
     b->set_name("OreBody");
     b->set_density(3200.0);
     b->set_susceptibility(0.08);
 
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
-            proj.model().insertBody(r, c, -800.0, 200.0, false, b->id());
+            proj.model().insert_body(r, c, -800.0, 200.0, false, b->id());
         }
     }
-    proj.model().initFacetList();
+    proj.model().init_facet_list();
     return proj;
 }
 
@@ -31,11 +31,11 @@ Project createSampleProjectWithBody() {
 
 TEST(MeshExportersTest, ExportWavefrontOBJ) {
     namespace fs = std::filesystem;
-    const std::string objPath = "test_export.obj";
+    const fs::path objPath = "test_export.obj";
 
     Project proj = createSampleProjectWithBody();
 
-    EXPECT_TRUE(proj.exportObj(objPath));
+    EXPECT_TRUE(proj.export_obj(objPath));
     ASSERT_TRUE(fs::exists(objPath));
     EXPECT_GT(fs::file_size(objPath), 100u);
 
@@ -65,13 +65,13 @@ TEST(MeshExportersTest, ExportWavefrontOBJ) {
 
 TEST(MeshExportersTest, ExportStlAsciiAndBinary) {
     namespace fs = std::filesystem;
-    const std::string stlAsciiPath = "test_export_ascii.stl";
-    const std::string stlBinaryPath = "test_export_binary.stl";
+    const fs::path stlAsciiPath = "test_export_ascii.stl";
+    const fs::path stlBinaryPath = "test_export_binary.stl";
 
     Project proj = createSampleProjectWithBody();
 
     // 1. ASCII STL
-    EXPECT_TRUE(proj.exportStl(stlAsciiPath, -1, false));
+    EXPECT_TRUE(proj.export_stl(stlAsciiPath, -1, false));
     ASSERT_TRUE(fs::exists(stlAsciiPath));
 
     std::ifstream ifsAscii(stlAsciiPath);
@@ -91,7 +91,7 @@ TEST(MeshExportersTest, ExportStlAsciiAndBinary) {
     fs::remove(stlAsciiPath);
 
     // 2. Binary STL
-    EXPECT_TRUE(proj.exportStl(stlBinaryPath, -1, true));
+    EXPECT_TRUE(proj.export_stl(stlBinaryPath, -1, true));
     ASSERT_TRUE(fs::exists(stlBinaryPath));
 
     size_t binSize = fs::file_size(stlBinaryPath);
@@ -113,11 +113,11 @@ TEST(MeshExportersTest, ExportStlAsciiAndBinary) {
 
 TEST(MeshExportersTest, ExportParaViewVTK) {
     namespace fs = std::filesystem;
-    const std::string vtkPath = "test_export.vtk";
+    const fs::path vtkPath = "test_export.vtk";
 
     Project proj = createSampleProjectWithBody();
 
-    EXPECT_TRUE(proj.exportVtk(vtkPath));
+    EXPECT_TRUE(proj.export_vtk(vtkPath));
     ASSERT_TRUE(fs::exists(vtkPath));
 
     std::ifstream ifs(vtkPath);

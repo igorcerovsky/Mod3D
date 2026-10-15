@@ -172,23 +172,23 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
     ASSERT_TRUE(fs::exists(m3dPath));
 
     Project proj;
-    EXPECT_TRUE(proj.loadLegacyM3D(m3dPath));
+    EXPECT_TRUE(proj.load_legacy_m3d(m3dPath));
 
     fs::remove(m3dPath);
 
     // Verify Model
-    EXPECT_EQ(proj.model().getRows(), 3);
-    EXPECT_EQ(proj.model().getCols(), 3);
-    EXPECT_DOUBLE_EQ(proj.model().getX0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().getY0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().getXSize(), 100.0);
-    EXPECT_DOUBLE_EQ(proj.model().getYSize(), 100.0);
-    EXPECT_DOUBLE_EQ(proj.model().getZMin(), -2000.0);
-    EXPECT_DOUBLE_EQ(proj.model().getZMax(), 200.0);
+    EXPECT_EQ(proj.model().rows(), 3);
+    EXPECT_EQ(proj.model().cols(), 3);
+    EXPECT_DOUBLE_EQ(proj.model().x0(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().y0(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().dx(), 100.0);
+    EXPECT_DOUBLE_EQ(proj.model().dy(), 100.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_min(), -2000.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_max(), 200.0);
 
     // Verify Body
-    ASSERT_EQ(proj.model().getBodies().size(), 1u);
-    const Body *b = proj.model().getBody(1);
+    ASSERT_EQ(proj.model().bodies().size(), 1u);
+    const Body *b = proj.model().body(1);
     ASSERT_NE(b, nullptr);
     EXPECT_EQ(b->name(), "Basement Granodiorite");
     EXPECT_EQ(b->description(), "Crystalline basement");
@@ -199,11 +199,11 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
     EXPECT_TRUE(b->is_visible());
 
     // Verify Observation Space
-    EXPECT_DOUBLE_EQ(proj.observation().getReferenceDensity(), 2670.0);
-    EXPECT_EQ(proj.observation().getGravityMode(), ObservationMode::SensorHeight);
-    EXPECT_DOUBLE_EQ(proj.observation().getGravityHeight(), 40.0);
-    EXPECT_EQ(proj.observation().getMagneticMode(), ObservationMode::FlightElevation);
-    EXPECT_DOUBLE_EQ(proj.observation().getMagneticHeight(), 250.0);
+    EXPECT_DOUBLE_EQ(proj.observation().reference_density(), 2670.0);
+    EXPECT_EQ(proj.observation().gravity_mode(), ObservationMode::SensorHeight);
+    EXPECT_DOUBLE_EQ(proj.observation().gravity_height(), 40.0);
+    EXPECT_EQ(proj.observation().magnetic_mode(), ObservationMode::FlightElevation);
+    EXPECT_DOUBLE_EQ(proj.observation().magnetic_height(), 250.0);
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
@@ -211,22 +211,22 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     ASSERT_TRUE(fs::exists(path)) << "Path does not exist: " << path;
 
     Project proj;
-    ASSERT_TRUE(proj.loadLegacyM3D(path));
+    ASSERT_TRUE(proj.load_legacy_m3d(path));
 
     // Verify Model Geometry
-    EXPECT_EQ(proj.model().getRows(), 23);
-    EXPECT_EQ(proj.model().getCols(), 23);
-    EXPECT_DOUBLE_EQ(proj.model().getX0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.model().getY0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.model().getXSize(), 10.0);
-    EXPECT_DOUBLE_EQ(proj.model().getYSize(), 10.0);
-    EXPECT_DOUBLE_EQ(proj.model().getZMin(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.model().getZMax(), 0.0);
-    EXPECT_TRUE(proj.model().isExtend());
+    EXPECT_EQ(proj.model().rows(), 23);
+    EXPECT_EQ(proj.model().cols(), 23);
+    EXPECT_DOUBLE_EQ(proj.model().x0(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.model().y0(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.model().dx(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.model().dy(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_min(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_max(), 0.0);
+    EXPECT_TRUE(proj.model().is_extend());
 
     // Verify Bodies
-    ASSERT_EQ(proj.model().getBodies().size(), 1u);
-    const Body *b0 = proj.model().getBody(0);
+    ASSERT_EQ(proj.model().bodies().size(), 1u);
+    const Body *b0 = proj.model().body(0);
     ASSERT_NE(b0, nullptr);
     EXPECT_EQ(b0->name(), "Name the body...");
     EXPECT_DOUBLE_EQ(b0->raw_density(), 2700.0);
@@ -234,7 +234,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
 
     // Verify Facets Generation
     std::vector<Facet3Pt> facets;
-    proj.model().getFacetsComputation(facets);
+    proj.model().facets_computation(facets);
     EXPECT_GT(facets.size(), 10u);
     for (const auto &f : facets) {
         Point3D u = f.pts[1] - f.pts[0];
@@ -243,22 +243,22 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     }
 
     // Verify Observation Space
-    EXPECT_EQ(proj.observation().getRows(), 21u);
-    EXPECT_EQ(proj.observation().getCols(), 21u);
-    EXPECT_DOUBLE_EQ(proj.observation().getX0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.observation().getY0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.observation().getDx(), 10.0);
-    EXPECT_DOUBLE_EQ(proj.observation().getDy(), 10.0);
+    EXPECT_EQ(proj.observation().rows(), 21u);
+    EXPECT_EQ(proj.observation().cols(), 21u);
+    EXPECT_DOUBLE_EQ(proj.observation().x0(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.observation().y0(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.observation().dx(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.observation().dy(), 10.0);
 
     // Verify Observation Relief Grid
-    const Grid &relief = proj.observation().getSurfaceRelief();
+    const Grid &relief = proj.observation().surface_relief();
     EXPECT_FALSE(relief.empty());
     EXPECT_EQ(relief.rows(), 21u);
     EXPECT_EQ(relief.cols(), 21u);
 
     // Verify Forward Modeling Simulation on Loaded Project
-    proj.observation().computeForwardField(facets, true);
-    const Grid *gzModeled = proj.observation().getModeledGrid(FieldComponent::GZ);
+    proj.observation().compute_forward_field(facets, true);
+    const Grid *gzModeled = proj.observation().modeled_grid(FieldComponent::GZ);
     ASSERT_NE(gzModeled, nullptr);
     EXPECT_FALSE(gzModeled->empty());
     EXPECT_EQ(gzModeled->rows(), 21u);
@@ -270,38 +270,38 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     ASSERT_TRUE(fs::exists(path)) << "Path does not exist: " << path;
 
     Project proj;
-    ASSERT_TRUE(proj.loadLegacyM3D(path));
+    ASSERT_TRUE(proj.load_legacy_m3d(path));
 
     // Verify Model Geometry
-    EXPECT_EQ(proj.model().getRows(), 23);
-    EXPECT_EQ(proj.model().getCols(), 23);
-    EXPECT_DOUBLE_EQ(proj.model().getX0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().getY0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().getXSize(), 400.0);
-    EXPECT_DOUBLE_EQ(proj.model().getYSize(), 400.0);
-    EXPECT_DOUBLE_EQ(proj.model().getZMin(), -2000.0);
-    EXPECT_DOUBLE_EQ(proj.model().getZMax(), 500.0);
+    EXPECT_EQ(proj.model().rows(), 23);
+    EXPECT_EQ(proj.model().cols(), 23);
+    EXPECT_DOUBLE_EQ(proj.model().x0(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().y0(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().dx(), 400.0);
+    EXPECT_DOUBLE_EQ(proj.model().dy(), 400.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_min(), -2000.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_max(), 500.0);
 
     // Verify 3 Physical Bodies
-    ASSERT_EQ(proj.model().getBodies().size(), 3u);
-    const Body *b0 = proj.model().getBody(0);
+    ASSERT_EQ(proj.model().bodies().size(), 3u);
+    const Body *b0 = proj.model().body(0);
     ASSERT_NE(b0, nullptr);
     EXPECT_EQ(b0->name(), "Body");
     EXPECT_DOUBLE_EQ(b0->raw_density(), 2800.0);
 
-    const Body *b1 = proj.model().getBody(1);
+    const Body *b1 = proj.model().body(1);
     ASSERT_NE(b1, nullptr);
     EXPECT_EQ(b1->name(), "Wings");
     EXPECT_DOUBLE_EQ(b1->raw_density(), 2640.0);
 
-    const Body *b2 = proj.model().getBody(2);
+    const Body *b2 = proj.model().body(2);
     ASSERT_NE(b2, nullptr);
     EXPECT_EQ(b2->name(), "... and I feel fine");
     EXPECT_DOUBLE_EQ(b2->raw_density(), 3400.0);
 
     // Verify Multi-Body Facets Generation
     std::vector<Facet3Pt> facets;
-    proj.model().getFacetsComputation(facets);
+    proj.model().facets_computation(facets);
     EXPECT_GT(facets.size(), 300u);
 
     // Verify Body Attributes & Map Boundary Segments
@@ -309,7 +309,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     EXPECT_NE(b0->color().a, 0);
     EXPECT_NE(b1->color().a, 0);
     EXPECT_NE(b2->color().a, 0);
-    EXPECT_GT(proj.model().getAllBodyBoundaries().size(), 0u);
+    EXPECT_GT(proj.model().all_body_boundaries().size(), 0u);
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
@@ -317,14 +317,14 @@ TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
     ASSERT_TRUE(fs::exists(path));
 
     Project proj;
-    ASSERT_TRUE(proj.loadLegacyM3D(path));
+    ASSERT_TRUE(proj.load_legacy_m3d(path));
 
-    EXPECT_EQ(proj.model().getRows(), 23);
-    EXPECT_EQ(proj.model().getCols(), 23);
-    ASSERT_EQ(proj.model().getBodies().size(), 1u);
+    EXPECT_EQ(proj.model().rows(), 23);
+    EXPECT_EQ(proj.model().cols(), 23);
+    ASSERT_EQ(proj.model().bodies().size(), 1u);
 
     std::vector<Facet3Pt> facets;
-    proj.model().getFacetsComputation(facets);
+    proj.model().facets_computation(facets);
     EXPECT_GT(facets.size(), 50u);
 
     // Verify loaded authentic modeled magnetic field from file
@@ -335,7 +335,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
     EXPECT_NEAR(loadedDT(11, 11), -0.496, 0.05);
 
     // Verify body magnetization was computed on load
-    const Body *body = proj.model().getBodies().front().get();
+    const Body *body = proj.model().bodies().front().get();
     ASSERT_NE(body, nullptr);
     EXPECT_GT(body->susceptibility(), 0.0);
     EXPECT_FALSE(body->magnetization_vector().is_zero());
@@ -356,20 +356,20 @@ TEST(LegacyM3DTest, LoadAuthenticExample_NestedAndInclinedBodies) {
     ASSERT_TRUE(fs::exists(nestedPath));
 
     Project projNested;
-    ASSERT_TRUE(projNested.loadLegacyM3D(nestedPath));
-    EXPECT_EQ(projNested.model().getBodies().size(), 2u);
+    ASSERT_TRUE(projNested.load_legacy_m3d(nestedPath));
+    EXPECT_EQ(projNested.model().bodies().size(), 2u);
     std::vector<Facet3Pt> nestedFacets;
-    projNested.model().getFacetsComputation(nestedFacets);
+    projNested.model().facets_computation(nestedFacets);
     EXPECT_GT(nestedFacets.size(), 100u);
 
     std::string inclinedPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/InclinedBody.m3d";
     ASSERT_TRUE(fs::exists(inclinedPath));
 
     Project projInclined;
-    ASSERT_TRUE(projInclined.loadLegacyM3D(inclinedPath));
-    EXPECT_EQ(projInclined.model().getBodies().size(), 1u);
+    ASSERT_TRUE(projInclined.load_legacy_m3d(inclinedPath));
+    EXPECT_EQ(projInclined.model().bodies().size(), 1u);
     std::vector<Facet3Pt> inclinedFacets;
-    projInclined.model().getFacetsComputation(inclinedFacets);
+    projInclined.model().facets_computation(inclinedFacets);
     EXPECT_GT(inclinedFacets.size(), 100u);
 }
 
@@ -428,33 +428,33 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
         ASSERT_TRUE(fs::exists(m3dPath)) << "Missing test model: " << m3dPath;
 
         Project origProj;
-        ASSERT_TRUE(origProj.loadLegacyM3D(m3dPath)) << "Failed to load legacy: " << fn;
+        ASSERT_TRUE(origProj.load_legacy_m3d(m3dPath)) << "Failed to load legacy: " << fn;
 
         // Export to modern .mod3d (JSON)
-        std::string jsonPath = (fs::temp_directory_path() / (fn + ".mod3d")).string();
-        ASSERT_TRUE(origProj.saveJson(jsonPath)) << "Failed to save modern JSON for: " << fn;
+        fs::path jsonPath = fs::temp_directory_path() / (fn + ".mod3d");
+        ASSERT_TRUE(origProj.save_json(jsonPath)) << "Failed to save modern JSON for: " << fn;
         ASSERT_TRUE(fs::exists(jsonPath));
         ASSERT_GT(fs::file_size(jsonPath), 500u);
 
         // Reload the modern project format
         Project reloadedProj;
-        ASSERT_TRUE(reloadedProj.loadJson(jsonPath)) << "Failed to reload modern JSON for: " << fn;
+        ASSERT_TRUE(reloadedProj.load_json(jsonPath)) << "Failed to reload modern JSON for: " << fn;
 
         // Verify full fidelity between original and reloaded
-        EXPECT_EQ(origProj.model().getRows(), reloadedProj.model().getRows());
-        EXPECT_EQ(origProj.model().getCols(), reloadedProj.model().getCols());
-        EXPECT_DOUBLE_EQ(origProj.model().getX0(), reloadedProj.model().getX0());
-        EXPECT_DOUBLE_EQ(origProj.model().getY0(), reloadedProj.model().getY0());
-        EXPECT_DOUBLE_EQ(origProj.model().getXSize(), reloadedProj.model().getXSize());
-        EXPECT_DOUBLE_EQ(origProj.model().getYSize(), reloadedProj.model().getYSize());
-        EXPECT_DOUBLE_EQ(origProj.model().getZMin(), reloadedProj.model().getZMin());
-        EXPECT_DOUBLE_EQ(origProj.model().getZMax(), reloadedProj.model().getZMax());
-        EXPECT_EQ(origProj.model().isExtend(), reloadedProj.model().isExtend());
+        EXPECT_EQ(origProj.model().rows(), reloadedProj.model().rows());
+        EXPECT_EQ(origProj.model().cols(), reloadedProj.model().cols());
+        EXPECT_DOUBLE_EQ(origProj.model().x0(), reloadedProj.model().x0());
+        EXPECT_DOUBLE_EQ(origProj.model().y0(), reloadedProj.model().y0());
+        EXPECT_DOUBLE_EQ(origProj.model().dx(), reloadedProj.model().dx());
+        EXPECT_DOUBLE_EQ(origProj.model().dy(), reloadedProj.model().dy());
+        EXPECT_DOUBLE_EQ(origProj.model().z_min(), reloadedProj.model().z_min());
+        EXPECT_DOUBLE_EQ(origProj.model().z_max(), reloadedProj.model().z_max());
+        EXPECT_EQ(origProj.model().is_extend(), reloadedProj.model().is_extend());
 
         // Verify Bodies
-        ASSERT_EQ(origProj.model().getBodies().size(), reloadedProj.model().getBodies().size());
-        for (const auto &origBody : origProj.model().getBodies()) {
-            const Body *relBody = reloadedProj.model().getBody(origBody->id());
+        ASSERT_EQ(origProj.model().bodies().size(), reloadedProj.model().bodies().size());
+        for (const auto &origBody : origProj.model().bodies()) {
+            const Body *relBody = reloadedProj.model().body(origBody->id());
             ASSERT_NE(relBody, nullptr) << "Body ID " << origBody->id() << " not found in reloaded " << fn;
             EXPECT_EQ(origBody->name(), relBody->name());
             EXPECT_DOUBLE_EQ(origBody->raw_density(), relBody->raw_density());
@@ -463,14 +463,14 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
         }
 
         // Verify Column Points
-        for (int r = 0; r < origProj.model().getRows(); ++r) {
-            for (int c = 0; c < origProj.model().getCols(); ++c) {
-                size_t cnt1 = origProj.model().getCount(r, c);
-                size_t cnt2 = reloadedProj.model().getCount(r, c);
+        for (int r = 0; r < origProj.model().rows(); ++r) {
+            for (int c = 0; c < origProj.model().cols(); ++c) {
+                size_t cnt1 = origProj.model().count(r, c);
+                size_t cnt2 = reloadedProj.model().count(r, c);
                 ASSERT_EQ(cnt1, cnt2);
                 for (size_t k = 0; k < cnt1; ++k) {
-                    const auto *p1 = origProj.model().getAt(r, c, static_cast<int>(k));
-                    const auto *p2 = reloadedProj.model().getAt(r, c, static_cast<int>(k));
+                    const auto *p1 = origProj.model().at(r, c, static_cast<int>(k));
+                    const auto *p2 = reloadedProj.model().at(r, c, static_cast<int>(k));
                     ASSERT_NE(p1, nullptr);
                     ASSERT_NE(p2, nullptr);
                     EXPECT_EQ(p1->body_id(), p2->body_id());
@@ -483,8 +483,8 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
 
         // Verify Facets List
         std::vector<Facet3Pt> fOrig, fReload;
-        origProj.model().getFacetsComputation(fOrig);
-        reloadedProj.model().getFacetsComputation(fReload);
+        origProj.model().facets_computation(fOrig);
+        reloadedProj.model().facets_computation(fReload);
         EXPECT_EQ(fOrig.size(), fReload.size()) << "Facet mismatch for " << fn;
 
         // Cleanup
@@ -504,20 +504,20 @@ TEST(LegacyM3DTest, ExportAllAuthenticModelsToObjStlVtk) {
     for (const auto &fn : modelFiles) {
         std::string m3dPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/" + fn;
         Project proj;
-        ASSERT_TRUE(proj.loadLegacyM3D(m3dPath));
+        ASSERT_TRUE(proj.load_legacy_m3d(m3dPath));
 
         std::vector<Facet3Pt> facets;
-        proj.model().getFacetsComputation(facets);
+        proj.model().facets_computation(facets);
         ASSERT_GT(facets.size(), 0u);
 
-        std::string baseOut = (fs::temp_directory_path() / fn).string();
-        std::string objPath = baseOut + ".obj";
-        std::string stlAsciiPath = baseOut + "_ascii.stl";
-        std::string stlBinPath = baseOut + "_bin.stl";
-        std::string vtkPath = baseOut + ".vtk";
+        fs::path baseOut = fs::temp_directory_path() / fn;
+        fs::path objPath = baseOut; objPath += ".obj";
+        fs::path stlAsciiPath = baseOut; stlAsciiPath += "_ascii.stl";
+        fs::path stlBinPath = baseOut; stlBinPath += "_bin.stl";
+        fs::path vtkPath = baseOut; vtkPath += ".vtk";
 
         // 1. Export OBJ
-        EXPECT_TRUE(proj.exportObj(objPath));
+        EXPECT_TRUE(proj.export_obj(objPath));
         ASSERT_TRUE(fs::exists(objPath));
         {
             std::ifstream ifs(objPath);
@@ -532,7 +532,7 @@ TEST(LegacyM3DTest, ExportAllAuthenticModelsToObjStlVtk) {
         }
 
         // 2. Export STL ASCII
-        EXPECT_TRUE(proj.exportStl(stlAsciiPath, -1, false));
+        EXPECT_TRUE(proj.export_stl(stlAsciiPath, -1, false));
         ASSERT_TRUE(fs::exists(stlAsciiPath));
         {
             std::ifstream ifs(stlAsciiPath);
@@ -542,7 +542,7 @@ TEST(LegacyM3DTest, ExportAllAuthenticModelsToObjStlVtk) {
         }
 
         // 3. Export STL Binary
-        EXPECT_TRUE(proj.exportStl(stlBinPath, -1, true));
+        EXPECT_TRUE(proj.export_stl(stlBinPath, -1, true));
         ASSERT_TRUE(fs::exists(stlBinPath));
         {
             size_t binSize = fs::file_size(stlBinPath);
@@ -556,7 +556,7 @@ TEST(LegacyM3DTest, ExportAllAuthenticModelsToObjStlVtk) {
         }
 
         // 4. Export VTK PolyData
-        EXPECT_TRUE(proj.exportVtk(vtkPath));
+        EXPECT_TRUE(proj.export_vtk(vtkPath));
         ASSERT_TRUE(fs::exists(vtkPath));
         {
             std::ifstream ifs(vtkPath);

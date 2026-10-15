@@ -196,58 +196,65 @@ void Project::clear()
     m_observation = ObservationSpace();
 }
 
-std::string Project::toJsonString(int indent) const
+std::string Project::to_json_string(int indent) const
 {
     nlohmann::json root;
     root["format"] = "Mod3D";
     root["version"] = m_metadata.version;
+
+    std::string createdAt = m_metadata.created_at.empty() ? m_metadata.createdAt : m_metadata.created_at;
+    std::string modifiedAt = m_metadata.modified_at.empty() ? m_metadata.modifiedAt : m_metadata.modified_at;
+    bool computeRealTime = m_settings.compute_real_time || m_settings.computeRealTime;
+    int grvFormula = m_settings.gravity_formula != 0 ? m_settings.gravity_formula : m_settings.gravityFormula;
+    int magFormula = m_settings.magnetic_formula != 0 ? m_settings.magnetic_formula : m_settings.magneticFormula;
+    auto activeComps = !m_settings.active_components.empty() ? m_settings.active_components : m_settings.activeComponents;
 
     // Metadata
     root["metadata"] = {
         {"title", m_metadata.title},
         {"author", m_metadata.author},
         {"description", m_metadata.description},
-        {"created_at", m_metadata.createdAt},
-        {"modified_at", m_metadata.modifiedAt}
+        {"created_at", createdAt},
+        {"modified_at", modifiedAt}
     };
 
     // Settings
     root["settings"] = {
-        {"compute_real_time", m_settings.computeRealTime},
-        {"gravity_formula", m_settings.gravityFormula},
-        {"magnetic_formula", m_settings.magneticFormula},
-        {"active_components", m_settings.activeComponents}
+        {"compute_real_time", computeRealTime},
+        {"gravity_formula", grvFormula},
+        {"magnetic_formula", magFormula},
+        {"active_components", activeComps}
     };
 
     // Model
     nlohmann::json jModel;
-    jModel["initialized"] = m_model.isInitialized();
+    jModel["initialized"] = m_model.is_initialized();
     jModel["dimensions"] = {
-        {"rows", m_model.getRows()},
-        {"cols", m_model.getCols()},
-        {"x0", m_model.getX0()},
-        {"y0", m_model.getY0()},
-        {"x_size", m_model.getXSize()},
-        {"y_size", m_model.getYSize()},
-        {"z_min", m_model.getZMin()},
-        {"z_max", m_model.getZMax()},
-        {"x_min", m_model.getXMin()},
-        {"x_max", m_model.getXMax()},
-        {"y_min", m_model.getYMin()},
-        {"y_max", m_model.getYMax()}
+        {"rows", m_model.rows()},
+        {"cols", m_model.cols()},
+        {"x0", m_model.x0()},
+        {"y0", m_model.y0()},
+        {"x_size", m_model.dx()},
+        {"y_size", m_model.dy()},
+        {"z_min", m_model.z_min()},
+        {"z_max", m_model.z_max()},
+        {"x_min", m_model.x_min()},
+        {"x_max", m_model.x_max()},
+        {"y_min", m_model.y_min()},
+        {"y_max", m_model.y_max()}
     };
 
     jModel["extension"] = {
-        {"enabled", m_model.isExtend()},
-        {"north", m_model.getExN()},
-        {"south", m_model.getExS()},
-        {"east", m_model.getExE()},
-        {"west", m_model.getExW()}
+        {"enabled", m_model.is_extend()},
+        {"north", m_model.ex_n()},
+        {"south", m_model.ex_s()},
+        {"east", m_model.ex_e()},
+        {"west", m_model.ex_w()}
     };
 
     // Bodies
     nlohmann::json jBodies = nlohmann::json::array();
-    for (const auto &b : m_model.getBodies()) {
+    for (const auto &b : m_model.bodies()) {
         if (b) {
             jBodies.push_back(bodyToJson(*b));
         }
@@ -256,18 +263,18 @@ std::string Project::toJsonString(int indent) const
 
     // Stratigraphic Columns
     nlohmann::json jColumns = nlohmann::json::array();
-    int rows = m_model.getRows();
-    int cols = m_model.getCols();
+    int rows = m_model.rows();
+    int cols = m_model.cols();
     for (int r = 0; r < rows; ++r) {
         for (int c = 0; c < cols; ++c) {
-            size_t count = m_model.getCount(r, c);
+            size_t count = m_model.count(r, c);
             if (count > 0) {
                 nlohmann::json colObj;
                 colObj["r"] = r;
                 colObj["c"] = c;
                 nlohmann::json ptArray = nlohmann::json::array();
                 for (size_t i = 0; i < count; ++i) {
-                    const ColumnPoint *pt = m_model.getAt(r, c, static_cast<int>(i));
+                    const ColumnPoint *pt = m_model.at(r, c, static_cast<int>(i));
                     if (pt) {
                         ptArray.push_back({
                             {"body_id", pt->body_id()},
@@ -288,41 +295,41 @@ std::string Project::toJsonString(int indent) const
     // Observation Space
     nlohmann::json jObs;
     jObs["geometry"] = {
-        {"rows", m_observation.getRows()},
-        {"cols", m_observation.getCols()},
-        {"x0", m_observation.getX0()},
-        {"y0", m_observation.getY0()},
-        {"dx", m_observation.getDx()},
-        {"dy", m_observation.getDy()},
-        {"rotation_deg", m_observation.getRotDeg()}
+        {"rows", m_observation.rows()},
+        {"cols", m_observation.cols()},
+        {"x0", m_observation.x0()},
+        {"y0", m_observation.y0()},
+        {"dx", m_observation.dx()},
+        {"dy", m_observation.dy()},
+        {"rotation_deg", m_observation.rotation_deg()}
     };
 
-    jObs["surface_relief"] = gridToJson(m_observation.getSurfaceRelief());
+    jObs["surface_relief"] = gridToJson(m_observation.surface_relief());
 
     jObs["gravity"] = {
-        {"mode", observationModeToString(m_observation.getGravityMode())},
-        {"height", m_observation.getGravityHeight()},
-        {"elevation_grid", (m_observation.getGravityMode() == ObservationMode::ElevationGrid) ? gridToJson(m_observation.getGravityElevGrid()) : nlohmann::json{{"empty", true}}}
+        {"mode", observationModeToString(m_observation.gravity_mode())},
+        {"height", m_observation.gravity_height()},
+        {"elevation_grid", (m_observation.gravity_mode() == ObservationMode::ElevationGrid) ? gridToJson(m_observation.gravity_elevation_grid()) : nlohmann::json{{"empty", true}}}
     };
 
     jObs["magnetic"] = {
-        {"mode", observationModeToString(m_observation.getMagneticMode())},
-        {"height", m_observation.getMagneticHeight()},
-        {"elevation_grid", (m_observation.getMagneticMode() == ObservationMode::ElevationGrid) ? gridToJson(m_observation.getMagneticElevGrid()) : nlohmann::json{{"empty", true}}}
+        {"mode", observationModeToString(m_observation.magnetic_mode())},
+        {"height", m_observation.magnetic_height()},
+        {"elevation_grid", (m_observation.magnetic_mode() == ObservationMode::ElevationGrid) ? gridToJson(m_observation.magnetic_elevation_grid()) : nlohmann::json{{"empty", true}}}
     };
 
     jObs["tensor"] = {
-        {"mode", observationModeToString(m_observation.getTensorMode())},
-        {"height", m_observation.getTensorHeight()},
-        {"elevation_grid", (m_observation.getTensorMode() == ObservationMode::ElevationGrid) ? gridToJson(m_observation.getTensorElevGrid()) : nlohmann::json{{"empty", true}}}
+        {"mode", observationModeToString(m_observation.tensor_mode())},
+        {"height", m_observation.tensor_height()},
+        {"elevation_grid", (m_observation.tensor_mode() == ObservationMode::ElevationGrid) ? gridToJson(m_observation.tensor_elevation_grid()) : nlohmann::json{{"empty", true}}}
     };
 
     jObs["ambient_field"] = {
-        {"inclination_deg", m_observation.getInclinationDeg()},
-        {"declination_deg", m_observation.getDeclinationDeg()},
-        {"intensity_nt", m_observation.getMagneticIntensity()}
+        {"inclination_deg", m_observation.inclination_deg()},
+        {"declination_deg", m_observation.declination_deg()},
+        {"intensity_nt", m_observation.magnetic_intensity()}
     };
-    jObs["reference_density"] = m_observation.getReferenceDensity();
+    jObs["reference_density"] = m_observation.reference_density();
     jObs["units"] = {
         {"gravity", m_observation.gravity_units()},
         {"magnetic", m_observation.magnetic_units()},
@@ -331,14 +338,14 @@ std::string Project::toJsonString(int indent) const
 
     // Modeled Grids
     nlohmann::json jModeled = nlohmann::json::object();
-    for (const auto &[comp, grd] : m_observation.getModeledGrids()) {
+    for (const auto &[comp, grd] : m_observation.modeled_grids()) {
         jModeled[fieldComponentToString(comp)] = gridToJson(grd);
     }
     jObs["modeled_grids"] = jModeled;
 
     // Observed Grids
     nlohmann::json jObserved = nlohmann::json::object();
-    for (const auto &[comp, grd] : m_observation.getObservedGrids()) {
+    for (const auto &[comp, grd] : m_observation.observed_grids()) {
         jObserved[fieldComponentToString(comp)] = gridToJson(grd);
     }
     jObs["observed_grids"] = jObserved;
@@ -348,17 +355,17 @@ std::string Project::toJsonString(int indent) const
     return (indent >= 0) ? root.dump(indent) : root.dump();
 }
 
-bool Project::saveJson(const std::string &filePath, int indent) const
+bool Project::save_json(const std::filesystem::path &filePath, int indent) const
 {
     std::ofstream ofs(filePath);
     if (!ofs.is_open()) {
         return false;
     }
-    ofs << toJsonString(indent);
+    ofs << to_json_string(indent);
     return ofs.good();
 }
 
-bool Project::fromJsonString(const std::string &jsonStr)
+bool Project::from_json_string(std::string_view jsonStr)
 {
     try {
         auto root = nlohmann::json::parse(jsonStr);
@@ -376,19 +383,19 @@ bool Project::fromJsonString(const std::string &jsonStr)
             m_metadata.title = jm.value("title", "Untitled Project");
             m_metadata.author = jm.value("author", "");
             m_metadata.description = jm.value("description", "");
-            m_metadata.createdAt = jm.value("created_at", "");
-            m_metadata.modifiedAt = jm.value("modified_at", "");
+            m_metadata.created_at = m_metadata.createdAt = jm.value("created_at", "");
+            m_metadata.modified_at = m_metadata.modifiedAt = jm.value("modified_at", "");
             m_metadata.version = root.value("version", "2.1.1");
         }
 
         // Settings
         if (root.contains("settings")) {
             const auto &js = root["settings"];
-            m_settings.computeRealTime = js.value("compute_real_time", false);
-            m_settings.gravityFormula = js.value("gravity_formula", 0);
-            m_settings.magneticFormula = js.value("magnetic_formula", 0);
+            m_settings.compute_real_time = m_settings.computeRealTime = js.value("compute_real_time", false);
+            m_settings.gravity_formula = m_settings.gravityFormula = js.value("gravity_formula", 0);
+            m_settings.magnetic_formula = m_settings.magneticFormula = js.value("magnetic_formula", 0);
             if (js.contains("active_components") && js["active_components"].is_array()) {
-                m_settings.activeComponents = js["active_components"].get<std::vector<std::string>>();
+                m_settings.active_components = m_settings.activeComponents = js["active_components"].get<std::vector<std::string>>();
             }
         }
 
@@ -406,7 +413,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double zMin = jd.value("z_min", -5000.0);
                 double zMax = jd.value("z_max", 1000.0);
 
-                m_model.initEmpty(rows, cols, x0, y0, xSize, ySize, zMin, zMax);
+                (void)m_model.init_empty(rows, cols, x0, y0, xSize, ySize, zMin, zMax);
             }
 
             if (jm.contains("extension")) {
@@ -416,13 +423,13 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double s = je.value("south", 0.0);
                 double e = je.value("east", 0.0);
                 double w = je.value("west", 0.0);
-                m_model.setExtensions(n, s, e, w, en);
+                m_model.set_extensions(n, s, e, w, en);
             }
 
             // Bodies
             if (jm.contains("bodies") && jm["bodies"].is_array()) {
                 for (const auto &jb : jm["bodies"]) {
-                    m_model.addBody(bodyFromJson(jb));
+                    m_model.add_body(bodyFromJson(jb));
                 }
             }
 
@@ -435,9 +442,9 @@ bool Project::fromJsonString(const std::string &jsonStr)
                         for (const auto &ptObj : colObj["points"]) {
                             int bId = ptObj.value("body_id", -1);
                             double z = ptObj.value("z", 0.0);
-                            double x = ptObj.value("x", m_model.getXe(c));
-                            double y = ptObj.value("y", m_model.getYe(r));
-                            Body *bodyPtr = (bId >= 0) ? m_model.getBody(bId) : nullptr;
+                            double x = ptObj.value("x", m_model.xe(c));
+                            double y = ptObj.value("y", m_model.ye(r));
+                            Body *bodyPtr = (bId >= 0) ? m_model.body(bId) : nullptr;
                             ColumnPoint cp(Point3D(x, y, z), bId, bodyPtr);
                             m_model.add(r, c, cp);
                         }
@@ -446,9 +453,9 @@ bool Project::fromJsonString(const std::string &jsonStr)
             }
 
             // Regenerate facets and body indices
-            m_model.updateBodyIndex();
-            m_model.initFacetList();
-            m_model.setComputeRealTime(m_settings.computeRealTime);
+            m_model.update_body_index();
+            m_model.init_facet_list();
+            m_model.set_compute_real_time(m_settings.compute_real_time);
         }
 
         // Observation Space
@@ -463,11 +470,11 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double dx = jg.value("dx", 100.0);
                 double dy = jg.value("dy", 100.0);
                 double rot = jg.value("rotation_deg", 0.0);
-                m_observation.initGeometry(rows, cols, x0, y0, dx, dy, rot);
+                m_observation.init_geometry(rows, cols, x0, y0, dx, dy, rot);
             }
 
             if (jo.contains("surface_relief")) {
-                m_observation.setSurfaceRelief(gridFromJson(jo["surface_relief"]));
+                m_observation.set_surface_relief(gridFromJson(jo["surface_relief"]));
             }
 
             if (jo.contains("gravity")) {
@@ -476,9 +483,9 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double height = jg.value("height", 0.0);
                 if (mode == ObservationMode::ElevationGrid && jg.contains("elevation_grid")) {
                     Grid eg = gridFromJson(jg["elevation_grid"]);
-                    if (!eg.empty()) m_observation.setGravityObservationGrid(eg);
+                    if (!eg.empty()) m_observation.set_gravity_observation_grid(eg);
                 } else {
-                    m_observation.setGravityObservation(mode, height);
+                    m_observation.set_gravity_observation(mode, height);
                 }
             }
 
@@ -488,9 +495,9 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double height = jm.value("height", 0.0);
                 if (mode == ObservationMode::ElevationGrid && jm.contains("elevation_grid")) {
                     Grid eg = gridFromJson(jm["elevation_grid"]);
-                    if (!eg.empty()) m_observation.setMagneticObservationGrid(eg);
+                    if (!eg.empty()) m_observation.set_magnetic_observation_grid(eg);
                 } else {
-                    m_observation.setMagneticObservation(mode, height);
+                    m_observation.set_magnetic_observation(mode, height);
                 }
             }
 
@@ -500,9 +507,9 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double height = jt.value("height", 0.0);
                 if (mode == ObservationMode::ElevationGrid && jt.contains("elevation_grid")) {
                     Grid eg = gridFromJson(jt["elevation_grid"]);
-                    if (!eg.empty()) m_observation.setTensorObservationGrid(eg);
+                    if (!eg.empty()) m_observation.set_tensor_observation_grid(eg);
                 } else {
-                    m_observation.setTensorObservation(mode, height);
+                    m_observation.set_tensor_observation(mode, height);
                 }
             }
 
@@ -511,10 +518,10 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 double inc = ja.value("inclination_deg", 60.0);
                 double dec = ja.value("declination_deg", 0.0);
                 double intensity = ja.value("intensity_nt", 50000.0);
-                m_observation.setAmbientFieldParams(inc, dec, intensity);
+                m_observation.set_ambient_field_params(inc, dec, intensity);
             }
             if (jo.contains("reference_density")) {
-                m_observation.setReferenceDensity(jo.value("reference_density", 2670.0));
+                m_observation.set_reference_density(jo.value("reference_density", 2670.0));
             }
             if (jo.contains("units")) {
                 const auto &ju = jo["units"];
@@ -528,7 +535,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 for (auto &[compStr, gridJsonObj] : jo["observed_grids"].items()) {
                     Grid og = gridFromJson(gridJsonObj);
                     if (!og.empty()) {
-                        m_observation.setObservedGrid(stringToFieldComponent(compStr), og);
+                        m_observation.set_observed_grid(stringToFieldComponent(compStr), og);
                     }
                 }
             }
@@ -538,7 +545,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
                 for (auto &[compStr, gridJsonObj] : jo["modeled_grids"].items()) {
                     Grid mg = gridFromJson(gridJsonObj);
                     if (!mg.empty()) {
-                        Grid *target = m_observation.getModeledGrid(stringToFieldComponent(compStr));
+                        Grid *target = m_observation.modeled_grid(stringToFieldComponent(compStr));
                         if (target) {
                             *target = mg;
                         }
@@ -547,7 +554,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
             }
         }
 
-        m_model.computeBodyMagnetizationVector(
+        m_model.compute_body_magnetization_vector(
             m_observation.inclination_deg(),
             m_observation.declination_deg(),
             m_observation.magnetic_intensity());
@@ -560,7 +567,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
     }
 }
 
-bool Project::loadJson(const std::string &filePath)
+bool Project::load_json(const std::filesystem::path &filePath)
 {
     std::ifstream ifs(filePath);
     if (!ifs.is_open()) {
@@ -568,14 +575,14 @@ bool Project::loadJson(const std::string &filePath)
     }
     std::stringstream buffer;
     buffer << ifs.rdbuf();
-    return fromJsonString(buffer.str());
+    return from_json_string(buffer.str());
 }
 
 // =========================================================================
 // 3D Polyhedral Mesh Exporters
 // =========================================================================
 
-bool Project::exportObj(const std::string &filePath, int bodyId) const
+bool Project::export_obj(const std::filesystem::path &filePath, int bodyId) const
 {
     std::ofstream ofs(filePath);
     if (!ofs.is_open()) return false;
@@ -588,14 +595,14 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
     std::map<int, std::vector<const Facet3Pt*>> bodyFacetMap;
 
     if (bodyId == -1) {
-        m_model.getFacetsComputation(facets);
+        m_model.facets_computation(facets);
         for (const auto &fct : facets) {
             if (!fct.pBody) continue;
             int id = fct.pBody->id();
             bodyFacetMap[id].push_back(&fct);
         }
     } else {
-        m_model.getBodyFacets(bodyId, facets, false);
+        m_model.body_facets(bodyId, facets, false);
         for (const auto &fct : facets) {
             bodyFacetMap[bodyId].push_back(&fct);
         }
@@ -603,7 +610,7 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
 
     size_t vertexIndexOffset = 1;
     for (const auto &[id, fctList] : bodyFacetMap) {
-        const Body *b = m_model.getBody(id);
+        const Body *b = m_model.body(id);
         std::string bodyName = b ? b->name() : ("Body_" + std::to_string(id));
         ofs << "o Body_" << id << "_" << bodyName << "\n";
         ofs << "g Body_" << id << "\n";
@@ -634,20 +641,20 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
     return ofs.good();
 }
 
-bool Project::exportStl(const std::string &filePath, int bodyId, bool binary) const
+bool Project::export_stl(const std::filesystem::path &filePath, int bodyId, bool binary) const
 {
     std::vector<Facet3Pt> facets;
     std::vector<const Facet3Pt*> exportList;
 
     if (bodyId == -1) {
-        m_model.getFacetsComputation(facets);
+        m_model.facets_computation(facets);
         for (const auto &fct : facets) {
             if (fct.pBody) {
                 exportList.push_back(&fct);
             }
         }
     } else {
-        m_model.getBodyFacets(bodyId, facets, false);
+        m_model.body_facets(bodyId, facets, false);
         for (const auto &fct : facets) {
             exportList.push_back(&fct);
         }
@@ -701,7 +708,7 @@ bool Project::exportStl(const std::string &filePath, int bodyId, bool binary) co
     }
 }
 
-bool Project::exportVtk(const std::string &filePath, int bodyId) const
+bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) const
 {
     std::ofstream ofs(filePath);
     if (!ofs.is_open()) return false;
@@ -710,14 +717,14 @@ bool Project::exportVtk(const std::string &filePath, int bodyId) const
     std::vector<const Facet3Pt*> exportList;
 
     if (bodyId == -1) {
-        m_model.getFacetsComputation(facets);
+        m_model.facets_computation(facets);
         for (const auto &fct : facets) {
             if (fct.pBody) {
                 exportList.push_back(&fct);
             }
         }
     } else {
-        m_model.getBodyFacets(bodyId, facets, false);
+        m_model.body_facets(bodyId, facets, false);
         for (const auto &fct : facets) {
             exportList.push_back(&fct);
         }
@@ -1011,7 +1018,7 @@ Grid readMfcGrid(BinaryStreamReader &reader) {
 
 } // namespace
 
-bool Project::loadLegacyM3D(const std::string &filePath)
+bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
 {
     std::ifstream ifs(filePath, std::ios::binary);
     if (!ifs.is_open()) {
@@ -1055,7 +1062,7 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     (void)dMinX; (void)dMaxX; (void)dMinY; (void)dMaxY; (void)dMinZ; (void)dMaxZ;
 
     // Computation
-    m_settings.computeRealTime = (reader.read<int32_t>() != 0);
+    m_settings.compute_real_time = m_settings.computeRealTime = (reader.read<int32_t>() != 0);
     int32_t sherComp = reader.read<int32_t>();
     (void)sherComp;
 
@@ -1158,8 +1165,8 @@ bool Project::loadLegacyM3D(const std::string &filePath)
     double dExN = reader.read<double>();
     double dExS = reader.read<double>();
 
-    m_model.initEmpty(modRows, modCols, modX0, modY0, modXSize, modYSize, modZMin, modZMax);
-    m_model.setExtensions(dExN, dExS, dExE, dExW, (bExtend != 0));
+    (void)m_model.init_empty(modRows, modCols, modX0, modY0, modXSize, modYSize, modZMin, modZMax);
+    m_model.set_extensions(dExN, dExS, dExE, dExW, (bExtend != 0));
 
     // Read column points for all modRows * modCols cells
     int totalCells = modRows * modCols;
@@ -1303,15 +1310,15 @@ bool Project::loadLegacyM3D(const std::string &filePath)
             bodyObj->set_map_color(bodyObj->color());
         }
 
-        m_model.addBody(std::move(bodyObj));
+        m_model.add_body(std::move(bodyObj));
     }
 
     // Set observation parameters
-    m_observation.initGeometry(nRows, nCols, x0, y0, xSize, ySize, 0.0);
-    m_observation.setReferenceDensity(grvDensRef);
-    m_observation.setGravityObservation(ObservationMode::SensorHeight, tensHeight);
-    m_observation.setMagneticObservation(ObservationMode::FlightElevation, tensFlightElev);
-    m_observation.setAmbientFieldParams(magIndFld.x, magIndFld.y, magIndFld.z);
+    m_observation.init_geometry(nRows, nCols, x0, y0, xSize, ySize, 0.0);
+    m_observation.set_reference_density(grvDensRef);
+    m_observation.set_gravity_observation(ObservationMode::SensorHeight, tensHeight);
+    m_observation.set_magnetic_observation(ObservationMode::FlightElevation, tensFlightElev);
+    m_observation.set_ambient_field_params(magIndFld.x, magIndFld.y, magIndFld.z);
 
     // Attempt to read grids (Relief, Observation elevations, Modeled, Difference, Measured)
     if (reader.good() && !reader.eof()) {
@@ -1350,19 +1357,19 @@ bool Project::loadLegacyM3D(const std::string &filePath)
 
         Grid relGrid = readMfcGrid(reader);
         if (!relGrid.empty()) {
-            m_observation.setSurfaceRelief(relGrid);
+            m_observation.set_surface_relief(relGrid);
         }
         Grid grvGrid = readMfcGrid(reader);
         if (!grvGrid.empty()) {
-            m_observation.setGravityObservationGrid(grvGrid);
+            m_observation.set_gravity_observation_grid(grvGrid);
         }
         Grid magGrid = readMfcGrid(reader);
         if (!magGrid.empty()) {
-            m_observation.setMagneticObservationGrid(magGrid);
+            m_observation.set_magnetic_observation_grid(magGrid);
         }
         Grid tnsGrid = readMfcGrid(reader);
         if (!tnsGrid.empty()) {
-            m_observation.setTensorObservationGrid(tnsGrid);
+            m_observation.set_tensor_observation_grid(tnsGrid);
         }
 
         auto legacyCompToFieldComponent = [](int compIdx) -> std::optional<FieldComponent> {
@@ -1399,26 +1406,26 @@ bool Project::loadLegacyM3D(const std::string &filePath)
             if (i >= 0 && i < 20) {
                 auto comp = legacyCompToFieldComponent(i);
                 if (comp) {
-                    m_observation.setModeledGrid(*comp, grid);
+                    m_observation.set_modeled_grid(*comp, grid);
                 }
             } else if (i >= 20 && i < 40) {
                 auto comp = legacyCompToFieldComponent(i - 20);
                 if (comp) {
-                    m_observation.setDifferenceGrid(*comp, grid);
+                    m_observation.set_difference_grid(*comp, grid);
                 }
             } else if (i >= 40 && i < 60) {
                 auto comp = legacyCompToFieldComponent(i - 40);
                 if (comp) {
-                    m_observation.setObservedGrid(*comp, grid);
+                    m_observation.set_observed_grid(*comp, grid);
                 }
             }
         }
     }
 
     // Regenerate 3D polyhedral facets
-    m_model.updateBodyIndex();
-    m_model.initFacetList();
-    m_model.computeBodyMagnetizationVector(
+    m_model.update_body_index();
+    m_model.init_facet_list();
+    m_model.compute_body_magnetization_vector(
         m_observation.inclination_deg(),
         m_observation.declination_deg(),
         m_observation.magnetic_intensity());
