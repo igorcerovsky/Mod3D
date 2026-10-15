@@ -124,14 +124,6 @@ void Facet3Pt::init()
     v_n = (pts[0] - pts[1]).cross(pts[1] - pts[2]);
     v_n.normalize();
 
-    for (size_t i = 0; i < 3; ++i) {
-        v_mi[i] = pts[(i + 1) % 3] - pts[i];
-        v_L[i] = v_mi[i];
-        len[i] = v_mi[i].norm();
-        v_mi[i].normalize();
-        v_ni[i] = v_mi[i].cross(v_n);
-    }
-
     primary.is_linear = primary.has_gradient();
     opposite.is_linear = opposite.has_gradient();
 

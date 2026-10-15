@@ -194,12 +194,7 @@ public:
 public:
     FacetType nType{FacetType::FCT_NORMAL};
     Vertices pts{};
-    Vertices v_L{};
-    Vertices v_mi{};
-    Vertices v_ni{};
     Point3D v_n{};
-    std::array<double, 3> len{0.0, 0.0, 0.0};
-    std::array<double, 9> g{0.0};
 
     FacetSide primary{1000.0};
     FacetSide opposite{0.0};
