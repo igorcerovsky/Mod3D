@@ -24,13 +24,13 @@ public:
     // ========================================================================
     constexpr ColumnPoint() noexcept = default;
     constexpr explicit ColumnPoint(double zVal) noexcept
-        : pt_(0.0, 0.0, zVal), z_(zVal), body_(nullptr), body_id_(-1), modified_(true) {}
+        : pt_(0.0, 0.0, zVal), body_(nullptr), body_id_(-1), modified_(true) {}
     constexpr ColumnPoint(int bodyIdVal, double zVal, Body *bodyPtr = nullptr) noexcept
-        : pt_(0.0, 0.0, zVal), z_(zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+        : pt_(0.0, 0.0, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
     constexpr ColumnPoint(const Point3D &ptVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
-        : pt_(ptVal), z_(ptVal.z), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+        : pt_(ptVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
     constexpr ColumnPoint(double xVal, double yVal, double zVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
-        : pt_(xVal, yVal, zVal), z_(zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+        : pt_(xVal, yVal, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
 
     constexpr ColumnPoint(const ColumnPoint &) noexcept = default;
     constexpr ColumnPoint &operator=(const ColumnPoint &) noexcept = default;
@@ -43,12 +43,11 @@ public:
     // ========================================================================
 
     // Coordinate accessors
-    [[nodiscard]] constexpr double z() const noexcept { return z_; }
+    [[nodiscard]] constexpr double z() const noexcept { return pt_.z; }
     [[nodiscard]] constexpr double x() const noexcept { return pt_.x; }
     [[nodiscard]] constexpr double y() const noexcept { return pt_.y; }
 
     constexpr void set_z(double zVal) noexcept {
-        z_ = zVal;
         pt_.z = zVal;
         modified_ = true;
     }
@@ -66,7 +65,6 @@ public:
         pt_.x = xVal;
         pt_.y = yVal;
         pt_.z = zVal;
-        z_ = zVal;
         modified_ = true;
     }
 
@@ -74,7 +72,6 @@ public:
     [[nodiscard]] constexpr Point3D &point() noexcept { return pt_; }
     constexpr void set_point(const Point3D &ptVal) noexcept {
         pt_ = ptVal;
-        z_ = ptVal.z;
         modified_ = true;
     }
 
@@ -92,8 +89,8 @@ public:
     constexpr void set_modified(bool modified = true) noexcept { modified_ = modified; }
 
     // Relative vertical position queries (higher elevation Z is above)
-    [[nodiscard]] constexpr bool is_above(const ColumnPoint &other) const noexcept { return z_ > other.z_; }
-    [[nodiscard]] constexpr bool is_below(const ColumnPoint &other) const noexcept { return z_ < other.z_; }
+    [[nodiscard]] constexpr bool is_above(const ColumnPoint &other) const noexcept { return pt_.z > other.pt_.z; }
+    [[nodiscard]] constexpr bool is_below(const ColumnPoint &other) const noexcept { return pt_.z < other.pt_.z; }
 
     // Sorting predicates for vertical stratigraphic columns
     struct DepthLess {
@@ -115,7 +112,6 @@ public:
 
 private:
     Point3D pt_{0.0, 0.0, 0.0};
-    double z_{0.0};
     Body *body_{nullptr};
     int body_id_{-1};
     bool modified_{true};
