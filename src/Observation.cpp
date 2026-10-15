@@ -272,8 +272,8 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
 
     bool hasMagnetics = false;
     for (const auto &fct : facets) {
-        if ((fct.primary.body && fct.primary.body->is_active() && !fct.primary.body->magnetization_vector().is_zero()) ||
-            (fct.opposite.body && fct.opposite.body->is_active() && !fct.opposite.body->magnetization_vector().is_zero())) {
+        if ((fct.primary && fct.primary->is_active() && !fct.primary->magnetization_vector().is_zero()) ||
+            (fct.opposite && fct.opposite->is_active() && !fct.opposite->magnetization_vector().is_zero())) {
             hasMagnetics = true;
             break;
         }
@@ -303,14 +303,10 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
             for (const auto &fct : facets) {
                 if (validGrv) {
                     double densContrast = 0.0;
-                    if (fct.primary.body) {
-                        double bDens = fct.primary.body->density();
-                        double oposDens = fct.opposite.body ? fct.opposite.body->density() : ref_density_;
+                    if (fct.primary) {
+                        double bDens = fct.primary->density();
+                        double oposDens = fct.opposite ? fct.opposite->density() : ref_density_;
                         densContrast = bDens - oposDens;
-                    } else if (fct.opposite.density != 0.0) {
-                        densContrast = fct.primary.density - fct.opposite.density;
-                    } else {
-                        densContrast = fct.primary.density - ref_density_;
                     }
 
                     Point3D g(0.0, 0.0, 0.0);
@@ -320,11 +316,11 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
 
                 if (validMag) {
                     Point3D fMag(0.0, 0.0, 0.0);
-                    if (fct.primary.body && fct.primary.body->is_active() && !fct.primary.body->magnetization_vector().is_zero()) {
-                        fct.fld_gs(rMag, fct.primary.body->magnetization_vector(), fMag, 1.0);
+                    if (fct.primary && fct.primary->is_active() && !fct.primary->magnetization_vector().is_zero()) {
+                        fct.fld_gs(rMag, fct.primary->magnetization_vector(), fMag, 1.0);
                     }
-                    if (fct.opposite.body && fct.opposite.body->is_active() && !fct.opposite.body->magnetization_vector().is_zero()) {
-                        fct.fld_gs(rMag, fct.opposite.body->magnetization_vector(), fMag, -1.0);
+                    if (fct.opposite && fct.opposite->is_active() && !fct.opposite->magnetization_vector().is_zero()) {
+                        fct.fld_gs(rMag, fct.opposite->magnetization_vector(), fMag, -1.0);
                     }
                     totalM -= fMag * (fct.dSign * mag_units_);
                 }

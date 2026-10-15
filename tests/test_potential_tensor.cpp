@@ -96,7 +96,7 @@ TEST(PotentialTensorTest, TotalFieldAnomalyMag_dT) {
 // normals
 static std::vector<Facet3Pt> CreateClosedCube(double x0, double x1, double y0,
                                               double y1, double z0, double z1,
-                                              double density) {
+                                              Body *body = nullptr) {
   // 8 vertices of cube
   Point3D p0(x0, y0, z0); // 0: bottom SW
   Point3D p1(x1, y0, z0); // 1: bottom SE
@@ -112,9 +112,7 @@ static std::vector<Facet3Pt> CreateClosedCube(double x0, double x1, double y0,
 
   auto addQuad = [&](const Point3D &a, const Point3D &b, const Point3D &c,
                      const Point3D &d) {
-    Facet3Pt f1, f2;
-    f1.init(a, b, c, density, 0.0);
-    f2.init(a, c, d, density, 0.0);
+    Facet3Pt f1(a, b, c, body), f2(a, c, d, body);
     facets.push_back(f1);
     facets.push_back(f2);
   };
@@ -140,7 +138,8 @@ TEST(PotentialTensorTest, GravityGradientTensorLaplaceInvarianceInFreeSpace) {
   // 1 km cube centered from x=0..1000, y=0..1000, z=0..1000
   // Density = 2670 kg/m^3
   const double rho = 2670.0;
-  auto cube = CreateClosedCube(0.0, 1000.0, 0.0, 1000.0, 0.0, 1000.0, rho);
+  Body cubeBody(1, "Cube", rho);
+  auto cube = CreateClosedCube(0.0, 1000.0, 0.0, 1000.0, 0.0, 1000.0, &cubeBody);
   ASSERT_EQ(cube.size(), 12);
 
   // Verify all facet normals point outward from cube center (500, 500, 500)

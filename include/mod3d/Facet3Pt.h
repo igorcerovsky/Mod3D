@@ -28,29 +28,6 @@ enum class FacetType {
     FCT_NULLOPOSIT = 8
 };
 
-/**
- * @brief Physical and body parameters on one side of a facet interface.
- */
-struct FacetSide {
-    double density{0.0};
-    Point3D gradient{0, 0, 0};
-    bool is_linear{false};
-    Body *body{nullptr};
-
-    [[nodiscard]] constexpr bool has_gradient() const noexcept {
-        return !gradient.is_zero();
-    }
-
-    void sync_from_body() noexcept {
-        if (body) {
-            density = body->density();
-            gradient = body->density_gradient();
-            is_linear = !gradient.is_zero();
-        }
-    }
-
-    [[nodiscard]] constexpr bool operator==(const FacetSide &other) const noexcept = default;
-};
 
 /**
  * @brief Triangular facet element in 3D space.
@@ -66,10 +43,9 @@ public:
     // Lifecycle & Rule of 5
     // ========================================================================
     constexpr Facet3Pt() noexcept = default;
-    Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
-    Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW = 0.0);
-    explicit Facet3Pt(std::span<const Point3D, 3> points);
-    explicit Facet3Pt(const Vertices &points);
+    Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, Body *primaryBody = nullptr, Body *oppositeBody = nullptr);
+    explicit Facet3Pt(std::span<const Point3D, 3> points, Body *primaryBody = nullptr, Body *oppositeBody = nullptr);
+    explicit Facet3Pt(const Vertices &points, Body *primaryBody = nullptr, Body *oppositeBody = nullptr);
     ~Facet3Pt() = default;
 
     Facet3Pt(const Facet3Pt &) = default;
@@ -132,16 +108,12 @@ public:
     }
 
     // Initialization / reinitialization
-    void init();
+    void init() noexcept {}
     void init(const Point3D *ppts);
     void init(std::span<const Point3D, 3> ppts);
     void init(const Vertices &ppts);
     void init(const std::vector<Point3D> &ppts);
-    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
-    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, double density_cw = 0.0);
-    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, Point3D dens_grad_ccw);
-
-    void set_opposite_density(double d_density, Point3D v_grad = Point3D()) noexcept;
+    void init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, Body *primaryBody = nullptr, Body *oppositeBody = nullptr);
 
     // Analytical potential field formulas
     void fld_vlado(const Point3D &v_r, Point3D &v_grv) const;
@@ -185,20 +157,19 @@ public:
         double &unit_grv, double &unit_mag, double &unit_tns);
 
     // Body & Density Forwarders
-    [[nodiscard]] Body *body() const noexcept { return primary.body; }
-    void set_body(Body *b) noexcept { primary.body = b; }
-    [[nodiscard]] Body *opposite_body() const noexcept { return opposite.body; }
-    void set_opposite_body(Body *b) noexcept { opposite.body = b; }
+    [[nodiscard]] Body *body() const noexcept { return primary; }
+    void set_body(Body *b) noexcept { primary = b; }
+    [[nodiscard]] Body *opposite_body() const noexcept { return opposite; }
+    void set_opposite_body(Body *b) noexcept { opposite = b; }
 
-    [[nodiscard]] double density() const noexcept { return primary.density; }
-    void set_density(double d) noexcept { primary.density = d; }
-    [[nodiscard]] double opposite_density() const noexcept { return opposite.density; }
+    [[nodiscard]] double density() const noexcept { return primary ? primary->density() : 0.0; }
+    [[nodiscard]] double opposite_density() const noexcept { return opposite ? opposite->density() : 0.0; }
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};
 
-    FacetSide primary{1000.0};
-    FacetSide opposite{0.0};
+    Body *primary{nullptr};
+    Body *opposite{nullptr};
 
     double dSign{1.0}; // +1 to add, -1 to subtract (delta updating)
 
@@ -206,7 +177,6 @@ public:
     pfld::Facet<double, 3> pfld_;
 };
 
-static_assert(!std::is_polymorphic_v<FacetSide>, "FacetSide must not be polymorphic");
 static_assert(!std::is_polymorphic_v<Facet3Pt>, "Facet3Pt must not be polymorphic");
 
 using FacetList = std::vector<Facet3Pt>;

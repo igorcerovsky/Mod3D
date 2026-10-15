@@ -651,11 +651,11 @@ void Model::init_side_facets_bound(const FctGen &fg, std::vector<Facet3Pt> &face
     Body *pBd = body(fg.id);
     if (fg.top[i0] != fg.bot[i0]) {
         auto &fct = facetList.emplace_back(fg.top[i0], fg.bot[i0], fg.top[i1]);
-        fct.primary.body = pBd;
+        fct.primary = pBd;
     }
     if (fg.top[i1] != fg.bot[i1]) {
         auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i1], fg.top[i1]);
-        fct.primary.body = pBd;
+        fct.primary = pBd;
     }
 }
 
@@ -684,12 +684,12 @@ void Model::init_side_facets_2(const FctGen &fg, std::vector<Facet3Pt> &facetLis
         if (fg.top[i0] != fg.bot[i0]) {
             auto &fct = facetList.emplace_back(fg.top[i0], fg.bot[i0], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
-            fct.primary.body = pBd;
+            fct.primary = pBd;
         }
         if (fg.top[i1] != fg.bot[i1]) {
             auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i1], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
-            fct.primary.body = pBd;
+            fct.primary = pBd;
         }
     }
 }
@@ -705,12 +705,12 @@ void Model::init_side_facets_3(const FctGen &fg, std::vector<Facet3Pt> &facetLis
         if (fg.top[i0] != fg.bot[i0]) {
             auto &fct = facetList.emplace_back(fg.top[i0], fg.bot[i0], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
-            fct.primary.body = pBd;
+            fct.primary = pBd;
         }
         if (fg.top[i1] != fg.bot[i1]) {
             auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i1], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
-            fct.primary.body = pBd;
+            fct.primary = pBd;
         }
     }
 }
@@ -749,16 +749,16 @@ void Model::init_facet(const FctGen &pU, const FctGen &pL, std::vector<Facet3Pt>
 
     if (pU.bot[i0] == pL.top[i0] && pU.bot[i1] == pL.top[i1] && pU.bot[i2] == pL.top[i2]) {
         auto &fct = facetList.emplace_back(pL.top[i0], pL.top[i1], pL.top[i2]);
-        fct.primary.body = body(pL.id);
-        fct.opposite.body = body(pU.id);
+        fct.primary = body(pL.id);
+        fct.opposite = body(pU.id);
     } else {
         if (pU.b[i0] && pU.b[i1]) {
             auto &fct = facetList.emplace_back(pU.bot[i0], pU.bot[i2], pU.bot[i1]);
-            fct.primary.body = body(pU.id);
+            fct.primary = body(pU.id);
         }
         if (pL.b[i0] && pL.b[i1]) {
             auto &fct = facetList.emplace_back(pL.top[i0], pL.top[i1], pL.top[i2]);
-            fct.primary.body = body(pL.id);
+            fct.primary = body(pL.id);
         }
     }
 }
@@ -768,10 +768,10 @@ void Model::init_facet_tbm(const FctGen &fg, std::vector<Facet3Pt> &facetList, i
     const int i2 = 4;
     if (tag == FgType::TopMost) {
         auto &fct = facetList.emplace_back(fg.top[i0], fg.top[i1], fg.top[i2]);
-        fct.primary.body = body(fg.id);
+        fct.primary = body(fg.id);
     } else if (tag == FgType::BotMost) {
         auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i2], fg.bot[i1]);
-        fct.primary.body = body(fg.id);
+        fct.primary = body(fg.id);
     }
 }
 
@@ -922,8 +922,6 @@ void Model::update_facet_column(int row, int col)
         for (auto &fct : *pFctLst) {
             Facet3Pt fCopy = fct;
             fCopy.set_sign(-1.0);
-            fCopy.primary.sync_from_body();
-            fCopy.opposite.sync_from_body();
             facets_update_.push_back(fCopy);
         }
     }
@@ -935,8 +933,6 @@ void Model::update_facet_column(int row, int col)
         for (const auto &fct : *pFctLst) {
             Facet3Pt fCopy = fct;
             fCopy.set_sign(1.0);
-            fCopy.primary.sync_from_body();
-            fCopy.opposite.sync_from_body();
             facets_update_.push_back(fCopy);
         }
     }
@@ -975,8 +971,6 @@ int Model::facets_computation(std::vector<Facet3Pt> &outList) const
                 for (const auto &fct : *lst) {
                     Facet3Pt copy = fct;
                     copy.set_sign(1.0);
-                    copy.primary.sync_from_body();
-                    copy.opposite.sync_from_body();
                     outList.push_back(copy);
                 }
             }
@@ -1008,9 +1002,9 @@ int Model::body_facets(int bodyId, std::vector<Facet3Pt> &outList, bool includeO
                 if (bodyId == -1) {
                     outList.push_back(fct);
                 } else {
-                    if (fct.primary.body && fct.primary.body->id() == bodyId) {
+                    if (fct.primary && fct.primary->id() == bodyId) {
                         outList.push_back(fct);
-                    } else if (fct.opposite.body && fct.opposite.body->id() == bodyId) {
+                    } else if (fct.opposite && fct.opposite->id() == bodyId) {
                         // Contact interface: invert winding and normal so it faces outward from this body
                         Facet3Pt copy = fct;
                         copy.reverse();
