@@ -12,7 +12,7 @@ using namespace mod3d;
 // 1. Core 1D Minimization Math Verification
 // ============================================================================
 
-TEST(InversionMathTest, MnbrakParabolicMinimum) {
+TEST(InversionMathTest, BracketMinimumParabolic) {
     // Parabolic function f(x) = (x - 4.5)^2 + 3.0
     auto quadFunc = [](double x) {
         return (x - 4.5) * (x - 4.5) + 3.0;
@@ -23,9 +23,9 @@ TEST(InversionMathTest, MnbrakParabolicMinimum) {
     double c = 0.0;
     double fa = 0.0, fb = 0.0, fc = 0.0;
 
-    Inversion1D::mnbrak(a, b, c, fa, fb, fc, quadFunc);
+    Inversion1D::bracket_minimum(a, b, c, fa, fb, fc, quadFunc);
 
-    // Mnbrak must produce bracketed minimum: fb < fa and fb < fc
+    // bracket_minimum must produce bracketed minimum: fb < fa and fb < fc
     EXPECT_LT(fb, fa);
     EXPECT_LT(fb, fc);
     // True minimum (4.5) must lie strictly inside interval [min(a, c), max(a, c)]
@@ -42,16 +42,16 @@ TEST(InversionMathTest, GoldenAndBrentConvergence) {
     };
 
     // 1. Golden section search
-    FitResult resGolden = Inversion1D::optimize(0.0, 1.0, testFunc, FitMethod::Golden, 1e-5);
+    FitResult resGolden = Inversion1D::optimize(0.0, 1.0, testFunc, FitMethod::golden, 1e-5);
     EXPECT_TRUE(resGolden.converged);
-    EXPECT_NEAR(resGolden.optimalParameter, 2.0, 1e-4);
-    EXPECT_NEAR(resGolden.minimumObjective, 5.0, 1e-4);
+    EXPECT_NEAR(resGolden.optimal_parameter, 2.0, 1e-4);
+    EXPECT_NEAR(resGolden.minimum_objective, 5.0, 1e-4);
 
     // 2. Brent's parabolic method
-    FitResult resBrent = Inversion1D::optimize(0.0, 1.0, testFunc, FitMethod::Brent, 1e-5);
+    FitResult resBrent = Inversion1D::optimize(0.0, 1.0, testFunc, FitMethod::brent, 1e-5);
     EXPECT_TRUE(resBrent.converged);
-    EXPECT_NEAR(resBrent.optimalParameter, 2.0, 1e-5);
-    EXPECT_NEAR(resBrent.minimumObjective, 5.0, 1e-5);
+    EXPECT_NEAR(resBrent.optimal_parameter, 2.0, 1e-5);
+    EXPECT_NEAR(resBrent.minimum_objective, 5.0, 1e-5);
 
     // Brent method should converge faster than Golden section on parabolic-like function
     EXPECT_LE(resBrent.iterations, resGolden.iterations);
@@ -250,11 +250,11 @@ TEST(Gate3InversionTest, DensityRecoveryMatchesFitLogDens) {
     // Gate 3 verification:
     // 1. Converged to true density 2850.0 within 0.1 kg/m^3
     EXPECT_TRUE(fitRes.converged);
-    EXPECT_NEAR(fitRes.optimalParameter, trueDensity, 0.1);
+    EXPECT_NEAR(fitRes.optimal_parameter, trueDensity, 0.1);
     EXPECT_NEAR(body->density(), trueDensity, 0.1);
 
     // 2. Minimum RMS residual should be virtually zero (< 1e-4 mGal)
-    EXPECT_LT(fitRes.minimumObjective, 1e-4);
+    EXPECT_LT(fitRes.minimum_objective, 1e-4);
 
     // 3. Iteration count is reasonable (< 30 iterations)
     EXPECT_LT(fitRes.iterations, 30);
@@ -317,9 +317,9 @@ TEST(Gate3InversionTest, VertexDepthRecoveryMatchesFitLogVrtx) {
     // Gate 3 verification:
     // 1. Converged to true depth -707.58 within 0.1 m
     EXPECT_TRUE(fitRes.converged);
-    EXPECT_NEAR(fitRes.optimalParameter, trueZ, 0.1);
+    EXPECT_NEAR(fitRes.optimal_parameter, trueZ, 0.1);
     EXPECT_NEAR(model.getZ(2, 2, 1), trueZ, 0.1);
 
     // 2. Minimum RMS drops to near zero (< 1e-4 mGal)
-    EXPECT_LT(fitRes.minimumObjective, 1e-4);
+    EXPECT_LT(fitRes.minimum_objective, 1e-4);
 }

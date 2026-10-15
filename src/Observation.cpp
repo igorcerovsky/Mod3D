@@ -520,10 +520,10 @@ FitResult ObservationSpace::fit_density(
     FitResult res = Inversion1D::optimize(
         startA, startB, objFunc, method, tol, 100, "Density inversion");
 
-    double optimalDiffDensity = res.optimalParameter;
+    double optimalDiffDensity = res.optimal_parameter;
     double optimalDensity = optimalDiffDensity + ref_density_;
     pBody->set_density(optimalDensity);
-    res.optimalParameter = optimalDensity;
+    res.optimal_parameter = optimalDensity;
 
     return res;
 }
@@ -586,7 +586,7 @@ FitResult ObservationSpace::fit_vertex(
         startA, startB, objFunc, method, tol, 100, "Vertex inversion");
 
     int vIdx = index;
-    model.moveVertex(vIdx, row, col, res.optimalParameter, BodyMoveType::Normal);
+    model.moveVertex(vIdx, row, col, res.optimal_parameter, BodyMoveType::Normal);
 
     return res;
 }

@@ -7,14 +7,14 @@
 
 namespace mod3d {
 
-void Inversion1D::mnbrak(
+void Inversion1D::bracket_minimum(
     double &ax, double &bx, double &cx,
     double &fa, double &fb, double &fc,
     const std::function<double(double)> &func,
     double glimit)
 {
-    const double GOLD = 1.618034;
-    const double TINY = 1.0e-15;
+    constexpr double GOLD = 1.618034;
+    constexpr double TINY = 1.0e-15;
 
     fa = func(ax);
     fb = func(bx);
@@ -76,16 +76,16 @@ void Inversion1D::mnbrak(
     }
 }
 
-double Inversion1D::golden(
+double Inversion1D::golden_section_search(
     double ax, double bx, double cx,
     const std::function<double(double)> &func,
     double tol,
     double *xmin,
     std::vector<FitIterationRecord> *history,
-    int maxIter)
+    int max_iter)
 {
-    const double R = 0.61803399;
-    const double C = 1.0 - R;
+    constexpr double R = 0.61803399;
+    constexpr double C = 1.0 - R;
 
     double x0 = ax;
     double x3 = cx;
@@ -103,12 +103,12 @@ double Inversion1D::golden(
     double f2 = func(x2);
 
     int iter = 0;
-    while (std::fabs(x3 - x0) > tol * (std::fabs(x1) + std::fabs(x2)) && iter < maxIter) {
+    while (std::fabs(x3 - x0) > tol * (std::fabs(x1) + std::fabs(x2)) && iter < max_iter) {
         iter++;
-        double currentBest = (f1 < f2 ? x1 : x2);
-        double currentVal = (f1 < f2 ? f1 : f2);
+        double current_best = (f1 < f2 ? x1 : x2);
+        double current_val = (f1 < f2 ? f1 : f2);
         if (history) {
-            history->push_back({iter, currentBest, currentVal, 0.0, currentVal, 0.0});
+            history->push_back({iter, current_best, current_val, 0.0, current_val, 0.0});
         }
         if (f2 < f1) {
             x0 = x1;
@@ -134,16 +134,16 @@ double Inversion1D::golden(
     }
 }
 
-double Inversion1D::brent(
+double Inversion1D::brent_search(
     double ax, double bx, double cx,
     const std::function<double(double)> &func,
     double tol,
     double *xmin,
     std::vector<FitIterationRecord> *history,
-    int maxIter)
+    int max_iter)
 {
-    const double CGOLD = 0.3819660;
-    const double ZEPS = 1.0e-15;
+    constexpr double CGOLD = 0.3819660;
+    constexpr double ZEPS = 1.0e-15;
 
     double a = (ax < cx ? ax : cx);
     double b = (ax > cx ? ax : cx);
@@ -154,7 +154,7 @@ double Inversion1D::brent(
     double d = 0.0;
     double e = 0.0;
 
-    for (int iter = 1; iter <= maxIter; ++iter) {
+    for (int iter = 1; iter <= max_iter; ++iter) {
         double xm = 0.5 * (a + b);
         double tol1 = tol * std::fabs(x) + ZEPS;
         double tol2 = 2.0 * tol1;
@@ -216,55 +216,55 @@ double Inversion1D::brent(
 }
 
 FitResult Inversion1D::optimize(
-    double startA, double startB,
+    double start_a, double start_b,
     const std::function<double(double)> &func,
     FitMethod method,
     double tol,
-    int maxIter,
+    int max_iter,
     const std::string &title)
 {
-    auto startTime = std::chrono::high_resolution_clock::now();
+    auto start_time = std::chrono::high_resolution_clock::now();
 
-    double a = startA;
-    double b = startB;
+    double a = start_a;
+    double b = start_b;
     double c = 0.0;
     double fa = 0.0, fb = 0.0, fc = 0.0;
 
     std::ostringstream log;
     log << title << "\n\nBracketing minimum ...\n";
 
-    mnbrak(a, b, c, fa, fb, fc, func);
+    bracket_minimum(a, b, c, fa, fb, fc, func);
 
-    auto bracketTime = std::chrono::high_resolution_clock::now();
-    double bracketSec = std::chrono::duration<double>(bracketTime - startTime).count();
+    auto bracket_time = std::chrono::high_resolution_clock::now();
+    double bracket_sec = std::chrono::duration<double>(bracket_time - start_time).count();
 
-    log << "Bracketing elapsed time: " << bracketSec << "s\n\n";
+    log << "Bracketing elapsed time: " << bracket_sec << "s\n\n";
     log << "Fitting ...\n";
-    log << (method == FitMethod::Golden ? "Golden section method\n" : "Brent method\n");
+    log << (method == FitMethod::golden ? "Golden section method\n" : "Brent method\n");
 
     FitResult result;
-    double minParam = 0.0;
-    double minObj = 0.0;
+    double min_param = 0.0;
+    double min_obj = 0.0;
 
-    if (method == FitMethod::Golden) {
-        minObj = golden(a, b, c, func, tol, &minParam, &result.history, maxIter);
+    if (method == FitMethod::golden) {
+        min_obj = golden_section_search(a, b, c, func, tol, &min_param, &result.history, max_iter);
     } else {
-        minObj = brent(a, b, c, func, tol, &minParam, &result.history, maxIter);
+        min_obj = brent_search(a, b, c, func, tol, &min_param, &result.history, max_iter);
     }
 
-    auto finishTime = std::chrono::high_resolution_clock::now();
-    result.elapsedTimeSec = std::chrono::duration<double>(finishTime - startTime).count();
+    auto finish_time = std::chrono::high_resolution_clock::now();
+    result.elapsed_time_sec = std::chrono::duration<double>(finish_time - start_time).count();
 
     for (const auto &rec : result.history) {
         log << std::setprecision(6) << rec.parameter << " "
             << std::setprecision(10) << rec.value << "\n";
     }
-    log << "Fitting elapsed time: " << result.elapsedTimeSec << "s\n";
+    log << "Fitting elapsed time: " << result.elapsed_time_sec << "s\n";
 
-    result.optimalParameter = minParam;
-    result.minimumObjective = minObj;
+    result.optimal_parameter = min_param;
+    result.minimum_objective = min_obj;
     result.iterations = static_cast<int>(result.history.size());
-    result.converged = (result.iterations < maxIter);
+    result.converged = (result.iterations < max_iter);
     result.log = log.str();
 
     return result;
