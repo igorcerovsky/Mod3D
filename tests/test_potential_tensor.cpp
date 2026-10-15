@@ -146,7 +146,7 @@ TEST(PotentialTensorTest, GravityGradientTensorLaplaceInvarianceInFreeSpace) {
   // Verify all facet normals point outward from cube center (500, 500, 500)
   Point3D center(500, 500, 500);
   for (const auto &fct : cube) {
-    Point3D fctCenter = (fct.pts[0] + fct.pts[1] + fct.pts[2]) / 3.0;
+    Point3D fctCenter = fct.center();
     Point3D outward = fctCenter - center;
     EXPECT_GT(outward * fct.normal(), 0.0);
   }

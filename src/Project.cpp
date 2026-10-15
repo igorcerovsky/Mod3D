@@ -612,10 +612,10 @@ bool Project::export_obj(const std::filesystem::path &filePath, int bodyId) cons
         for (const auto *fct : fctList) {
             for (int k = 0; k < 3; ++k) {
                 ofs << "v " << std::fixed << std::setprecision(3)
-                    << fct->pts[k].x << " " << fct->pts[k].y << " " << fct->pts[k].z << "\n";
+                    << (*fct)[k].x << " " << (*fct)[k].y << " " << (*fct)[k].z << "\n";
             }
             ofs << "vn " << std::setprecision(5)
-                << fct->v_n.x << " " << fct->v_n.y << " " << fct->v_n.z << "\n";
+                << fct->normal().x << " " << fct->normal().y << " " << fct->normal().z << "\n";
         }
 
         // Write faces
@@ -660,10 +660,10 @@ bool Project::export_stl(const std::filesystem::path &filePath, int bodyId, bool
 
         ofs << "solid Mod3D_Export\n";
         for (const auto *fct : exportList) {
-            ofs << "  facet normal " << fct->v_n.x << " " << fct->v_n.y << " " << fct->v_n.z << "\n";
+            ofs << "  facet normal " << fct->normal().x << " " << fct->normal().y << " " << fct->normal().z << "\n";
             ofs << "    outer loop\n";
             for (int k = 0; k < 3; ++k) {
-                ofs << "      vertex " << fct->pts[k].x << " " << fct->pts[k].y << " " << fct->pts[k].z << "\n";
+                ofs << "      vertex " << (*fct)[k].x << " " << (*fct)[k].y << " " << (*fct)[k].z << "\n";
             }
             ofs << "    endloop\n";
             ofs << "  endfacet\n";
@@ -685,11 +685,11 @@ bool Project::export_stl(const std::filesystem::path &filePath, int bodyId, bool
         ofs.write(reinterpret_cast<const char*>(&numTriangles), 4);
 
         for (const auto *fct : exportList) {
-            float n[3] = { static_cast<float>(fct->v_n.x), static_cast<float>(fct->v_n.y), static_cast<float>(fct->v_n.z) };
+            float n[3] = { static_cast<float>(fct->normal().x), static_cast<float>(fct->normal().y), static_cast<float>(fct->normal().z) };
             ofs.write(reinterpret_cast<const char*>(n), 12);
 
             for (int k = 0; k < 3; ++k) {
-                float v[3] = { static_cast<float>(fct->pts[k].x), static_cast<float>(fct->pts[k].y), static_cast<float>(fct->pts[k].z) };
+                float v[3] = { static_cast<float>((*fct)[k].x), static_cast<float>((*fct)[k].y), static_cast<float>((*fct)[k].z) };
                 ofs.write(reinterpret_cast<const char*>(v), 12);
             }
 
@@ -735,9 +735,9 @@ bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) cons
     ofs << "POINTS " << numPoints << " float\n";
     for (const auto *fct : exportList) {
         for (int k = 0; k < 3; ++k) {
-            ofs << static_cast<float>(fct->pts[k].x) << " "
-                << static_cast<float>(fct->pts[k].y) << " "
-                << static_cast<float>(fct->pts[k].z) << "\n";
+            ofs << static_cast<float>((*fct)[k].x) << " "
+                << static_cast<float>((*fct)[k].y) << " "
+                << static_cast<float>((*fct)[k].z) << "\n";
         }
     }
 

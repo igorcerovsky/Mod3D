@@ -151,9 +151,9 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
     loaded.model().facets_computation(loadedFacets);
     ASSERT_EQ(loadedFacets.size(), origFacets.size());
     for (size_t i = 0; i < origFacets.size(); ++i) {
-        EXPECT_DOUBLE_EQ(loadedFacets[i].pts[0].x, origFacets[i].pts[0].x);
-        EXPECT_DOUBLE_EQ(loadedFacets[i].pts[0].y, origFacets[i].pts[0].y);
-        EXPECT_DOUBLE_EQ(loadedFacets[i].pts[0].z, origFacets[i].pts[0].z);
+        EXPECT_DOUBLE_EQ(loadedFacets[i][0].x, origFacets[i][0].x);
+        EXPECT_DOUBLE_EQ(loadedFacets[i][0].y, origFacets[i][0].y);
+        EXPECT_DOUBLE_EQ(loadedFacets[i][0].z, origFacets[i][0].z);
         EXPECT_DOUBLE_EQ(loadedFacets[i].normal().z, origFacets[i].normal().z);
     }
 

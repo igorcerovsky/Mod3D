@@ -286,11 +286,7 @@ TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
         Point3D n = fct.normal();
         EXPECT_NEAR(n.Abs(), 1.0, 1e-9);
 
-        Point3D cntr(
-            (fct.pts[0].x + fct.pts[1].x + fct.pts[2].x) / 3.0,
-            (fct.pts[0].y + fct.pts[1].y + fct.pts[2].y) / 3.0,
-            (fct.pts[0].z + fct.pts[1].z + fct.pts[2].z) / 3.0
-        );
+        Point3D cntr = fct.center();
 
         Point3D outwardDir = cntr - bodyCenter;
         double dot = outwardDir * n;
@@ -525,10 +521,10 @@ TEST(ModelTest, GenerateBodyMeshesAndFacets3D) {
 
     // Verify all facets have unit normal
     for (const auto &f : b1Facets) {
-        EXPECT_NEAR(f.v_n.norm(), 1.0, 1e-5);
+        EXPECT_NEAR(f.normal().norm(), 1.0, 1e-5);
     }
     for (const auto &f : b2Facets) {
-        EXPECT_NEAR(f.v_n.norm(), 1.0, 1e-5);
+        EXPECT_NEAR(f.normal().norm(), 1.0, 1e-5);
     }
 
     // 3. Test generate_body_meshes

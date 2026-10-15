@@ -86,25 +86,25 @@ public:
 	 * @param pts Point sequence defining the polygon perimeter.
 	 * @param auto_init If true, automatically computes normal and edge geometry.
 	 */
-	explicit Facet(const ptvec& pts, bool auto_init = false) : _pts(pts) {
+	explicit Facet(const ptvec& pts, bool auto_init = false) : _sz(pts.size()), _pts(pts) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
-	explicit Facet(ptvec&& pts, bool auto_init = false) noexcept : _pts(std::move(pts)) {
+	explicit Facet(ptvec&& pts, bool auto_init = false) noexcept : _sz(pts.size()), _pts(std::move(pts)) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
-	explicit Facet(std::span<const point> pts, bool auto_init = false) : _pts(pts.begin(), pts.end()) {
+	explicit Facet(std::span<const point> pts, bool auto_init = false) : _sz(pts.size()), _pts(pts.begin(), pts.end()) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
-	Facet(std::initializer_list<point> pts, bool auto_init = false) : _pts(pts) {
+	Facet(std::initializer_list<point> pts, bool auto_init = false) : _sz(pts.size()), _pts(pts) {
 		if (auto_init) {
 			Init();
 		}
@@ -169,7 +169,7 @@ public:
 	[[nodiscard]] const ptvec& points() const noexcept { return _pts; }
 
 	[[nodiscard]] const point& normal() const noexcept { return _n; }
-	[[nodiscard]] size_t size() const noexcept { return _sz; }
+	[[nodiscard]] size_t size() const noexcept { return _pts.size(); }
 	[[nodiscard]] bool empty() const noexcept { return _pts.empty(); }
 	[[nodiscard]] bool is_initialized() const noexcept { return _initialized; }
 	[[nodiscard]] int id() const noexcept { return _id; }

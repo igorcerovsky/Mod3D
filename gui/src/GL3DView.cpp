@@ -484,15 +484,15 @@ void GL3DView::drawBodies() {
         glBegin(GL_TRIANGLES);
         for (const auto &fct : mesh.facets) {
             if (!m_showBottom &&
-                fct.pts[0].z <= dBot + 1e-3 &&
-                fct.pts[1].z <= dBot + 1e-3 &&
-                fct.pts[2].z <= dBot + 1e-3) {
+                fct[0].z <= dBot + 1e-3 &&
+                fct[1].z <= dBot + 1e-3 &&
+                fct[2].z <= dBot + 1e-3) {
                 continue;
             }
-            glNormal3d(fct.v_n.x, fct.v_n.y, fct.v_n.z);
-            glVertex3d(fct.pts[0].x, fct.pts[0].y, fct.pts[0].z);
-            glVertex3d(fct.pts[1].x, fct.pts[1].y, fct.pts[1].z);
-            glVertex3d(fct.pts[2].x, fct.pts[2].y, fct.pts[2].z);
+            glNormal3d(fct.normal().x, fct.normal().y, fct.normal().z);
+            glVertex3d(fct[0].x, fct[0].y, fct[0].z);
+            glVertex3d(fct[1].x, fct[1].y, fct[1].z);
+            glVertex3d(fct[2].x, fct[2].y, fct[2].z);
         }
         glEnd();
     }
@@ -557,15 +557,15 @@ void GL3DView::drawBodies() {
             glBegin(GL_TRIANGLES);
             for (const auto &fct : mesh.facets) {
                 if (!m_showBottom &&
-                    fct.pts[0].z <= dBot + 1e-3 &&
-                    fct.pts[1].z <= dBot + 1e-3 &&
-                    fct.pts[2].z <= dBot + 1e-3) {
+                    fct[0].z <= dBot + 1e-3 &&
+                    fct[1].z <= dBot + 1e-3 &&
+                    fct[2].z <= dBot + 1e-3) {
                     continue;
                 }
-                glNormal3d(fct.v_n.x, fct.v_n.y, fct.v_n.z);
-                glVertex3d(fct.pts[0].x, fct.pts[0].y, fct.pts[0].z);
-                glVertex3d(fct.pts[1].x, fct.pts[1].y, fct.pts[1].z);
-                glVertex3d(fct.pts[2].x, fct.pts[2].y, fct.pts[2].z);
+                glNormal3d(fct.normal().x, fct.normal().y, fct.normal().z);
+                glVertex3d(fct[0].x, fct[0].y, fct[0].z);
+                glVertex3d(fct[1].x, fct[1].y, fct[1].z);
+                glVertex3d(fct[2].x, fct[2].y, fct[2].z);
             }
             glEnd();
         }

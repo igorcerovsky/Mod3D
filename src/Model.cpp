@@ -1076,8 +1076,8 @@ std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId, bool includeOute
 
         for (const auto &f : mesh.facets) {
             for (int k = 0; k < 3; ++k) {
-                const Point3D &pA = f.pts[k];
-                const Point3D &pB = f.pts[(k + 1) % 3];
+                const Point3D &pA = f[k];
+                const Point3D &pB = f[(k + 1) % 3];
 
                 long long qAx = quant(pA.x), qAy = quant(pA.y), qAz = quant(pA.z);
                 long long qBx = quant(pB.x), qBy = quant(pB.y), qBz = quant(pB.z);
@@ -1095,7 +1095,7 @@ std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId, bool includeOute
                 auto &info = edgeMap[key];
                 info.pt0 = startPt;
                 info.pt1 = endPt;
-                info.facetNormals.push_back(f.v_n);
+                info.facetNormals.push_back(f.normal());
             }
         }
 

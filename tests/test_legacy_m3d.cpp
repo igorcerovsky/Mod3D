@@ -237,8 +237,8 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     proj.model().facets_computation(facets);
     EXPECT_GT(facets.size(), 10u);
     for (const auto &f : facets) {
-        Point3D u = f.pts[1] - f.pts[0];
-        Point3D v = f.pts[2] - f.pts[0];
+        Point3D u = f[1] - f[0];
+        Point3D v = f[2] - f[0];
         EXPECT_GT(u.cross(v).length(), 0.0);
     }
 

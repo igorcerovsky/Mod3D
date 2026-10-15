@@ -65,7 +65,7 @@ public:
     // ========================================================================
     // Lifecycle & Rule of 5
     // ========================================================================
-    constexpr Facet3Pt() noexcept = default;
+    Facet3Pt();
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW = 0.0);
     explicit Facet3Pt(std::span<const Point3D, 3> points);
@@ -82,12 +82,12 @@ public:
     // ========================================================================
 
     // Vertex Element Access
-    [[nodiscard]] constexpr Point3D &operator[](size_t index) noexcept { return pts[index]; }
-    [[nodiscard]] constexpr const Point3D &operator[](size_t index) const noexcept { return pts[index]; }
-    [[nodiscard]] constexpr Vertices &points() noexcept { return pts; }
-    [[nodiscard]] constexpr const Vertices &points() const noexcept { return pts; }
-    [[nodiscard]] static constexpr size_t size() noexcept { return 3; }
-    [[nodiscard]] static constexpr bool empty() noexcept { return false; }
+    [[nodiscard]] Point3D &operator[](size_t index) noexcept { return pfld_.points()[index]; }
+    [[nodiscard]] const Point3D &operator[](size_t index) const noexcept { return pfld_.points()[index]; }
+    [[nodiscard]] std::vector<Point3D> &points() noexcept { return pfld_.points(); }
+    [[nodiscard]] const std::vector<Point3D> &points() const noexcept { return pfld_.points(); }
+    [[nodiscard]] size_t size() const noexcept { return pfld_.size(); }
+    [[nodiscard]] bool empty() const noexcept { return pfld_.empty(); }
 
     // Facet Attributes & Geometry
     [[nodiscard]] FacetType type() const noexcept { return nType; }
@@ -102,9 +102,12 @@ public:
 
     [[nodiscard]] double mean_elevation() const noexcept;
     [[nodiscard]] Point3D centroid() const noexcept;
-    [[nodiscard]] Point3D center() const noexcept { return (pts[0] + pts[1] + pts[2]) / 3.0; }
+    [[nodiscard]] Point3D center() const noexcept {
+        const auto &pts = pfld_.points();
+        return (pts[0] + pts[1] + pts[2]) / 3.0;
+    }
     [[nodiscard]] double area() const noexcept;
-    [[nodiscard]] const Point3D &normal() const noexcept { return v_n; }
+    [[nodiscard]] const Point3D &normal() const noexcept { return pfld_.normal(); }
 
     [[nodiscard]] bool contains_vertex(const Point3D &pt) const noexcept;
     void reverse();
@@ -121,10 +124,10 @@ public:
     [[nodiscard]] Point3D field_g(const Point3D &r) const { return pfld_.field_g(r); }
 
     // Comparisons
-    [[nodiscard]] constexpr bool operator==(const Facet3Pt &fct) const noexcept {
-        return (pts[0] == fct.pts[0] && pts[1] == fct.pts[1] && pts[2] == fct.pts[2]);
+    [[nodiscard]] bool operator==(const Facet3Pt &fct) const noexcept {
+        return pfld_ == fct.pfld_;
     }
-    [[nodiscard]] constexpr bool operator!=(const Facet3Pt &fct) const noexcept {
+    [[nodiscard]] bool operator!=(const Facet3Pt &fct) const noexcept {
         return !(*this == fct);
     }
 
@@ -193,8 +196,6 @@ public:
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};
-    Vertices pts{};
-    Point3D v_n{};
 
     FacetSide primary{1000.0};
     FacetSide opposite{0.0};

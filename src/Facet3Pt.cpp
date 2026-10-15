@@ -25,88 +25,77 @@ inline Point3D sph(const Point3D &pt, const Point3D &shf) {
 
 } // namespace
 
-Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
-    : pts{pt0, pt1, pt2}
+Facet3Pt::Facet3Pt()
+    : pfld_({Point3D{}, Point3D{}, Point3D{}})
 {
-    init();
+}
+
+Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
+{
+    init(pt0, pt1, pt2);
 }
 
 Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, double density_cw)
-    : pts{pt0, pt1, pt2}, primary{density_ccw}, opposite{density_cw}
+    : primary{density_ccw}, opposite{density_cw}
 {
-    init();
+    init(pt0, pt1, pt2);
 }
 
 Facet3Pt::Facet3Pt(std::span<const Point3D, 3> points)
-    : pts{points[0], points[1], points[2]}
 {
-    init();
+    init(points);
 }
 
 Facet3Pt::Facet3Pt(const Vertices &points)
-    : pts(points)
 {
-    init();
+    init(points);
 }
 
 void Facet3Pt::init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
 {
-    pts[0] = pt0;
-    pts[1] = pt1;
-    pts[2] = pt2;
+    const std::array<Point3D, 3> ppts{pt0, pt1, pt2};
+    pfld_.Init(std::span<const Point3D, 3>(ppts));
     init();
 }
 
 void Facet3Pt::init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, double density_cw)
 {
-    pts[0] = pt0;
-    pts[1] = pt1;
-    pts[2] = pt2;
     primary.density = density_ccw;
     opposite.density = density_cw;
-    init();
+    init(pt0, pt1, pt2);
 }
 
 void Facet3Pt::init(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double density_ccw, Point3D dens_grad_ccw)
 {
-    pts[0] = pt0;
-    pts[1] = pt1;
-    pts[2] = pt2;
     primary.density = density_ccw;
     primary.gradient = dens_grad_ccw;
-    init();
+    init(pt0, pt1, pt2);
 }
 
 void Facet3Pt::init(const Point3D *ppts)
 {
     if (ppts) {
-        pts[0] = ppts[0];
-        pts[1] = ppts[1];
-        pts[2] = ppts[2];
+        pfld_.Init(std::span<const Point3D, 3>(ppts, 3));
         init();
     }
 }
 
 void Facet3Pt::init(std::span<const Point3D, 3> ppts)
 {
-    pts[0] = ppts[0];
-    pts[1] = ppts[1];
-    pts[2] = ppts[2];
+    pfld_.Init(ppts);
     init();
 }
 
 void Facet3Pt::init(const Vertices &ppts)
 {
-    pts = ppts;
+    pfld_.Init(std::span<const Point3D, 3>(ppts));
     init();
 }
 
 void Facet3Pt::init(const std::vector<Point3D> &ppts)
 {
     if (ppts.size() >= 3) {
-        pts[0] = ppts[0];
-        pts[1] = ppts[1];
-        pts[2] = ppts[2];
+        pfld_.Init(ppts);
         init();
     }
 }
@@ -120,15 +109,8 @@ void Facet3Pt::set_opposite_density(double d_density, Point3D v_grad) noexcept
 
 void Facet3Pt::init()
 {
-    // Outward unit normal vector (for triangle in CCW order)
-    v_n = (pts[0] - pts[1]).cross(pts[1] - pts[2]);
-    v_n.normalize();
-
     primary.is_linear = primary.has_gradient();
     opposite.is_linear = opposite.has_gradient();
-
-    // Initialize modern header-only pfld facet representation
-    pfld_.Init(std::span<const Point3D, 3>(pts));
 }
 
 // Gravity field of a polygonal facet (Pohanka / Vlado) with constant density
@@ -166,19 +148,20 @@ void Facet3Pt::fld_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, double si
 double Facet3Pt::solid_angle(const Point3D *spts) const
 {
     if (!spts) return 0.0;
-    return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(spts, 3), v_n * spts[1], 3);
+    return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(spts, 3), normal() * spts[1], 3);
 }
 
 double Facet3Pt::solid_angle(std::span<const Point3D, 3> spts) const
 {
-    return pfld::Facet<double>::SolidAngle(spts, v_n * spts[1], 3);
+    return pfld::Facet<double>::SolidAngle(spts, normal() * spts[1], 3);
 }
 
 void Facet3Pt::fld_spher_vlado(const Point3D &v_r, Point3D &v_grv) const
 {
+    const auto &p = pfld_.points();
     std::array<Point3D, 3> spts;
-    for (size_t i = 0; i < 3; ++i) {
-        spts[i] = sph(pts[i], -v_r);
+    for (size_t i = 0; i < 3 && i < p.size(); ++i) {
+        spts[i] = sph(p[i], -v_r);
     }
 
     pfld::Facet<double> fctS(std::span<const Point3D>(spts.data(), 3), true);
@@ -187,9 +170,10 @@ void Facet3Pt::fld_spher_vlado(const Point3D &v_r, Point3D &v_grv) const
 
 void Facet3Pt::fld_spher_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, Point3D &v_grv) const
 {
+    const auto &p = pfld_.points();
     std::array<Point3D, 3> spts;
-    for (size_t i = 0; i < 3; ++i) {
-        spts[i] = sph(pts[i], -v_r);
+    for (size_t i = 0; i < 3 && i < p.size(); ++i) {
+        spts[i] = sph(p[i], -v_r);
     }
 
     pfld::Facet<double> fctS(std::span<const Point3D>(spts.data(), 3), true);
@@ -198,34 +182,51 @@ void Facet3Pt::fld_spher_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, Poi
 
 double Facet3Pt::mean_elevation() const noexcept
 {
-    return (pts[0].z + pts[1].z + pts[2].z) / 3.0;
+    const auto &p = pfld_.points();
+    if (p.size() < 3) return 0.0;
+    return (p[0].z + p[1].z + p[2].z) / 3.0;
 }
 
 Point3D Facet3Pt::centroid() const noexcept
 {
-    return pts[0] + pts[1] + pts[2];
+    const auto &p = pfld_.points();
+    if (p.size() < 3) return Point3D(0, 0, 0);
+    return p[0] + p[1] + p[2];
 }
 
 double Facet3Pt::area() const noexcept
 {
-    return 0.5 * (pts[1] - pts[0]).cross(pts[2] - pts[0]).norm();
+    const auto &p = pfld_.points();
+    if (p.size() < 3) return 0.0;
+    return 0.5 * (p[1] - p[0]).cross(p[2] - p[0]).norm();
 }
 
 bool Facet3Pt::contains_vertex(const Point3D &pt) const noexcept
 {
-    return (pts[0] == pt || pts[1] == pt || pts[2] == pt);
+    const auto &p = pfld_.points();
+    for (const auto &v : p) {
+        if (v == pt) return true;
+    }
+    return false;
 }
 
 bool Facet3Pt::is_opposite(const Facet3Pt &fct) const noexcept
 {
-    Point3D c1 = pts[0] + pts[2] + pts[1];
-    Point3D c2 = fct.pts[0] + fct.pts[1] + fct.pts[2];
+    const auto &p1 = pfld_.points();
+    const auto &p2 = fct.pfld_.points();
+    if (p1.size() < 3 || p2.size() < 3) return false;
+    Point3D c1 = p1[0] + p1[2] + p1[1];
+    Point3D c2 = p2[0] + p2[1] + p2[2];
     return (c1 == c2);
 }
 
 void Facet3Pt::reverse()
 {
-    std::swap(pts[0], pts[2]);
+    auto &p = pfld_.points();
+    if (p.size() >= 3) {
+        std::swap(p[0], p[2]);
+        pfld_.Init(p);
+    }
     std::swap(primary, opposite);
     init();
 }
