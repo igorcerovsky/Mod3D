@@ -11,6 +11,7 @@
 #include <concepts>
 #include <initializer_list>
 #include <utility>
+#include <cstdint>
 
 #include "point.hpp"
 
@@ -219,8 +220,8 @@ public:
 		else return _pts.empty();
 	}
 	[[nodiscard]] bool is_initialized() const noexcept { return _initialized; }
-	[[nodiscard]] int id() const noexcept { return _id; }
-	void set_id(int id) noexcept { _id = id; }
+	[[nodiscard]] int64_t id() const noexcept { return _id; }
+	void set_id(int64_t id) noexcept { _id = id; }
 
 	// --- Field Computation: Constant Density (Vlado / Nagy-Okabe method) ---
 	/**
@@ -332,9 +333,9 @@ private:
 	}
 
 protected:
-	bool   _initialized{false}; ///< True if normal, edge vectors, and lengths have been initialized
-	int    _id{-1};             ///< Facet identifier
-	ptvec  _pts{};              ///< Polygon vertices (counter-clockwise orientation)
+	bool    _initialized{false}; ///< True if normal, edge vectors, and lengths have been initialized
+	int64_t _id{-1};             ///< 64-bit facet identifier
+	ptvec   _pts{};              ///< Polygon vertices (counter-clockwise orientation)
 	ptvec  _L{};                ///< Edge vectors: L[i] = pts[i+1] - pts[i]
 	ptvec  _mi{};               ///< Unit edge vectors: mi[i] = unit(L[i])
 	ptvec  _ni{};               ///< In-plane outward unit normals: ni[i] = mi[i] x n
