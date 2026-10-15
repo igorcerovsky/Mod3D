@@ -25,10 +25,6 @@ inline Point3D sph(const Point3D &pt, const Point3D &shf) {
 
 } // namespace
 
-Facet3Pt::Facet3Pt()
-    : pfld_({Point3D{}, Point3D{}, Point3D{}})
-{
-}
 
 Facet3Pt::Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2)
 {
@@ -148,12 +144,12 @@ void Facet3Pt::fld_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, double si
 double Facet3Pt::solid_angle(const Point3D *spts) const
 {
     if (!spts) return 0.0;
-    return pfld::Facet<double>::SolidAngle(std::span<const Point3D>(spts, 3), normal() * spts[1], 3);
+    return pfld::Facet<double, 3>::SolidAngle(std::span<const Point3D>(spts, 3), normal() * spts[1], 3);
 }
 
 double Facet3Pt::solid_angle(std::span<const Point3D, 3> spts) const
 {
-    return pfld::Facet<double>::SolidAngle(spts, normal() * spts[1], 3);
+    return pfld::Facet<double, 3>::SolidAngle(spts, normal() * spts[1], 3);
 }
 
 void Facet3Pt::fld_spher_vlado(const Point3D &v_r, Point3D &v_grv) const
@@ -164,7 +160,7 @@ void Facet3Pt::fld_spher_vlado(const Point3D &v_r, Point3D &v_grv) const
         spts[i] = sph(p[i], -v_r);
     }
 
-    pfld::Facet<double> fctS(std::span<const Point3D>(spts.data(), 3), true);
+    pfld::Facet<double, 3> fctS(spts, true);
     fctS.Fld_G(Point3D(0, 0, 0), v_grv);
 }
 
@@ -176,7 +172,7 @@ void Facet3Pt::fld_spher_gs(const Point3D &v_r, Point3D v_m, Point3D &v_mag, Poi
         spts[i] = sph(p[i], -v_r);
     }
 
-    pfld::Facet<double> fctS(std::span<const Point3D>(spts.data(), 3), true);
+    pfld::Facet<double, 3> fctS(spts, true);
     fctS.FldGS(Point3D(0, 0, 0), v_m, v_mag, v_grv);
 }
 

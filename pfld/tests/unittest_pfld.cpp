@@ -447,4 +447,90 @@ TEST(PfldTest, Test_Facet_Parallell)
 	}
 }
 
+TEST(PfldTest, Test_Facet_FixedArray_N3)
+{
+	using DynFacet = pfld::Facet<double, 0>;
+	using FixedFacet = pfld::Facet<double, 3>;
+	using point = pfld::Point3D<double>;
+
+	static_assert(FixedFacet::is_fixed, "FixedFacet must report is_fixed = true");
+	static_assert(FixedFacet::fixed_size == 3, "FixedFacet fixed_size must be 3");
+	static_assert(!DynFacet::is_fixed, "DynFacet must report is_fixed = false");
+	static_assert(!std::is_polymorphic_v<FixedFacet>, "FixedFacet must not be polymorphic");
+
+	point p0(0.0, 0.0, 100.0);
+	point p1(50.0, 0.0, 100.0);
+	point p2(0.0, 50.0, 100.0);
+
+	// Construct dynamic facet
+	DynFacet fDyn({p0, p1, p2}, true);
+	EXPECT_EQ(fDyn.size(), 3u);
+	EXPECT_FALSE(fDyn.empty());
+
+	// Construct fixed facet using (p0, p1, p2) constructor
+	FixedFacet fFix(p0, p1, p2, true);
+	EXPECT_EQ(fFix.size(), 3u);
+	EXPECT_FALSE(fFix.empty());
+
+	// Verify points and normals match exactly
+	EXPECT_DOUBLE_EQ(fFix[0].x, fDyn[0].x);
+	EXPECT_DOUBLE_EQ(fFix[1].y, fDyn[1].y);
+	EXPECT_DOUBLE_EQ(fFix[2].z, fDyn[2].z);
+	EXPECT_DOUBLE_EQ(fFix.normal().x, fDyn.normal().x);
+	EXPECT_DOUBLE_EQ(fFix.normal().y, fDyn.normal().y);
+	EXPECT_DOUBLE_EQ(fFix.normal().z, fDyn.normal().z);
+
+	// Cross-type comparison operator
+	EXPECT_TRUE(fFix == fDyn);
+
+	// Evaluate forward gravity field at multiple observation points
+	std::vector<point> obsPoints = {
+		point(20.0, 20.0, 50.0),
+		point(0.0, 0.0, 0.0),
+		point(100.0, 100.0, 200.0),
+		point(-50.0, 25.0, 150.0)
+	};
+
+	for (const auto& obs : obsPoints) {
+		// Fld_G
+		point gDyn(0, 0, 0), gFix(0, 0, 0);
+		fDyn.Fld_G(obs, gDyn);
+		fFix.Fld_G(obs, gFix);
+		EXPECT_DOUBLE_EQ(gFix.x, gDyn.x);
+		EXPECT_DOUBLE_EQ(gFix.y, gDyn.y);
+		EXPECT_DOUBLE_EQ(gFix.z, gDyn.z);
+
+		// Fld_Gz
+		double gzDyn = 0.0, gzFix = 0.0;
+		fDyn.Fld_Gz(obs, gzDyn);
+		fFix.Fld_Gz(obs, gzFix);
+		EXPECT_DOUBLE_EQ(gzFix, gzDyn);
+
+		// FldGS (Guptasarma-Singh magnetic and gravity)
+		point M(10.0, 20.0, 30.0);
+		point magDyn(0, 0, 0), magFix(0, 0, 0);
+		point grvDyn(0, 0, 0), grvFix(0, 0, 0);
+		fDyn.FldGS(obs, M, magDyn, grvDyn);
+		fFix.FldGS(obs, M, magFix, grvFix);
+		EXPECT_DOUBLE_EQ(magFix.x, magDyn.x);
+		EXPECT_DOUBLE_EQ(magFix.y, magDyn.y);
+		EXPECT_DOUBLE_EQ(magFix.z, magDyn.z);
+		EXPECT_DOUBLE_EQ(grvFix.x, grvDyn.x);
+		EXPECT_DOUBLE_EQ(grvFix.y, grvDyn.y);
+		EXPECT_DOUBLE_EQ(grvFix.z, grvDyn.z);
+
+		// FldVladoGrd (gravity gradient tensor)
+		double gxxDyn, gyyDyn, gzzDyn, gxyDyn, gxzDyn, gyzDyn;
+		double gxxFix, gyyFix, gzzFix, gxyFix, gxzFix, gyzFix;
+		fDyn.FldVladoGrd(obs, 2670.0, gxxDyn, gyyDyn, gzzDyn, gxyDyn, gxzDyn, gyzDyn, 0.0, 2670.0);
+		fFix.FldVladoGrd(obs, 2670.0, gxxFix, gyyFix, gzzFix, gxyFix, gxzFix, gyzFix, 0.0, 2670.0);
+		EXPECT_DOUBLE_EQ(gxxFix, gxxDyn);
+		EXPECT_DOUBLE_EQ(gyyFix, gyyDyn);
+		EXPECT_DOUBLE_EQ(gzzFix, gzzDyn);
+		EXPECT_DOUBLE_EQ(gxyFix, gxyDyn);
+		EXPECT_DOUBLE_EQ(gxzFix, gxzDyn);
+		EXPECT_DOUBLE_EQ(gyzFix, gyzDyn);
+	}
+}
+
 } // namespace

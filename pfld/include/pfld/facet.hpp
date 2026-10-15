@@ -53,18 +53,22 @@ template <typename T>
  *  - Guptasarma & Singh (1999) solid angle and edge-integral method for gravity and magnetic fields.
  *
  * @tparam T Floating-point precision (default: double).
+ * @tparam N Fixed vertex count (0 = dynamic std::vector storage, >0 = fixed std::array storage).
  */
-template <std::floating_point T = double>
+template <std::floating_point T = double, size_t N = 0>
 class Facet
 {
 public:
+	static constexpr bool is_fixed = (N > 0);
+	static constexpr size_t fixed_size = N;
+
 	enum class FacetType { normal, opposite, oposite = opposite };
 
 	using value_type = T;
 	using point = Point3D<T>;
-	using valvec = std::vector<T>;
-	using ptvec = std::vector<point>;
-	using facetvec = std::vector<Facet<T>>;
+	using valvec = std::conditional_t<is_fixed, std::array<T, N>, std::vector<T>>;
+	using ptvec  = std::conditional_t<is_fixed, std::array<point, N>, std::vector<point>>;
+	using facetvec = std::vector<Facet<T, N>>;
 
 #ifdef FIELD_ATOMIC_DOUBLE
 	using double_pfld = std::atomic<T>;
@@ -73,7 +77,11 @@ public:
 #endif
 
 	// --- Constructors and Special Member Functions (Rule of Zero / Five) ---
-	constexpr Facet() noexcept = default;
+	constexpr Facet() noexcept {
+		if constexpr (is_fixed) {
+			_sz = N;
+		}
+	}
 	~Facet() = default;
 
 	Facet(const Facet&) = default;
@@ -86,37 +94,57 @@ public:
 	 * @param pts Point sequence defining the polygon perimeter.
 	 * @param auto_init If true, automatically computes normal and edge geometry.
 	 */
-	explicit Facet(const ptvec& pts, bool auto_init = false) : _sz(pts.size()), _pts(pts) {
+	explicit Facet(const std::vector<point>& pts, bool auto_init = false) requires (!is_fixed)
+		: _sz(pts.size()), _pts(pts) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
-	explicit Facet(ptvec&& pts, bool auto_init = false) noexcept : _sz(pts.size()), _pts(std::move(pts)) {
+	explicit Facet(std::vector<point>&& pts, bool auto_init = false) noexcept requires (!is_fixed)
+		: _sz(pts.size()), _pts(std::move(pts)) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
-	explicit Facet(std::span<const point> pts, bool auto_init = false) : _sz(pts.size()), _pts(pts.begin(), pts.end()) {
+	explicit Facet(const std::array<point, N>& pts, bool auto_init = false) requires (is_fixed)
+		: _sz(N), _pts(pts) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
-	Facet(std::initializer_list<point> pts, bool auto_init = false) : _sz(pts.size()), _pts(pts) {
+	explicit Facet(std::span<const point> pts, bool auto_init = false) {
+		InitPoints(pts);
+		if (auto_init) {
+			Init();
+		}
+	}
+
+	Facet(std::initializer_list<point> pts, bool auto_init = false)
+		: Facet(std::span<const point>(pts.begin(), pts.size()), auto_init) {}
+
+	Facet(const point& p0, const point& p1, const point& p2, bool auto_init = false) requires (N == 3)
+		: _sz(3), _pts{p0, p1, p2} {
 		if (auto_init) {
 			Init();
 		}
 	}
 
 	// --- Comparisons ---
-	[[nodiscard]] bool operator==(const Facet& other) const noexcept {
-		return _pts == other._pts && _n == other._n;
+	template <size_t M>
+	[[nodiscard]] bool operator==(const Facet<T, M>& other) const noexcept {
+		if (size() != other.size() || _n != other.normal()) return false;
+		for (size_t i = 0; i < size(); ++i) {
+			if (_pts[i] != other[i]) return false;
+		}
+		return true;
 	}
 
-	[[nodiscard]] bool is_parallel(const Facet& other) const noexcept {
-		return _n == other._n;
+	template <size_t M>
+	[[nodiscard]] bool is_parallel(const Facet<T, M>& other) const noexcept {
+		return _n == other.normal();
 	}
 
 	// --- Functor Call Operators ---
@@ -138,20 +166,26 @@ public:
 	 */
 	void Init();
 
+	void Init(std::span<const point> pts) {
+		InitPoints(pts);
+		_initialized = false;
+		Init();
+	}
+
 	void Init(const ptvec& pts) {
 		_pts = pts;
+		if constexpr (is_fixed) {
+			_sz = N;
+		} else {
+			_sz = _pts.size();
+		}
 		_initialized = false;
 		Init();
 	}
 
-	void Init(ptvec&& pts) {
+	void Init(ptvec&& pts) requires (!is_fixed) {
 		_pts = std::move(pts);
-		_initialized = false;
-		Init();
-	}
-
-	void Init(std::span<const point> pts) {
-		_pts.assign(pts.begin(), pts.end());
+		_sz = _pts.size();
 		_initialized = false;
 		Init();
 	}
@@ -162,15 +196,40 @@ public:
 		Init(pts);
 	}
 
+	void Init(const point& p0, const point& p1, const point& p2) requires (N == 3 || N == 0) {
+		if constexpr (N == 3) {
+			_pts[0] = p0;
+			_pts[1] = p1;
+			_pts[2] = p2;
+			_sz = 3;
+		} else {
+			_pts = {p0, p1, p2};
+			_sz = 3;
+		}
+		_initialized = false;
+		Init();
+	}
+
 	// --- Accessors ---
 	[[nodiscard]] ptvec& Data() noexcept { return _pts; }
 	[[nodiscard]] const ptvec& Data() const noexcept { return _pts; }
 	[[nodiscard]] ptvec& points() noexcept { return _pts; }
 	[[nodiscard]] const ptvec& points() const noexcept { return _pts; }
+	[[nodiscard]] std::span<const point> span_points() const noexcept { return _pts; }
+	[[nodiscard]] std::span<point> span_points() noexcept { return _pts; }
+
+	[[nodiscard]] point& operator[](size_t index) noexcept { return _pts[index]; }
+	[[nodiscard]] const point& operator[](size_t index) const noexcept { return _pts[index]; }
 
 	[[nodiscard]] const point& normal() const noexcept { return _n; }
-	[[nodiscard]] size_t size() const noexcept { return _pts.size(); }
-	[[nodiscard]] bool empty() const noexcept { return _pts.empty(); }
+	[[nodiscard]] size_t size() const noexcept {
+		if constexpr (is_fixed) return N;
+		else return _pts.size();
+	}
+	[[nodiscard]] bool empty() const noexcept {
+		if constexpr (is_fixed) return N == 0;
+		else return _pts.empty();
+	}
 	[[nodiscard]] bool is_initialized() const noexcept { return _initialized; }
 	[[nodiscard]] int id() const noexcept { return _id; }
 	void set_id(int id) noexcept { _id = id; }
@@ -241,7 +300,7 @@ public:
 	 */
 	[[nodiscard]] T SolidAngle(std::span<const point> pts) const {
 		if (pts.size() < 2) return T{0};
-		return SolidAngle(pts, _n * pts[1], _sz);
+		return SolidAngle(pts, _n * pts[1], pts.size());
 	}
 
 	[[nodiscard]] T SolidAngle(const ptvec& pts) const {
@@ -272,6 +331,20 @@ public:
 	void FldGS(const point& r, point& f) const;
 	[[nodiscard]] point FldGS(const point& r) const;
 
+private:
+	void InitPoints(std::span<const point> pts) {
+		if constexpr (is_fixed) {
+			_sz = N;
+			const size_t count = std::min(pts.size(), N);
+			for (size_t i = 0; i < count; ++i) {
+				_pts[i] = pts[i];
+			}
+		} else {
+			_pts.assign(pts.begin(), pts.end());
+			_sz = _pts.size();
+		}
+	}
+
 protected:
 	bool   _initialized{false}; ///< True if normal, edge vectors, and lengths have been initialized
 	size_t _sz{0};              ///< Number of vertices
@@ -286,7 +359,7 @@ protected:
 
 
 // Default double-precision aliases
-using facet = Facet<double>;
+using facet = Facet<double, 0>;
 using facet_vec = std::vector<facet>;
 using facetvec = facet_vec;
 using valvec = std::vector<double>;
@@ -298,15 +371,24 @@ using double_pfld = std::atomic<double>;
 using double_pfld = double;
 #endif
 
+// Fixed-size aliases
+template <size_t N>
+using FixedFacet = Facet<double, N>;
+using TriangleFacet = Facet<double, 3>;
+
 // --- Template Implementation ---
 
-template <std::floating_point T>
-void Facet<T>::Init()
+template <std::floating_point T, size_t N>
+void Facet<T, N>::Init()
 {
 	if (_initialized) {
 		return;
 	}
-	_sz = _pts.size();
+	if constexpr (is_fixed) {
+		_sz = N;
+	} else {
+		_sz = _pts.size();
+	}
 	if (_sz < 3) {
 		_initialized = false;
 		return;
@@ -315,13 +397,16 @@ void Facet<T>::Init()
 	_n = (_pts[0] - _pts[1]).cross(_pts[1] - _pts[2]);
 	_n.Unit();
 
-	_mi.resize(_sz);
-	_ni.resize(_sz);
-	_L.resize(_sz);
-	_len.resize(_sz);
+	if constexpr (!is_fixed) {
+		_mi.resize(_sz);
+		_ni.resize(_sz);
+		_L.resize(_sz);
+		_len.resize(_sz);
+	}
 
-	for (size_t i = 0; i < _sz; ++i) {
-		const size_t next = (i + 1 == _sz) ? 0 : i + 1;
+	const size_t sz = is_fixed ? N : _sz;
+	for (size_t i = 0; i < sz; ++i) {
+		const size_t next = (i + 1 == sz) ? 0 : i + 1;
 		point edge = _pts[next] - _pts[i];
 		_L[i] = edge;
 		_len[i] = edge.norm();
@@ -333,13 +418,14 @@ void Facet<T>::Init()
 	_initialized = true;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldVlado(const point& r, T& f) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldVlado(const point& r, T& f) const
 {
-	if (_sz < 3) return;
+	const size_t sz = is_fixed ? N : _sz;
+	if (sz < 3) return;
 	const T z = std::abs(_n * (_pts[0] - r)) + constants::eps<T>;
 
-	for (size_t i = 0; i < _sz; ++i) {
+	for (size_t i = 0; i < sz; ++i) {
 		const point tmp = _pts[i] - r;
 		const T u = _mi[i] * tmp;
 		const T w = _ni[i] * tmp;
@@ -362,54 +448,55 @@ void Facet<T>::FldVlado(const point& r, T& f) const
 	f *= constants::G<T>;
 }
 
-template <std::floating_point T>
-T Facet<T>::FldVlado(const point& r) const
+template <std::floating_point T, size_t N>
+T Facet<T, N>::FldVlado(const point& r) const
 {
 	T f{0};
 	FldVlado(r, f);
 	return f;
 }
 
-template <std::floating_point T>
-void Facet<T>::Fld_G(const point& r, point& grv) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::Fld_G(const point& r, point& grv) const
 {
 	grv += _n * FldVlado(r);
 }
 
-template <std::floating_point T>
-Point3D<T> Facet<T>::field_g(const point& r) const
+template <std::floating_point T, size_t N>
+Point3D<T> Facet<T, N>::field_g(const point& r) const
 {
-	return _n * FldVlado(r);
+	point grv{};
+	Fld_G(r, grv);
+	return grv;
 }
 
-template <std::floating_point T>
-void Facet<T>::Fld_Gz(const point& r, double_pfld& g) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::Fld_Gz(const point& r, double_pfld& g) const
 {
-	const T val = FldVlado(r) * _n.z;
-	if constexpr (std::is_same_v<double_pfld, std::atomic<T>>) {
-		g.fetch_add(val, std::memory_order_relaxed);
-	} else {
-		g += val;
-	}
+	const T f = FldVlado(r);
+	g += _n.z * f;
 }
 
-template <std::floating_point T>
-T Facet<T>::field_gz(const point& r) const
+template <std::floating_point T, size_t N>
+T Facet<T, N>::field_gz(const point& r) const
 {
-	return FldVlado(r) * _n.z;
+	double_pfld gz{0};
+	Fld_Gz(r, gz);
+	return static_cast<T>(gz);
 }
 
-template <std::floating_point T>
-void Facet<T>::Fld_Gz(const point& r, const point& ro, const T& ro0, T& gz) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::Fld_Gz(const point& r, const point& ro, const T& ro0, T& gz) const
 {
-	if (_sz < 3) return;
+	const size_t sz = is_fixed ? N : _sz;
+	if (sz < 3) return;
 	T f{0};
 	const T ro_r = ro0 + ro * r;
 	const T Z = _n * (_pts[0] - r);
 	const T z = std::abs(Z) + constants::eps<T>;
 	const T ronz = ro * _n * Z;
 
-	for (size_t i = 0; i < _sz; ++i) {
+	for (size_t i = 0; i < sz; ++i) {
 		const point ptTmp1 = _pts[i] - r;
 		const T u = _mi[i] * ptTmp1;
 		const T v = u + _len[i];
@@ -437,25 +524,26 @@ void Facet<T>::Fld_Gz(const point& r, const point& ro, const T& ro0, T& gz) cons
 	gz += f;
 }
 
-template <std::floating_point T>
-T Facet<T>::field_gz(const point& r, const point& ro, const T& ro0) const
+template <std::floating_point T, size_t N>
+T Facet<T, N>::field_gz(const point& r, const point& ro, const T& ro0) const
 {
 	T gz{0};
 	Fld_Gz(r, ro, ro0, gz);
 	return gz;
 }
 
-template <std::floating_point T>
-void Facet<T>::Fld_G(const point& r, const point& ro, const T& ro0, point& grv) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::Fld_G(const point& r, const point& ro, const T& ro0, point& grv) const
 {
-	if (_sz < 3) return;
+	const size_t sz = is_fixed ? N : _sz;
+	if (sz < 3) return;
 	point f{};
 	const T ro_r = ro0 + ro * r;
 	const T Z = _n * (_pts[0] - r);
 	const T z = std::abs(Z) + constants::eps<T>;
 	const T ronz = ro * _n * Z;
 
-	for (size_t i = 0; i < _sz; ++i) {
+	for (size_t i = 0; i < sz; ++i) {
 		const point ptTmp1 = _pts[i] - r;
 		const T u = _mi[i] * ptTmp1;
 		const T v = u + _len[i];
@@ -483,16 +571,16 @@ void Facet<T>::Fld_G(const point& r, const point& ro, const T& ro0, point& grv) 
 	grv += f;
 }
 
-template <std::floating_point T>
-Point3D<T> Facet<T>::field_g(const point& r, const point& ro, const T& ro0) const
+template <std::floating_point T, size_t N>
+Point3D<T> Facet<T, N>::field_g(const point& r, const point& ro, const T& ro0) const
 {
 	point grv{};
 	Fld_G(r, ro, ro0, grv);
 	return grv;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldGS(const point& r, const point& M, point& mag, point& grv) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldGS(const point& r, const point& M, point& mag, point& grv) const
 {
 	const point f = FldGS(r);
 	const T s = M * _n;
@@ -502,61 +590,62 @@ void Facet<T>::FldGS(const point& r, const point& M, point& mag, point& grv) con
 	grv += f * d * constants::G<T>;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldGS_M(const point& r, const point& M, point& mag) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldGS_M(const point& r, const point& M, point& mag) const
 {
 	const point f = FldGS(r);
 	mag += f * (M * _n);
 }
 
-template <std::floating_point T>
-Point3D<T> Facet<T>::field_gs_m(const point& r, const point& M) const
+template <std::floating_point T, size_t N>
+Point3D<T> Facet<T, N>::field_gs_m(const point& r, const point& M) const
 {
 	point mag{};
 	FldGS_M(r, M, mag);
 	return mag;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldGS_G(const point& r, point& grv) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldGS_G(const point& r, point& grv) const
 {
 	const point f = FldGS(r);
 	grv += f * ((_pts[0] - r) * _n) * constants::G<T>;
 }
 
-template <std::floating_point T>
-Point3D<T> Facet<T>::field_gs_g(const point& r) const
+template <std::floating_point T, size_t N>
+Point3D<T> Facet<T, N>::field_gs_g(const point& r) const
 {
 	point grv{};
 	FldGS_G(r, grv);
 	return grv;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldGS_Gz(const point& r, T& gz) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldGS_Gz(const point& r, T& gz) const
 {
 	const point f = FldGS(r);
 	gz += f.z * ((_pts[0] - r) * _n) * constants::G<T>;
 }
 
-template <std::floating_point T>
-T Facet<T>::field_gs_gz(const point& r) const
+template <std::floating_point T, size_t N>
+T Facet<T, N>::field_gs_gz(const point& r) const
 {
 	T gz{0};
 	FldGS_Gz(r, gz);
 	return gz;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldGS(const point& r, point& f) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldGS(const point& r, point& f) const
 {
 	f = FldGS(r);
 }
 
-template <std::floating_point T>
-Point3D<T> Facet<T>::FldGS(const point& r) const
+template <std::floating_point T, size_t N>
+Point3D<T> Facet<T, N>::FldGS(const point& r) const
 {
-	if (_sz < 3) {
+	const size_t sz = is_fixed ? N : _sz;
+	if (sz < 3) {
 		return point{};
 	}
 
@@ -565,23 +654,23 @@ Point3D<T> Facet<T>::FldGS(const point& r) const
 	std::vector<point> heap_spts;
 	std::span<const point> spts;
 
-	if (_sz <= kStackLimit) {
-		for (size_t i = 0; i < _sz; ++i) {
+	if (sz <= kStackLimit) {
+		for (size_t i = 0; i < sz; ++i) {
 			stack_spts[i] = _pts[i] - r;
 		}
-		spts = std::span<const point>(stack_spts.data(), _sz);
+		spts = std::span<const point>(stack_spts.data(), sz);
 	} else {
-		heap_spts.resize(_sz);
-		for (size_t i = 0; i < _sz; ++i) {
+		heap_spts.resize(sz);
+		for (size_t i = 0; i < sz; ++i) {
 			heap_spts[i] = _pts[i] - r;
 		}
-		spts = std::span<const point>(heap_spts.data(), _sz);
+		spts = std::span<const point>(heap_spts.data(), sz);
 	}
 
 	T P{0}, Q{0}, R{0};
-	const T dOmega = SolidAngle(spts, _n * spts[1], _sz);
+	const T dOmega = SolidAngle(spts, _n * spts[1], sz);
 
-	for (size_t i = 0; i < _sz; ++i) {
+	for (size_t i = 0; i < sz; ++i) {
 		const T r_len = spts[i].norm();
 		const T b = static_cast<T>(2.0) * (spts[i] * _L[i]);
 		const T two_len = static_cast<T>(2.0) * _len[i];
@@ -609,8 +698,8 @@ Point3D<T> Facet<T>::FldGS(const point& r) const
 	};
 }
 
-template <std::floating_point T>
-T Facet<T>::SolidAngle(std::span<const point> pts, const T inOut, const size_t sz)
+template <std::floating_point T, size_t N>
+T Facet<T, N>::SolidAngle(std::span<const point> pts, const T inOut, const size_t sz)
 {
 	if (inOut == T{0} || sz < 3) {
 		return T{0};
@@ -660,20 +749,21 @@ T Facet<T>::SolidAngle(std::span<const point> pts, const T inOut, const size_t s
 	return Omega;
 }
 
-template <std::floating_point T>
-void Facet<T>::FldVladoGrd(const point& r, T refDensity,
-                           T& gxx, T& gyy, T& gzz,
-                           T& gxy, T& gxz, T& gyz,
-                           T densityOpos, T density) const
+template <std::floating_point T, size_t N>
+void Facet<T, N>::FldVladoGrd(const point& r, T refDensity,
+                              T& gxx, T& gyy, T& gzz,
+                              T& gxy, T& gxz, T& gyz,
+                              T densityOpos, T density) const
 {
-	if (_sz < 3) return;
+	const size_t sz = is_fixed ? N : _sz;
+	if (sz < 3) return;
 	const point* v_a = &_pts[0];
 	const T Z = _n * (*v_a - r);
 	const T z = std::abs(Z);
 	const T e = sign(Z);
 
 	point tmpFldGrd{0, 0, 0};
-	for (size_t i = 0; i < _sz; ++i) {
+	for (size_t i = 0; i < sz; ++i) {
 		const point tmp = _pts[i] - r;
 		const T u = _mi[i] * tmp;
 		const T v = u + _len[i];

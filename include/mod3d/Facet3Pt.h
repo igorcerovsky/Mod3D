@@ -65,7 +65,7 @@ public:
     // ========================================================================
     // Lifecycle & Rule of 5
     // ========================================================================
-    Facet3Pt();
+    constexpr Facet3Pt() noexcept = default;
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2);
     Facet3Pt(const Point3D &pt0, const Point3D &pt1, const Point3D &pt2, double densityCCW, double densityCW = 0.0);
     explicit Facet3Pt(std::span<const Point3D, 3> points);
@@ -82,12 +82,12 @@ public:
     // ========================================================================
 
     // Vertex Element Access
-    [[nodiscard]] Point3D &operator[](size_t index) noexcept { return pfld_.points()[index]; }
-    [[nodiscard]] const Point3D &operator[](size_t index) const noexcept { return pfld_.points()[index]; }
-    [[nodiscard]] std::vector<Point3D> &points() noexcept { return pfld_.points(); }
-    [[nodiscard]] const std::vector<Point3D> &points() const noexcept { return pfld_.points(); }
-    [[nodiscard]] size_t size() const noexcept { return pfld_.size(); }
-    [[nodiscard]] bool empty() const noexcept { return pfld_.empty(); }
+    [[nodiscard]] Point3D &operator[](size_t index) noexcept { return pfld_[index]; }
+    [[nodiscard]] const Point3D &operator[](size_t index) const noexcept { return pfld_[index]; }
+    [[nodiscard]] Vertices &points() noexcept { return pfld_.points(); }
+    [[nodiscard]] const Vertices &points() const noexcept { return pfld_.points(); }
+    [[nodiscard]] static constexpr size_t size() noexcept { return 3; }
+    [[nodiscard]] static constexpr bool empty() noexcept { return false; }
 
     // Facet Attributes & Geometry
     [[nodiscard]] FacetType type() const noexcept { return nType; }
@@ -116,10 +116,10 @@ public:
     [[nodiscard]] double solid_angle(const Point3D *spts) const;
 
     // Modern pfld Integration
-    [[nodiscard]] const pfld::Facet<double> &pfld_facet() const noexcept { return pfld_; }
-    [[nodiscard]] pfld::Facet<double> &pfld_facet() noexcept { return pfld_; }
-    operator const pfld::Facet<double> &() const noexcept { return pfld_; }
-    operator pfld::Facet<double> &() noexcept { return pfld_; }
+    [[nodiscard]] const pfld::Facet<double, 3> &pfld_facet() const noexcept { return pfld_; }
+    [[nodiscard]] pfld::Facet<double, 3> &pfld_facet() noexcept { return pfld_; }
+    operator const pfld::Facet<double, 3> &() const noexcept { return pfld_; }
+    operator pfld::Facet<double, 3> &() noexcept { return pfld_; }
     [[nodiscard]] double field_gz(const Point3D &r) const { return pfld_.field_gz(r); }
     [[nodiscard]] Point3D field_g(const Point3D &r) const { return pfld_.field_g(r); }
 
@@ -203,7 +203,7 @@ public:
     double dSign{1.0}; // +1 to add, -1 to subtract (delta updating)
 
     // Modern header-only pfld facet representation
-    pfld::Facet<double> pfld_;
+    pfld::Facet<double, 3> pfld_;
 };
 
 static_assert(!std::is_polymorphic_v<FacetSide>, "FacetSide must not be polymorphic");
