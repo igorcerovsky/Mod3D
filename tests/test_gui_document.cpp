@@ -239,7 +239,7 @@ TEST_F(GuiDocumentTest, RealtimeModeledFieldUpdateOnProfileVertexMove) {
     doc.copyBodyToNextProfile(bodyId); // Copy to profile 3 (row 4)
     auto *b = doc.model().getBody(bodyId);
     ASSERT_NE(b, nullptr);
-    const_cast<mod3d::Body*>(b)->SetDensity(3200.0);
+    const_cast<mod3d::Body*>(b)->set_density(3200.0);
 
     // Initial forward computation
     doc.computeAll();
@@ -943,7 +943,7 @@ TEST_F(GuiDocumentTest, MagneticFieldComputedOnSelectionAndUpdatesRealTime) {
     // Enable real-time compute, modify vertex and verify modeled magnetic field updates
     doc.setRealTimeCompute(true);
     doc.setActiveField(mod3d::FieldComponent::DELTA_T);
-    int bodyId = doc.model().getBodies().front()->GetID();
+    int bodyId = doc.model().getBodies().front()->id();
     int foundR = -1, foundC = -1, bIdx = -1;
     for (int r = 1; r < doc.model().getRows() - 1 && foundR < 0; ++r) {
         for (int c = 1; c < doc.model().getCols() - 1; ++c) {
@@ -984,10 +984,10 @@ TEST_F(GuiDocumentTest, MapViewColorScaleLegendAndBodyContourProjection) {
     ASSERT_NE(b1, nullptr);
     ASSERT_NE(b2, nullptr);
 
-    EXPECT_EQ(b0->GetName(), "Body");
-    EXPECT_EQ(b1->GetName(), "Wings");
-    EXPECT_EQ(b2->GetName(), "... and I feel fine");
-    EXPECT_FALSE(b0->IsFilled());
+    EXPECT_EQ(b0->name(), "Body");
+    EXPECT_EQ(b1->name(), "Wings");
+    EXPECT_EQ(b2->name(), "... and I feel fine");
+    EXPECT_FALSE(b0->is_filled());
 
     // 2. Verify 2D body boundary contours exist
     const auto &boundaries = doc.model().getAllBodyBoundaries();
@@ -1134,8 +1134,8 @@ TEST_F(GuiDocumentTest, GL3DViewFacetedBodiesAndCameraControls) {
 
     auto *b = doc.createNewBody();
     ASSERT_NE(b, nullptr);
-    b->SetName("SaltDome");
-    int bId = b->GetID();
+    b->set_name("SaltDome");
+    int bId = b->id();
 
     for (int r = 1; r <= 3; ++r) {
         for (int c = 1; c <= 3; ++c) {

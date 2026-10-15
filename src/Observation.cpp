@@ -273,8 +273,8 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
 
     bool hasMagnetics = false;
     for (const auto &fct : facets) {
-        if ((fct.pBody && fct.pBody->IsActive() && !fct.pBody->GetMagnetizationVector().IsZero()) ||
-            (fct.pBodyOpos && fct.pBodyOpos->IsActive() && !fct.pBodyOpos->GetMagnetizationVector().IsZero())) {
+        if ((fct.pBody && fct.pBody->is_active() && !fct.pBody->magnetization_vector().is_zero()) ||
+            (fct.pBodyOpos && fct.pBodyOpos->is_active() && !fct.pBodyOpos->magnetization_vector().is_zero())) {
             hasMagnetics = true;
             break;
         }
@@ -321,11 +321,11 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
 
                 if (validMag) {
                     Point3D fMag(0.0, 0.0, 0.0);
-                    if (fct.pBody && fct.pBody->IsActive() && !fct.pBody->GetMagnetizationVector().IsZero()) {
-                        fct.FldGS(rMag, fct.pBody->GetMagnetizationVector(), fMag, 1.0);
+                    if (fct.pBody && fct.pBody->is_active() && !fct.pBody->magnetization_vector().is_zero()) {
+                        fct.FldGS(rMag, fct.pBody->magnetization_vector(), fMag, 1.0);
                     }
-                    if (fct.pBodyOpos && fct.pBodyOpos->IsActive() && !fct.pBodyOpos->GetMagnetizationVector().IsZero()) {
-                        fct.FldGS(rMag, fct.pBodyOpos->GetMagnetizationVector(), fMag, -1.0);
+                    if (fct.pBodyOpos && fct.pBodyOpos->is_active() && !fct.pBodyOpos->magnetization_vector().is_zero()) {
+                        fct.FldGS(rMag, fct.pBodyOpos->magnetization_vector(), fMag, -1.0);
                     }
                     totalM -= fMag * (fct.dSign * mag_units_);
                 }

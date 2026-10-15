@@ -260,18 +260,18 @@ static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet, Point
         if (!pBody) {
             return false;
         }
-        if (pBody->GetDensityGradient().IsZero()) {
+        if (pBody->density_gradient().is_zero()) {
             if (nTag == 1) {
                 facet.FldVlado(v_r, fb);
-                fb = fb * pBody->GetDensity();
+                fb = fb * pBody->density();
                 facet.FldVlado(v_r, fOb, vRefDensGrad, dRefDensOrg);
                 fGrv = fb - fOb;
             } else {
                 facet.FldVlado(v_r, fGrv);
-                fGrv = fGrv * (pBody->GetDensity() - dRefDensity);
+                fGrv = fGrv * (pBody->density() - dRefDensity);
             }
         } else {
-            facet.FldVlado(v_r, fb, pBody->GetDensityGradient(), pBody->GetDensityAtOrigin());
+            facet.FldVlado(v_r, fb, pBody->density_gradient(), pBody->density_at_origin());
             if (nTag == 1) {
                 facet.FldVlado(v_r, fOb, vRefDensGrad, dRefDensOrg);
             } else {
@@ -282,19 +282,19 @@ static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet, Point
         }
     } else {
         if (pBody) {
-            if (pBody->GetDensityGradient().IsZero()) {
+            if (pBody->density_gradient().is_zero()) {
                 facet.FldVlado(v_r, fb);
-                fb = fb * pBody->GetDensity();
+                fb = fb * pBody->density();
             } else {
-                facet.FldVlado(v_r, fb, pBody->GetDensityGradient(), pBody->GetDensityAtOrigin());
+                facet.FldVlado(v_r, fb, pBody->density_gradient(), pBody->density_at_origin());
             }
         }
 
-        if (pBodyOpos->GetDensityGradient().IsZero()) {
+        if (pBodyOpos->density_gradient().is_zero()) {
             facet.FldVlado(v_r, fOb);
-            fOb = fOb * pBodyOpos->GetDensity();
+            fOb = fOb * pBodyOpos->density();
         } else {
-            facet.FldVlado(v_r, fOb, pBodyOpos->GetDensityGradient(), pBodyOpos->GetDensityAtOrigin());
+            facet.FldVlado(v_r, fOb, pBodyOpos->density_gradient(), pBodyOpos->density_at_origin());
         }
         fGrv += fb - fOb;
     }
@@ -316,8 +316,8 @@ void Facet3Pt::Compute(
     double txx = 0, tyy = 0, tzz = 0, txy = 0, txz = 0, tyz = 0;
 
     // Gravity field
-    if ((pBody && (pBody->GetDensity() != 0.0 || dRefDens != 0.0)) ||
-        (pBodyOpos && (pBodyOpos->GetDensity() != 0.0 || dRefDens != 0.0)))
+    if ((pBody && (pBody->density() != 0.0 || dRefDens != 0.0)) ||
+        (pBodyOpos && (pBodyOpos->density() != 0.0 || dRefDens != 0.0)))
     {
         if (gxx || gyy || gzz || gxy || gxz || gyz) {
             FldVladoGrd(v_rTen, dRefDens, txx, tyy, tzz, txy, txz, tyz);
@@ -329,7 +329,7 @@ void Facet3Pt::Compute(
             if (gyz != nullptr) *gyz += dUnitTns * dSign * tyz;
         }
         if (gx || gy || gz) {
-            fGrv.Zero();
+            fGrv.zero();
             ComputeGravityVlado(v_rGrv, *this, fGrv, dRefDens, nRdm, v_refDens, dRefDensOrg);
             if (gx != nullptr) *gx += dUnitGrv * dSign * fGrv.x;
             if (gy != nullptr) *gy += dUnitGrv * dSign * fGrv.y;
@@ -339,12 +339,12 @@ void Facet3Pt::Compute(
 
     // Magnetic field
     if (mx || my || mz) {
-        fMag.Zero();
-        if (pBody && !pBody->GetMagnetizationVector().IsZero() && pBody->IsActive()) {
-            FldGS(v_rMag, pBody->GetMagnetizationVector(), fMag, 1.0);
+        fMag.zero();
+        if (pBody && !pBody->magnetization_vector().is_zero() && pBody->is_active()) {
+            FldGS(v_rMag, pBody->magnetization_vector(), fMag, 1.0);
         }
-        if (pBodyOpos && !pBodyOpos->GetMagnetizationVector().IsZero() && pBodyOpos->IsActive()) {
-            FldGS(v_rMag, pBodyOpos->GetMagnetizationVector(), fMag, -1.0);
+        if (pBodyOpos && !pBodyOpos->magnetization_vector().is_zero() && pBodyOpos->is_active()) {
+            FldGS(v_rMag, pBodyOpos->magnetization_vector(), fMag, -1.0);
         }
         if (mx != nullptr) *mx -= dUnitMag * dSign * fMag.x;
         if (my != nullptr) *my -= dUnitMag * dSign * fMag.y;

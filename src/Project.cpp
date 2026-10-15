@@ -108,25 +108,25 @@ Grid gridFromJson(const nlohmann::json &j) {
 
 nlohmann::json bodyToJson(const Body &b) {
     nlohmann::json j;
-    j["id"] = b.GetID();
-    j["index"] = b.GetIndex();
-    j["name"] = b.GetName();
-    j["description"] = b.GetDescription();
-    j["active"] = b.IsActive();
-    j["visible"] = b.IsVisible();
-    j["locked"] = b.IsLocked();
-    j["filled"] = b.IsFilled();
-    j["density"] = b.GetRawDensity();
-    j["density_gradient"] = { b.GetDensityGradient().x, b.GetDensityGradient().y, b.GetDensityGradient().z };
-    j["density_origin"] = { b.GetDensityOrigo().x, b.GetDensityOrigo().y, b.GetDensityOrigo().z };
-    j["susceptibility"] = b.GetSusceptibility();
-    j["remanence"] = { b.GetRemanentMagnetization().x, b.GetRemanentMagnetization().y, b.GetRemanentMagnetization().z };
-    j["magnetization_vector"] = { b.GetMagnetizationVector().x, b.GetMagnetizationVector().y, b.GetMagnetizationVector().z };
-    j["color"] = { b.GetColor().r, b.GetColor().g, b.GetColor().b, b.GetColor().a };
-    j["fill_color"] = { b.GetFillColor().r, b.GetFillColor().g, b.GetFillColor().b, b.GetFillColor().a };
-    j["map_color"] = { b.GetMapColor().r, b.GetMapColor().g, b.GetMapColor().b, b.GetMapColor().a };
-    j["transparent"] = b.IsTransparent();
-    j["alpha"] = b.GetTransparency();
+    j["id"] = b.id();
+    j["index"] = b.index();
+    j["name"] = b.name();
+    j["description"] = b.description();
+    j["active"] = b.is_active();
+    j["visible"] = b.is_visible();
+    j["locked"] = b.is_locked();
+    j["filled"] = b.is_filled();
+    j["density"] = b.raw_density();
+    j["density_gradient"] = { b.density_gradient().x, b.density_gradient().y, b.density_gradient().z };
+    j["density_origin"] = { b.density_origin().x, b.density_origin().y, b.density_origin().z };
+    j["susceptibility"] = b.susceptibility();
+    j["remanence"] = { b.remanent_magnetization().x, b.remanent_magnetization().y, b.remanent_magnetization().z };
+    j["magnetization_vector"] = { b.magnetization_vector().x, b.magnetization_vector().y, b.magnetization_vector().z };
+    j["color"] = { b.color().r, b.color().g, b.color().b, b.color().a };
+    j["fill_color"] = { b.fill_color().r, b.fill_color().g, b.fill_color().b, b.fill_color().a };
+    j["map_color"] = { b.map_color().r, b.map_color().g, b.map_color().b, b.map_color().a };
+    j["transparent"] = b.is_transparent();
+    j["alpha"] = b.transparency();
     return j;
 }
 
@@ -135,25 +135,25 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
     std::string name = j.value("name", "Body");
     double dens = j.value("density", 2670.0);
     auto b = std::make_unique<Body>(id, name, dens);
-    b->SetIndex(j.value("index", 0));
-    b->SetDescription(j.value("description", ""));
-    b->SetActive(j.value("active", true));
-    b->SetVisible(j.value("visible", true));
-    b->SetLocked(j.value("locked", false));
-    b->SetFilled(j.value("filled", true));
+    b->set_index(j.value("index", 0));
+    b->set_description(j.value("description", ""));
+    b->set_active(j.value("active", true));
+    b->set_visible(j.value("visible", true));
+    b->set_locked(j.value("locked", false));
+    b->set_filled(j.value("filled", true));
 
     if (j.contains("density_gradient") && j["density_gradient"].size() >= 3) {
-        b->SetDensityGradient(Point3D(j["density_gradient"][0], j["density_gradient"][1], j["density_gradient"][2]));
+        b->set_density_gradient(Point3D(j["density_gradient"][0], j["density_gradient"][1], j["density_gradient"][2]));
     }
     if (j.contains("density_origin") && j["density_origin"].size() >= 3) {
-        b->SetDensityOrigo(Point3D(j["density_origin"][0], j["density_origin"][1], j["density_origin"][2]));
+        b->set_density_origin(Point3D(j["density_origin"][0], j["density_origin"][1], j["density_origin"][2]));
     }
-    b->SetSusceptibility(j.value("susceptibility", 0.0));
+    b->set_susceptibility(j.value("susceptibility", 0.0));
     if (j.contains("remanence") && j["remanence"].size() >= 3) {
-        b->SetRemanentMagnetization(Point3D(j["remanence"][0], j["remanence"][1], j["remanence"][2]));
+        b->set_remanent_magnetization(Point3D(j["remanence"][0], j["remanence"][1], j["remanence"][2]));
     }
     if (j.contains("magnetization_vector") && j["magnetization_vector"].size() >= 3) {
-        b->SetMagnetizationVector(Point3D(j["magnetization_vector"][0], j["magnetization_vector"][1], j["magnetization_vector"][2]));
+        b->set_magnetization_vector(Point3D(j["magnetization_vector"][0], j["magnetization_vector"][1], j["magnetization_vector"][2]));
     }
     if (j.contains("color") && j["color"].size() >= 4) {
         BodyColor col;
@@ -161,7 +161,7 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
         col.g = static_cast<uint8_t>(j["color"][1]);
         col.b = static_cast<uint8_t>(j["color"][2]);
         col.a = static_cast<uint8_t>(j["color"][3]);
-        b->SetColor(col);
+        b->set_color(col);
     }
     if (j.contains("fill_color") && j["fill_color"].size() >= 4) {
         BodyColor col;
@@ -169,7 +169,7 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
         col.g = static_cast<uint8_t>(j["fill_color"][1]);
         col.b = static_cast<uint8_t>(j["fill_color"][2]);
         col.a = static_cast<uint8_t>(j["fill_color"][3]);
-        b->SetFillColor(col);
+        b->set_fill_color(col);
     }
     if (j.contains("map_color") && j["map_color"].size() >= 4) {
         BodyColor col;
@@ -177,10 +177,10 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
         col.g = static_cast<uint8_t>(j["map_color"][1]);
         col.b = static_cast<uint8_t>(j["map_color"][2]);
         col.a = static_cast<uint8_t>(j["map_color"][3]);
-        b->SetMapColor(col);
+        b->set_map_color(col);
     }
-    b->SetTransparent(j.value("transparent", false));
-    b->SetTransparency(j.value("alpha", 1.0f));
+    b->set_transparent(j.value("transparent", false));
+    b->set_transparency(j.value("alpha", 1.0f));
     return b;
 }
 
@@ -270,7 +270,7 @@ std::string Project::toJsonString(int indent) const
                     const ColumnPoint *pt = m_model.getAt(r, c, static_cast<int>(i));
                     if (pt) {
                         ptArray.push_back({
-                            {"body_id", pt->bodyId()},
+                            {"body_id", pt->body_id()},
                             {"z", pt->z()},
                             {"x", pt->point().x},
                             {"y", pt->point().y}
@@ -591,7 +591,7 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
         m_model.getFacetsComputation(facets);
         for (const auto &fct : facets) {
             if (!fct.pBody) continue;
-            int id = fct.pBody->GetID();
+            int id = fct.pBody->id();
             bodyFacetMap[id].push_back(&fct);
         }
     } else {
@@ -604,7 +604,7 @@ bool Project::exportObj(const std::string &filePath, int bodyId) const
     size_t vertexIndexOffset = 1;
     for (const auto &[id, fctList] : bodyFacetMap) {
         const Body *b = m_model.getBody(id);
-        std::string bodyName = b ? b->GetName() : ("Body_" + std::to_string(id));
+        std::string bodyName = b ? b->name() : ("Body_" + std::to_string(id));
         ofs << "o Body_" << id << "_" << bodyName << "\n";
         ofs << "g Body_" << id << "\n";
 
@@ -755,7 +755,7 @@ bool Project::exportVtk(const std::string &filePath, int bodyId) const
     ofs << "SCALARS Density float 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        float dens = static_cast<float>(fct->pBody ? fct->pBody->GetRawDensity() : 0.0);
+        float dens = static_cast<float>(fct->pBody ? fct->pBody->raw_density() : 0.0);
         ofs << dens << "\n";
     }
 
@@ -763,7 +763,7 @@ bool Project::exportVtk(const std::string &filePath, int bodyId) const
     ofs << "\nSCALARS Susceptibility float 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        float susc = static_cast<float>(fct->pBody ? fct->pBody->GetSusceptibility() : 0.0);
+        float susc = static_cast<float>(fct->pBody ? fct->pBody->susceptibility() : 0.0);
         ofs << susc << "\n";
     }
 
@@ -771,7 +771,7 @@ bool Project::exportVtk(const std::string &filePath, int bodyId) const
     ofs << "\nSCALARS BodyID int 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        int id = fct->pBody ? fct->pBody->GetID() : 0;
+        int id = fct->pBody ? fct->pBody->id() : 0;
         ofs << id << "\n";
     }
 
@@ -1246,17 +1246,17 @@ bool Project::loadLegacyM3D(const std::string &filePath)
         }
 
         auto bodyObj = std::make_unique<Body>(bId, bName, dens);
-        bodyObj->SetDescription(bDesc);
-        bodyObj->SetActive(bActive != 0);
-        bodyObj->SetLocked(bLocked != 0);
-        bodyObj->SetVisible(bShow != 0);
-        bodyObj->SetFilled(bFill != 0);
-        bodyObj->SetTransparent(isTransparent);
-        bodyObj->SetTransparency(fAlpha);
-        bodyObj->SetDensityGradient(densGrad);
-        bodyObj->SetDensityOrigo(densOrg);
-        bodyObj->SetSusceptibility(susc);
-        bodyObj->SetRemanentMagnetization(rem);
+        bodyObj->set_description(bDesc);
+        bodyObj->set_active(bActive != 0);
+        bodyObj->set_locked(bLocked != 0);
+        bodyObj->set_visible(bShow != 0);
+        bodyObj->set_filled(bFill != 0);
+        bodyObj->set_transparent(isTransparent);
+        bodyObj->set_transparency(fAlpha);
+        bodyObj->set_density_gradient(densGrad);
+        bodyObj->set_density_origin(densOrg);
+        bodyObj->set_susceptibility(susc);
+        bodyObj->set_remanent_magnetization(rem);
 
         auto rgbFromColorref = [](uint32_t cr) -> BodyColor {
             return BodyColor(
@@ -1276,7 +1276,7 @@ bool Project::loadLegacyM3D(const std::string &filePath)
         }
 
         if (chosenCol != 0) {
-            bodyObj->SetColor(rgbFromColorref(chosenCol));
+            bodyObj->set_color(rgbFromColorref(chosenCol));
         } else {
             static const BodyColor defaultPalette[] = {
                 {180, 120, 80, 255},  // Sandstone
@@ -1288,19 +1288,19 @@ bool Project::loadLegacyM3D(const std::string &filePath)
                 {80, 80, 90, 255}     // Gabbro
             };
             int pIdx = (bId >= 0 ? bId : 0) % 7;
-            bodyObj->SetColor(defaultPalette[pIdx]);
+            bodyObj->set_color(defaultPalette[pIdx]);
         }
 
         if (bCol != 0) {
-            bodyObj->SetFillColor(rgbFromColorref(bCol));
+            bodyObj->set_fill_color(rgbFromColorref(bCol));
         } else {
-            bodyObj->SetFillColor(bodyObj->GetColor());
+            bodyObj->set_fill_color(bodyObj->color());
         }
 
         if (pMapCol != 0) {
-            bodyObj->SetMapColor(rgbFromColorref(pMapCol));
+            bodyObj->set_map_color(rgbFromColorref(pMapCol));
         } else {
-            bodyObj->SetMapColor(bodyObj->GetColor());
+            bodyObj->set_map_color(bodyObj->color());
         }
 
         m_model.addBody(std::move(bodyObj));

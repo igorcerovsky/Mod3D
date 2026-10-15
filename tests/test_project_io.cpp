@@ -56,25 +56,25 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
 
     // Insert 2 geological bodies
     Body *b1 = proj.model().newBody();
-    b1->SetName("Host Sediment");
-    b1->SetDensity(2550.0);
-    b1->SetSusceptibility(0.001);
+    b1->set_name("Host Sediment");
+    b1->set_density(2550.0);
+    b1->set_susceptibility(0.001);
     BodyColor c1{120, 180, 80, 255};
-    b1->SetColor(c1);
+    b1->set_color(c1);
 
     Body *b2 = proj.model().newBody();
-    b2->SetName("Granite Stock");
-    b2->SetDensity(2670.0);
-    b2->SetSusceptibility(0.045);
-    b2->SetRemanentMagnetization(Point3D(0.5, 0.2, -0.8));
-    b2->SetDensityGradient(Point3D(0.001, 0.0, -0.002));
+    b2->set_name("Granite Stock");
+    b2->set_density(2670.0);
+    b2->set_susceptibility(0.045);
+    b2->set_remanent_magnetization(Point3D(0.5, 0.2, -0.8));
+    b2->set_density_gradient(Point3D(0.001, 0.0, -0.002));
     BodyColor c2{220, 50, 50, 255};
-    b2->SetColor(c2);
+    b2->set_color(c2);
 
     // Add stratigraphic layer across 2x2 column cells
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
-            proj.model().insertBody(r, c, -1500.0, 400.0, false, b2->GetID());
+            proj.model().insertBody(r, c, -1500.0, 400.0, false, b2->id());
         }
     }
     proj.model().initFacetList();
@@ -130,21 +130,21 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
 
     // Verify Bodies
     ASSERT_EQ(loaded.model().getBodies().size(), 2u);
-    const Body *lb1 = loaded.model().getBody(b1->GetID());
+    const Body *lb1 = loaded.model().getBody(b1->id());
     ASSERT_NE(lb1, nullptr);
-    EXPECT_EQ(lb1->GetName(), "Host Sediment");
-    EXPECT_DOUBLE_EQ(lb1->GetRawDensity(), 2550.0);
-    EXPECT_DOUBLE_EQ(lb1->GetSusceptibility(), 0.001);
-    EXPECT_EQ(lb1->GetColor().r, 120);
+    EXPECT_EQ(lb1->name(), "Host Sediment");
+    EXPECT_DOUBLE_EQ(lb1->raw_density(), 2550.0);
+    EXPECT_DOUBLE_EQ(lb1->susceptibility(), 0.001);
+    EXPECT_EQ(lb1->color().r, 120);
 
-    const Body *lb2 = loaded.model().getBody(b2->GetID());
+    const Body *lb2 = loaded.model().getBody(b2->id());
     ASSERT_NE(lb2, nullptr);
-    EXPECT_EQ(lb2->GetName(), "Granite Stock");
-    EXPECT_DOUBLE_EQ(lb2->GetRawDensity(), 2670.0);
-    EXPECT_DOUBLE_EQ(lb2->GetSusceptibility(), 0.045);
-    EXPECT_DOUBLE_EQ(lb2->GetRemanentMagnetization().x, 0.5);
-    EXPECT_DOUBLE_EQ(lb2->GetDensityGradient().x, 0.001);
-    EXPECT_EQ(lb2->GetColor().r, 220);
+    EXPECT_EQ(lb2->name(), "Granite Stock");
+    EXPECT_DOUBLE_EQ(lb2->raw_density(), 2670.0);
+    EXPECT_DOUBLE_EQ(lb2->susceptibility(), 0.045);
+    EXPECT_DOUBLE_EQ(lb2->remanent_magnetization().x, 0.5);
+    EXPECT_DOUBLE_EQ(lb2->density_gradient().x, 0.001);
+    EXPECT_EQ(lb2->color().r, 220);
 
     // Verify Facet Regeneration (Geometric Parity)
     std::vector<Facet3Pt> loadedFacets;

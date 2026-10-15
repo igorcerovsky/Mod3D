@@ -14,13 +14,13 @@ Project createSampleProjectWithBody() {
     proj.model().init(3, 3, 0.0, 0.0, 1000.0, 1000.0, -2000.0, 0.0);
 
     Body *b = proj.model().newBody();
-    b->SetName("OreBody");
-    b->SetDensity(3200.0);
-    b->SetSusceptibility(0.08);
+    b->set_name("OreBody");
+    b->set_density(3200.0);
+    b->set_susceptibility(0.08);
 
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
-            proj.model().insertBody(r, c, -800.0, 200.0, false, b->GetID());
+            proj.model().insertBody(r, c, -800.0, 200.0, false, b->id());
         }
     }
     proj.model().initFacetList();

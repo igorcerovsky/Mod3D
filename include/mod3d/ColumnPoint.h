@@ -112,18 +112,6 @@ public:
 
     friend std::ostream &operator<<(std::ostream &os, const ColumnPoint &cp);
 
-    // ========================================================================
-    // Legacy API (CamelCase compatibility wrappers for MFC Mod3D codebase)
-    // ========================================================================
-    [[nodiscard]] constexpr bool isModified() const noexcept { return is_modified(); }
-    constexpr void setModified(bool modified = true) noexcept { set_modified(modified); }
-
-    [[nodiscard]] constexpr int bodyId() const noexcept { return body_id(); }
-    constexpr void setBodyId(int id) noexcept { set_body_id(id); }
-
-    constexpr void setBody(Body *b) noexcept { set_body(b); }
-    constexpr void setZ(double zVal) noexcept { set_z(zVal); }
-    constexpr void setPoint(const Point3D &ptVal) noexcept { set_point(ptVal); }
 
 private:
     Point3D pt_{0.0, 0.0, 0.0};

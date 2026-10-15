@@ -49,7 +49,7 @@ void Model::setColumnPointCoords(ColumnPoint &pt, int row, int col, double z)
 {
     pt.point().x = getXe(col);
     pt.point().y = getYe(row);
-    pt.setZ(z);
+    pt.set_z(z);
 }
 
 bool Model::init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
@@ -252,7 +252,7 @@ void Model::setZ(int row, int col, int index, double z)
 {
     ColumnPoint *pt = getAt(row, col, index);
     if (pt) {
-        pt->setZ(z);
+        pt->set_z(z);
     }
 }
 
@@ -269,7 +269,7 @@ Body *Model::newBody()
 {
     auto b = std::make_unique<Body>();
     int newId = m_nextBodyId++;
-    b->SetID(newId);
+    b->set_id(newId);
     static const BodyColor defaultPalette[] = {
         {180, 120, 80, 255},  // Sandstone
         {220, 80, 60, 255},   // Granite
@@ -291,8 +291,8 @@ Body *Model::newBody()
 void Model::addBody(std::unique_ptr<Body> body)
 {
     if (body) {
-        if (body->GetID() >= m_nextBodyId) {
-            m_nextBodyId = body->GetID() + 1;
+        if (body->id() >= m_nextBodyId) {
+            m_nextBodyId = body->id() + 1;
         }
         m_bodies.push_back(std::move(body));
         updateBodyIndex();
@@ -302,7 +302,7 @@ void Model::addBody(std::unique_ptr<Body> body)
 Body *Model::getBody(int bodyId)
 {
     for (auto &b : m_bodies) {
-        if (b->GetID() == bodyId) return b.get();
+        if (b->id() == bodyId) return b.get();
     }
     return nullptr;
 }
@@ -310,7 +310,7 @@ Body *Model::getBody(int bodyId)
 const Body *Model::getBody(int bodyId) const
 {
     for (const auto &b : m_bodies) {
-        if (b->GetID() == bodyId) return b.get();
+        if (b->id() == bodyId) return b.get();
     }
     return nullptr;
 }
@@ -318,7 +318,7 @@ const Body *Model::getBody(int bodyId) const
 void Model::updateBodyIndex()
 {
     for (size_t i = 0; i < m_bodies.size(); ++i) {
-        m_bodies[i]->SetIndex(static_cast<int>(i));
+        m_bodies[i]->set_index(static_cast<int>(i));
     }
 }
 
@@ -326,7 +326,7 @@ void Model::computeBodyMagnetizationVector(const Point3D &indFld)
 {
     for (auto &b : m_bodies) {
         if (b) {
-            b->ComputeMagnetizationVector(indFld);
+            b->compute_magnetization_vector(indFld);
         }
     }
 }
@@ -341,7 +341,7 @@ int Model::getBodyIndex(int bodyId, int row, int col) const
     const size_t cnt = getCount(row, col);
     for (size_t i = 1; i < cnt; i += 2) {
         const ColumnPoint *pt = getAt(row, col, static_cast<int>(i));
-        if (pt && pt->bodyId() == bodyId) {
+        if (pt && pt->body_id() == bodyId) {
             return static_cast<int>(i);
         }
     }
@@ -367,7 +367,7 @@ int Model::getID(int index, int row, int col) const
     const int count = static_cast<int>(getCount(row, col));
     if (index > 0 && index < count - 1) {
         const ColumnPoint *pt = getAt(row, col, index);
-        if (pt) return pt->bodyId();
+        if (pt) return pt->body_id();
     }
     return -1;
 }
@@ -432,7 +432,7 @@ int Model::insertBody(int row, int col, double z, double thickness, bool isNew, 
         pBody = getBody(bodyId);
     }
     if (!pBody) return -1;
-    bodyId = pBody->GetID();
+    bodyId = pBody->id();
 
     double t = (thickness == -1.0) ? getDefaultThickness() : thickness;
     if (bZ) {
@@ -503,7 +503,7 @@ int Model::deleteBody(int bodyId)
     }
 
     auto it = std::remove_if(m_bodies.begin(), m_bodies.end(), [bodyId](const auto &b) {
-        return b->GetID() == bodyId;
+        return b->id() == bodyId;
     });
     if (it != m_bodies.end()) {
         m_bodies.erase(it, m_bodies.end());
@@ -936,12 +936,12 @@ void Model::updateFacetColumn(int row, int col)
             Facet3Pt fCopy = fct;
             fCopy.SetSign(-1.0);
             if (fCopy.pBody) {
-                fCopy.density = fCopy.pBody->GetDensity();
-                fCopy.v_densGrad = fCopy.pBody->GetDensityGradient();
+                fCopy.density = fCopy.pBody->density();
+                fCopy.v_densGrad = fCopy.pBody->density_gradient();
             }
             if (fCopy.pBodyOpos) {
-                fCopy.densityOpos = fCopy.pBodyOpos->GetDensity();
-                fCopy.v_densGradOpos = fCopy.pBodyOpos->GetDensityGradient();
+                fCopy.densityOpos = fCopy.pBodyOpos->density();
+                fCopy.v_densGradOpos = fCopy.pBodyOpos->density_gradient();
             }
             m_fctLstUpdate.push_back(fCopy);
         }
@@ -955,12 +955,12 @@ void Model::updateFacetColumn(int row, int col)
             Facet3Pt fCopy = fct;
             fCopy.SetSign(1.0);
             if (fCopy.pBody) {
-                fCopy.density = fCopy.pBody->GetDensity();
-                fCopy.v_densGrad = fCopy.pBody->GetDensityGradient();
+                fCopy.density = fCopy.pBody->density();
+                fCopy.v_densGrad = fCopy.pBody->density_gradient();
             }
             if (fCopy.pBodyOpos) {
-                fCopy.densityOpos = fCopy.pBodyOpos->GetDensity();
-                fCopy.v_densGradOpos = fCopy.pBodyOpos->GetDensityGradient();
+                fCopy.densityOpos = fCopy.pBodyOpos->density();
+                fCopy.v_densGradOpos = fCopy.pBodyOpos->density_gradient();
             }
             m_fctLstUpdate.push_back(fCopy);
         }
@@ -1001,12 +1001,12 @@ int Model::getFacetsComputation(std::vector<Facet3Pt> &outList) const
                     Facet3Pt copy = fct;
                     copy.SetSign(1.0);
                     if (copy.pBody) {
-                        copy.density = copy.pBody->GetDensity();
-                        copy.v_densGrad = copy.pBody->GetDensityGradient();
+                        copy.density = copy.pBody->density();
+                        copy.v_densGrad = copy.pBody->density_gradient();
                     }
                     if (copy.pBodyOpos) {
-                        copy.densityOpos = copy.pBodyOpos->GetDensity();
-                        copy.v_densGradOpos = copy.pBodyOpos->GetDensityGradient();
+                        copy.densityOpos = copy.pBodyOpos->density();
+                        copy.v_densGradOpos = copy.pBodyOpos->density_gradient();
                     }
                     outList.push_back(copy);
                 }
@@ -1039,9 +1039,9 @@ int Model::getBodyFacets(int bodyId, std::vector<Facet3Pt> &outList, bool includ
                 if (bodyId == -1) {
                     outList.push_back(fct);
                 } else {
-                    if (fct.pBody && fct.pBody->GetID() == bodyId) {
+                    if (fct.pBody && fct.pBody->id() == bodyId) {
                         outList.push_back(fct);
-                    } else if (fct.pBodyOpos && fct.pBodyOpos->GetID() == bodyId) {
+                    } else if (fct.pBodyOpos && fct.pBodyOpos->id() == bodyId) {
                         // Contact interface: invert winding and normal so it faces outward from this body
                         Facet3Pt copy = fct;
                         copy.pBody = fct.pBodyOpos;
@@ -1068,16 +1068,16 @@ std::vector<BodyMesh3D> Model::generateBodyMeshes(int bodyId, bool includeOuter)
     std::vector<BodyMesh3D> meshes;
     for (const auto &bPtr : m_bodies) {
         if (!bPtr) continue;
-        int bId = bPtr->GetID();
+        int bId = bPtr->id();
         if (bodyId != -1 && bId != bodyId) continue;
 
         BodyMesh3D mesh;
         mesh.bodyId = bId;
-        mesh.bodyName = bPtr->GetName();
-        mesh.color = bPtr->GetColor();
-        mesh.alpha = bPtr->IsTransparent() ? bPtr->GetTransparency() : 1.0f;
-        mesh.isVisible = bPtr->IsVisible();
-        mesh.isTransparent = bPtr->IsTransparent();
+        mesh.bodyName = bPtr->name();
+        mesh.color = bPtr->color();
+        mesh.alpha = bPtr->is_transparent() ? bPtr->transparency() : 1.0f;
+        mesh.isVisible = bPtr->is_visible();
+        mesh.isTransparent = bPtr->is_transparent();
 
         // Get watertight facets for this body
         getBodyFacets(bId, mesh.facets, includeOuter);

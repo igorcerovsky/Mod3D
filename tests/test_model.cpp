@@ -74,7 +74,7 @@ TEST(ModelTest, FacetGenerationMultiColumnPrism) {
     // Insert body across a 2x2 grid of columns
     Body *body = model.newBody();
     ASSERT_NE(body, nullptr);
-    const int bId = body->GetID();
+    const int bId = body->id();
 
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
@@ -101,7 +101,7 @@ TEST(ModelTest, RealTimeDeltaFacetTracking) {
     model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
 
     Body *body = model.newBody();
-    const int bId = body->GetID();
+    const int bId = body->id();
     for (int r = 1; r <= 3; ++r) {
         for (int c = 1; c <= 3; ++c) {
             model.insertBody(r, c, -400.0, 50.0, false, bId);
@@ -261,8 +261,8 @@ TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
     model.init(3, 3, 0.0, 0.0, 500.0, 500.0, -2000.0, 0.0);
 
     Body *body = model.newBody();
-    body->SetDensity(2670.0);
-    const int bId = body->GetID();
+    body->set_density(2670.0);
+    const int bId = body->id();
 
     // Create a 2x2 column prism from z = -400 to z = -800
     for (int r = 1; r <= 2; ++r) {
@@ -435,12 +435,12 @@ TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     model.init(3, 3, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
 
     Body *b1 = model.newBody();
-    b1->SetDensity(2500.0);
-    int bId1 = b1->GetID();
+    b1->set_density(2500.0);
+    int bId1 = b1->id();
 
     Body *b2 = model.newBody();
-    b2->SetDensity(2900.0);
-    int bId2 = b2->GetID();
+    b2->set_density(2900.0);
+    int bId2 = b2->id();
 
     EXPECT_EQ(model.getBodies().size(), 2u);
 
@@ -462,7 +462,7 @@ TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     int delRes = model.deleteBody(bId1);
     EXPECT_EQ(delRes, 1);
     EXPECT_EQ(model.getBodies().size(), 1u);
-    EXPECT_EQ(model.getBodies()[0]->GetID(), bId2);
+    EXPECT_EQ(model.getBodies()[0]->id(), bId2);
 
     // Column (1, 1) must now only have 2 points (relief and hell), body 1 points removed
     EXPECT_EQ(model.getCount(1, 1), 2u);
@@ -475,10 +475,10 @@ TEST(ModelEdgeCasesTest, DeleteBodyAndFacetRemeshing) {
     model.getFacetsComputation(updatedFacets);
     for (const auto &fct : updatedFacets) {
         if (fct.pBody) {
-            EXPECT_EQ(fct.pBody->GetID(), bId2);
+            EXPECT_EQ(fct.pBody->id(), bId2);
         }
         if (fct.pBodyOpos) {
-            EXPECT_EQ(fct.pBodyOpos->GetID(), bId2);
+            EXPECT_EQ(fct.pBodyOpos->id(), bId2);
         }
     }
 }
@@ -489,13 +489,13 @@ TEST(ModelTest, GenerateBodyMeshesAndFacets3D) {
 
     Body *b1 = model.newBody();
     ASSERT_NE(b1, nullptr);
-    b1->SetName("Granite");
-    int id1 = b1->GetID();
+    b1->set_name("Granite");
+    int id1 = b1->id();
 
     Body *b2 = model.newBody();
     ASSERT_NE(b2, nullptr);
-    b2->SetName("Basalt");
-    int id2 = b2->GetID();
+    b2->set_name("Basalt");
+    int id2 = b2->id();
 
     // Insert body 1 at depth -500 to -700
     for (int r = 1; r <= 3; ++r) {

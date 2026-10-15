@@ -275,7 +275,7 @@ int ModelDocument::insertBodyAtRowCol(int row, int col, double z, double thickne
         }
         emit modelGeometryChanged();
         const auto *pt = m_project.model().getAt(row, col, res);
-        return pt ? pt->bodyId() : res;
+        return pt ? pt->body_id() : res;
     }
     return -1;
 }

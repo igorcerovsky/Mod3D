@@ -84,14 +84,14 @@ TEST(ColumnPointTest, ConstructorsAndDefaults) {
     static_assert(cpConst.z() == -500.0);
     static_assert(cpConst.x() == 100.0);
     static_assert(cpConst.y() == 200.0);
-    static_assert(cpConst.bodyId() == 7);
-    static_assert(cpConst.isModified());
+    static_assert(cpConst.body_id() == 7);
+    static_assert(cpConst.is_modified());
 
     ColumnPoint cpDefault;
     EXPECT_DOUBLE_EQ(cpDefault.z(), 0.0);
-    EXPECT_EQ(cpDefault.bodyId(), -1);
+    EXPECT_EQ(cpDefault.body_id(), -1);
     EXPECT_EQ(cpDefault.body(), nullptr);
-    EXPECT_TRUE(cpDefault.isModified());
+    EXPECT_TRUE(cpDefault.is_modified());
     EXPECT_FALSE(cpDefault.has_body());
 
     ColumnPoint cpZ(-450.0);
@@ -100,7 +100,7 @@ TEST(ColumnPointTest, ConstructorsAndDefaults) {
 
     Body testBody(42, "Basement", 2800.0);
     ColumnPoint cpBody(42, -600.0, &testBody);
-    EXPECT_EQ(cpBody.bodyId(), 42);
+    EXPECT_EQ(cpBody.body_id(), 42);
     EXPECT_EQ(cpBody.body(), &testBody);
     EXPECT_DOUBLE_EQ(cpBody.z(), -600.0);
     EXPECT_TRUE(cpBody.has_body());
@@ -110,35 +110,35 @@ TEST(ColumnPointTest, ConstructorsAndDefaults) {
     EXPECT_DOUBLE_EQ(cpCoords.x(), 10.0);
     EXPECT_DOUBLE_EQ(cpCoords.y(), 20.0);
     EXPECT_DOUBLE_EQ(cpCoords.z(), -30.0);
-    EXPECT_EQ(cpCoords.bodyId(), 5);
+    EXPECT_EQ(cpCoords.body_id(), 5);
 }
 
 TEST(ColumnPointTest, SettersAndSync) {
     ColumnPoint cp;
-    cp.setModified(false);
-    EXPECT_FALSE(cp.isModified());
+    cp.set_modified(false);
+    EXPECT_FALSE(cp.is_modified());
 
-    // setZ must update both m_z and m_pt.z, and mark modified
-    cp.setZ(-720.5);
+    // set_z must update both m_z and m_pt.z, and mark modified
+    cp.set_z(-720.5);
     EXPECT_DOUBLE_EQ(cp.z(), -720.5);
     EXPECT_DOUBLE_EQ(cp.point().z, -720.5);
-    EXPECT_TRUE(cp.isModified());
+    EXPECT_TRUE(cp.is_modified());
 
-    // setPoint must update 3D coords and sync z
-    cp.setModified(false);
+    // set_point must update 3D coords and sync z
+    cp.set_modified(false);
     Point3D newPt(1200.0, 3400.0, -850.0);
-    cp.setPoint(newPt);
+    cp.set_point(newPt);
     EXPECT_EQ(cp.point(), newPt);
     EXPECT_DOUBLE_EQ(cp.z(), -850.0);
-    EXPECT_TRUE(cp.isModified());
+    EXPECT_TRUE(cp.is_modified());
 
     // set_coords and individual component setters
-    cp.setModified(false);
+    cp.set_modified(false);
     cp.set_coords(50.0, 60.0, -100.0);
     EXPECT_DOUBLE_EQ(cp.x(), 50.0);
     EXPECT_DOUBLE_EQ(cp.y(), 60.0);
     EXPECT_DOUBLE_EQ(cp.z(), -100.0);
-    EXPECT_TRUE(cp.isModified());
+    EXPECT_TRUE(cp.is_modified());
 
     cp.set_x(75.0);
     cp.set_y(85.0);
@@ -180,21 +180,21 @@ TEST(ColumnPointTest, ComparisonsAndPredicates) {
 
 TEST(BodyTest, PropertiesAndActivation) {
     Body b(1, "Granite Pluton", 2670.0);
-    EXPECT_EQ(b.GetID(), 1);
-    EXPECT_EQ(b.GetName(), "Granite Pluton");
-    EXPECT_TRUE(b.IsActive());
-    EXPECT_DOUBLE_EQ(b.GetDensity(), 2670.0);
-    EXPECT_DOUBLE_EQ(b.GetRawDensity(), 2670.0);
+    EXPECT_EQ(b.id(), 1);
+    EXPECT_EQ(b.name(), "Granite Pluton");
+    EXPECT_TRUE(b.is_active());
+    EXPECT_DOUBLE_EQ(b.density(), 2670.0);
+    EXPECT_DOUBLE_EQ(b.raw_density(), 2670.0);
 
     // When inactive, effective density for field computation becomes 0
-    b.SetActive(false);
-    EXPECT_FALSE(b.IsActive());
-    EXPECT_DOUBLE_EQ(b.GetDensity(), 0.0);
-    EXPECT_DOUBLE_EQ(b.GetRawDensity(), 2670.0); // Raw preserved
+    b.set_active(false);
+    EXPECT_FALSE(b.is_active());
+    EXPECT_DOUBLE_EQ(b.density(), 0.0);
+    EXPECT_DOUBLE_EQ(b.raw_density(), 2670.0); // Raw preserved
 
     // Re-activate
-    b.SetActive(true);
-    EXPECT_DOUBLE_EQ(b.GetDensity(), 2670.0);
+    b.set_active(true);
+    EXPECT_DOUBLE_EQ(b.density(), 2670.0);
 }
 
 TEST(BodyTest, LinearDensityGradientAtOrigin) {
@@ -202,28 +202,28 @@ TEST(BodyTest, LinearDensityGradientAtOrigin) {
     // Gradient: +0.5 kg/m3 per meter depth (Z axis)
     Point3D grad(0.0, 0.0, 0.5);
     Point3D origo(0.0, 0.0, -1000.0);
-    b.SetDensityGradient(grad);
-    b.SetDensityOrigo(origo);
+    b.set_density_gradient(grad);
+    b.set_density_origin(origo);
 
     // Density at reference origin (0, 0, 0):
     // rho0 = rho - grad * origo = 2400.0 - (0.5 * -1000.0) = 2400.0 - (-500.0) = 2900.0
-    EXPECT_DOUBLE_EQ(b.GetDensityAtOrigin(), 2900.0);
+    EXPECT_DOUBLE_EQ(b.density_at_origin(), 2900.0);
 }
 
 TEST(BodyTest, MagnetizationVectorComputation) {
     Body b(3, "Basalt Intrusion", 2900.0);
     const double susc = 0.05; // SI susceptibility
-    b.SetSusceptibility(susc);
+    b.set_susceptibility(susc);
 
     // Remanent magnetization: Inclination 45 deg, Declination 20 deg, Intensity 2.5 A/m
     const double rI = 45.0, rD = 20.0, rS = 2.5;
     Point3D remAngles(rI, rD, rS);
-    b.SetRemanentMagnetization(remAngles);
+    b.set_remanent_magnetization(remAngles);
 
     // Ambient geomagnetic field: Inclination 60 deg, Declination 10 deg, Intensity 50000 nT
     const double iI = 60.0, iD = 10.0, iS = 50000.0;
     Point3D ambAngles(iI, iD, iS);
-    b.ComputeMagnetizationVector(ambAngles);
+    b.compute_magnetization_vector(ambAngles);
 
     // Analytical expectation:
     // vH = AmbientField(iI, iD, iS)
@@ -246,7 +246,7 @@ TEST(BodyTest, MagnetizationVectorComputation) {
     );
 
     Point3D expectedM = vInduced + vRemanent;
-    Point3D computedM = b.GetMagnetizationVector();
+    Point3D computedM = b.magnetization_vector();
 
     EXPECT_NEAR(computedM.x, expectedM.x, 1e-12);
     EXPECT_NEAR(computedM.y, expectedM.y, 1e-12);
@@ -255,26 +255,26 @@ TEST(BodyTest, MagnetizationVectorComputation) {
 
 TEST(BodyTest, VisualAndLockStates) {
     Body b;
-    EXPECT_TRUE(b.IsVisible());
-    EXPECT_FALSE(b.IsLocked());
-    EXPECT_TRUE(b.IsFilled());
+    EXPECT_TRUE(b.is_visible());
+    EXPECT_FALSE(b.is_locked());
+    EXPECT_TRUE(b.is_filled());
 
-    b.SetVisible(false);
-    b.SetLocked(true);
-    b.SetFilled(false);
-    EXPECT_FALSE(b.IsVisible());
-    EXPECT_TRUE(b.IsLocked());
-    EXPECT_FALSE(b.IsFilled());
+    b.set_visible(false);
+    b.set_locked(true);
+    b.set_filled(false);
+    EXPECT_FALSE(b.is_visible());
+    EXPECT_TRUE(b.is_locked());
+    EXPECT_FALSE(b.is_filled());
 
     BodyColor customColor{220, 100, 50, 200};
-    b.SetColor(customColor);
-    EXPECT_EQ(b.GetColor().r, 220);
-    EXPECT_EQ(b.GetColor().g, 100);
-    EXPECT_EQ(b.GetColor().b, 50);
-    EXPECT_EQ(b.GetColor().a, 200);
+    b.set_color(customColor);
+    EXPECT_EQ(b.color().r, 220);
+    EXPECT_EQ(b.color().g, 100);
+    EXPECT_EQ(b.color().b, 50);
+    EXPECT_EQ(b.color().a, 200);
 
-    b.SetTransparency(0.8f);
-    EXPECT_FLOAT_EQ(b.GetTransparency(), 0.8f);
+    b.set_transparency(0.8f);
+    EXPECT_FLOAT_EQ(b.transparency(), 0.8f);
 }
 
 TEST(BodyTest, ModernizedFeaturesAndOperators) {

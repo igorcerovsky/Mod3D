@@ -159,8 +159,8 @@ TEST(ObservationSpaceTest, ForwardModelingAndTotalFieldVector) {
     model.init(3, 3, 0.0, 0.0, 200.0, 200.0, -1000.0, 0.0);
 
     Body *b = model.newBody();
-    b->SetDensity(2800.0);
-    int bId = b->GetID();
+    b->set_density(2800.0);
+    int bId = b->id();
 
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
@@ -217,8 +217,8 @@ TEST(Gate3InversionTest, DensityRecoveryMatchesFitLogDens) {
     model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
 
     Body *body = model.newBody();
-    body->SetDensity(trueDensity);
-    int bId = body->GetID();
+    body->set_density(trueDensity);
+    int bId = body->id();
 
     for (int r = 1; r <= 2; ++r) {
         for (int c = 1; c <= 2; ++c) {
@@ -241,7 +241,7 @@ TEST(Gate3InversionTest, DensityRecoveryMatchesFitLogDens) {
     obs.setObservedGrid(FieldComponent::GZ, trueObsGrid);
 
     // Perturb body to initial guess: 2600.0 (diffDens = -70.0 kg/m^3)
-    body->SetDensity(initialGuess);
+    body->set_density(initialGuess);
 
     // Run density inversion with Brent's method
     FitResult fitRes = obs.fitDensity(
@@ -251,7 +251,7 @@ TEST(Gate3InversionTest, DensityRecoveryMatchesFitLogDens) {
     // 1. Converged to true density 2850.0 within 0.1 kg/m^3
     EXPECT_TRUE(fitRes.converged);
     EXPECT_NEAR(fitRes.optimalParameter, trueDensity, 0.1);
-    EXPECT_NEAR(body->GetDensity(), trueDensity, 0.1);
+    EXPECT_NEAR(body->density(), trueDensity, 0.1);
 
     // 2. Minimum RMS residual should be virtually zero (< 1e-4 mGal)
     EXPECT_LT(fitRes.minimumObjective, 1e-4);
@@ -276,8 +276,8 @@ TEST(Gate3InversionTest, VertexDepthRecoveryMatchesFitLogVrtx) {
     model.init(4, 4, 0.0, 0.0, 200.0, 200.0, -2000.0, 0.0);
 
     Body *body = model.newBody();
-    body->SetDensity(2850.0);
-    int bId = body->GetID();
+    body->set_density(2850.0);
+    int bId = body->id();
 
     // Insert body across 2x2 columns (1,1) to (2,2)
     // Center = -750, thickness = 200 -> top is -550, bot is -950

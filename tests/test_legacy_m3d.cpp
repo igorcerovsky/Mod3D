@@ -191,13 +191,13 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
     ASSERT_EQ(proj.model().getBodies().size(), 1u);
     const Body *b = proj.model().getBody(1);
     ASSERT_NE(b, nullptr);
-    EXPECT_EQ(b->GetName(), "Basement Granodiorite");
-    EXPECT_EQ(b->GetDescription(), "Crystalline basement");
-    EXPECT_DOUBLE_EQ(b->GetRawDensity(), 2820.0);
-    EXPECT_DOUBLE_EQ(b->GetSusceptibility(), 0.035);
-    EXPECT_TRUE(b->IsActive());
-    EXPECT_FALSE(b->IsLocked());
-    EXPECT_TRUE(b->IsVisible());
+    EXPECT_EQ(b->name(), "Basement Granodiorite");
+    EXPECT_EQ(b->description(), "Crystalline basement");
+    EXPECT_DOUBLE_EQ(b->raw_density(), 2820.0);
+    EXPECT_DOUBLE_EQ(b->susceptibility(), 0.035);
+    EXPECT_TRUE(b->is_active());
+    EXPECT_FALSE(b->is_locked());
+    EXPECT_TRUE(b->is_visible());
 
     // Verify Observation Space
     EXPECT_DOUBLE_EQ(proj.observation().getReferenceDensity(), 2670.0);
@@ -229,9 +229,9 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     ASSERT_EQ(proj.model().getBodies().size(), 1u);
     const Body *b0 = proj.model().getBody(0);
     ASSERT_NE(b0, nullptr);
-    EXPECT_EQ(b0->GetName(), "Name the body...");
-    EXPECT_DOUBLE_EQ(b0->GetRawDensity(), 2700.0);
-    EXPECT_NEAR(b0->GetSusceptibility(), 0.01, 1e-6);
+    EXPECT_EQ(b0->name(), "Name the body...");
+    EXPECT_DOUBLE_EQ(b0->raw_density(), 2700.0);
+    EXPECT_NEAR(b0->susceptibility(), 0.01, 1e-6);
 
     // Verify Facets Generation
     std::vector<Facet3Pt> facets;
@@ -287,18 +287,18 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     ASSERT_EQ(proj.model().getBodies().size(), 3u);
     const Body *b0 = proj.model().getBody(0);
     ASSERT_NE(b0, nullptr);
-    EXPECT_EQ(b0->GetName(), "Body");
-    EXPECT_DOUBLE_EQ(b0->GetRawDensity(), 2800.0);
+    EXPECT_EQ(b0->name(), "Body");
+    EXPECT_DOUBLE_EQ(b0->raw_density(), 2800.0);
 
     const Body *b1 = proj.model().getBody(1);
     ASSERT_NE(b1, nullptr);
-    EXPECT_EQ(b1->GetName(), "Wings");
-    EXPECT_DOUBLE_EQ(b1->GetRawDensity(), 2640.0);
+    EXPECT_EQ(b1->name(), "Wings");
+    EXPECT_DOUBLE_EQ(b1->raw_density(), 2640.0);
 
     const Body *b2 = proj.model().getBody(2);
     ASSERT_NE(b2, nullptr);
-    EXPECT_EQ(b2->GetName(), "... and I feel fine");
-    EXPECT_DOUBLE_EQ(b2->GetRawDensity(), 3400.0);
+    EXPECT_EQ(b2->name(), "... and I feel fine");
+    EXPECT_DOUBLE_EQ(b2->raw_density(), 3400.0);
 
     // Verify Multi-Body Facets Generation
     std::vector<Facet3Pt> facets;
@@ -306,10 +306,10 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     EXPECT_GT(facets.size(), 300u);
 
     // Verify Body Attributes & Map Boundary Segments
-    EXPECT_FALSE(b0->IsFilled());
-    EXPECT_NE(b0->GetColor().a, 0);
-    EXPECT_NE(b1->GetColor().a, 0);
-    EXPECT_NE(b2->GetColor().a, 0);
+    EXPECT_FALSE(b0->is_filled());
+    EXPECT_NE(b0->color().a, 0);
+    EXPECT_NE(b1->color().a, 0);
+    EXPECT_NE(b2->color().a, 0);
     EXPECT_GT(proj.model().getAllBodyBoundaries().size(), 0u);
 }
 
@@ -338,8 +338,8 @@ TEST(LegacyM3DTest, LoadAuthenticExample_TestMag_m3d) {
     // Verify body magnetization was computed on load
     const Body *body = proj.model().getBodies().front().get();
     ASSERT_NE(body, nullptr);
-    EXPECT_GT(body->GetSusceptibility(), 0.0);
-    EXPECT_FALSE(body->GetMagnetizationVector().IsZero());
+    EXPECT_GT(body->susceptibility(), 0.0);
+    EXPECT_FALSE(body->magnetization_vector().is_zero());
 
     // Recompute magnetic forward field and compare with loaded authentic grid
     proj.observation().compute_forward_field(facets, true);
@@ -455,12 +455,12 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
         // Verify Bodies
         ASSERT_EQ(origProj.model().getBodies().size(), reloadedProj.model().getBodies().size());
         for (const auto &origBody : origProj.model().getBodies()) {
-            const Body *relBody = reloadedProj.model().getBody(origBody->GetID());
-            ASSERT_NE(relBody, nullptr) << "Body ID " << origBody->GetID() << " not found in reloaded " << fn;
-            EXPECT_EQ(origBody->GetName(), relBody->GetName());
-            EXPECT_DOUBLE_EQ(origBody->GetRawDensity(), relBody->GetRawDensity());
-            EXPECT_NEAR(origBody->GetSusceptibility(), relBody->GetSusceptibility(), 1e-6);
-            EXPECT_EQ(origBody->IsActive(), relBody->IsActive());
+            const Body *relBody = reloadedProj.model().getBody(origBody->id());
+            ASSERT_NE(relBody, nullptr) << "Body ID " << origBody->id() << " not found in reloaded " << fn;
+            EXPECT_EQ(origBody->name(), relBody->name());
+            EXPECT_DOUBLE_EQ(origBody->raw_density(), relBody->raw_density());
+            EXPECT_NEAR(origBody->susceptibility(), relBody->susceptibility(), 1e-6);
+            EXPECT_EQ(origBody->is_active(), relBody->is_active());
         }
 
         // Verify Column Points
@@ -474,7 +474,7 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
                     const auto *p2 = reloadedProj.model().getAt(r, c, static_cast<int>(k));
                     ASSERT_NE(p1, nullptr);
                     ASSERT_NE(p2, nullptr);
-                    EXPECT_EQ(p1->bodyId(), p2->bodyId());
+                    EXPECT_EQ(p1->body_id(), p2->body_id());
                     EXPECT_NEAR(p1->point().x, p2->point().x, 1e-4);
                     EXPECT_NEAR(p1->point().y, p2->point().y, 1e-4);
                     EXPECT_NEAR(p1->point().z, p2->point().z, 1e-4);
