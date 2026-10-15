@@ -77,11 +77,7 @@ public:
 #endif
 
 	// --- Constructors and Special Member Functions (Rule of Zero / Five) ---
-	constexpr Facet() noexcept {
-		if constexpr (is_fixed) {
-			_sz = N;
-		}
-	}
+	constexpr Facet() noexcept = default;
 	~Facet() = default;
 
 	Facet(const Facet&) = default;
@@ -95,21 +91,21 @@ public:
 	 * @param auto_init If true, automatically computes normal and edge geometry.
 	 */
 	explicit Facet(const std::vector<point>& pts, bool auto_init = false) requires (!is_fixed)
-		: _sz(pts.size()), _pts(pts) {
+		: _pts(pts) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
 	explicit Facet(std::vector<point>&& pts, bool auto_init = false) noexcept requires (!is_fixed)
-		: _sz(pts.size()), _pts(std::move(pts)) {
+		: _pts(std::move(pts)) {
 		if (auto_init) {
 			Init();
 		}
 	}
 
 	explicit Facet(const std::array<point, N>& pts, bool auto_init = false) requires (is_fixed)
-		: _sz(N), _pts(pts) {
+		: _pts(pts) {
 		if (auto_init) {
 			Init();
 		}
@@ -126,7 +122,7 @@ public:
 		: Facet(std::span<const point>(pts.begin(), pts.size()), auto_init) {}
 
 	Facet(const point& p0, const point& p1, const point& p2, bool auto_init = false) requires (N == 3)
-		: _sz(3), _pts{p0, p1, p2} {
+		: _pts{p0, p1, p2} {
 		if (auto_init) {
 			Init();
 		}
@@ -174,18 +170,12 @@ public:
 
 	void Init(const ptvec& pts) {
 		_pts = pts;
-		if constexpr (is_fixed) {
-			_sz = N;
-		} else {
-			_sz = _pts.size();
-		}
 		_initialized = false;
 		Init();
 	}
 
 	void Init(ptvec&& pts) requires (!is_fixed) {
 		_pts = std::move(pts);
-		_sz = _pts.size();
 		_initialized = false;
 		Init();
 	}
@@ -201,10 +191,8 @@ public:
 			_pts[0] = p0;
 			_pts[1] = p1;
 			_pts[2] = p2;
-			_sz = 3;
 		} else {
 			_pts = {p0, p1, p2};
-			_sz = 3;
 		}
 		_initialized = false;
 		Init();
@@ -222,11 +210,11 @@ public:
 	[[nodiscard]] const point& operator[](size_t index) const noexcept { return _pts[index]; }
 
 	[[nodiscard]] const point& normal() const noexcept { return _n; }
-	[[nodiscard]] size_t size() const noexcept {
+	[[nodiscard]] constexpr size_t size() const noexcept {
 		if constexpr (is_fixed) return N;
 		else return _pts.size();
 	}
-	[[nodiscard]] bool empty() const noexcept {
+	[[nodiscard]] constexpr bool empty() const noexcept {
 		if constexpr (is_fixed) return N == 0;
 		else return _pts.empty();
 	}
@@ -334,20 +322,17 @@ public:
 private:
 	void InitPoints(std::span<const point> pts) {
 		if constexpr (is_fixed) {
-			_sz = N;
 			const size_t count = std::min(pts.size(), N);
 			for (size_t i = 0; i < count; ++i) {
 				_pts[i] = pts[i];
 			}
 		} else {
 			_pts.assign(pts.begin(), pts.end());
-			_sz = _pts.size();
 		}
 	}
 
 protected:
 	bool   _initialized{false}; ///< True if normal, edge vectors, and lengths have been initialized
-	size_t _sz{0};              ///< Number of vertices
 	int    _id{-1};             ///< Facet identifier
 	ptvec  _pts{};              ///< Polygon vertices (counter-clockwise orientation)
 	ptvec  _L{};                ///< Edge vectors: L[i] = pts[i+1] - pts[i]
@@ -384,12 +369,8 @@ void Facet<T, N>::Init()
 	if (_initialized) {
 		return;
 	}
-	if constexpr (is_fixed) {
-		_sz = N;
-	} else {
-		_sz = _pts.size();
-	}
-	if (_sz < 3) {
+	const size_t sz = size();
+	if (sz < 3) {
 		_initialized = false;
 		return;
 	}
@@ -398,13 +379,12 @@ void Facet<T, N>::Init()
 	_n.Unit();
 
 	if constexpr (!is_fixed) {
-		_mi.resize(_sz);
-		_ni.resize(_sz);
-		_L.resize(_sz);
-		_len.resize(_sz);
+		_mi.resize(sz);
+		_ni.resize(sz);
+		_L.resize(sz);
+		_len.resize(sz);
 	}
 
-	const size_t sz = is_fixed ? N : _sz;
 	for (size_t i = 0; i < sz; ++i) {
 		const size_t next = (i + 1 == sz) ? 0 : i + 1;
 		point edge = _pts[next] - _pts[i];
@@ -421,7 +401,7 @@ void Facet<T, N>::Init()
 template <std::floating_point T, size_t N>
 void Facet<T, N>::FldVlado(const point& r, T& f) const
 {
-	const size_t sz = is_fixed ? N : _sz;
+	const size_t sz = size();
 	if (sz < 3) return;
 	const T z = std::abs(_n * (_pts[0] - r)) + constants::eps<T>;
 
@@ -488,7 +468,7 @@ T Facet<T, N>::field_gz(const point& r) const
 template <std::floating_point T, size_t N>
 void Facet<T, N>::Fld_Gz(const point& r, const point& ro, const T& ro0, T& gz) const
 {
-	const size_t sz = is_fixed ? N : _sz;
+	const size_t sz = size();
 	if (sz < 3) return;
 	T f{0};
 	const T ro_r = ro0 + ro * r;
@@ -535,7 +515,7 @@ T Facet<T, N>::field_gz(const point& r, const point& ro, const T& ro0) const
 template <std::floating_point T, size_t N>
 void Facet<T, N>::Fld_G(const point& r, const point& ro, const T& ro0, point& grv) const
 {
-	const size_t sz = is_fixed ? N : _sz;
+	const size_t sz = size();
 	if (sz < 3) return;
 	point f{};
 	const T ro_r = ro0 + ro * r;
@@ -644,7 +624,7 @@ void Facet<T, N>::FldGS(const point& r, point& f) const
 template <std::floating_point T, size_t N>
 Point3D<T> Facet<T, N>::FldGS(const point& r) const
 {
-	const size_t sz = is_fixed ? N : _sz;
+	const size_t sz = size();
 	if (sz < 3) {
 		return point{};
 	}
@@ -755,7 +735,7 @@ void Facet<T, N>::FldVladoGrd(const point& r, T refDensity,
                               T& gxy, T& gxz, T& gyz,
                               T densityOpos, T density) const
 {
-	const size_t sz = is_fixed ? N : _sz;
+	const size_t sz = size();
 	if (sz < 3) return;
 	const point* v_a = &_pts[0];
 	const T Z = _n * (*v_a - r);
