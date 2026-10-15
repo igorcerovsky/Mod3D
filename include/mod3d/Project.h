@@ -56,17 +56,17 @@ public:
     Project &operator=(Project &&) noexcept = default;
 
     // Component Access
-    [[nodiscard]] Model &model() noexcept { return m_model; }
-    [[nodiscard]] const Model &model() const noexcept { return m_model; }
+    [[nodiscard]] Model &model() noexcept { return model_; }
+    [[nodiscard]] const Model &model() const noexcept { return model_; }
 
-    [[nodiscard]] ObservationSpace &observation() noexcept { return m_observation; }
-    [[nodiscard]] const ObservationSpace &observation() const noexcept { return m_observation; }
+    [[nodiscard]] ObservationSpace &observation() noexcept { return observation_; }
+    [[nodiscard]] const ObservationSpace &observation() const noexcept { return observation_; }
 
-    [[nodiscard]] ProjectMetadata &metadata() noexcept { return m_metadata; }
-    [[nodiscard]] const ProjectMetadata &metadata() const noexcept { return m_metadata; }
+    [[nodiscard]] ProjectMetadata &metadata() noexcept { return metadata_; }
+    [[nodiscard]] const ProjectMetadata &metadata() const noexcept { return metadata_; }
 
-    [[nodiscard]] ProjectSettings &settings() noexcept { return m_settings; }
-    [[nodiscard]] const ProjectSettings &settings() const noexcept { return m_settings; }
+    [[nodiscard]] ProjectSettings &settings() noexcept { return settings_; }
+    [[nodiscard]] const ProjectSettings &settings() const noexcept { return settings_; }
 
     // Modern C++20 JSON Serialization (.mod3d)
     bool save_json(const std::filesystem::path &filePath, int indent = 2) const;
@@ -87,10 +87,10 @@ public:
     void clear();
 
 private:
-    ProjectMetadata m_metadata;
-    ProjectSettings m_settings;
-    Model m_model;
-    ObservationSpace m_observation;
+    ProjectMetadata metadata_;
+    ProjectSettings settings_;
+    Model model_;
+    ObservationSpace observation_;
 };
 
 } // namespace mod3d
