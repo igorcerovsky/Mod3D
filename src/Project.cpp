@@ -378,7 +378,7 @@ bool Project::fromJsonString(const std::string &jsonStr)
             m_metadata.description = jm.value("description", "");
             m_metadata.createdAt = jm.value("created_at", "");
             m_metadata.modifiedAt = jm.value("modified_at", "");
-            m_metadata.version = root.value("version", "2.1.0");
+            m_metadata.version = root.value("version", "2.1.1");
         }
 
         // Settings

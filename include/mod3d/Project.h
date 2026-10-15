@@ -14,7 +14,7 @@ struct ProjectMetadata {
     std::string description{""};
     std::string createdAt{""};
     std::string modifiedAt{""};
-    std::string version{"2.1.0"};
+    std::string version{"2.1.1"};
 };
 
 struct ProjectSettings {
