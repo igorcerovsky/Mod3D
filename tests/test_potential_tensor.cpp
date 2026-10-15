@@ -20,10 +20,6 @@ TEST(PotentialTensorTest, AmbientFieldTrigonometricProjection) {
     const double iS = 50000.0;
 
     Point3D af = ambient_field(iI, iD, iS);
-    Point3D afLegacy = AmbientField(iI, iD, iS);
-    EXPECT_DOUBLE_EQ(af.x, afLegacy.x);
-    EXPECT_DOUBLE_EQ(af.y, afLegacy.y);
-    EXPECT_DOUBLE_EQ(af.z, afLegacy.z);
 
     const double iI_rad = iI * std::numbers::pi_v<double> / 180.0;
     const double iD_rad = iD * std::numbers::pi_v<double> / 180.0;
@@ -55,10 +51,6 @@ TEST(PotentialTensorTest, MagnetizationVectorInducedAndRemanent) {
     const double rS = 1.5;
 
     Point3D vM = magnetization_vector(susc, iI, iD, iS, rI, rD, rS);
-    Point3D vMLegacy = MagnetizationVector(susc, iI, iD, iS, rI, rD, rS);
-    EXPECT_DOUBLE_EQ(vM.x, vMLegacy.x);
-    EXPECT_DOUBLE_EQ(vM.y, vMLegacy.y);
-    EXPECT_DOUBLE_EQ(vM.z, vMLegacy.z);
 
     Point3D vH = ambient_field(iI, iD, iS);
     Point3D vI = vH * (susc / (4.0 * std::numbers::pi_v<double>));
@@ -92,9 +84,6 @@ TEST(PotentialTensorTest, TotalFieldAnomalyMag_dT) {
     double dT_coords = mag_delta_t(anomalousField.x, anomalousField.y, anomalousField.z,
                                    af.x, af.y, af.z, 50000.0);
     EXPECT_DOUBLE_EQ(dT_parallel, dT_coords);
-
-    // Legacy alias check
-    EXPECT_DOUBLE_EQ(Mag_dT(anomalousField, af, 50000.0), dT_parallel);
 
     // Zero anomaly should yield 0.0
     EXPECT_NEAR(mag_delta_t(Point3D(0, 0, 0), af, 50000.0), 0.0, 1e-10);

@@ -39,24 +39,4 @@ namespace mod3d {
 [[nodiscard]] double mag_delta_t(double mx, double my, double mz,
                                  double afx, double afy, double afz,
                                  double ambient_intensity) noexcept;
-
-// Compatibility aliases
-[[nodiscard]] inline Point3D AmbientField(double iI = 60.0, double iD = 0.0, double iS = 50000.0) noexcept {
-    return ambient_field(iI, iD, iS);
-}
-
-[[nodiscard]] inline Point3D MagnetizationVector(double susc, double iI, double iD, double iS,
-                                                 double rI = 0.0, double rD = 0.0, double rS = 0.0) noexcept {
-    return magnetization_vector(susc, iI, iD, iS, rI, rD, rS);
-}
-
-[[nodiscard]] inline double Mag_dT(const Point3D &v_mag, const Point3D &v_af, double hInt) noexcept {
-    return mag_delta_t(v_mag, v_af, hInt);
-}
-
-[[nodiscard]] inline double Mag_dT(double mx, double my, double mz,
-                                   double afx, double afy, double afz, double hInt) noexcept {
-    return mag_delta_t(mx, my, mz, afx, afy, afz, hInt);
-}
-
 } // namespace mod3d
