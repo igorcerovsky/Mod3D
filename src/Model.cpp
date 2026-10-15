@@ -650,14 +650,12 @@ void Model::initSideFacetsBound(const FctGen &fg, std::vector<Facet3Pt> &facetLi
 
     Body *pBd = body(fg.id);
     if (fg.top[i0] != fg.bot[i0]) {
-        Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
+        auto &fct = facetList.emplace_back(fg.top[i0], fg.bot[i0], fg.top[i1]);
         fct.pBody = pBd;
-        facetList.push_back(fct);
     }
     if (fg.top[i1] != fg.bot[i1]) {
-        Facet3Pt fct(fg.bot[i0], fg.bot[i1], fg.top[i1]);
+        auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i1], fg.top[i1]);
         fct.pBody = pBd;
-        facetList.push_back(fct);
     }
 }
 
@@ -684,16 +682,14 @@ void Model::initSideFacets_2(const FctGen &fg, std::vector<Facet3Pt> &facetList,
         }
         Body *pBd = body(fg.id);
         if (fg.top[i0] != fg.bot[i0]) {
-            Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
+            auto &fct = facetList.emplace_back(fg.top[i0], fg.bot[i0], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
             fct.pBody = pBd;
-            facetList.push_back(fct);
         }
         if (fg.top[i1] != fg.bot[i1]) {
-            Facet3Pt fct(fg.bot[i0], fg.bot[i1], fg.top[i1]);
+            auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i1], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
             fct.pBody = pBd;
-            facetList.push_back(fct);
         }
     }
 }
@@ -707,16 +703,14 @@ void Model::initSideFacets_3(const FctGen &fg, std::vector<Facet3Pt> &facetList,
     if ((fg.top[i0] != fg.bot[i0]) || (fg.top[i1] != fg.bot[i1])) {
         Body *pBd = body(fg.id);
         if (fg.top[i0] != fg.bot[i0]) {
-            Facet3Pt fct(fg.top[i0], fg.bot[i0], fg.top[i1]);
+            auto &fct = facetList.emplace_back(fg.top[i0], fg.bot[i0], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
             fct.pBody = pBd;
-            facetList.push_back(fct);
         }
         if (fg.top[i1] != fg.bot[i1]) {
-            Facet3Pt fct(fg.bot[i0], fg.bot[i1], fg.top[i1]);
+            auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i1], fg.top[i1]);
             fct.nType = FacetType::FCT_SIDE;
             fct.pBody = pBd;
-            facetList.push_back(fct);
         }
     }
 }
@@ -752,24 +746,19 @@ void Model::initSideFacets(const FctGen &fg, std::vector<Facet3Pt> &facetList)
 void Model::initFacet(const FctGen &pU, const FctGen &pL, std::vector<Facet3Pt> &facetList, int i0, int i1)
 {
     const int i2 = 4;
-    Facet3Pt fct;
-    fct.pBody = body(pU.id);
 
     if (pU.bot[i0] == pL.top[i0] && pU.bot[i1] == pL.top[i1] && pU.bot[i2] == pL.top[i2]) {
-        fct.pBodyOpos = body(pU.id);
+        auto &fct = facetList.emplace_back(pL.top[i0], pL.top[i1], pL.top[i2]);
         fct.pBody = body(pL.id);
-        fct.init(pL.top[i0], pL.top[i1], pL.top[i2]);
-        facetList.push_back(fct);
+        fct.pBodyOpos = body(pU.id);
     } else {
         if (pU.b[i0] && pU.b[i1]) {
+            auto &fct = facetList.emplace_back(pU.bot[i0], pU.bot[i2], pU.bot[i1]);
             fct.pBody = body(pU.id);
-            fct.init(pU.bot[i0], pU.bot[i2], pU.bot[i1]);
-            facetList.push_back(fct);
         }
         if (pL.b[i0] && pL.b[i1]) {
+            auto &fct = facetList.emplace_back(pL.top[i0], pL.top[i1], pL.top[i2]);
             fct.pBody = body(pL.id);
-            fct.init(pL.top[i0], pL.top[i1], pL.top[i2]);
-            facetList.push_back(fct);
         }
     }
 }
@@ -777,15 +766,13 @@ void Model::initFacet(const FctGen &pU, const FctGen &pL, std::vector<Facet3Pt> 
 void Model::initFacetTBM(const FctGen &fg, std::vector<Facet3Pt> &facetList, int i0, int i1, FgType tag)
 {
     const int i2 = 4;
-    Facet3Pt fct;
-    fct.pBody = body(fg.id);
-
     if (tag == FgType::TopMost) {
-        fct.init(fg.top[i0], fg.top[i1], fg.top[i2]);
+        auto &fct = facetList.emplace_back(fg.top[i0], fg.top[i1], fg.top[i2]);
+        fct.pBody = body(fg.id);
     } else if (tag == FgType::BotMost) {
-        fct.init(fg.bot[i0], fg.bot[i2], fg.bot[i1]);
+        auto &fct = facetList.emplace_back(fg.bot[i0], fg.bot[i2], fg.bot[i1]);
+        fct.pBody = body(fg.id);
     }
-    facetList.push_back(fct);
 }
 
 void Model::fgToFct(std::vector<FctGen> &fga, std::vector<Facet3Pt> &facetList, int i0, int i1)
