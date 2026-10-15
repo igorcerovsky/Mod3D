@@ -1431,7 +1431,7 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
     // Now populate observed grid for GZ
     mod3d::Grid obsGrd(21, 21, 0.0, 0.0, 500.0, 500.0);
     obsGrd.fill(12.5);
-    doc.observation().setObservedGrid(mod3d::FieldComponent::GZ, obsGrd);
+    doc.observation().set_observed_grid(mod3d::FieldComponent::GZ, obsGrd);
     doc.setShowMeasuredField(true);
     doc.setShowDifferenceField(true);
 
@@ -1718,7 +1718,7 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
     // 2. Now supply measured data for GZ
     mod3d::Grid obsGrid(21, 21, 0.0, 0.0, 500.0, 500.0);
     obsGrid.fill(5.0);
-    mw.document()->observation().setObservedGrid(mod3d::FieldComponent::GZ, obsGrid);
+    mw.document()->observation().set_observed_grid(mod3d::FieldComponent::GZ, obsGrid);
     mw.document()->setShowMeasuredField(true);
     mw.document()->setShowDifferenceField(true);
 

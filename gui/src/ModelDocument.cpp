@@ -675,8 +675,8 @@ bool ModelDocument::loadMeasuredGrid(const QString &filePath, std::optional<mod3
     }
 
     mod3d::FieldComponent targetComp = comp.value_or(m_activeField);
-    m_project.observation().setObservedGrid(targetComp, g);
-    m_project.observation().computeDifference(targetComp);
+    m_project.observation().set_observed_grid(targetComp, g);
+    m_project.observation().compute_difference(targetComp);
     m_showMeasured = true;
     m_showDiff = true;
     setModified(true);
@@ -696,7 +696,7 @@ bool ModelDocument::loadReliefGrid(const QString &filePath) {
         return false;
     }
 
-    m_project.observation().setSurfaceRelief(g);
+    m_project.observation().set_surface_relief(g);
     setModified(true);
     emit modelGeometryChanged();
     emit statusMessage(tr("Imported topography DEM (%1x%2 nodes) from %3")

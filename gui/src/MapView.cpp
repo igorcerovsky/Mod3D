@@ -339,7 +339,7 @@ void MapView::drawBackgroundRaster(QPainter &painter) {
             grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
         }
     } else if (m_rasterMode == MapRasterMode::Relief) {
-        grid = &m_doc->observation().getSurfaceRelief();
+        grid = &m_doc->observation().surface_relief();
         palType = MapPaletteType::Relief;
     } else { // Modeled
         grid = m_doc->modeledGrid(m_fieldComponent);
@@ -543,7 +543,7 @@ void MapView::drawColorScaleLegend(QPainter &painter) {
             grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
         }
     } else if (m_rasterMode == MapRasterMode::Relief) {
-        grid = &m_doc->observation().getSurfaceRelief();
+        grid = &m_doc->observation().surface_relief();
         palType = MapPaletteType::Relief;
     } else { // Modeled
         grid = m_doc->modeledGrid(m_fieldComponent);
