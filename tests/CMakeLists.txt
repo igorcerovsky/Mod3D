@@ -13,7 +13,7 @@ include(GoogleTest)
 add_compile_definitions(
     PFLD_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld/tests/test_data"
     PFLD_APP_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../pfld/tests/test_data"
-    LEGACY_SAMPLE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../legacy/sample_data"
+    LEGACY_SAMPLE_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data/sample_data"
     MOD3D_EXAMPLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../Examples"
     MOD3D_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/data"
 )
@@ -27,7 +27,6 @@ gtest_discover_tests(test_point3d)
 add_executable(test_pfld_groundtruth test_pfld_groundtruth.cpp)
 target_link_libraries(test_pfld_groundtruth PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_pfld_groundtruth)
-
 
 # Test Model, ColumnPoint, Grid
 add_executable(test_model test_model.cpp)
