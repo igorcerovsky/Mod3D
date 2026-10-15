@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include "mod3d/Point3D.h"
 #include "mod3d/Facet3Pt.h"
-#include "mod3d/PotField.h"
 
 #include <cmath>
 #include <fstream>

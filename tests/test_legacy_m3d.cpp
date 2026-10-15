@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 #include "mod3d/Project.h"
-#include "mod3d/PotField.h"
 #include <filesystem>
 #include <fstream>
 #include <cstring>

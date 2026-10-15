@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
-#include "mod3d/PotField.h"
+#include "mod3d/Magnetics.h"
 #include "mod3d/Facet3Pt.h"
 #include "mod3d/FieldCompute.h"
 #include "mod3d/Body.h"
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 using namespace mod3d;
@@ -18,10 +19,14 @@ TEST(PotentialTensorTest, AmbientFieldTrigonometricProjection) {
     const double iD = 30.0;
     const double iS = 50000.0;
 
-    Point3D af = AmbientField(iI, iD, iS);
+    Point3D af = ambient_field(iI, iD, iS);
+    Point3D afLegacy = AmbientField(iI, iD, iS);
+    EXPECT_DOUBLE_EQ(af.x, afLegacy.x);
+    EXPECT_DOUBLE_EQ(af.y, afLegacy.y);
+    EXPECT_DOUBLE_EQ(af.z, afLegacy.z);
 
-    const double iI_rad = iI * PI_VAL / 180.0;
-    const double iD_rad = iD * PI_VAL / 180.0;
+    const double iI_rad = iI * std::numbers::pi_v<double> / 180.0;
+    const double iD_rad = iD * std::numbers::pi_v<double> / 180.0;
 
     // Geophysical coordinate convention:
     // Y = North = iS * cos(I) * cos(D)
@@ -49,14 +54,18 @@ TEST(PotentialTensorTest, MagnetizationVectorInducedAndRemanent) {
     const double rD = 90.0;
     const double rS = 1.5;
 
-    Point3D vM = MagnetizationVector(susc, iI, iD, iS, rI, rD, rS);
+    Point3D vM = magnetization_vector(susc, iI, iD, iS, rI, rD, rS);
+    Point3D vMLegacy = MagnetizationVector(susc, iI, iD, iS, rI, rD, rS);
+    EXPECT_DOUBLE_EQ(vM.x, vMLegacy.x);
+    EXPECT_DOUBLE_EQ(vM.y, vMLegacy.y);
+    EXPECT_DOUBLE_EQ(vM.z, vMLegacy.z);
 
-    Point3D vH = AmbientField(iI, iD, iS);
-    Point3D vI = vH * (susc / (4.0 * PI_VAL));
+    Point3D vH = ambient_field(iI, iD, iS);
+    Point3D vI = vH * (susc / (4.0 * std::numbers::pi_v<double>));
 
     Point3D vR;
-    const double rI_rad = rI * PI_VAL / 180.0;
-    const double rD_rad = rD * PI_VAL / 180.0;
+    const double rI_rad = rI * std::numbers::pi_v<double> / 180.0;
+    const double rD_rad = rD * std::numbers::pi_v<double> / 180.0;
     vR.x = std::cos(rI_rad) * std::cos(rD_rad) * rS;
     vR.y = std::cos(rI_rad) * std::sin(rD_rad) * rS;
     vR.z = -std::sin(rI_rad) * rS;
@@ -69,23 +78,26 @@ TEST(PotentialTensorTest, MagnetizationVectorInducedAndRemanent) {
 }
 
 TEST(PotentialTensorTest, TotalFieldAnomalyMag_dT) {
-    Point3D af = AmbientField(60.0, 0.0, 50000.0);
+    Point3D af = ambient_field(60.0, 0.0, 50000.0);
     Point3D afUnit = af;
     afUnit.Unit();
 
     // Secondary anomalous field of 100 nT aligned with ambient field
     Point3D anomalousField = afUnit * 100.0;
-    double dT_parallel = Mag_dT(anomalousField, af, 50000.0);
+    double dT_parallel = mag_delta_t(anomalousField, af, 50000.0);
     // |B_0 + dB| - |B_0| = 50100 - 50000 = 100
     EXPECT_NEAR(dT_parallel, 100.0, 1e-10);
 
     // Overload with individual coordinates
-    double dT_coords = Mag_dT(anomalousField.x, anomalousField.y, anomalousField.z,
-                              af.x, af.y, af.z, 50000.0);
+    double dT_coords = mag_delta_t(anomalousField.x, anomalousField.y, anomalousField.z,
+                                   af.x, af.y, af.z, 50000.0);
     EXPECT_DOUBLE_EQ(dT_parallel, dT_coords);
 
+    // Legacy alias check
+    EXPECT_DOUBLE_EQ(Mag_dT(anomalousField, af, 50000.0), dT_parallel);
+
     // Zero anomaly should yield 0.0
-    EXPECT_NEAR(Mag_dT(Point3D(0, 0, 0), af, 50000.0), 0.0, 1e-10);
+    EXPECT_NEAR(mag_delta_t(Point3D(0, 0, 0), af, 50000.0), 0.0, 1e-10);
 }
 
 // ============================================================================

@@ -1,5 +1,5 @@
 #include "mod3d/Body.h"
-#include "mod3d/PotField.h"
+#include "mod3d/Magnetics.h"
 #include <ostream>
 #include <utility>
 
@@ -39,8 +39,8 @@ void Body::swap(Body &other) noexcept {
 }
 
 void Body::compute_magnetization_vector(const Point3D &vIndFld) {
-    mag_vector_ = MagnetizationVector(susceptibility_, vIndFld.x, vIndFld.y, vIndFld.z,
-                                      mag_rem_.x, mag_rem_.y, mag_rem_.z);
+    mag_vector_ = mod3d::magnetization_vector(susceptibility_, vIndFld.x, vIndFld.y, vIndFld.z,
+                                              mag_rem_.x, mag_rem_.y, mag_rem_.z);
 }
 
 bool Body::operator==(const Body &other) const noexcept {

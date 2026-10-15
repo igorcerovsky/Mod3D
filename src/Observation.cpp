@@ -1,5 +1,5 @@
 #include "mod3d/Observation.h"
-#include "mod3d/PotField.h"
+#include "mod3d/Magnetics.h"
 #include "mod3d/FieldCompute.h"
 #include "mod3d/Body.h"
 #include <cmath>
@@ -115,7 +115,7 @@ void ObservationSpace::set_ambient_field_params(double inclinationDeg, double de
 
 Point3D ObservationSpace::ambient_field_vector() const
 {
-    return AmbientField(inc_deg_, dec_deg_, mag_intensity_);
+    return ambient_field(inc_deg_, dec_deg_, mag_intensity_);
 }
 
 double ObservationSpace::get_elevation_at(
@@ -416,7 +416,7 @@ void ObservationSpace::compute_total_fields()
                 if (pMx->is_dummy(r, c) || pMy->is_dummy(r, c) || pMz->is_dummy(r, c)) {
                     (*pDT)(r, c) = GRID_DUMMY;
                 } else {
-                    (*pDT)(r, c) = -Mag_dT(mx, my, mz, af.x, af.y, af.z, mag_intensity_);
+                    (*pDT)(r, c) = -mag_delta_t(mx, my, mz, af.x, af.y, af.z, mag_intensity_);
                 }
             }
         }

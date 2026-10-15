@@ -1,6 +1,5 @@
 #include "mod3d/Facet3Pt.h"
 #include "mod3d/Body.h"
-#include "mod3d/PotField.h"
 #include <cmath>
 #include <algorithm>
 #include <utility>

@@ -36,7 +36,7 @@ add_subdirectory(pfld)
 
 # Core static library
 add_library(mod3d_core STATIC
-    src/PotField.cpp
+    src/Magnetics.cpp
     src/Body.cpp
     src/Facet3Pt.cpp
     src/ColumnPoint.cpp
