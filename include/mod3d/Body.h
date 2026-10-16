@@ -70,9 +70,7 @@ struct BodyMagnetics {
 struct BodyDrawing {
     bool visible{true};                   // Whether body is rendered / visible
     bool filled{true};                    // Whether body profile interior polygon is filled
-    BodyColor color{0, 0, 180, 255};      // Boundary / outline stroke color
-    BodyColor fill_color{0, 0, 180, 255}; // Profile polygon interior fill color
-    BodyColor map_color{0, 0, 180, 255};  // Top-down 2D map outline/fill color
+    BodyColor color{0, 0, 180, 255};      // Body display color
     float transparency{0.5f};             // Alpha opacity factor [0.0 - 1.0]
     bool transparent{true};               // Enable transparency blending
 
@@ -143,17 +141,7 @@ public:
     void set_filled(bool fill) noexcept { drawing_.filled = fill; }
 
     [[nodiscard]] BodyColor color() const noexcept { return drawing_.color; }
-    void set_color(const BodyColor &color) noexcept {
-        drawing_.color = color;
-        if (drawing_.fill_color == BodyColor()) drawing_.fill_color = color;
-        if (drawing_.map_color == BodyColor()) drawing_.map_color = color;
-    }
-
-    [[nodiscard]] BodyColor fill_color() const noexcept { return drawing_.fill_color; }
-    void set_fill_color(const BodyColor &col) noexcept { drawing_.fill_color = col; }
-
-    [[nodiscard]] BodyColor map_color() const noexcept { return drawing_.map_color; }
-    void set_map_color(const BodyColor &col) noexcept { drawing_.map_color = col; }
+    void set_color(const BodyColor &color) noexcept { drawing_.color = color; }
 
     [[nodiscard]] float transparency() const noexcept { return drawing_.transparency; }
     void set_transparency(float alpha) noexcept { drawing_.transparency = alpha; }

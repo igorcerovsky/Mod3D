@@ -123,8 +123,6 @@ nlohmann::json bodyToJson(const Body &b) {
     j["remanence"] = { b.remanent_magnetization().x, b.remanent_magnetization().y, b.remanent_magnetization().z };
     j["magnetization_vector"] = { b.magnetization_vector().x, b.magnetization_vector().y, b.magnetization_vector().z };
     j["color"] = { b.color().r, b.color().g, b.color().b, b.color().a };
-    j["fill_color"] = { b.fill_color().r, b.fill_color().g, b.fill_color().b, b.fill_color().a };
-    j["map_color"] = { b.map_color().r, b.map_color().g, b.map_color().b, b.map_color().a };
     j["transparent"] = b.is_transparent();
     j["alpha"] = b.transparency();
     return j;
@@ -162,22 +160,20 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
         col.b = static_cast<uint8_t>(j["color"][2]);
         col.a = static_cast<uint8_t>(j["color"][3]);
         b->set_color(col);
-    }
-    if (j.contains("fill_color") && j["fill_color"].size() >= 4) {
+    } else if (j.contains("fill_color") && j["fill_color"].size() >= 4) {
         BodyColor col;
         col.r = static_cast<uint8_t>(j["fill_color"][0]);
         col.g = static_cast<uint8_t>(j["fill_color"][1]);
         col.b = static_cast<uint8_t>(j["fill_color"][2]);
         col.a = static_cast<uint8_t>(j["fill_color"][3]);
-        b->set_fill_color(col);
-    }
-    if (j.contains("map_color") && j["map_color"].size() >= 4) {
+        b->set_color(col);
+    } else if (j.contains("map_color") && j["map_color"].size() >= 4) {
         BodyColor col;
         col.r = static_cast<uint8_t>(j["map_color"][0]);
         col.g = static_cast<uint8_t>(j["map_color"][1]);
         col.b = static_cast<uint8_t>(j["map_color"][2]);
         col.a = static_cast<uint8_t>(j["map_color"][3]);
-        b->set_map_color(col);
+        b->set_color(col);
     }
     b->set_transparent(j.value("transparent", false));
     b->set_transparency(j.value("alpha", 1.0f));
@@ -1289,18 +1285,6 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
             };
             int pIdx = (bId >= 0 ? bId : 0) % 7;
             bodyObj->set_color(defaultPalette[pIdx]);
-        }
-
-        if (bCol != 0) {
-            bodyObj->set_fill_color(rgbFromColorref(bCol));
-        } else {
-            bodyObj->set_fill_color(bodyObj->color());
-        }
-
-        if (pMapCol != 0) {
-            bodyObj->set_map_color(rgbFromColorref(pMapCol));
-        } else {
-            bodyObj->set_map_color(bodyObj->color());
         }
 
         model_.add_body(std::move(bodyObj));
