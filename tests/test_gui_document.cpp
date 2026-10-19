@@ -1281,7 +1281,6 @@ TEST_F(GuiDocumentTest, GL3DViewTurntableOrbitAndCameraPresets) {
 TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     MainWindow mw;
     mw.resize(1200, 800);
-    mw.show();
 
     // Verify 4 subwindows opened by default
     auto subs = mw.mdiArea()->subWindowList();
@@ -1353,7 +1352,6 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
 TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     MainWindow mw;
     mw.resize(1280, 820);
-    mw.show();
 
     ASSERT_NE(mw.settingsPane(), nullptr);
     EXPECT_EQ(mw.dockWidgetArea(mw.settingsPane()), Qt::RightDockWidgetArea);
@@ -1489,7 +1487,6 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
 
 TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
     MainWindow mw;
-    mw.show();
 
     auto *pane = mw.settingsPane();
     ASSERT_NE(pane, nullptr);
@@ -1635,7 +1632,6 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
 TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
     MainWindow mw;
     mw.resize(1280, 800);
-    mw.show();
 
     // Verify all toolbars belonging to MainWindow
     auto toolbars = mw.findChildren<QToolBar*>();
@@ -1670,7 +1666,6 @@ TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
 TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceWidgets) {
     MainWindow mw;
     mw.resize(1280, 800);
-    mw.show();
 
     auto *pane = mw.settingsPane();
     ASSERT_NE(pane, nullptr);
@@ -1760,7 +1755,6 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
 TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
     MainWindow mw;
     mw.resize(1400, 900);
-    mw.show();
 
     std::string sampleBeginPath = std::string(MOD3D_EXAMPLES_DIR) + "/SampleBegin.m3d";
     if (!std::filesystem::exists(sampleBeginPath)) {
@@ -1865,7 +1859,6 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
 TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     MainWindow mw;
     mw.resize(1400, 900);
-    mw.show();
 
     std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
     if (!std::filesystem::exists(samplePath)) {
