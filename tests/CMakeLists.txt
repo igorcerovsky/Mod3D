@@ -23,6 +23,11 @@ add_executable(test_point3d test_point3d.cpp)
 target_link_libraries(test_point3d PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_point3d)
 
+# Test Units Library
+add_executable(test_units test_units.cpp)
+target_link_libraries(test_units PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_units)
+
 # Test pfld ground truth
 add_executable(test_pfld_groundtruth test_pfld_groundtruth.cpp)
 target_link_libraries(test_pfld_groundtruth PRIVATE mod3d_core GTest::gtest_main)
