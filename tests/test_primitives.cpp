@@ -17,11 +17,11 @@ using namespace mod3d;
 
 TEST(Point3DTest, ZeroVectorAndDivisionByZero) {
     Point3D zero(0.0, 0.0, 0.0);
-    EXPECT_TRUE(zero.IsZero());
+    EXPECT_TRUE(zero.is_zero());
 
     // Normalizing a zero vector should remain zero without crashing or producing NaNs
-    zero.Unit();
-    EXPECT_TRUE(zero.IsZero());
+    zero.normalize();
+    EXPECT_TRUE(zero.is_zero());
     EXPECT_FALSE(std::isnan(zero.x));
     EXPECT_FALSE(std::isnan(zero.y));
     EXPECT_FALSE(std::isnan(zero.z));
@@ -29,25 +29,25 @@ TEST(Point3DTest, ZeroVectorAndDivisionByZero) {
     // Division by zero scalar must return zero vector safely
     Point3D pt(10.0, 20.0, 30.0);
     Point3D divZero = pt / 0.0;
-    EXPECT_TRUE(divZero.IsZero());
+    EXPECT_TRUE(divZero.is_zero());
 }
 
 TEST(Point3DTest, UtilityMethods) {
     Point3D pt(-5.0, 10.0, -15.0);
-    EXPECT_FALSE(pt.IsZero());
+    EXPECT_FALSE(pt.is_zero());
 
     // Positive
-    pt.Positive();
+    pt.positive();
     EXPECT_EQ(pt, Point3D(5.0, 10.0, 15.0));
 
     // TurnSign
-    pt.TurnSign();
+    pt.turn_sign();
     EXPECT_EQ(pt, Point3D(-5.0, -10.0, -15.0));
 
     // Zero
-    pt.Zero();
-    EXPECT_TRUE(pt.IsZero());
-    EXPECT_DOUBLE_EQ(pt.Abs(), 0.0);
+    pt.zero();
+    EXPECT_TRUE(pt.is_zero());
+    EXPECT_DOUBLE_EQ(pt.norm(), 0.0);
 }
 
 TEST(Point3DTest, DistanceAndAngle) {
@@ -55,19 +55,19 @@ TEST(Point3DTest, DistanceAndAngle) {
     Point3D p2(3.0, 4.0, 0.0);
 
     // Distance in 2D plane (3-4-5 triangle)
-    EXPECT_DOUBLE_EQ(p1.Distance(p2), 5.0);
-    EXPECT_DOUBLE_EQ(p2.Distance(p1), 5.0);
+    EXPECT_DOUBLE_EQ(p1.distance(p2), 5.0);
+    EXPECT_DOUBLE_EQ(p2.distance(p1), 5.0);
 
     // Angle between perpendicular unit vectors
     Point3D ux(1.0, 0.0, 0.0);
     Point3D uy(0.0, 1.0, 0.0);
     const double piHalf = 3.14159265358979323846 / 2.0;
-    EXPECT_NEAR(ux.Angle(uy), piHalf, 1e-9);
+    EXPECT_NEAR(ux.angle(uy), piHalf, 1e-9);
 
     // Angle between parallel vectors (0) and anti-parallel vectors (pi)
-    EXPECT_NEAR(ux.Angle(ux), 0.0, 1e-9);
+    EXPECT_NEAR(ux.angle(ux), 0.0, 1e-9);
     Point3D negUx(-1.0, 0.0, 0.0);
-    EXPECT_NEAR(ux.Angle(negUx), 3.14159265358979323846, 1e-9);
+    EXPECT_NEAR(ux.angle(negUx), 3.14159265358979323846, 1e-9);
 }
 
 // ============================================================================

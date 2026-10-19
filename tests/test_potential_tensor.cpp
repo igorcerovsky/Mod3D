@@ -34,7 +34,7 @@ TEST(PotentialTensorTest, AmbientFieldTrigonometricProjection) {
   EXPECT_NEAR(af.x, expectedX, 1e-10);
   EXPECT_NEAR(af.y, expectedY, 1e-10);
   EXPECT_NEAR(af.z, expectedZ, 1e-10);
-  EXPECT_NEAR(af.Abs(), iS, 1e-10);
+  EXPECT_NEAR(af.norm(), iS, 1e-10);
 }
 
 TEST(PotentialTensorTest, MagnetizationVectorInducedAndRemanent) {
@@ -71,7 +71,7 @@ TEST(PotentialTensorTest, MagnetizationVectorInducedAndRemanent) {
 TEST(PotentialTensorTest, TotalFieldAnomalyMag_dT) {
   Point3D af = ambient_field(60.0, 0.0, 50000.0);
   Point3D afUnit = af;
-  afUnit.Unit();
+  afUnit.normalize();
 
   // Secondary anomalous field of 100 nT aligned with ambient field
   Point3D anomalousField = afUnit * 100.0;

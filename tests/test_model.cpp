@@ -92,7 +92,7 @@ TEST(ModelTest, FacetGenerationMultiColumnPrism) {
     // Verify all generated facets have valid outward normals
     for (const auto &fct : allFacets) {
         Point3D n = fct.normal();
-        EXPECT_NEAR(n.Abs(), 1.0, 1e-6);
+        EXPECT_NEAR(n.norm(), 1.0, 1e-6);
     }
 }
 
@@ -284,7 +284,7 @@ TEST(FacetOrientationTest, ModelGeneratedFacetsStrictlyOutward) {
     // The outward normal must point AWAY from the body center: (centroid - center) * normal >= 0
     for (const auto &fct : facets) {
         Point3D n = fct.normal();
-        EXPECT_NEAR(n.Abs(), 1.0, 1e-9);
+        EXPECT_NEAR(n.norm(), 1.0, 1e-9);
 
         Point3D cntr = fct.center();
 

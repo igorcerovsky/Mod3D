@@ -327,22 +327,6 @@ public:
 		res.z = pt1.x * pt2.y - pt1.y * pt2.x;
 	}
 
-	// --- Legacy Compatibility Aliases ---
-	[[nodiscard]] T Abs() const noexcept { return norm(); }
-	void Unit() noexcept { normalize(); }
-	void Positive() noexcept { positive(); }
-	constexpr void TurnSign() noexcept { turn_sign(); }
-	constexpr void Zero() noexcept { zero(); }
-	[[nodiscard]] constexpr bool IsZero() const noexcept { return is_zero(); }
-	[[nodiscard]] T Angle(const Point3D& v) const noexcept { return angle(v); }
-	[[nodiscard]] T Distance(const Point3D& other) const noexcept { return distance(other); }
-	[[nodiscard]] T AngleZ() const noexcept { return angle_z(); }
-	constexpr void Offset(T x_offset, T y_offset, T z_offset) noexcept { offset(x_offset, y_offset, z_offset); }
-	constexpr void Offset(const Point3D& pt) noexcept { offset(pt); }
-	static constexpr void Add(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept { add(pt1, pt2, res); }
-	static constexpr void Sub(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept { sub(pt1, pt2, res); }
-	static constexpr void Cross(const Point3D& pt1, const Point3D& pt2, Point3D& res) noexcept { cross(pt1, pt2, res); }
-
 	// Offset all components by scalar
 	constexpr Point3D operator+(const T a) const noexcept {
 		return Point3D(x + a, y + a, z + a);

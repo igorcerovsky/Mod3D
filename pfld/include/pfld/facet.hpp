@@ -452,7 +452,7 @@ void Facet<T, N>::Init()
 	}
 
 	_n = (_pts[0] - _pts[1]).cross(_pts[1] - _pts[2]);
-	_n.Unit();
+	_n.normalize();
 
 	if constexpr (!is_fixed) {
 		_mi.resize(sz);
@@ -466,7 +466,7 @@ void Facet<T, N>::Init()
 		point edge = _pts[next] - _pts[i];
 		_L[i] = edge;
 		_len[i] = edge.norm();
-		edge.Unit();
+		edge.normalize();
 		_mi[i] = edge;
 		_ni[i] = edge.cross(_n);
 	}
@@ -786,9 +786,9 @@ T Facet<T, N>::SolidAngle(std::span<const point> pts, const T inOut, const size_
 	T dFi = T{0};
 	for (size_t i = 0; i < sz; ++i) {
 		point n1 = pp[i + 1]->cross(*pp[i]);
-		n1.Unit();
+		n1.normalize();
 		point n2 = pp[i + 2]->cross(*pp[i + 1]);
-		n2.Unit();
+		n2.normalize();
 		const T dPerp = (*pp[i + 2]) * n1;
 		const T b = std::clamp(n1 * n2, static_cast<T>(-1.0), static_cast<T>(1.0));
 		T a = constants::pi<T> - std::acos(b);

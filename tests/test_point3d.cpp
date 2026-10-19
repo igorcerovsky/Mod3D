@@ -5,19 +5,19 @@ using namespace mod3d;
 
 TEST(Point3DTest, UnitVector) {
     Point3D pt1(0.0, 2.0, 0.0);
-    pt1.Unit();
+    pt1.normalize();
     EXPECT_DOUBLE_EQ(pt1.x, 0.0);
     EXPECT_DOUBLE_EQ(pt1.y, 1.0);
     EXPECT_DOUBLE_EQ(pt1.z, 0.0);
 
     Point3D pt2(3.0, 0.0, 0.0);
-    pt2.Unit();
+    pt2.normalize();
     EXPECT_DOUBLE_EQ(pt2.x, 1.0);
     EXPECT_DOUBLE_EQ(pt2.y, 0.0);
     EXPECT_DOUBLE_EQ(pt2.z, 0.0);
 
     Point3D pt3(0.0, 0.0, 4.0);
-    pt3.Unit();
+    pt3.normalize();
     EXPECT_DOUBLE_EQ(pt3.x, 0.0);
     EXPECT_DOUBLE_EQ(pt3.y, 0.0);
     EXPECT_DOUBLE_EQ(pt3.z, 1.0);

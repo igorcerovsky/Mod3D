@@ -91,13 +91,13 @@ TEST(PfldTest, Test_Point3D_Unit)
 {
 	using point = pfld::Point3D<double>;
 	point pt1(0.0, 2.0, 0.0);
-	pt1.Unit();
+	pt1.normalize();
 	EXPECT_TRUE(pt1 == point(0, 1, 0));
 	point pt2(3.0, 0.0, 0.0);
-	pt2.Unit();
+	pt2.normalize();
 	EXPECT_TRUE(pt2 == point(1, 0, 0));
 	point pt3(0.0, 0.0, 4.0);
-	pt3.Unit();
+	pt3.normalize();
 	EXPECT_TRUE(pt3 == point(0, 0, 1));
 }
 
