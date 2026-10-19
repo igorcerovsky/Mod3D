@@ -53,6 +53,7 @@ public:
     void invalidateMeshes() noexcept { m_meshDirty = true; update(); }
 
 protected:
+    void paintEvent(QPaintEvent *event) override;
     void initializeGL() override;
     void resizeGL(int w, int h) override;
     void paintGL() override;

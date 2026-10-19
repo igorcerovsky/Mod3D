@@ -12,6 +12,7 @@
 #include <cmath>
 #include <algorithm>
 #include <string>
+#include <QPainter>
 
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
@@ -216,7 +217,19 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     });
 }
 
+void GL3DView::paintEvent(QPaintEvent *event) {
+    if (!isValid() || !context()) {
+        QPainter p(this);
+        p.fillRect(rect(), QColor(235, 237, 242));
+        p.setPen(QColor(120, 130, 145));
+        p.drawText(rect(), Qt::AlignCenter, tr("3D View (OpenGL context unavailable)"));
+        return;
+    }
+    QOpenGLWidget::paintEvent(event);
+}
+
 void GL3DView::initializeGL() {
+    if (!isValid() || !context()) return;
     initializeOpenGLFunctions();
 
     glEnable(GL_DEPTH_TEST);
@@ -248,6 +261,7 @@ void GL3DView::initializeGL() {
 }
 
 void GL3DView::resizeGL(int w, int h) {
+    if (!isValid() || !context()) return;
     glViewport(0, 0, w, h);
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
@@ -266,6 +280,7 @@ void GL3DView::resizeGL(int w, int h) {
 }
 
 void GL3DView::paintGL() {
+    if (!isValid() || !context()) return;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glLoadIdentity();
 

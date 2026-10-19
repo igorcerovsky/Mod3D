@@ -18,6 +18,15 @@
 
 using namespace mod3d_gui;
 
+namespace {
+void saveTestScreenshot(const QPixmap &pix, const QString &filename) {
+    const std::string dir = "docs/images";
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);
+    pix.save(QString::fromStdString(dir + "/" + filename.toStdString()));
+}
+} // namespace
+
 class GuiDocumentTest : public ::testing::Test {
 protected:
     static void SetUpTestSuite() {
@@ -1272,6 +1281,7 @@ TEST_F(GuiDocumentTest, GL3DViewTurntableOrbitAndCameraPresets) {
 TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     MainWindow mw;
     mw.resize(1200, 800);
+    mw.show();
 
     // Verify 4 subwindows opened by default
     auto subs = mw.mdiArea()->subWindowList();
@@ -1337,7 +1347,7 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     QPixmap pix(1200, 800);
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/quad_layout_3d_turntable.png");
+    saveTestScreenshot(pix, "quad_layout_3d_turntable.png");
 }
 
 TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
@@ -1360,13 +1370,13 @@ TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     QPixmap pix(1280, 820);
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_pane_layout.png");
+    saveTestScreenshot(pix, "modern_settings_pane_layout.png");
 
     // 2. Switch to Body Editor tab
     mw.settingsPane()->selectBodyEditorTab();
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_body_editor.png");
+    saveTestScreenshot(pix, "modern_settings_body_editor.png");
 
     // 3. Switch to Map View and back to Fields tab
     QMdiSubWindow *subMap = nullptr;
@@ -1382,7 +1392,7 @@ TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     mw.settingsPane()->selectFieldsTab();
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_map_view.png");
+    saveTestScreenshot(pix, "modern_settings_map_view.png");
 }
 
 TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
@@ -1563,25 +1573,25 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
     pane->selectDisplayTab();
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_display.png");
+    saveTestScreenshot(pix, "modern_settings_tab_display.png");
 
     // Tab 2: Profiles Tab
     pane->selectProfilesTab();
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_profiles.png");
+    saveTestScreenshot(pix, "modern_settings_tab_profiles.png");
 
     // Tab 3: Bodies Tab
     pane->selectBodyEditorTab();
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_bodies.png");
+    saveTestScreenshot(pix, "modern_settings_tab_bodies.png");
 
     // Tab 4: Physics Tab
     pane->selectPhysicsTab();
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/modern_settings_tab_physics.png");
+    saveTestScreenshot(pix, "modern_settings_tab_physics.png");
 
     // 3. Test Physics parameters reflection in ModelDocument
     auto *doc = mw.document();
@@ -1654,7 +1664,7 @@ TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
     QPixmap pix(1280, 800);
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/toolbar_clean_no_measured_overlap.png");
+    saveTestScreenshot(pix, "toolbar_clean_no_measured_overlap.png");
 }
 
 TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceWidgets) {
@@ -1713,7 +1723,7 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
     QPixmap pixNoObs(1280, 800);
     pixNoObs.fill(Qt::white);
     mw.render(&pixNoObs);
-    pixNoObs.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/no_measured_field_disabled_state.png");
+    saveTestScreenshot(pixNoObs, "no_measured_field_disabled_state.png");
 
     // 2. Now supply measured data for GZ
     mod3d::Grid obsGrid(21, 21, 0.0, 0.0, 500.0, 500.0);
@@ -1737,7 +1747,7 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
     QPixmap pixWithObs(1280, 800);
     pixWithObs.fill(Qt::white);
     mw.render(&pixWithObs);
-    pixWithObs.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/measured_field_enabled_state.png");
+    saveTestScreenshot(pixWithObs, "measured_field_enabled_state.png");
 
     // Activate MapView: radio buttons should now be enabled
     mw.mdiArea()->setActiveSubWindow(subMv);
@@ -1781,12 +1791,13 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
     QPixmap pix(1400, 900);
     pix.fill(Qt::white);
     mw.render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/f3f9f916-fce6-4fd3-9ee1-f4d2ab64e28b/sample_begin_loaded.png");
+    saveTestScreenshot(pix, "sample_begin_loaded.png");
 }
 
 TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
     MainWindow mw;
     mw.resize(1400, 900);
+    mw.show();
 
     std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
     if (!std::filesystem::exists(samplePath)) {
@@ -1909,7 +1920,7 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     QPixmap pix(600, 600);
     pix.fill(Qt::white);
     mv->render(&pix);
-    pix.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/607fceca-d970-4e9d-aa3e-d88bf8b0c1b8/map_relief_contours_on.png");
+    saveTestScreenshot(pix, "map_relief_contours_on.png");
 
     // Toggle off via checkbox
     chkReliefContours->setChecked(false);
@@ -1918,7 +1929,7 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     QPixmap pixOff(600, 600);
     pixOff.fill(Qt::white);
     mv->render(&pixOff);
-    pixOff.save("/Users/igorcerovsky/.gemini/antigravity-ide/brain/607fceca-d970-4e9d-aa3e-d88bf8b0c1b8/map_relief_contours_off.png");
+    saveTestScreenshot(pixOff, "map_relief_contours_off.png");
 
     // Toggle back on via MapView API
     mv->setShowReliefContours(true);
