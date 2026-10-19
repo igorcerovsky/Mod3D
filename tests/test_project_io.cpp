@@ -115,35 +115,35 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
     // Verify Model
     EXPECT_EQ(loaded.model().rows(), proj.model().rows());
     EXPECT_EQ(loaded.model().cols(), proj.model().cols());
-    EXPECT_DOUBLE_EQ(loaded.model().x0(), 0.0);
-    EXPECT_DOUBLE_EQ(loaded.model().y0(), 0.0);
-    EXPECT_DOUBLE_EQ(loaded.model().dx(), 500.0);
-    EXPECT_DOUBLE_EQ(loaded.model().dy(), 500.0);
-    EXPECT_DOUBLE_EQ(loaded.model().z_min(), -4000.0);
-    EXPECT_DOUBLE_EQ(loaded.model().z_max(), 500.0);
+    EXPECT_DOUBLE_EQ(loaded.model().x0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(loaded.model().y0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(loaded.model().dx().value(), 500.0);
+    EXPECT_DOUBLE_EQ(loaded.model().dy().value(), 500.0);
+    EXPECT_DOUBLE_EQ(loaded.model().z_min().value(), -4000.0);
+    EXPECT_DOUBLE_EQ(loaded.model().z_max().value(), 500.0);
 
     EXPECT_TRUE(loaded.model().is_extend());
-    EXPECT_DOUBLE_EQ(loaded.model().ex_n(), 2000.0);
-    EXPECT_DOUBLE_EQ(loaded.model().ex_s(), 2000.0);
-    EXPECT_DOUBLE_EQ(loaded.model().ex_e(), 2000.0);
-    EXPECT_DOUBLE_EQ(loaded.model().ex_w(), 2000.0);
+    EXPECT_DOUBLE_EQ(loaded.model().ex_n().value(), 2000.0);
+    EXPECT_DOUBLE_EQ(loaded.model().ex_s().value(), 2000.0);
+    EXPECT_DOUBLE_EQ(loaded.model().ex_e().value(), 2000.0);
+    EXPECT_DOUBLE_EQ(loaded.model().ex_w().value(), 2000.0);
 
     // Verify Bodies
     ASSERT_EQ(loaded.model().bodies().size(), 2u);
     const Body *lb1 = loaded.model().body(b1->id());
     ASSERT_NE(lb1, nullptr);
     EXPECT_EQ(lb1->name(), "Host Sediment");
-    EXPECT_DOUBLE_EQ(lb1->raw_density(), 2550.0);
+    EXPECT_DOUBLE_EQ(lb1->raw_density().value(), 2550.0);
     EXPECT_DOUBLE_EQ(lb1->susceptibility(), 0.001);
     EXPECT_EQ(lb1->color().r, 120);
 
     const Body *lb2 = loaded.model().body(b2->id());
     ASSERT_NE(lb2, nullptr);
     EXPECT_EQ(lb2->name(), "Granite Stock");
-    EXPECT_DOUBLE_EQ(lb2->raw_density(), 2670.0);
+    EXPECT_DOUBLE_EQ(lb2->raw_density().value(), 2670.0);
     EXPECT_DOUBLE_EQ(lb2->susceptibility(), 0.045);
-    EXPECT_DOUBLE_EQ(lb2->remanent_magnetization().x, 0.5);
-    EXPECT_DOUBLE_EQ(lb2->density_gradient().x, 0.001);
+    EXPECT_DOUBLE_EQ(lb2->remanent_magnetization().mx.value(), 0.5);
+    EXPECT_DOUBLE_EQ(lb2->density_gradient().x_val(), 0.001);
     EXPECT_EQ(lb2->color().r, 220);
 
     // Verify Facet Regeneration (Geometric Parity)

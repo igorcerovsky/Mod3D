@@ -17,40 +17,65 @@ int Model::flat_index(int row, int col) const
     return row * cols_ + col;
 }
 
-double Model::xe(int col) const
+units::Meters Model::xe(int col) const
 {
     if (col == 0) return x0_ - ex_w_;
     if (col == cols_ - 1) return x0_ + (col - 2) * x_size_ + ex_e_;
     return x0_ + (col - 1) * x_size_;
 }
 
-double Model::ye(int row) const
+units::Meters Model::ye(int row) const
 {
     if (row == 0) return y0_ - ex_s_;
     if (row == rows_ - 1) return y0_ + (row - 2) * y_size_ + ex_n_;
     return y0_ + (row - 1) * y_size_;
 }
 
-double Model::x2e(int col) const
+units::Meters Model::x2e(int col) const
 {
     if (col == 0) return x0_ - ex_w_ / 2.0;
     if (col == cols_ - 2) return x0_ + (col - 1) * x_size_ + ex_e_ / 2.0;
     return x0_ + (col - 1) * x_size_ + x_size_ / 2.0;
 }
 
-double Model::y2e(int row) const
+units::Meters Model::y2e(int row) const
 {
     if (row == 0) return y0_ - ex_s_ / 2.0;
     if (row == rows_ - 2) return y0_ + (row - 1) * y_size_ + ex_n_ / 2.0;
     return y0_ + (row - 1) * y_size_ + y_size_ / 2.0;
 }
 
+double Model::xe_val(int col) const
+{
+    return xe(col).value();
+}
+
+double Model::ye_val(int row) const
+{
+    return ye(row).value();
+}
+
+double Model::x2e_val(int col) const
+{
+    return x2e(col).value();
+}
+
+double Model::y2e_val(int row) const
+{
+    return y2e(row).value();
+}
+
 void Model::set_column_point_coords(ColumnPoint &pt, int row, int col, double z)
+{
+    pt.set_coords(xe(col), ye(row), units::Meters(z));
+}
+
+void Model::set_column_point_coords(ColumnPoint &pt, int row, int col, units::Meters z)
 {
     pt.set_coords(xe(col), ye(row), z);
 }
 
-bool Model::init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
+bool Model::init(int nRows, int nCols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Meters zMin, units::Meters zMax)
 {
     rows_ = nRows + 2;
     cols_ = nCols + 2;
@@ -90,16 +115,16 @@ bool Model::init(int nRows, int nCols, double x0, double y0, double xSize, doubl
     return true;
 }
 
-bool Model::init(const Grid &reliefGrid, double zMin, double zMax)
+bool Model::init(const Grid &reliefGrid, units::Meters zMin, units::Meters zMax)
 {
     const int nRows = static_cast<int>(reliefGrid.rows());
     const int nCols = static_cast<int>(reliefGrid.cols());
     rows_ = nRows + 2;
     cols_ = nCols + 2;
-    x0_ = reliefGrid.x0();
-    y0_ = reliefGrid.y0();
-    x_size_ = reliefGrid.dx();
-    y_size_ = reliefGrid.dy();
+    x0_ = units::Meters(reliefGrid.x0());
+    y0_ = units::Meters(reliefGrid.y0());
+    x_size_ = units::Meters(reliefGrid.dx());
+    y_size_ = units::Meters(reliefGrid.dy());
     x_min_ = x0_;
     x_max_ = x0_ + (cols_ - 3) * x_size_;
     y_min_ = y0_;
@@ -136,7 +161,7 @@ bool Model::init(const Grid &reliefGrid, double zMin, double zMax)
     return true;
 }
 
-bool Model::init_empty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
+bool Model::init_empty(int totalRows, int totalCols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Meters zMin, units::Meters zMax)
 {
     rows_ = totalRows;
     cols_ = totalCols;
@@ -240,8 +265,8 @@ void Model::remove_at(int row, int col, int index, int count)
 
 double Model::z(int row, int col, int index) const
 {
-    if (index < 0) return z_max();
-    if (index > upper_bound(row, col)) return z_min();
+    if (index < 0) return z_max_val();
+    if (index > upper_bound(row, col)) return z_min_val();
     const ColumnPoint *pt = at(row, col, index);
     return pt ? pt->z().value() : 0.0;
 }
@@ -423,17 +448,17 @@ int Model::insert_body(int row, int col, double z, double thickness, bool isNew,
     if (!pBody) return -1;
     bodyId = pBody->id();
 
-    double t = (thickness == -1.0) ? default_thickness() : thickness;
+    double t = (thickness == -1.0) ? default_thickness_val() : thickness;
     if (bZ) {
         zT = z + t;
         zB = z - t;
     } else {
         z = (zT + zB) / 2.0;
     }
-    if (const_top_) zT = const_top_z_;
-    if (const_bot_) zB = const_bot_z_;
+    if (const_top_) zT = const_top_z_.value();
+    if (const_bot_) zB = const_bot_z_.value();
 
-    double zD = z_min_;
+    double zD = z_min_.value();
     double zU = this->z(row, col, 0);
     if (!(zD < z && z < zU)) return -1;
 
@@ -550,7 +575,7 @@ int Model::move_vertex(int &index, int row, int col, double zVal, BodyMoveType m
             index = 1;
             return 0;
         }
-        if (zVal == z_min_) {
+        if (zVal == z_min_.value()) {
             return 0;
         }
     } else if (moveType == BodyMoveType::Split) {
@@ -651,18 +676,18 @@ void Model::fg_to_fct_bound(FctGen &fg, std::vector<Facet3Pt> &facetList)
 {
     if (fg.l == 2) return;
 
-    if (fg.b[0] && fg.b[1] && fg.top[0].y == y_min_ - ex_s_) init_side_facets_bound(fg, facetList, 0, 1);
-    if (fg.b[2] && fg.b[3] && fg.top[2].y == y_max_ + ex_n_) init_side_facets_bound(fg, facetList, 2, 3);
-    if (fg.b[3] && fg.b[0] && fg.top[3].x == x_min_ - ex_w_) init_side_facets_bound(fg, facetList, 3, 0);
-    if (fg.b[1] && fg.b[2] && fg.top[1].x == x_max_ + ex_e_) init_side_facets_bound(fg, facetList, 1, 2);
+    if (fg.b[0] && fg.b[1] && fg.top[0].y == (y_min_ - ex_s_).value()) init_side_facets_bound(fg, facetList, 0, 1);
+    if (fg.b[2] && fg.b[3] && fg.top[2].y == (y_max_ + ex_n_).value()) init_side_facets_bound(fg, facetList, 2, 3);
+    if (fg.b[3] && fg.b[0] && fg.top[3].x == (x_min_ - ex_w_).value()) init_side_facets_bound(fg, facetList, 3, 0);
+    if (fg.b[1] && fg.b[2] && fg.top[1].x == (x_max_ + ex_e_).value()) init_side_facets_bound(fg, facetList, 1, 2);
 }
 
 void Model::init_side_facets_2(const FctGen &fg, std::vector<Facet3Pt> &facetList, int i0, int i1)
 {
-    if (fg.b[0] && fg.b[1] && fg.top[0].y == y_min_ - ex_s_) return;
-    if (fg.b[2] && fg.b[3] && fg.top[2].y == y_max_ + ex_n_) return;
-    if (fg.b[3] && fg.b[0] && fg.top[3].x == x_min_ - ex_w_) return;
-    if (fg.b[1] && fg.b[2] && fg.top[1].x == x_max_ + ex_e_) return;
+    if (fg.b[0] && fg.b[1] && fg.top[0].y == (y_min_ - ex_s_).value()) return;
+    if (fg.b[2] && fg.b[3] && fg.top[2].y == (y_max_ + ex_n_).value()) return;
+    if (fg.b[3] && fg.b[0] && fg.top[3].x == (x_min_ - ex_w_).value()) return;
+    if (fg.b[1] && fg.b[2] && fg.top[1].x == (x_max_ + ex_e_).value()) return;
 
     if (fg.b[i0] && fg.b[i1] && ((fg.top[i0] != fg.bot[i0]) || (fg.top[i1] != fg.bot[i1]))) {
         if (current_bound_col_) {
@@ -834,8 +859,8 @@ int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col)
             if ((t - b) == 0.0) {
                 fga.erase(fga.begin() + i);
             } else {
-                fg.top[4].x = fg.bot[4].x = x2e(col);
-                fg.top[4].y = fg.bot[4].y = y2e(row);
+                fg.top[4].x = fg.bot[4].x = x2e_val(col);
+                fg.top[4].y = fg.bot[4].y = y2e_val(row);
                 fg.top[4].z = t / l;
                 fg.bot[4].z = b / l;
                 if (fg.l == 3 &&

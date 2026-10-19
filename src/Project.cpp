@@ -115,12 +115,12 @@ nlohmann::json bodyToJson(const Body &b) {
     j["visible"] = b.is_visible();
     j["locked"] = b.is_locked();
     j["filled"] = b.is_filled();
-    j["density"] = b.raw_density();
-    j["density_gradient"] = { b.density_gradient().x, b.density_gradient().y, b.density_gradient().z };
-    j["density_origin"] = { b.density_origin().x, b.density_origin().y, b.density_origin().z };
+    j["density"] = b.raw_density().value();
+    j["density_gradient"] = { b.density_gradient().x.value(), b.density_gradient().y.value(), b.density_gradient().z.value() };
+    j["density_origin"] = { b.density_origin().x.value(), b.density_origin().y.value(), b.density_origin().z.value() };
     j["susceptibility"] = b.susceptibility();
-    j["remanence"] = { b.remanent_magnetization().x, b.remanent_magnetization().y, b.remanent_magnetization().z };
-    j["magnetization_vector"] = { b.magnetization_vector().x, b.magnetization_vector().y, b.magnetization_vector().z };
+    j["remanence"] = { b.remanent_magnetization().mx.value(), b.remanent_magnetization().my.value(), b.remanent_magnetization().mz.value() };
+    j["magnetization_vector"] = { b.magnetization_vector().mx.value(), b.magnetization_vector().my.value(), b.magnetization_vector().mz.value() };
     j["color"] = { b.color().r, b.color().g, b.color().b, b.color().a };
     j["transparent"] = b.is_transparent();
     j["alpha"] = b.transparency();
@@ -219,24 +219,24 @@ std::string Project::to_json_string(int indent) const
     jModel["dimensions"] = {
         {"rows", model_.rows()},
         {"cols", model_.cols()},
-        {"x0", model_.x0()},
-        {"y0", model_.y0()},
-        {"x_size", model_.dx()},
-        {"y_size", model_.dy()},
-        {"z_min", model_.z_min()},
-        {"z_max", model_.z_max()},
-        {"x_min", model_.x_min()},
-        {"x_max", model_.x_max()},
-        {"y_min", model_.y_min()},
-        {"y_max", model_.y_max()}
+        {"x0", model_.x0_val()},
+        {"y0", model_.y0_val()},
+        {"x_size", model_.dx_val()},
+        {"y_size", model_.dy_val()},
+        {"z_min", model_.z_min_val()},
+        {"z_max", model_.z_max_val()},
+        {"x_min", model_.x_min_val()},
+        {"x_max", model_.x_max_val()},
+        {"y_min", model_.y_min_val()},
+        {"y_max", model_.y_max_val()}
     };
 
     jModel["extension"] = {
         {"enabled", model_.is_extend()},
-        {"north", model_.ex_n()},
-        {"south", model_.ex_s()},
-        {"east", model_.ex_e()},
-        {"west", model_.ex_w()}
+        {"north", model_.ex_n_val()},
+        {"south", model_.ex_s_val()},
+        {"east", model_.ex_e_val()},
+        {"west", model_.ex_w_val()}
     };
 
     // Bodies
@@ -429,8 +429,8 @@ bool Project::from_json_string(std::string_view jsonStr)
                         for (const auto &ptObj : colObj["points"]) {
                             int bId = ptObj.value("body_id", -1);
                             double z = ptObj.value("z", 0.0);
-                            double x = ptObj.value("x", model_.xe(c));
-                            double y = ptObj.value("y", model_.ye(r));
+                            double x = ptObj.value("x", model_.xe_val(c));
+                            double y = ptObj.value("y", model_.ye_val(r));
                             Body *bodyPtr = (bId >= 0) ? model_.body(bId) : nullptr;
                             ColumnPoint cp(Point3D(x, y, z), bId, bodyPtr);
                             model_.add(r, c, cp);
@@ -748,7 +748,7 @@ bool Project::export_vtk(const std::filesystem::path &filePath, int bodyId) cons
     ofs << "SCALARS Density float 1\n";
     ofs << "LOOKUP_TABLE default\n";
     for (const auto *fct : exportList) {
-        float dens = static_cast<float>(fct->primary ? fct->primary->raw_density() : 0.0);
+        float dens = static_cast<float>(fct->primary ? fct->primary->raw_density().value() : 0.0);
         ofs << dens << "\n";
     }
 

@@ -37,31 +37,45 @@ struct BodyColor {
  * @brief 3D Gravity / Density model parameters.
  */
 struct BodyDensity {
-    double value{2700.0};                 // Reference density (kg/m3)
-    Point3D gradient{0, 0, 0};            // 3D linear density gradient (kg/m3 per meter)
-    Point3D origin{0, 0, 0};              // Gradient reference origin (x0, y0, z0)
+    units::KgPerM3 value{2700.0};                 // Reference density (kg/m3)
+    DensityGradientVector gradient{};             // 3D linear density gradient (kg/m4)
+    Position3D origin{};                          // Gradient reference origin (x0, y0, z0) in meters
 
-    [[nodiscard]] double at(const Point3D &pt, bool active = true) const noexcept {
-        if (!active) return 0.0;
-        return value + gradient * (pt - origin);
+    [[nodiscard]] units::KgPerM3 at(const Position3D &pt, bool active = true) const noexcept {
+        if (!active) return units::KgPerM3(0.0);
+        const units::KgPerM3 delta_rho = gradient.x * (pt.x - origin.x) +
+                                         gradient.y * (pt.y - origin.y) +
+                                         gradient.z * (pt.z - origin.z);
+        return value + delta_rho;
     }
 
-    [[nodiscard]] double at_origin() const noexcept {
-        return value - gradient * origin;
+    [[nodiscard]] units::KgPerM3 at(const Point3D &pt, bool active = true) const noexcept {
+        return at(Position3D(pt), active);
     }
 
-    [[nodiscard]] units::KgPerM3 density_qty() const noexcept {
-        return units::KgPerM3(value);
+    [[nodiscard]] units::KgPerM3 at_origin() const noexcept {
+        const units::KgPerM3 delta_rho = gradient.x * origin.x +
+                                         gradient.y * origin.y +
+                                         gradient.z * origin.z;
+        return value - delta_rho;
+    }
+
+    [[nodiscard]] constexpr units::KgPerM3 density() const noexcept {
+        return value;
+    }
+
+    [[nodiscard]] constexpr double density_val() const noexcept {
+        return value.value();
     }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::KgPerM3>
     void set_density(const units::Quantity<U>& d) noexcept {
-        value = d.template in<units::tag::KgPerM3>();
+        value = d.template as<units::tag::KgPerM3>();
     }
 
-    [[nodiscard]] units::KgPerM3 at_qty(const Point3D &pt, bool active = true) const noexcept {
-        return units::KgPerM3(at(pt, active));
+    void set_density(double d) noexcept {
+        value = units::KgPerM3(d);
     }
 
     [[nodiscard]] constexpr bool operator==(const BodyDensity &other) const noexcept = default;
@@ -72,10 +86,12 @@ struct BodyDensity {
  */
 struct BodyMagnetics {
     double susceptibility{0.01};          // SI susceptibility (dimensionless)
-    Point3D remanence{0, 0, 0};           // Remanent magnetization vector
-    Point3D total_vector{0, 0, 0};        // Total magnetization vector
+    MagneticVector remanence{};           // Remanent magnetization vector (nT)
+    MagneticVector total_vector{};        // Total magnetization vector (nT)
 
+    void compute_vector(double inc_deg, double dec_deg, double intensity_nt);
     void compute_vector(const Point3D &vIndFld);
+    void compute_vector(const MagneticVector &vIndFld);
 
     template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>
         requires (units::SameDimension<IncU, units::tag::Degrees> &&
@@ -84,9 +100,9 @@ struct BodyMagnetics {
     void compute_vector(const units::Quantity<IncU>& inc,
                         const units::Quantity<DecU>& dec,
                         const units::Quantity<IntensityU>& intensity) {
-        compute_vector(Point3D(inc.template in<units::tag::Degrees>(),
-                               dec.template in<units::tag::Degrees>(),
-                               intensity.template in<units::tag::NanoTesla>()));
+        compute_vector(inc.template in<units::tag::Degrees>(),
+                       dec.template in<units::tag::Degrees>(),
+                       intensity.template in<units::tag::NanoTesla>());
     }
 
     [[nodiscard]] constexpr bool operator==(const BodyMagnetics &other) const noexcept = default;
@@ -181,42 +197,47 @@ public:
     void set_transparent(bool trans) noexcept { drawing_.transparent = trans; }
 
     // Physical Properties Forwarders (Gravity / Density)
-    [[nodiscard]] double density() const noexcept { return (active_ ? density_.value : 0.0); }
-    [[nodiscard]] double raw_density() const noexcept { return density_.value; }
-    void set_density(double dens) noexcept { density_.value = dens; }
-
-    [[nodiscard]] units::KgPerM3 density_qty() const noexcept { return units::KgPerM3(density()); }
-    [[nodiscard]] units::KgPerM3 raw_density_qty() const noexcept { return units::KgPerM3(density_.value); }
+    [[nodiscard]] units::KgPerM3 density() const noexcept { return (active_ ? density_.value : units::KgPerM3(0.0)); }
+    [[nodiscard]] units::KgPerM3 raw_density() const noexcept { return density_.value; }
+    [[nodiscard]] double density_val() const noexcept { return density().value(); }
+    [[nodiscard]] double raw_density_val() const noexcept { return density_.value.value(); }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::KgPerM3>
     void set_density(const units::Quantity<U>& dens) noexcept {
-        density_.value = dens.template in<units::tag::KgPerM3>();
+        density_.value = dens.template as<units::tag::KgPerM3>();
+    }
+    void set_density(double dens) noexcept {
+        density_.value = units::KgPerM3(dens);
     }
 
-    [[nodiscard]] const Point3D &density_gradient() const noexcept { return density_.gradient; }
-    void set_density_gradient(const Point3D &grad) noexcept { density_.gradient = grad; }
+    [[nodiscard]] const DensityGradientVector &density_gradient() const noexcept { return density_.gradient; }
+    void set_density_gradient(const DensityGradientVector &grad) noexcept { density_.gradient = grad; }
+    void set_density_gradient(const Point3D &grad) noexcept { density_.gradient = DensityGradientVector(grad); }
 
-    [[nodiscard]] const Point3D &density_origin() const noexcept { return density_.origin; }
-    void set_density_origin(const Point3D &orig) noexcept { density_.origin = orig; }
+    [[nodiscard]] const Position3D &density_origin() const noexcept { return density_.origin; }
+    void set_density_origin(const Position3D &orig) noexcept { density_.origin = orig; }
+    void set_density_origin(const Point3D &orig) noexcept { density_.origin = Position3D(orig); }
 
-    [[nodiscard]] double density_at_origin() const noexcept { return density_.at_origin(); }
-    [[nodiscard]] double density_at(const Point3D &pt) const noexcept { return density_.at(pt, active_); }
-
-    [[nodiscard]] units::KgPerM3 density_at_origin_qty() const noexcept { return units::KgPerM3(density_.at_origin()); }
-    [[nodiscard]] units::KgPerM3 density_at_qty(const Point3D &pt) const noexcept { return units::KgPerM3(density_.at(pt, active_)); }
+    [[nodiscard]] units::KgPerM3 density_at_origin() const noexcept { return density_.at_origin(); }
+    [[nodiscard]] units::KgPerM3 density_at(const Position3D &pt) const noexcept { return density_.at(pt, active_); }
+    [[nodiscard]] units::KgPerM3 density_at(const Point3D &pt) const noexcept { return density_.at(Position3D(pt), active_); }
 
     // Physical Properties Forwarders (Magnetics)
     [[nodiscard]] double susceptibility() const noexcept { return magnetics_.susceptibility; }
     void set_susceptibility(double susc) noexcept { magnetics_.susceptibility = susc; }
 
-    [[nodiscard]] const Point3D &magnetization_vector() const noexcept { return magnetics_.total_vector; }
-    void set_magnetization_vector(const Point3D &mv) noexcept { magnetics_.total_vector = mv; }
+    [[nodiscard]] const MagneticVector &magnetization_vector() const noexcept { return magnetics_.total_vector; }
+    void set_magnetization_vector(const MagneticVector &mv) noexcept { magnetics_.total_vector = mv; }
+    void set_magnetization_vector(const Point3D &mv) noexcept { magnetics_.total_vector = MagneticVector(mv); }
 
-    [[nodiscard]] const Point3D &remanent_magnetization() const noexcept { return magnetics_.remanence; }
-    void set_remanent_magnetization(const Point3D &rem) noexcept { magnetics_.remanence = rem; }
+    [[nodiscard]] const MagneticVector &remanent_magnetization() const noexcept { return magnetics_.remanence; }
+    void set_remanent_magnetization(const MagneticVector &rem) noexcept { magnetics_.remanence = rem; }
+    void set_remanent_magnetization(const Point3D &rem) noexcept { magnetics_.remanence = MagneticVector(rem); }
 
+    void compute_magnetization_vector(double inc_deg, double dec_deg, double intensity_nt);
     void compute_magnetization_vector(const Point3D &vIndFld);
+    void compute_magnetization_vector(const MagneticVector &vIndFld);
 
     template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>
         requires (units::SameDimension<IncU, units::tag::Degrees> &&
@@ -225,9 +246,7 @@ public:
     void compute_magnetization_vector(const units::Quantity<IncU>& inc,
                                       const units::Quantity<DecU>& dec,
                                       const units::Quantity<IntensityU>& intensity) {
-        compute_magnetization_vector(Point3D(inc.template in<units::tag::Degrees>(),
-                                             dec.template in<units::tag::Degrees>(),
-                                             intensity.template in<units::tag::NanoTesla>()));
+        magnetics_.compute_vector(inc, dec, intensity);
     }
 
     // Comparisons

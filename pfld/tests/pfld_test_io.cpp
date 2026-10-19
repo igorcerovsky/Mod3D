@@ -96,7 +96,7 @@ void GetFacets(pfld::facet_vec& facets, const fs::path& sfile, const int n, bool
 			ptvec v{ point(rand() % 1001, rand() % 1001, -(rand() % 1001)),
 				point(rand() % 1001, rand() % 1001, -rand() % 1001),
 				point(rand() % 1001, rand() % 1001, -rand() % 1001) };
-			facets.emplace_back(Facet(v));
+			facets.emplace_back(facet(v));
 		}
 
 		std::ofstream file(sfile, std::ios::out);
@@ -139,7 +139,7 @@ void GetFacets(pfld::facet_vec& facets, const fs::path& sfile, const int n, bool
 						for (unsigned i = 0; i < vln.size() / 3 && i < 3; ++i) {
 							v[i] = point(vln[i * 3 + 0], vln[i * 3 + 1], vln[i * 3 + 2]);
 						}
-						facets.emplace_back(Facet(v));
+						facets.emplace_back(facet(v));
 						loadedFacets++;
 						if (loadedFacets >= n)
 							break;

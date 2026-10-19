@@ -39,8 +39,8 @@ TEST_F(GuiDocumentTest, NewProjectInitializesCorrectState) {
     // Model grid includes 1-cell border on each side: rows + 2 and cols + 2
     EXPECT_EQ(doc.model().rows(), 8 + 2);
     EXPECT_EQ(doc.model().cols(), 10 + 2);
-    EXPECT_DOUBLE_EQ(doc.model().dx(), 50.0);
-    EXPECT_DOUBLE_EQ(doc.model().dy(), 50.0);
+    EXPECT_DOUBLE_EQ(doc.model().dx().value(), 50.0);
+    EXPECT_DOUBLE_EQ(doc.model().dy().value(), 50.0);
 
     // Default orientation is East-West -> row profiles (8 profiles, maxProfileIndex() == 7)
     EXPECT_EQ(doc.profileOrientation(), ProfileOrientation::EastWest);
@@ -378,8 +378,8 @@ TEST_F(GuiDocumentTest, NewBodyInsertionCreatesPointOnProfile) {
         bool ok = doc.openFile(QString::fromStdString(testPath));
         ASSERT_TRUE(ok);
 
-        double zMin = doc.model().z_min();
-        double zMax = doc.model().z_max();
+        double zMin = doc.model().z_min_val();
+        double zMax = doc.model().z_max_val();
         EXPECT_GT(zMax, zMin);
 
         size_t countBefore = doc.model().bodies().size();
@@ -636,8 +636,8 @@ TEST_F(GuiDocumentTest, MapViewEqualScaleBothAxes) {
     EXPECT_EQ(canvasWide.width(), canvasWide.height());
 
     // Verify scale: 100 meters in X must equal exactly the same number of pixels as 100 meters in Y
-    double spanX = doc.model().x_max() - doc.model().x_min();
-    double spanY = doc.model().y_max() - doc.model().y_min();
+    double spanX = doc.model().x_max_val() - doc.model().x_min_val();
+    double spanY = doc.model().y_max_val() - doc.model().y_min_val();
     EXPECT_DOUBLE_EQ(spanX, spanY);
 
     // 500 meters along X vs 500 meters along Y
@@ -1112,7 +1112,7 @@ TEST_F(GuiDocumentTest, ProfileToMapViewCursorSyncAndMarkerRendering) {
     EXPECT_TRUE(doc.activeProfileCursor().active);
     EXPECT_EQ(doc.activeProfileCursor().row, 4); // row 4 for profile 3
     EXPECT_NE(doc.activeProfileCursor().y, prevY);
-    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().yd(4));
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().yd_val(4));
     EXPECT_DOUBLE_EQ(doc.activeProfileCursor().x, xw); // X position along column is preserved
 
     // Wheel scrolling updates profile and station point
@@ -1121,7 +1121,7 @@ TEST_F(GuiDocumentTest, ProfileToMapViewCursorSyncAndMarkerRendering) {
     QApplication::sendEvent(&pv, &wheelUp);
     EXPECT_TRUE(doc.activeProfileCursor().active);
     EXPECT_EQ(doc.activeProfileCursor().row, 5); // profile 4 -> row 5
-    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().yd(5));
+    EXPECT_DOUBLE_EQ(doc.activeProfileCursor().y, doc.model().yd_val(5));
 
     // Clear cursor
     doc.clearActiveProfileCursor();
@@ -1206,9 +1206,9 @@ TEST_F(GuiDocumentTest, GL3DViewProfileSlicesAndReliefGridSanity) {
     for (int r = 1; r <= rMax; ++r) {
         for (int c = 1; c <= cMax; ++c) {
             double z = m.z(r, c, 0);
-            EXPECT_NE(z, m.z_min());
-            EXPECT_LE(z, m.z_max());
-            EXPECT_GE(z, m.z_min());
+            EXPECT_NE(z, m.z_min_val());
+            EXPECT_LE(z, m.z_max_val());
+            EXPECT_GE(z, m.z_min_val());
         }
     }
 
@@ -1602,23 +1602,23 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
     // Model vertical limits
     doc->model().set_z_min(-3500.0);
     doc->model().set_z_max(450.0);
-    EXPECT_DOUBLE_EQ(doc->model().z_min(), -3500.0);
-    EXPECT_DOUBLE_EQ(doc->model().z_max(), 450.0);
-    EXPECT_DOUBLE_EQ(doc->model().z_min(), -3500.0);
-    EXPECT_DOUBLE_EQ(doc->model().z_max(), 450.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_min().value(), -3500.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_max().value(), 450.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_min_val(), -3500.0);
+    EXPECT_DOUBLE_EQ(doc->model().z_max_val(), 450.0);
 
     // Body density gradient and remanence
     if (!doc->model().bodies().empty()) {
         auto *b = doc->model().bodies().front().get();
         b->set_density_gradient(mod3d::Point3D(0.001, -0.002, 0.005));
-        EXPECT_DOUBLE_EQ(b->density_gradient().x, 0.001);
-        EXPECT_DOUBLE_EQ(b->density_gradient().y, -0.002);
-        EXPECT_DOUBLE_EQ(b->density_gradient().z, 0.005);
+        EXPECT_DOUBLE_EQ(b->density_gradient().x_val(), 0.001);
+        EXPECT_DOUBLE_EQ(b->density_gradient().y_val(), -0.002);
+        EXPECT_DOUBLE_EQ(b->density_gradient().z_val(), 0.005);
 
         b->set_remanent_magnetization(mod3d::Point3D(10.0, 20.0, -30.0));
-        EXPECT_DOUBLE_EQ(b->remanent_magnetization().x, 10.0);
-        EXPECT_DOUBLE_EQ(b->remanent_magnetization().y, 20.0);
-        EXPECT_DOUBLE_EQ(b->remanent_magnetization().z, -30.0);
+        EXPECT_DOUBLE_EQ(b->remanent_magnetization().x_val(), 10.0);
+        EXPECT_DOUBLE_EQ(b->remanent_magnetization().y_val(), 20.0);
+        EXPECT_DOUBLE_EQ(b->remanent_magnetization().z_val(), -30.0);
     }
 }
 
@@ -1801,7 +1801,7 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     // Verify model has 3 bodies and Body 2 has authentic raw density 3400 kg/m3 and susc 0.01 SI
     auto *b2 = mw.document()->model().body(2);
     ASSERT_NE(b2, nullptr);
-    EXPECT_DOUBLE_EQ(b2->raw_density(), 3400.0);
+    EXPECT_DOUBLE_EQ(b2->raw_density().value(), 3400.0);
     EXPECT_DOUBLE_EQ(b2->susceptibility(), 0.01);
 
     // Switch to Geological Body Editor tab in SettingsPane
@@ -1844,7 +1844,7 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     spinDensity->setValue(3550.0);
     spinSusc->setValue(0.025);
 
-    EXPECT_DOUBLE_EQ(b2->raw_density(), 3550.0);
+    EXPECT_DOUBLE_EQ(b2->raw_density().value(), 3550.0);
     EXPECT_DOUBLE_EQ(b2->susceptibility(), 0.025);
 
     int curIdx = comboBodies->findData(2);

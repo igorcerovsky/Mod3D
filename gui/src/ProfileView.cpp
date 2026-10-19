@@ -189,9 +189,9 @@ double ProfileView::currentProfileCoordinate() const noexcept {
   if (!m_doc)
     return 0.0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    return m_doc->model().yd(m_profileIndex + 1);
+    return m_doc->model().yd_val(m_profileIndex + 1);
   } else {
-    return m_doc->model().xd(m_profileIndex + 1);
+    return m_doc->model().xd_val(m_profileIndex + 1);
   }
 }
 
@@ -209,9 +209,9 @@ double ProfileView::columnCoordinate(int colIdx) const noexcept {
   if (!m_doc)
     return 0.0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    return m_doc->model().xd(colIdx + 1);
+    return m_doc->model().xd_val(colIdx + 1);
   } else {
-    return m_doc->model().yd(colIdx + 1);
+    return m_doc->model().yd_val(colIdx + 1);
   }
 }
 
@@ -473,14 +473,14 @@ void ProfileView::fitToWindow() {
     return;
   const auto &m = m_doc->model();
   if (m_profileOrient == ProfileOrientation::EastWest) {
-    m_worldXMin = m.x_min();
-    m_worldXMax = m.x_max();
+    m_worldXMin = m.x_min_val();
+    m_worldXMax = m.x_max_val();
   } else {
-    m_worldXMin = m.y_min();
-    m_worldXMax = m.y_max();
+    m_worldXMin = m.y_min_val();
+    m_worldXMax = m.y_max_val();
   }
-  m_worldZMin = m.z_min();
-  m_worldZMax = m.z_max();
+  m_worldZMin = m.z_min_val();
+  m_worldZMax = m.z_max_val();
   update();
 }
 
@@ -1090,7 +1090,7 @@ void ProfileView::drawReliefAndBottom(QPainter &painter) {
     painter.setPen(QPen(QColor(40, 140, 40), 2.0));
     painter.drawPolyline(reliefPoly);
 
-    int botY = worldToScreenZ(m_doc->model().z_min());
+    int botY = worldToScreenZ(m_doc->model().z_min_val());
     painter.setPen(QPen(QColor(100, 100, 110), 2.0, Qt::DashLine));
     int leftX = worldToScreenX(m_worldXMin);
     int rightX = worldToScreenX(m_worldXMax);
@@ -1425,8 +1425,8 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
 
   if (m_dragOp == DragOperation::MoveVertex) {
     double newZ = screenToWorldZ(event->pos().y());
-    double zMin = m_doc->model().z_min();
-    double zMax = m_doc->model().z_max();
+    double zMin = m_doc->model().z_min_val();
+    double zMax = m_doc->model().z_max_val();
     newZ = std::clamp(newZ, zMin, zMax);
 
     bool ctrlPressed = (event->modifiers() & Qt::ControlModifier);
@@ -1435,11 +1435,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
 
     double xw = screenToWorldX(event->pos().x());
     double startCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                            ? m_doc->model().x0()
-                            : m_doc->model().y0();
+                            ? m_doc->model().x0_val()
+                            : m_doc->model().y0_val();
     double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                           ? m_doc->model().dx()
-                           : m_doc->model().dy();
+                           ? m_doc->model().dx_val()
+                           : m_doc->model().dy_val();
     int nLines = profileColumnLineCount();
     int targetLineIdx = std::clamp(
         static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
@@ -1542,11 +1542,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
   if (m_dragOp == DragOperation::ExtendBodyLateral) {
     double xw = screenToWorldX(event->pos().x());
     double startCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                            ? m_doc->model().x0()
-                            : m_doc->model().y0();
+                            ? m_doc->model().x0_val()
+                            : m_doc->model().y0_val();
     double stepCoord = (m_profileOrient == ProfileOrientation::EastWest)
-                            ? m_doc->model().dx()
-                            : m_doc->model().dy();
+                            ? m_doc->model().dx_val()
+                            : m_doc->model().dy_val();
     int nLines = profileColumnLineCount();
     int currentLine = std::clamp(
         static_cast<int>(std::round((xw - startCoord) / stepCoord)), 0,
@@ -1807,9 +1807,9 @@ void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {
       double targetZ = screenToWorldZ(event->pos().y());
       int row = 0, col = 0;
       getRowCol(lineIdx, row, col);
-      double zMin = m_doc->model().z_min();
+      double zMin = m_doc->model().z_min_val();
       double zSurface = m_doc->model().z(row, col, 0);
-      double defThickness = m_doc->model().default_thickness();
+      double defThickness = m_doc->model().default_thickness_val();
       double halfT = defThickness / 2.0;
       if (halfT <= 0.0 || halfT >= (zSurface - zMin) / 2.0) {
         halfT = (zSurface - zMin) * 0.1;
@@ -1894,9 +1894,9 @@ void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
   }
   int row = 0, col = 0;
   getRowCol(lineIdx, row, col);
-  double zMin = m_doc->model().z_min();
+  double zMin = m_doc->model().z_min_val();
   double zSurface = m_doc->model().z(row, col, 0);
-  double defThickness = m_doc->model().default_thickness();
+  double defThickness = m_doc->model().default_thickness_val();
   double halfT = defThickness / 2.0;
   if (halfT <= 0.0 || halfT >= (zSurface - zMin) / 2.0) {
     halfT = (zSurface - zMin) * 0.1;

@@ -238,6 +238,21 @@ TEST(UnitsTest, CrossDimensionalFormulas) {
     auto v_rec = 5340.0_kg / 2670.0_kg_m3;
     EXPECT_DOUBLE_EQ(v_rec.in<CubicMeters>(), 2.0);
 
+    // Density Gradient: Density / Length = DensityGradient (kg/m4)
+    auto dens_grad = 200.0_kg_m3 / 1000.0_m;
+    EXPECT_DOUBLE_EQ(dens_grad.in<KgPerM4>(), 0.2);
+    EXPECT_EQ(dens_grad, 0.2_kg_m4);
+
+    // Delta Density: DensityGradient * Length = Density (kg/m3)
+    auto delta_rho = dens_grad * 500.0_m;
+    EXPECT_DOUBLE_EQ(delta_rho.in<KgPerM3>(), 100.0);
+    EXPECT_EQ(delta_rho, 100.0_kg_m3);
+
+    // Commutative Length * DensityGradient = Density
+    auto delta_rho_comm = 500.0_m * 0.2_kg_m4;
+    EXPECT_DOUBLE_EQ(delta_rho_comm.in<KgPerM3>(), 100.0);
+    EXPECT_EQ(delta_rho_comm, 100.0_kg_m3);
+
     // 5) Kinematics: Length / Time = Velocity
     auto vel = 100.0_m / 10.0_s;
     EXPECT_DOUBLE_EQ(vel.in<MetersPerSecond>(), 10.0);

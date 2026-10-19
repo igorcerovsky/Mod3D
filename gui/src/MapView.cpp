@@ -92,10 +92,10 @@ void MapView::setShowReliefContours(bool show) {
 void MapView::fitToWindow() {
     if (!m_doc) return;
     const auto &m = m_doc->model();
-    m_worldXMin = m.x_min();
-    m_worldXMax = m.x_max();
-    m_worldYMin = m.y_min();
-    m_worldYMax = m.y_max();
+    m_worldXMin = m.x_min_val();
+    m_worldXMax = m.x_max_val();
+    m_worldYMin = m.y_min_val();
+    m_worldYMax = m.y_max_val();
     update();
 }
 
@@ -492,10 +492,10 @@ void MapView::drawStationPoints(QPainter &painter) {
 
     painter.setPen(QColor(140, 140, 150));
     for (int r = 1; r <= rows; ++r) {
-        double y = m_doc->model().yd(r);
+        double y = m_doc->model().yd_val(r);
         int sy = worldToScreenY(y);
         for (int c = 1; c <= cols; ++c) {
-            double x = m_doc->model().xd(c);
+            double x = m_doc->model().xd_val(c);
             int sx = worldToScreenX(x);
             painter.drawPoint(sx, sy);
         }
@@ -882,7 +882,7 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
             int bestRow = 0;
             double bestDist = 1e30;
             for (int r = 1; r <= rows; ++r) {
-                double yd = m_doc->model().yd(r);
+                double yd = m_doc->model().yd_val(r);
                 double d = std::abs(yd - wy);
                 if (d < bestDist) {
                     bestDist = d;
@@ -893,7 +893,7 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
             int bestCol = 1;
             double bestColDist = 1e30;
             for (int c = 1; c < cols - 1; ++c) {
-                double xd = m_doc->model().xd(c);
+                double xd = m_doc->model().xd_val(c);
                 double d = std::abs(xd - wx);
                 if (d < bestColDist) {
                     bestColDist = d;
@@ -910,7 +910,7 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
             int bestCol = 0;
             double bestDist = 1e30;
             for (int c = 1; c <= cols; ++c) {
-                double xd = m_doc->model().xd(c);
+                double xd = m_doc->model().xd_val(c);
                 double d = std::abs(xd - wx);
                 if (d < bestDist) {
                     bestDist = d;
@@ -921,7 +921,7 @@ void MapView::mouseMoveEvent(QMouseEvent *event) {
             int bestRow = 1;
             double bestRowDist = 1e30;
             for (int r = 1; r < rows - 1; ++r) {
-                double yd = m_doc->model().yd(r);
+                double yd = m_doc->model().yd_val(r);
                 double d = std::abs(yd - wy);
                 if (d < bestRowDist) {
                     bestRowDist = d;

@@ -179,12 +179,12 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
     // Verify Model
     EXPECT_EQ(proj.model().rows(), 3);
     EXPECT_EQ(proj.model().cols(), 3);
-    EXPECT_DOUBLE_EQ(proj.model().x0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().y0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().dx(), 100.0);
-    EXPECT_DOUBLE_EQ(proj.model().dy(), 100.0);
-    EXPECT_DOUBLE_EQ(proj.model().z_min(), -2000.0);
-    EXPECT_DOUBLE_EQ(proj.model().z_max(), 200.0);
+    EXPECT_DOUBLE_EQ(proj.model().x0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().y0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().dx().value(), 100.0);
+    EXPECT_DOUBLE_EQ(proj.model().dy().value(), 100.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_min().value(), -2000.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_max().value(), 200.0);
 
     // Verify Body
     ASSERT_EQ(proj.model().bodies().size(), 1u);
@@ -192,7 +192,7 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
     ASSERT_NE(b, nullptr);
     EXPECT_EQ(b->name(), "Basement Granodiorite");
     EXPECT_EQ(b->description(), "Crystalline basement");
-    EXPECT_DOUBLE_EQ(b->raw_density(), 2820.0);
+    EXPECT_DOUBLE_EQ(b->raw_density().value(), 2820.0);
     EXPECT_DOUBLE_EQ(b->susceptibility(), 0.035);
     EXPECT_TRUE(b->is_active());
     EXPECT_FALSE(b->is_locked());
@@ -216,12 +216,12 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     // Verify Model Geometry
     EXPECT_EQ(proj.model().rows(), 23);
     EXPECT_EQ(proj.model().cols(), 23);
-    EXPECT_DOUBLE_EQ(proj.model().x0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.model().y0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.model().dx(), 10.0);
-    EXPECT_DOUBLE_EQ(proj.model().dy(), 10.0);
-    EXPECT_DOUBLE_EQ(proj.model().z_min(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.model().z_max(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().x0().value(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.model().y0().value(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.model().dx().value(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.model().dy().value(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_min().value(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_max().value(), 0.0);
     EXPECT_TRUE(proj.model().is_extend());
 
     // Verify Bodies
@@ -229,7 +229,7 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     const Body *b0 = proj.model().body(0);
     ASSERT_NE(b0, nullptr);
     EXPECT_EQ(b0->name(), "Name the body...");
-    EXPECT_DOUBLE_EQ(b0->raw_density(), 2700.0);
+    EXPECT_DOUBLE_EQ(b0->raw_density().value(), 2700.0);
     EXPECT_NEAR(b0->susceptibility(), 0.01, 1e-6);
 
     // Verify Facets Generation
@@ -275,29 +275,29 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Sample_m3d) {
     // Verify Model Geometry
     EXPECT_EQ(proj.model().rows(), 23);
     EXPECT_EQ(proj.model().cols(), 23);
-    EXPECT_DOUBLE_EQ(proj.model().x0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().y0(), 0.0);
-    EXPECT_DOUBLE_EQ(proj.model().dx(), 400.0);
-    EXPECT_DOUBLE_EQ(proj.model().dy(), 400.0);
-    EXPECT_DOUBLE_EQ(proj.model().z_min(), -2000.0);
-    EXPECT_DOUBLE_EQ(proj.model().z_max(), 500.0);
+    EXPECT_DOUBLE_EQ(proj.model().x0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().y0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(proj.model().dx().value(), 400.0);
+    EXPECT_DOUBLE_EQ(proj.model().dy().value(), 400.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_min().value(), -2000.0);
+    EXPECT_DOUBLE_EQ(proj.model().z_max().value(), 500.0);
 
     // Verify 3 Physical Bodies
     ASSERT_EQ(proj.model().bodies().size(), 3u);
     const Body *b0 = proj.model().body(0);
     ASSERT_NE(b0, nullptr);
     EXPECT_EQ(b0->name(), "Body");
-    EXPECT_DOUBLE_EQ(b0->raw_density(), 2800.0);
+    EXPECT_DOUBLE_EQ(b0->raw_density().value(), 2800.0);
 
     const Body *b1 = proj.model().body(1);
     ASSERT_NE(b1, nullptr);
     EXPECT_EQ(b1->name(), "Wings");
-    EXPECT_DOUBLE_EQ(b1->raw_density(), 2640.0);
+    EXPECT_DOUBLE_EQ(b1->raw_density().value(), 2640.0);
 
     const Body *b2 = proj.model().body(2);
     ASSERT_NE(b2, nullptr);
     EXPECT_EQ(b2->name(), "... and I feel fine");
-    EXPECT_DOUBLE_EQ(b2->raw_density(), 3400.0);
+    EXPECT_DOUBLE_EQ(b2->raw_density().value(), 3400.0);
 
     // Verify Multi-Body Facets Generation
     std::vector<Facet3Pt> facets;
@@ -443,12 +443,12 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
         // Verify full fidelity between original and reloaded
         EXPECT_EQ(origProj.model().rows(), reloadedProj.model().rows());
         EXPECT_EQ(origProj.model().cols(), reloadedProj.model().cols());
-        EXPECT_DOUBLE_EQ(origProj.model().x0(), reloadedProj.model().x0());
-        EXPECT_DOUBLE_EQ(origProj.model().y0(), reloadedProj.model().y0());
-        EXPECT_DOUBLE_EQ(origProj.model().dx(), reloadedProj.model().dx());
-        EXPECT_DOUBLE_EQ(origProj.model().dy(), reloadedProj.model().dy());
-        EXPECT_DOUBLE_EQ(origProj.model().z_min(), reloadedProj.model().z_min());
-        EXPECT_DOUBLE_EQ(origProj.model().z_max(), reloadedProj.model().z_max());
+        EXPECT_DOUBLE_EQ(origProj.model().x0().value(), reloadedProj.model().x0().value());
+        EXPECT_DOUBLE_EQ(origProj.model().y0().value(), reloadedProj.model().y0().value());
+        EXPECT_DOUBLE_EQ(origProj.model().dx().value(), reloadedProj.model().dx().value());
+        EXPECT_DOUBLE_EQ(origProj.model().dy().value(), reloadedProj.model().dy().value());
+        EXPECT_DOUBLE_EQ(origProj.model().z_min().value(), reloadedProj.model().z_min().value());
+        EXPECT_DOUBLE_EQ(origProj.model().z_max().value(), reloadedProj.model().z_max().value());
         EXPECT_EQ(origProj.model().is_extend(), reloadedProj.model().is_extend());
 
         // Verify Bodies
@@ -457,7 +457,7 @@ TEST(LegacyM3DTest, ConvertAllAuthenticModelsToModernJsonAndRoundtrip) {
             const Body *relBody = reloadedProj.model().body(origBody->id());
             ASSERT_NE(relBody, nullptr) << "Body ID " << origBody->id() << " not found in reloaded " << fn;
             EXPECT_EQ(origBody->name(), relBody->name());
-            EXPECT_DOUBLE_EQ(origBody->raw_density(), relBody->raw_density());
+            EXPECT_EQ(origBody->raw_density(), relBody->raw_density());
             EXPECT_NEAR(origBody->susceptibility(), relBody->susceptibility(), 1e-6);
             EXPECT_EQ(origBody->is_active(), relBody->is_active());
         }

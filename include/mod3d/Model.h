@@ -89,8 +89,14 @@ public:
     Model &operator=(Model &&) noexcept = default;
 
     // Initialization
-    bool init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
-    bool init(const Grid &reliefGrid, double zMin, double zMax);
+    bool init(int nRows, int nCols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Meters zMin, units::Meters zMax);
+    bool init(const Grid &reliefGrid, units::Meters zMin, units::Meters zMax);
+    bool init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax) {
+        return init(nRows, nCols, units::Meters(x0), units::Meters(y0), units::Meters(xSize), units::Meters(ySize), units::Meters(zMin), units::Meters(zMax));
+    }
+    bool init(const Grid &reliefGrid, double zMin, double zMax) {
+        return init(reliefGrid, units::Meters(zMin), units::Meters(zMax));
+    }
 
     template <units::UnitType U0, units::UnitType Us, units::UnitType Uz>
         requires (units::SameDimension<U0, units::tag::Meters> &&
@@ -101,73 +107,84 @@ public:
               const units::Quantity<Us>& xSzVal, const units::Quantity<Us>& ySzVal,
               const units::Quantity<Uz>& zMinVal, const units::Quantity<Uz>& zMaxVal) {
         return init(nRows, nCols,
-                    x0Val.template in<units::tag::Meters>(), y0Val.template in<units::tag::Meters>(),
-                    xSzVal.template in<units::tag::Meters>(), ySzVal.template in<units::tag::Meters>(),
-                    zMinVal.template in<units::tag::Meters>(), zMaxVal.template in<units::tag::Meters>());
+                    x0Val.template as<units::tag::Meters>(), y0Val.template as<units::tag::Meters>(),
+                    xSzVal.template as<units::tag::Meters>(), ySzVal.template as<units::tag::Meters>(),
+                    zMinVal.template as<units::tag::Meters>(), zMaxVal.template as<units::tag::Meters>());
     }
 
     template <units::UnitType Uz>
         requires units::SameDimension<Uz, units::tag::Meters>
     bool init(const Grid &reliefGrid, const units::Quantity<Uz>& zMinVal, const units::Quantity<Uz>& zMaxVal) {
         return init(reliefGrid,
-                    zMinVal.template in<units::tag::Meters>(),
-                    zMaxVal.template in<units::tag::Meters>());
+                    zMinVal.template as<units::tag::Meters>(),
+                    zMaxVal.template as<units::tag::Meters>());
     }
 
-    bool init_empty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
+    bool init_empty(int totalRows, int totalCols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Meters zMin, units::Meters zMax);
+    bool init_empty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax) {
+        return init_empty(totalRows, totalCols, units::Meters(x0), units::Meters(y0), units::Meters(xSize), units::Meters(ySize), units::Meters(zMin), units::Meters(zMax));
+    }
     void clear();
     [[nodiscard]] bool is_initialized() const noexcept { return initialized_; }
 
-    // Dimensions and Coordinates
+    // Dimensions and Coordinates (Unit Quantities)
     [[nodiscard]] int rows() const noexcept { return rows_; }
     [[nodiscard]] int cols() const noexcept { return cols_; }
-    [[nodiscard]] double x0() const noexcept { return x0_; }
-    [[nodiscard]] double y0() const noexcept { return y0_; }
-    [[nodiscard]] double dx() const noexcept { return x_size_; }
-    [[nodiscard]] double dy() const noexcept { return y_size_; }
-    [[nodiscard]] double x_size() const noexcept { return x_size_; }
-    [[nodiscard]] double y_size() const noexcept { return y_size_; }
-    [[nodiscard]] double z_min() const noexcept { return z_min_; }
-    [[nodiscard]] double z_max() const noexcept { return z_max_; }
-    void set_z_min(double zMin) noexcept { z_min_ = zMin; }
-    void set_z_max(double zMax) noexcept { z_max_ = zMax; }
-    [[nodiscard]] double x_min() const noexcept { return x_min_; }
-    [[nodiscard]] double x_max() const noexcept { return x_max_; }
-    [[nodiscard]] double y_min() const noexcept { return y_min_; }
-    [[nodiscard]] double y_max() const noexcept { return y_max_; }
-
-    // Unit-aware dimension queries
-    [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return units::Meters(x0_); }
-    [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return units::Meters(y0_); }
-    [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return units::Meters(x_size_); }
-    [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return units::Meters(y_size_); }
-    [[nodiscard]] constexpr units::Meters x_size_qty() const noexcept { return units::Meters(x_size_); }
-    [[nodiscard]] constexpr units::Meters y_size_qty() const noexcept { return units::Meters(y_size_); }
-    [[nodiscard]] constexpr units::Meters z_min_qty() const noexcept { return units::Meters(z_min_); }
-    [[nodiscard]] constexpr units::Meters z_max_qty() const noexcept { return units::Meters(z_max_); }
-    [[nodiscard]] constexpr units::Meters x_min_qty() const noexcept { return units::Meters(x_min_); }
-    [[nodiscard]] constexpr units::Meters x_max_qty() const noexcept { return units::Meters(x_max_); }
-    [[nodiscard]] constexpr units::Meters y_min_qty() const noexcept { return units::Meters(y_min_); }
-    [[nodiscard]] constexpr units::Meters y_max_qty() const noexcept { return units::Meters(y_max_); }
+    [[nodiscard]] constexpr units::Meters x0() const noexcept { return x0_; }
+    [[nodiscard]] constexpr units::Meters y0() const noexcept { return y0_; }
+    [[nodiscard]] constexpr units::Meters dx() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr units::Meters dy() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr units::Meters x_size() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr units::Meters y_size() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr units::Meters z_min() const noexcept { return z_min_; }
+    [[nodiscard]] constexpr units::Meters z_max() const noexcept { return z_max_; }
+    void set_z_min(units::Meters zMin) noexcept { z_min_ = zMin; }
+    void set_z_min(double zMin) noexcept { z_min_ = units::Meters(zMin); }
+    void set_z_max(units::Meters zMax) noexcept { z_max_ = zMax; }
+    void set_z_max(double zMax) noexcept { z_max_ = units::Meters(zMax); }
+    [[nodiscard]] constexpr units::Meters x_min() const noexcept { return x_min_; }
+    [[nodiscard]] constexpr units::Meters x_max() const noexcept { return x_max_; }
+    [[nodiscard]] constexpr units::Meters y_min() const noexcept { return y_min_; }
+    [[nodiscard]] constexpr units::Meters y_max() const noexcept { return y_max_; }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::Meters>
     void set_z_min(const units::Quantity<U>& zMin) noexcept {
-        set_z_min(zMin.template in<units::tag::Meters>());
+        z_min_ = zMin.template as<units::tag::Meters>();
     }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::Meters>
     void set_z_max(const units::Quantity<U>& zMax) noexcept {
-        set_z_max(zMax.template in<units::tag::Meters>());
+        z_max_ = zMax.template as<units::tag::Meters>();
     }
 
-    [[nodiscard]] double xd(int col) const noexcept { return x0_ + (col - 1) * x_size_; }
-    [[nodiscard]] double yd(int row) const noexcept { return y0_ + (row - 1) * y_size_; }
-    [[nodiscard]] double xe(int col) const;
-    [[nodiscard]] double ye(int row) const;
-    [[nodiscard]] double x2e(int col) const;
-    [[nodiscard]] double y2e(int row) const;
+    // Numerical Dimension Accessors (Raw Doubles in Meters)
+    [[nodiscard]] constexpr double x0_val() const noexcept { return x0_.value(); }
+    [[nodiscard]] constexpr double y0_val() const noexcept { return y0_.value(); }
+    [[nodiscard]] constexpr double dx_val() const noexcept { return x_size_.value(); }
+    [[nodiscard]] constexpr double dy_val() const noexcept { return y_size_.value(); }
+    [[nodiscard]] constexpr double x_size_val() const noexcept { return x_size_.value(); }
+    [[nodiscard]] constexpr double y_size_val() const noexcept { return y_size_.value(); }
+    [[nodiscard]] constexpr double z_min_val() const noexcept { return z_min_.value(); }
+    [[nodiscard]] constexpr double z_max_val() const noexcept { return z_max_.value(); }
+    [[nodiscard]] constexpr double x_min_val() const noexcept { return x_min_.value(); }
+    [[nodiscard]] constexpr double x_max_val() const noexcept { return x_max_.value(); }
+    [[nodiscard]] constexpr double y_min_val() const noexcept { return y_min_.value(); }
+    [[nodiscard]] constexpr double y_max_val() const noexcept { return y_max_.value(); }
+
+    [[nodiscard]] constexpr units::Meters xd(int col) const noexcept { return x0_ + (col - 1) * x_size_; }
+    [[nodiscard]] constexpr units::Meters yd(int row) const noexcept { return y0_ + (row - 1) * y_size_; }
+    [[nodiscard]] constexpr double xd_val(int col) const noexcept { return xd(col).value(); }
+    [[nodiscard]] constexpr double yd_val(int row) const noexcept { return yd(row).value(); }
+    [[nodiscard]] units::Meters xe(int col) const;
+    [[nodiscard]] units::Meters ye(int row) const;
+    [[nodiscard]] units::Meters x2e(int col) const;
+    [[nodiscard]] units::Meters y2e(int row) const;
+    [[nodiscard]] double xe_val(int col) const;
+    [[nodiscard]] double ye_val(int row) const;
+    [[nodiscard]] double x2e_val(int col) const;
+    [[nodiscard]] double y2e_val(int row) const;
 
     // Column Point Access
     [[nodiscard]] size_t count(int row, int col) const;
@@ -181,14 +198,8 @@ public:
     [[nodiscard]] double z(int row, int col, int index) const;
     void set_z(int row, int col, int index, double z);
     [[nodiscard]] double thickness(int row, int col, int index) const;
-    [[nodiscard]] double default_thickness() const noexcept { return (z_max_ - z_min_) / 10.0; }
-
-    [[nodiscard]] units::Meters thickness_qty(int row, int col, int index) const {
-        return units::Meters(thickness(row, col, index));
-    }
-    [[nodiscard]] units::Meters default_thickness_qty() const noexcept {
-        return units::Meters(default_thickness());
-    }
+    [[nodiscard]] constexpr units::Meters default_thickness() const noexcept { return (z_max_ - z_min_) / 10.0; }
+    [[nodiscard]] constexpr double default_thickness_val() const noexcept { return default_thickness().value(); }
 
     // Vertex Manipulation
     int move_vertex(int &index, int row, int col, double z, BodyMoveType moveType = BodyMoveType::Normal);
@@ -246,19 +257,43 @@ public:
     void clear_facets_update() noexcept { facets_update_.clear(); }
 
     // Boundary Extensions
-    void set_extensions(double exN, double exS, double exE, double exW, bool enable = true) noexcept {
+    void set_extensions(units::Meters exN, units::Meters exS, units::Meters exE, units::Meters exW, bool enable = true) noexcept {
         ex_n_ = exN; ex_s_ = exS; ex_e_ = exE; ex_w_ = exW; extend_ = enable;
     }
+    void set_extensions(double exN, double exS, double exE, double exW, bool enable = true) noexcept {
+        set_extensions(units::Meters(exN), units::Meters(exS), units::Meters(exE), units::Meters(exW), enable);
+    }
+    template <units::UnitType UN, units::UnitType US, units::UnitType UE, units::UnitType UW>
+        requires (units::SameDimension<UN, units::tag::Meters> &&
+                  units::SameDimension<US, units::tag::Meters> &&
+                  units::SameDimension<UE, units::tag::Meters> &&
+                  units::SameDimension<UW, units::tag::Meters>)
+    void set_extensions(const units::Quantity<UN>& exN,
+                        const units::Quantity<US>& exS,
+                        const units::Quantity<UE>& exE,
+                        const units::Quantity<UW>& exW,
+                        bool enable = true) noexcept {
+        set_extensions(exN.template as<units::tag::Meters>(),
+                       exS.template as<units::tag::Meters>(),
+                       exE.template as<units::tag::Meters>(),
+                       exW.template as<units::tag::Meters>(),
+                       enable);
+    }
     [[nodiscard]] bool is_extend() const noexcept { return extend_; }
-    [[nodiscard]] double ex_n() const noexcept { return ex_n_; }
-    [[nodiscard]] double ex_s() const noexcept { return ex_s_; }
-    [[nodiscard]] double ex_e() const noexcept { return ex_e_; }
-    [[nodiscard]] double ex_w() const noexcept { return ex_w_; }
+    [[nodiscard]] constexpr units::Meters ex_n() const noexcept { return ex_n_; }
+    [[nodiscard]] constexpr units::Meters ex_s() const noexcept { return ex_s_; }
+    [[nodiscard]] constexpr units::Meters ex_e() const noexcept { return ex_e_; }
+    [[nodiscard]] constexpr units::Meters ex_w() const noexcept { return ex_w_; }
+    [[nodiscard]] constexpr double ex_n_val() const noexcept { return ex_n_.value(); }
+    [[nodiscard]] constexpr double ex_s_val() const noexcept { return ex_s_.value(); }
+    [[nodiscard]] constexpr double ex_e_val() const noexcept { return ex_e_.value(); }
+    [[nodiscard]] constexpr double ex_w_val() const noexcept { return ex_w_.value(); }
 
 
 private:
     int flat_index(int row, int col) const;
     void set_column_point_coords(ColumnPoint &pt, int row, int col, double z);
+    void set_column_point_coords(ColumnPoint &pt, int row, int col, units::Meters z);
     int add_fct_gen(std::vector<FctGen> &fga, int row, int col, int tag);
     void fg_to_fct(std::vector<FctGen> &fga, std::vector<Facet3Pt> &facetList, int i0, int i1);
     void fg_to_fct_bound(FctGen &fg, std::vector<Facet3Pt> &facetList);
@@ -279,28 +314,28 @@ private:
     int current_row_{0};
     int current_col_{0};
 
-    double x0_{0.0};
-    double y0_{0.0};
-    double x_size_{0.0};
-    double y_size_{0.0};
-    double x_min_{0.0};
-    double x_max_{0.0};
-    double y_min_{0.0};
-    double y_max_{0.0};
-    double z_min_{0.0};
-    double z_max_{0.0};
+    units::Meters x0_{0.0};
+    units::Meters y0_{0.0};
+    units::Meters x_size_{0.0};
+    units::Meters y_size_{0.0};
+    units::Meters x_min_{0.0};
+    units::Meters x_max_{0.0};
+    units::Meters y_min_{0.0};
+    units::Meters y_max_{0.0};
+    units::Meters z_min_{0.0};
+    units::Meters z_max_{0.0};
 
     bool extend_{false};
-    double ex_n_{0.0};
-    double ex_s_{0.0};
-    double ex_e_{0.0};
-    double ex_w_{0.0};
+    units::Meters ex_n_{0.0};
+    units::Meters ex_s_{0.0};
+    units::Meters ex_e_{0.0};
+    units::Meters ex_w_{0.0};
 
     BodyCreateTag creation_tag_{BodyCreateTag::None};
     bool const_top_{false};
-    double const_top_z_{0.0};
+    units::Meters const_top_z_{0.0};
     bool const_bot_{false};
-    double const_bot_z_{0.0};
+    units::Meters const_bot_z_{0.0};
 
     int next_body_id_{1};
     std::vector<std::unique_ptr<Body>> bodies_;

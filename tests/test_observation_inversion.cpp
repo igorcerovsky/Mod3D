@@ -251,7 +251,7 @@ TEST(Gate3InversionTest, DensityRecoveryMatchesFitLogDens) {
     // 1. Converged to true density 2850.0 within 0.1 kg/m^3
     EXPECT_TRUE(fitRes.converged);
     EXPECT_NEAR(fitRes.optimal_parameter, trueDensity, 0.1);
-    EXPECT_NEAR(body->density(), trueDensity, 0.1);
+    EXPECT_NEAR(body->density().value(), trueDensity, 0.1);
 
     // 2. Minimum RMS residual should be virtually zero (< 1e-4 mGal)
     EXPECT_LT(fitRes.minimum_objective, 1e-4);

@@ -48,40 +48,40 @@ void BodyPropertiesDialog::setupGravityTab(QTabWidget *tabs) {
     m_spinDensity->setSingleStep(50.0);
     m_spinDensity->setDecimals(1);
     m_spinDensity->setSuffix(" kg/m³");
-    m_spinDensity->setValue(m_body ? m_body->raw_density() : 2670.0);
+    m_spinDensity->setValue(m_body ? m_body->raw_density().value() : 2670.0);
     layout->addRow(tr("Density:"), m_spinDensity);
 
     m_spinGradX = new QDoubleSpinBox(page);
     m_spinGradX->setRange(-100.0, 100.0);
     m_spinGradX->setDecimals(5);
-    m_spinGradX->setValue(m_body ? m_body->density_gradient().x : 0.0);
+    m_spinGradX->setValue(m_body ? m_body->density_gradient().x_val() : 0.0);
     layout->addRow(tr("Density Grad X (kg/m⁴):"), m_spinGradX);
 
     m_spinGradY = new QDoubleSpinBox(page);
     m_spinGradY->setRange(-100.0, 100.0);
     m_spinGradY->setDecimals(5);
-    m_spinGradY->setValue(m_body ? m_body->density_gradient().y : 0.0);
+    m_spinGradY->setValue(m_body ? m_body->density_gradient().y_val() : 0.0);
     layout->addRow(tr("Density Grad Y (kg/m⁴):"), m_spinGradY);
 
     m_spinGradZ = new QDoubleSpinBox(page);
     m_spinGradZ->setRange(-100.0, 100.0);
     m_spinGradZ->setDecimals(5);
-    m_spinGradZ->setValue(m_body ? m_body->density_gradient().z : 0.0);
+    m_spinGradZ->setValue(m_body ? m_body->density_gradient().z_val() : 0.0);
     layout->addRow(tr("Density Grad Z (kg/m⁴):"), m_spinGradZ);
 
     m_spinGradOriginX = new QDoubleSpinBox(page);
     m_spinGradOriginX->setRange(-1e7, 1e7);
-    m_spinGradOriginX->setValue(m_body ? m_body->density_origin().x : 0.0);
+    m_spinGradOriginX->setValue(m_body ? m_body->density_origin().x_val() : 0.0);
     layout->addRow(tr("Grad Origin X (m):"), m_spinGradOriginX);
 
     m_spinGradOriginY = new QDoubleSpinBox(page);
     m_spinGradOriginY->setRange(-1e7, 1e7);
-    m_spinGradOriginY->setValue(m_body ? m_body->density_origin().y : 0.0);
+    m_spinGradOriginY->setValue(m_body ? m_body->density_origin().y_val() : 0.0);
     layout->addRow(tr("Grad Origin Y (m):"), m_spinGradOriginY);
 
     m_spinGradOriginZ = new QDoubleSpinBox(page);
     m_spinGradOriginZ->setRange(-1e7, 1e7);
-    m_spinGradOriginZ->setValue(m_body ? m_body->density_origin().z : 0.0);
+    m_spinGradOriginZ->setValue(m_body ? m_body->density_origin().z_val() : 0.0);
     layout->addRow(tr("Grad Origin Z (m):"), m_spinGradOriginZ);
 
     tabs->addTab(page, tr("Gravity"));
@@ -99,8 +99,8 @@ void BodyPropertiesDialog::setupMagneticsTab(QTabWidget *tabs) {
     m_spinKappa->setValue(m_body ? m_body->susceptibility() : 0.0);
     layout->addRow(tr("Susceptibility κ (SI):"), m_spinKappa);
 
-    const auto &rem = m_body ? m_body->remanent_magnetization() : mod3d::Point3D(0, 0, 0);
-    double jRem = std::sqrt(rem.x * rem.x + rem.y * rem.y + rem.z * rem.z);
+    const auto rem = m_body ? m_body->remanent_magnetization() : mod3d::MagneticVector{};
+    double jRem = rem.total_val();
 
     m_spinRemJ = new QDoubleSpinBox(page);
     m_spinRemJ->setRange(0.0, 1e6);
@@ -108,8 +108,8 @@ void BodyPropertiesDialog::setupMagneticsTab(QTabWidget *tabs) {
     m_spinRemJ->setValue(jRem);
     layout->addRow(tr("Remanent Magnetization J:"), m_spinRemJ);
 
-    double inc = (jRem > 1e-9) ? (std::asin(-rem.z / jRem) * 180.0 / 3.14159265) : 0.0;
-    double dec = (std::abs(rem.x) > 1e-9 || std::abs(rem.y) > 1e-9) ? (std::atan2(rem.x, rem.y) * 180.0 / 3.14159265) : 0.0;
+    double inc = (jRem > 1e-9) ? (std::asin(-rem.z_val() / jRem) * 180.0 / 3.14159265) : 0.0;
+    double dec = (std::abs(rem.x_val()) > 1e-9 || std::abs(rem.y_val()) > 1e-9) ? (std::atan2(rem.x_val(), rem.y_val()) * 180.0 / 3.14159265) : 0.0;
     if (dec < 0.0) dec += 360.0;
 
     m_spinRemInc = new QDoubleSpinBox(page);

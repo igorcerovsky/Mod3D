@@ -10,6 +10,7 @@
 #include <sstream>
 
 using namespace mod3d;
+using namespace mod3d::literals;
 
 // ============================================================================
 // 1. Point3D Edge Cases & Extended Math Tests
@@ -184,25 +185,27 @@ TEST(ColumnPointTest, ComparisonsAndPredicates) {
 // ============================================================================
 
 TEST(BodyTest, PropertiesAndActivation) {
+    using namespace mod3d::literals;
     Body b(1, "Granite Pluton", 2670.0);
     EXPECT_EQ(b.id(), 1);
     EXPECT_EQ(b.name(), "Granite Pluton");
     EXPECT_TRUE(b.is_active());
-    EXPECT_DOUBLE_EQ(b.density(), 2670.0);
-    EXPECT_DOUBLE_EQ(b.raw_density(), 2670.0);
+    EXPECT_EQ(b.density(), 2670.0_kg_m3);
+    EXPECT_EQ(b.raw_density(), 2670.0_kg_m3);
 
     // When inactive, effective density for field computation becomes 0
     b.set_active(false);
     EXPECT_FALSE(b.is_active());
-    EXPECT_DOUBLE_EQ(b.density(), 0.0);
-    EXPECT_DOUBLE_EQ(b.raw_density(), 2670.0); // Raw preserved
+    EXPECT_EQ(b.density(), 0.0_kg_m3);
+    EXPECT_EQ(b.raw_density(), 2670.0_kg_m3); // Raw preserved
 
     // Re-activate
     b.set_active(true);
-    EXPECT_DOUBLE_EQ(b.density(), 2670.0);
+    EXPECT_EQ(b.density(), 2670.0_kg_m3);
 }
 
 TEST(BodyTest, LinearDensityGradientAtOrigin) {
+    using namespace mod3d::literals;
     Body b(2, "Sedimentary Basin", 2400.0);
     // Gradient: +0.5 kg/m3 per meter depth (Z axis)
     Point3D grad(0.0, 0.0, 0.5);
@@ -212,7 +215,7 @@ TEST(BodyTest, LinearDensityGradientAtOrigin) {
 
     // Density at reference origin (0, 0, 0):
     // rho0 = rho - grad * origo = 2400.0 - (0.5 * -1000.0) = 2400.0 - (-500.0) = 2900.0
-    EXPECT_DOUBLE_EQ(b.density_at_origin(), 2900.0);
+    EXPECT_EQ(b.density_at_origin(), 2900.0_kg_m3);
 }
 
 TEST(BodyTest, MagnetizationVectorComputation) {
@@ -251,11 +254,11 @@ TEST(BodyTest, MagnetizationVectorComputation) {
     );
 
     Point3D expectedM = vInduced + vRemanent;
-    Point3D computedM = b.magnetization_vector();
+    MagneticVector computedM = b.magnetization_vector();
 
-    EXPECT_NEAR(computedM.x, expectedM.x, 1e-12);
-    EXPECT_NEAR(computedM.y, expectedM.y, 1e-12);
-    EXPECT_NEAR(computedM.z, expectedM.z, 1e-12);
+    EXPECT_NEAR(computedM.mx.value(), expectedM.x, 1e-12);
+    EXPECT_NEAR(computedM.my.value(), expectedM.y, 1e-12);
+    EXPECT_NEAR(computedM.mz.value(), expectedM.z, 1e-12);
 }
 
 TEST(BodyTest, VisualAndLockStates) {
@@ -303,23 +306,24 @@ TEST(BodyTest, ModernizedFeaturesAndOperators) {
     EXPECT_EQ(b1.id(), 5);
     EXPECT_EQ(b1.name(), "Layer1");
     EXPECT_EQ(b1.description(), "Test geological unit");
-    EXPECT_DOUBLE_EQ(b1.density(), 2500.0);
-    EXPECT_DOUBLE_EQ(b1.raw_density(), 2500.0);
+    using namespace mod3d::literals;
+    EXPECT_EQ(b1.density(), 2500.0_kg_m3);
+    EXPECT_EQ(b1.raw_density(), 2500.0_kg_m3);
     EXPECT_TRUE(b1.is_active());
     EXPECT_TRUE(b1.is_visible());
     EXPECT_FALSE(b1.is_locked());
     EXPECT_TRUE(b1.is_filled());
 
     // Density gradient and density_at calculation
-    b1.set_density_origin(Point3D(0.0, 0.0, -100.0));
+    b1.set_density_origin(Position3D(0.0_m, 0.0_m, -100.0_m));
     b1.set_density_gradient(Point3D(0.0, 0.0, 0.2)); // +0.2 kg/m3 per meter depth
-    EXPECT_DOUBLE_EQ(b1.density_origin().z, -100.0);
-    EXPECT_DOUBLE_EQ(b1.density_gradient().z, 0.2);
+    EXPECT_EQ(b1.density_origin().z, -100.0_m);
+    EXPECT_EQ(b1.density_gradient().z, 0.2_kg_m4);
     // At z = -500: rho = 2500 + 0.2 * (-500 - (-100)) = 2500 + 0.2 * (-400) = 2420.0
-    EXPECT_DOUBLE_EQ(b1.density_at(Point3D(0.0, 0.0, -500.0)), 2420.0);
+    EXPECT_EQ(b1.density_at(Point3D(0.0, 0.0, -500.0)), 2420.0_kg_m3);
     // When inactive, density_at must return 0.0
     b1.set_active(false);
-    EXPECT_DOUBLE_EQ(b1.density_at(Point3D(0.0, 0.0, -500.0)), 0.0);
+    EXPECT_EQ(b1.density_at(Point3D(0.0, 0.0, -500.0)), 0.0_kg_m3);
     b1.set_active(true);
 
     // Equality operator
@@ -378,8 +382,8 @@ TEST(Facet3PtTest, ConstructorsAndAccessors) {
     EXPECT_EQ(f1[1], p1);
     EXPECT_EQ(f1[2], p2);
     EXPECT_EQ(f1.points()[0], p0);
-    EXPECT_DOUBLE_EQ(f1.density(), 2670.0);
-    EXPECT_DOUBLE_EQ(f1.opposite_density(), 1000.0);
+    EXPECT_EQ(f1.density(), 2670.0_kg_m3);
+    EXPECT_EQ(f1.opposite_density(), 1000.0_kg_m3);
     EXPECT_EQ(f1.primary, &bTop);
     EXPECT_EQ(f1.opposite, &bBot);
 

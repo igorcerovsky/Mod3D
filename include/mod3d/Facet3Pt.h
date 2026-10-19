@@ -192,11 +192,10 @@ public:
     [[nodiscard]] Body *opposite_body() const noexcept { return opposite; }
     void set_opposite_body(Body *b) noexcept { opposite = b; }
 
-    [[nodiscard]] double density() const noexcept { return primary ? primary->density() : 0.0; }
-    [[nodiscard]] double opposite_density() const noexcept { return opposite ? opposite->density() : 0.0; }
-
-    [[nodiscard]] units::KgPerM3 density_qty() const noexcept { return units::KgPerM3(density()); }
-    [[nodiscard]] units::KgPerM3 opposite_density_qty() const noexcept { return units::KgPerM3(opposite_density()); }
+    [[nodiscard]] units::KgPerM3 density() const noexcept { return primary ? primary->density() : units::KgPerM3(0.0); }
+    [[nodiscard]] units::KgPerM3 opposite_density() const noexcept { return opposite ? opposite->density() : units::KgPerM3(0.0); }
+    [[nodiscard]] double density_val() const noexcept { return density().value(); }
+    [[nodiscard]] double opposite_density_val() const noexcept { return opposite_density().value(); }
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};

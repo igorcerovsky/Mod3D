@@ -10,15 +10,26 @@ Body::Body() = default;
 Body::Body(int id, std::string name, double density)
     : id_(id), name_(std::move(name))
 {
-    density_.value = density;
+    density_.value = units::KgPerM3(density);
     if (name_.empty()) {
         name_ = "Body " + std::to_string(id);
     }
 }
 
+void BodyMagnetics::compute_vector(double inc_deg, double dec_deg, double intensity_nt) {
+    Point3D mv = mod3d::magnetization_vector(susceptibility, inc_deg, dec_deg, intensity_nt,
+                                            remanence.mx.value(), remanence.my.value(), remanence.mz.value());
+    total_vector = MagneticVector(mv);
+}
+
 void BodyMagnetics::compute_vector(const Point3D &vIndFld) {
-    total_vector = mod3d::magnetization_vector(susceptibility, vIndFld.x, vIndFld.y, vIndFld.z,
-                                              remanence.x, remanence.y, remanence.z);
+    compute_vector(vIndFld.x, vIndFld.y, vIndFld.z);
+}
+
+void BodyMagnetics::compute_vector(const MagneticVector &vIndFld) {
+    Point3D mv = mod3d::magnetization_vector(susceptibility, vIndFld.mx.value(), vIndFld.my.value(), vIndFld.mz.value(),
+                                            remanence.mx.value(), remanence.my.value(), remanence.mz.value());
+    total_vector = MagneticVector(mv);
 }
 
 void Body::swap(Body &other) noexcept {
@@ -33,7 +44,15 @@ void Body::swap(Body &other) noexcept {
     swap(drawing_, other.drawing_);
 }
 
+void Body::compute_magnetization_vector(double inc_deg, double dec_deg, double intensity_nt) {
+    magnetics_.compute_vector(inc_deg, dec_deg, intensity_nt);
+}
+
 void Body::compute_magnetization_vector(const Point3D &vIndFld) {
+    magnetics_.compute_vector(vIndFld);
+}
+
+void Body::compute_magnetization_vector(const MagneticVector &vIndFld) {
     magnetics_.compute_vector(vIndFld);
 }
 

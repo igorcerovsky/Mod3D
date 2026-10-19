@@ -116,9 +116,9 @@ int ModelDocument::maxProfileIndex() const noexcept {
 
 double ModelDocument::currentProfileCoordinate() const noexcept {
     if (m_profileOrient == ProfileOrientation::EastWest) {
-        return m_project.model().yd(m_profileIndex + 1);
+        return m_project.model().yd_val(m_profileIndex + 1);
     } else {
-        return m_project.model().xd(m_profileIndex + 1);
+        return m_project.model().xd_val(m_profileIndex + 1);
     }
 }
 
@@ -132,9 +132,9 @@ int ModelDocument::profileColumnLineCount() const noexcept {
 
 double ModelDocument::columnCoordinate(int colIdx) const noexcept {
     if (m_profileOrient == ProfileOrientation::EastWest) {
-        return m_project.model().xd(colIdx + 1);
+        return m_project.model().xd_val(colIdx + 1);
     } else {
-        return m_project.model().yd(colIdx + 1);
+        return m_project.model().yd_val(colIdx + 1);
     }
 }
 
@@ -239,9 +239,9 @@ mod3d::Body *ModelDocument::createNewBody() {
     int curLine = profileColumnLineCount() / 2;
     int row = 0, col = 0;
     getRowCol(curLine, row, col);
-    double zMin = m_project.model().z_min();
+    double zMin = m_project.model().z_min_val();
     double zSurface = m_project.model().z(row, col, 0);
-    double defThickness = m_project.model().default_thickness();
+    double defThickness = m_project.model().default_thickness_val();
     double halfT = defThickness / 2.0;
     if (halfT <= 0.0 || halfT >= (zSurface - zMin) / 2.0) {
         halfT = (zSurface - zMin) * 0.1;
@@ -261,7 +261,7 @@ mod3d::Body *ModelDocument::createNewBody() {
 
 int ModelDocument::insertBodyAtRowCol(int row, int col, double z, double thickness, int bodyId) {
     if (thickness <= 0.0) {
-        thickness = m_project.model().default_thickness();
+        thickness = m_project.model().default_thickness_val();
     }
 
     bool isNew = (bodyId < 0);
@@ -430,7 +430,7 @@ bool ModelDocument::unsnapVertexAtRowCol(int row, int col, int vertexIdx, double
     double zD = m_project.model().z(row, col, j);
 
     if (separation <= 0.0) {
-        separation = m_project.model().default_thickness();
+        separation = m_project.model().default_thickness_val();
         if (separation <= 0.0 || separation > (zU - zD) * 0.8) {
             separation = (zU - zD) * 0.2;
         }
@@ -742,8 +742,8 @@ void ModelDocument::updateStationPointForProfileChange() {
         }
     }
 
-    double wx = m_project.model().xd(cStation);
-    double wy = m_project.model().yd(rStation);
+    double wx = m_project.model().xd_val(cStation);
+    double wy = m_project.model().yd_val(rStation);
     double wz = 0.0;
 
     int bId = m_activeProfileCursor.bodyId;

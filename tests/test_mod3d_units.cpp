@@ -55,33 +55,35 @@ TEST(Mod3DUnitsSafety, CompileTimeDimensionalTypeSafety) {
 TEST(Mod3DUnitsSafety, BodyDensityUnitsSafetyAndConversions) {
     // Default constructor
     Body b1(1, "Granite Intrusion", 2750.0);
-    EXPECT_DOUBLE_EQ(b1.density_qty().value(), 2750.0);
-    EXPECT_DOUBLE_EQ(b1.density_qty().in<GPerCm3>(), 2.75);
+    EXPECT_EQ(b1.density(), 2750.0_kg_m3);
+    EXPECT_DOUBLE_EQ(b1.density().value(), 2750.0);
+    EXPECT_DOUBLE_EQ(b1.density().in<GPerCm3>(), 2.75);
 
     // Construct with unit literal in g/cm3
     Body b2(2, "Diabase Dike", 2.95_g_cm3);
-    EXPECT_DOUBLE_EQ(b2.raw_density(), 2950.0);
-    EXPECT_DOUBLE_EQ(b2.density_qty().value(), 2950.0);
+    EXPECT_EQ(b2.raw_density(), 2950.0_kg_m3);
+    EXPECT_EQ(b2.density(), 2950.0_kg_m3);
 
     // Update density using g/cm3 and kg/m3
     b1.set_density(3.1_g_cm3);
-    EXPECT_DOUBLE_EQ(b1.raw_density(), 3100.0);
-    EXPECT_DOUBLE_EQ(b1.density_qty().value(), 3100.0);
+    EXPECT_EQ(b1.raw_density(), 3100.0_kg_m3);
+    EXPECT_EQ(b1.density(), 3100.0_kg_m3);
 
     b1.set_density(2650.0_kg_m3);
-    EXPECT_DOUBLE_EQ(b1.raw_density(), 2650.0);
+    EXPECT_EQ(b1.raw_density(), 2650.0_kg_m3);
 
     // Inactive body returns 0.0 density contrast
     b1.set_active(false);
-    EXPECT_DOUBLE_EQ(b1.density_qty().value(), 0.0);
-    EXPECT_DOUBLE_EQ(b1.raw_density_qty().value(), 2650.0);
+    EXPECT_EQ(b1.density(), 0.0_kg_m3);
+    EXPECT_EQ(b1.raw_density(), 2650.0_kg_m3);
     b1.set_active(true);
 
     // Density gradient evaluation with units
-    b1.set_density_origin(Point3D(0.0_m, 0.0_m, 0.0_m));
-    b1.set_density_gradient(Point3D(0.0, 0.0, -0.05)); // -0.05 kg/m3 per meter depth
-    Point3D depthPt(0.0_m, 0.0_m, -1000.0_m);
-    EXPECT_DOUBLE_EQ(b1.density_at_qty(depthPt).value(), 2700.0); // 2650 - (-0.05 * -1000) = 2650 + 50
+    b1.set_density_origin(Position3D(0.0_m, 0.0_m, 0.0_m));
+    b1.set_density_gradient(DensityGradientVector(0.0_kg_m4, 0.0_kg_m4, -0.05_kg_m4)); // -0.05 kg/m4 depth gradient
+    EXPECT_EQ(b1.density_gradient().z, -0.05_kg_m4);
+    Position3D depthPt(0.0_m, 0.0_m, -1000.0_m);
+    EXPECT_EQ(b1.density_at(depthPt), 2700.0_kg_m3); // 2650 - (-0.05 * -1000) = 2650 + 50
 }
 
 TEST(Mod3DUnitsSafety, BodyMagneticsWithUnits) {
@@ -90,14 +92,14 @@ TEST(Mod3DUnitsSafety, BodyMagneticsWithUnits) {
 
     // Compute inducing magnetization using unit-aware angles and field intensity
     b.compute_magnetization_vector(65.0_deg, 12.0_deg, 48500.0_nT);
-    const Point3D mv = b.magnetization_vector();
+    const MagneticVector mv = b.magnetization_vector();
 
     // Verify consistency with ambient_field
     Point3D af = ambient_field(65.0_deg, 12.0_deg, 48500.0_nT);
     Point3D expected_mv = af * (0.08 / (4.0 * std::numbers::pi_v<double>));
-    EXPECT_NEAR(mv.x, expected_mv.x, 1e-9);
-    EXPECT_NEAR(mv.y, expected_mv.y, 1e-9);
-    EXPECT_NEAR(mv.z, expected_mv.z, 1e-9);
+    EXPECT_NEAR(mv.mx.value(), expected_mv.x, 1e-9);
+    EXPECT_NEAR(mv.my.value(), expected_mv.y, 1e-9);
+    EXPECT_NEAR(mv.mz.value(), expected_mv.z, 1e-9);
 }
 
 // ============================================================================
@@ -156,7 +158,7 @@ TEST(Mod3DUnitsSafety, FacetGeometryAndFieldEvaluationUnitsSafety) {
     // Geometric queries
     EXPECT_DOUBLE_EQ(fct.mean_elevation_qty().value(), -100.0);
     EXPECT_DOUBLE_EQ(fct.area_qty().value(), 5000.0); // 0.5 * 100 * 100
-    EXPECT_DOUBLE_EQ(fct.density_qty().value(), 2670.0);
+    EXPECT_EQ(fct.density(), 2670.0_kg_m3);
 
     // Gravity field evaluation at observation station (50, 50, 0)
     Point3D station(50.0_m, 50.0_m, 0.0_m);
@@ -182,22 +184,31 @@ TEST(Mod3DUnitsSafety, ModelDimensionsAndGridQuantities) {
     Model m;
     m.init(10, 15, 0.0_m, 0.0_m, 100.0_m, 150.0_m, -2000.0_m, 500.0_m);
 
-    EXPECT_DOUBLE_EQ(m.x0_qty().value(), 0.0);
-    EXPECT_DOUBLE_EQ(m.y0_qty().value(), 0.0);
-    EXPECT_DOUBLE_EQ(m.dx_qty().value(), 100.0);
-    EXPECT_DOUBLE_EQ(m.dy_qty().value(), 150.0);
-    EXPECT_DOUBLE_EQ(m.z_min_qty().value(), -2000.0);
-    EXPECT_DOUBLE_EQ(m.z_max_qty().value(), 500.0);
+    EXPECT_DOUBLE_EQ(m.x0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(m.y0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(m.dx().value(), 100.0);
+    EXPECT_DOUBLE_EQ(m.dy().value(), 150.0);
+    EXPECT_DOUBLE_EQ(m.z_min().value(), -2000.0);
+    EXPECT_DOUBLE_EQ(m.z_max().value(), 500.0);
+
+    // Dimension _val() accessors
+    EXPECT_DOUBLE_EQ(m.x0_val(), 0.0);
+    EXPECT_DOUBLE_EQ(m.y0_val(), 0.0);
+    EXPECT_DOUBLE_EQ(m.dx_val(), 100.0);
+    EXPECT_DOUBLE_EQ(m.dy_val(), 150.0);
+    EXPECT_DOUBLE_EQ(m.z_min_val(), -2000.0);
+    EXPECT_DOUBLE_EQ(m.z_max_val(), 500.0);
 
     // Default thickness query
-    EXPECT_DOUBLE_EQ(m.default_thickness_qty().value(), 250.0); // (500 - (-2000)) / 10 = 250 m
+    EXPECT_DOUBLE_EQ(m.default_thickness().value(), 250.0); // (500 - (-2000)) / 10 = 250 m
+    EXPECT_DOUBLE_EQ(m.default_thickness_val(), 250.0);
 
     // Mutate vertical range with kilometer quantities
     m.set_z_min(-3.0_km);
     m.set_z_max(1.0_km);
-    EXPECT_DOUBLE_EQ(m.z_min(), -3000.0);
-    EXPECT_DOUBLE_EQ(m.z_max(), 1000.0);
-    EXPECT_DOUBLE_EQ(m.default_thickness_qty().value(), 400.0);
+    EXPECT_DOUBLE_EQ(m.z_min().value(), -3000.0);
+    EXPECT_DOUBLE_EQ(m.z_max().value(), 1000.0);
+    EXPECT_DOUBLE_EQ(m.default_thickness().value(), 400.0);
 }
 
 // ============================================================================

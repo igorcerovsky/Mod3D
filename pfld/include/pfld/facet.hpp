@@ -418,6 +418,18 @@ protected:
 	valvec _len{};              ///< Side lengths of edges
 };
 
+// Deduction guides for Class Template Argument Deduction (CTAD)
+template <typename T>
+Facet(const std::vector<Point3D<T>>&, bool = false) -> Facet<T, 0>;
+
+template <typename T>
+Facet(std::vector<Point3D<T>>&&, bool = false) -> Facet<T, 0>;
+
+template <typename T, size_t N>
+Facet(const std::array<Point3D<T>, N>&, bool = false) -> Facet<T, N>;
+
+template <typename T>
+Facet(const Point3D<T>&, const Point3D<T>&, const Point3D<T>&, bool = false) -> Facet<T, 3>;
 
 // Default double-precision aliases
 using facet = Facet<double, 0>;

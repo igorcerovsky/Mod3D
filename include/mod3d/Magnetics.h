@@ -35,11 +35,7 @@ template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU
                                                              double declination_deg = 0.0,
                                                              double intensity_nt = 50000.0) noexcept {
     Point3D af = ambient_field(inclination_deg, declination_deg, intensity_nt);
-    return MagneticVector{
-        .mx = units::NanoTesla(af.x),
-        .my = units::NanoTesla(af.y),
-        .mz = units::NanoTesla(af.z)
-    };
+    return MagneticVector(af);
 }
 
 template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>

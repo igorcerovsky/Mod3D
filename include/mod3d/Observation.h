@@ -167,11 +167,7 @@ public:
     [[nodiscard]] Point3D ambient_field_vector() const;
     [[nodiscard]] MagneticVector ambient_field_vector_qty() const {
         Point3D af = ambient_field_vector();
-        return MagneticVector{
-            .mx = units::NanoTesla(af.x),
-            .my = units::NanoTesla(af.y),
-            .mz = units::NanoTesla(af.z)
-        };
+        return MagneticVector(af);
     }
 
     [[nodiscard]] double inclination_deg() const noexcept { return inc_deg_; }

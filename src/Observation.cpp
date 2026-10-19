@@ -304,8 +304,8 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
                 if (validGrv) {
                     double densContrast = 0.0;
                     if (fct.primary) {
-                        double bDens = fct.primary->density();
-                        double oposDens = fct.opposite ? fct.opposite->density() : ref_density_;
+                        double bDens = fct.primary->density().value();
+                        double oposDens = fct.opposite ? fct.opposite->density().value() : ref_density_;
                         densContrast = bDens - oposDens;
                     }
 
@@ -537,8 +537,8 @@ FitResult ObservationSpace::fit_vertex(
     }
 
     double originalZ = model.z(row, col, index);
-    double zU = (index > 0) ? model.z(row, col, index - 1) : model.z_max();
-    double zD = (index + 1 < static_cast<int>(model.count(row, col))) ? model.z(row, col, index + 1) : model.z_min();
+    double zU = (index > 0) ? model.z(row, col, index - 1) : model.z_max_val();
+    double zD = (index + 1 < static_cast<int>(model.count(row, col))) ? model.z(row, col, index + 1) : model.z_min_val();
 
     // Objective function evaluating RMS of (modeled - observed) when vertex is at z
     auto objFunc = [&](double zVal) -> double {

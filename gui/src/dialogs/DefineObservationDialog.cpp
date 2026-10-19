@@ -30,37 +30,37 @@ DefineObservationDialog::DefineObservationDialog(ModelDocument *doc, QWidget *pa
     m_spinX0 = new QDoubleSpinBox(this);
     m_spinX0->setRange(-1e7, 1e7);
     m_spinX0->setSuffix(" m");
-    m_spinX0->setValue(m.x0());
+    m_spinX0->setValue(m.x0_val());
     form->addRow(tr("X origin (X0):"), m_spinX0);
 
     m_spinY0 = new QDoubleSpinBox(this);
     m_spinY0->setRange(-1e7, 1e7);
     m_spinY0->setSuffix(" m");
-    m_spinY0->setValue(m.y0());
+    m_spinY0->setValue(m.y0_val());
     form->addRow(tr("Y origin (Y0):"), m_spinY0);
 
     m_spinDX = new QDoubleSpinBox(this);
     m_spinDX->setRange(1.0, 1e6);
     m_spinDX->setSuffix(" m");
-    m_spinDX->setValue(m.dx() > 0 ? m.dx() : 500.0);
+    m_spinDX->setValue(m.dx_val() > 0 ? m.dx_val() : 500.0);
     form->addRow(tr("Step dX:"), m_spinDX);
 
     m_spinDY = new QDoubleSpinBox(this);
     m_spinDY->setRange(1.0, 1e6);
     m_spinDY->setSuffix(" m");
-    m_spinDY->setValue(m.dy() > 0 ? m.dy() : 500.0);
+    m_spinDY->setValue(m.dy_val() > 0 ? m.dy_val() : 500.0);
     form->addRow(tr("Step dY:"), m_spinDY);
 
     m_spinZMin = new QDoubleSpinBox(this);
     m_spinZMin->setRange(-1e6, 1e6);
     m_spinZMin->setSuffix(" m");
-    m_spinZMin->setValue(m.z_min() != 0 ? m.z_min() : -4000.0);
+    m_spinZMin->setValue(m.z_min_val() != 0 ? m.z_min_val() : -4000.0);
     form->addRow(tr("Vertical Range Z min:"), m_spinZMin);
 
     m_spinZMax = new QDoubleSpinBox(this);
     m_spinZMax->setRange(-1e6, 1e6);
     m_spinZMax->setSuffix(" m");
-    m_spinZMax->setValue(m.z_max() != 0 ? m.z_max() : 1000.0);
+    m_spinZMax->setValue(m.z_max_val() != 0 ? m.z_max_val() : 1000.0);
     form->addRow(tr("Vertical Range Z max:"), m_spinZMax);
 
     mainLayout->addLayout(form);

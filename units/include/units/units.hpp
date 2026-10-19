@@ -36,8 +36,9 @@ using VolumeDimension        = Dimension<3, 0, 0, 0, 0>;
 using VelocityDimension      = Dimension<1, 0, -1, 0, 0>;
 using AccelerationDimension  = Dimension<1, 0, -2, 0, 0>;
 using GradientDimension      = Dimension<0, 0, -2, 0, 0>;  // s^-2 (tensor component)
-using DensityDimension       = Dimension<-3, 1, 0, 0, 0>; // kg / m^3
-using MagneticFieldDimension = Dimension<0, 1, -2, -1, 0>; // Tesla = kg / (s^2 * A)
+using DensityDimension         = Dimension<-3, 1, 0, 0, 0>; // kg / m^3
+using DensityGradientDimension = Dimension<-4, 1, 0, 0, 0>; // kg / m^4
+using MagneticFieldDimension   = Dimension<0, 1, -2, -1, 0>; // Tesla = kg / (s^2 * A)
 
 // ============================================================================
 // 2. Unit Tag Types and Metadata
@@ -162,6 +163,13 @@ struct GPerCm3 {
     using dimension = DensityDimension;
     static constexpr double scale_to_base = 1000.0;
     static constexpr std::string_view symbol = "g/cm³";
+};
+
+// --- Density Gradient ---
+struct KgPerM4 {
+    using dimension = DensityGradientDimension;
+    static constexpr double scale_to_base = 1.0;
+    static constexpr std::string_view symbol = "kg/m⁴";
 };
 
 // --- Acceleration / Gravity ---
@@ -497,6 +505,10 @@ using Tonnes            = Quantity<tag::Tonnes>;
 using KgPerM3           = Quantity<tag::KgPerM3>;
 using GPerCm3           = Quantity<tag::GPerCm3>;
 
+// Density Gradient
+using KgPerM4           = Quantity<tag::KgPerM4>;
+using DensityGradient   = KgPerM4;
+
 // Acceleration / Gravity
 using MetersPerSecondSquared = Quantity<tag::MetersPerSecondSquared>;
 using SI_Acceleration   = MetersPerSecondSquared;
@@ -621,6 +633,41 @@ template <UnitType U1, UnitType U2, typename Rep = double>
 constexpr Quantity<tag::CubicMeters, Rep> operator/(const Quantity<U1, Rep>& m,
                                                     const Quantity<U2, Rep>& d) noexcept {
     return Quantity<tag::CubicMeters, Rep>(m.to_base() / d.to_base());
+}
+
+// --- Density / Length = DensityGradient ---
+template <UnitType U1, UnitType U2, typename Rep = double>
+    requires (std::is_same_v<typename U1::dimension, DensityDimension> &&
+              std::is_same_v<typename U2::dimension, LengthDimension>)
+constexpr Quantity<tag::KgPerM4, Rep> operator/(const Quantity<U1, Rep>& d,
+                                                const Quantity<U2, Rep>& l) noexcept {
+    return Quantity<tag::KgPerM4, Rep>(d.to_base() / l.to_base());
+}
+
+// --- DensityGradient * Length = Density ---
+template <UnitType U1, UnitType U2, typename Rep = double>
+    requires (std::is_same_v<typename U1::dimension, DensityGradientDimension> &&
+              std::is_same_v<typename U2::dimension, LengthDimension>)
+constexpr Quantity<tag::KgPerM3, Rep> operator*(const Quantity<U1, Rep>& g,
+                                                const Quantity<U2, Rep>& l) noexcept {
+    return Quantity<tag::KgPerM3, Rep>(g.to_base() * l.to_base());
+}
+
+template <UnitType U1, UnitType U2, typename Rep = double>
+    requires (std::is_same_v<typename U1::dimension, LengthDimension> &&
+              std::is_same_v<typename U2::dimension, DensityGradientDimension>)
+constexpr Quantity<tag::KgPerM3, Rep> operator*(const Quantity<U1, Rep>& l,
+                                                const Quantity<U2, Rep>& g) noexcept {
+    return Quantity<tag::KgPerM3, Rep>(l.to_base() * g.to_base());
+}
+
+// --- Density / DensityGradient = Length ---
+template <UnitType U1, UnitType U2, typename Rep = double>
+    requires (std::is_same_v<typename U1::dimension, DensityDimension> &&
+              std::is_same_v<typename U2::dimension, DensityGradientDimension>)
+constexpr Quantity<tag::Meters, Rep> operator/(const Quantity<U1, Rep>& d,
+                                               const Quantity<U2, Rep>& g) noexcept {
+    return Quantity<tag::Meters, Rep>(d.to_base() / g.to_base());
 }
 
 // --- Acceleration / Length = Gradient (Tensor) ---
@@ -831,6 +878,10 @@ constexpr KgPerM3 operator""_kg_m3(long double val) noexcept { return KgPerM3(st
 constexpr KgPerM3 operator""_kg_m3(unsigned long long val) noexcept { return KgPerM3(static_cast<double>(val)); }
 constexpr GPerCm3 operator""_g_cm3(long double val) noexcept { return GPerCm3(static_cast<double>(val)); }
 constexpr GPerCm3 operator""_g_cm3(unsigned long long val) noexcept { return GPerCm3(static_cast<double>(val)); }
+
+// --- Density Gradient ---
+constexpr KgPerM4 operator""_kg_m4(long double val) noexcept { return KgPerM4(static_cast<double>(val)); }
+constexpr KgPerM4 operator""_kg_m4(unsigned long long val) noexcept { return KgPerM4(static_cast<double>(val)); }
 
 // --- Acceleration / Gravity ---
 constexpr SI_Acceleration operator""_ms2(long double val) noexcept { return SI_Acceleration(static_cast<double>(val)); }

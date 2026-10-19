@@ -73,8 +73,8 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *
             if (m_btnProfTabOrientEW) m_btnProfTabOrientEW->setChecked(orient == ProfileOrientation::EastWest);
             if (m_btnProfTabOrientSN) m_btnProfTabOrientSN->setChecked(orient == ProfileOrientation::SouthNorth);
             double coord = (orient == ProfileOrientation::EastWest)
-                ? m_doc->model().yd(idx + 1)
-                : m_doc->model().xd(idx + 1);
+                ? m_doc->model().yd_val(idx + 1)
+                : m_doc->model().xd_val(idx + 1);
             QString coordName = (orient == ProfileOrientation::EastWest) ? "Y" : "X";
             if (m_lblProfTabCoord) {
                 m_lblProfTabCoord->setText(QString("%1 = %2 m").arg(coordName).arg(coord, 0, 'f', 1));
@@ -1104,7 +1104,7 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
         std::vector<mod3d::Facet3Pt> facets;
         m_doc->model().facets_computation(facets);
         auto method = m_rbOptBrent->isChecked() ? mod3d::FitMethod::Brent : mod3d::FitMethod::Golden;
-        m_doc->observation().fit_density(b, facets, m_doc->activeField(), b->density(), m_spinFitTol->value(), method);
+        m_doc->observation().fit_density(b, facets, m_doc->activeField(), b->density().value(), m_spinFitTol->value(), method);
         m_doc->computeAll();
         loadBodyData();
     });
@@ -1243,16 +1243,16 @@ void SettingsPane::updateViewContext() {
         m_spinProfTabIdx->setValue(pv->profileIndex());
 
         double coord = (pv->profileOrientation() == ProfileOrientation::EastWest)
-            ? m_doc->model().yd(pv->profileIndex() + 1)
-            : m_doc->model().xd(pv->profileIndex() + 1);
+            ? m_doc->model().yd_val(pv->profileIndex() + 1)
+            : m_doc->model().xd_val(pv->profileIndex() + 1);
         QString coordName = (pv->profileOrientation() == ProfileOrientation::EastWest) ? "Y" : "X";
         m_lblProfTabCoord->setText(QString("%1 = %2 m").arg(coordName).arg(coord, 0, 'f', 1));
 
         double spacing = (pv->profileOrientation() == ProfileOrientation::EastWest)
-            ? m_doc->model().dy() : m_doc->model().dx();
+            ? m_doc->model().dy_val() : m_doc->model().dx_val();
         double len = (pv->profileOrientation() == ProfileOrientation::EastWest)
-            ? (m_doc->model().x_max() - m_doc->model().x_min())
-            : (m_doc->model().y_max() - m_doc->model().y_min());
+            ? (m_doc->model().x_max_val() - m_doc->model().x_min_val())
+            : (m_doc->model().y_max_val() - m_doc->model().y_min_val());
         m_lblProfGeometryInfo->setText(QString("Spacing: %1 m | Length: %2 m | Total: %3")
             .arg(spacing, 0, 'f', 1).arg(len, 0, 'f', 1).arg(pv->maxProfileIndex() + 1));
 
@@ -1322,7 +1322,7 @@ void SettingsPane::updateBodyList() {
     const auto &bodies = m_doc->model().bodies();
     for (const auto &b : bodies) {
         QColor col(b->color().r, b->color().g, b->color().b);
-        QString itemText = QString("Body %1: %2 (ρ=%3 kg/m³)").arg(b->id()).arg(QString::fromStdString(b->name())).arg(b->raw_density(), 0, 'f', 1);
+        QString itemText = QString("Body %1: %2 (ρ=%3 kg/m³)").arg(b->id()).arg(QString::fromStdString(b->name())).arg(b->raw_density().value(), 0, 'f', 1);
         m_comboBodies->addItem(createColorIcon(col), itemText, b->id());
     }
 
@@ -1354,7 +1354,7 @@ void SettingsPane::loadBodyData() {
 
     m_blockSync = true;
     m_editBodyName->setText(QString::fromStdString(b->name()));
-    m_spinDensity->setValue(b->raw_density());
+    m_spinDensity->setValue(b->raw_density().value());
     m_spinSusceptibility->setValue(b->susceptibility());
     QColor col(b->color().r, b->color().g, b->color().b);
     m_btnBodyColor->setIcon(createColorIcon(col, 20));
@@ -1365,15 +1365,15 @@ void SettingsPane::loadBodyData() {
     m_chkBodyActive->setChecked(b->is_active());
     m_chkBodyLocked->setChecked(b->is_locked());
 
-    m_spinGradX->setValue(b->density_gradient().x);
-    m_spinGradY->setValue(b->density_gradient().y);
-    m_spinGradZ->setValue(b->density_gradient().z);
+    m_spinGradX->setValue(b->density_gradient().x_val());
+    m_spinGradY->setValue(b->density_gradient().y_val());
+    m_spinGradZ->setValue(b->density_gradient().z_val());
 
     const auto &rem = b->remanent_magnetization();
-    double jRem = std::sqrt(rem.x * rem.x + rem.y * rem.y + rem.z * rem.z);
+    double jRem = rem.total_val();
     m_spinRemJ->setValue(jRem);
-    double inc = (jRem > 1e-9) ? (std::asin(-rem.z / jRem) * 180.0 / 3.141592653589793) : 0.0;
-    double dec = (std::abs(rem.x) > 1e-9 || std::abs(rem.y) > 1e-9) ? (std::atan2(rem.x, rem.y) * 180.0 / 3.141592653589793) : 0.0;
+    double inc = (jRem > 1e-9) ? (std::asin(-rem.z_val() / jRem) * 180.0 / 3.141592653589793) : 0.0;
+    double dec = (std::abs(rem.x_val()) > 1e-9 || std::abs(rem.y_val()) > 1e-9) ? (std::atan2(rem.x_val(), rem.y_val()) * 180.0 / 3.141592653589793) : 0.0;
     if (dec < 0.0) dec += 360.0;
     m_spinRemInc->setValue(inc);
     m_spinRemDec->setValue(dec);
@@ -1425,15 +1425,15 @@ void SettingsPane::loadPhysicsData() {
     m_spinRefDensity->setValue(2670.0);
 
     // Model Boundaries
-    m_spinModelZMax->setValue(m_doc->model().z_max());
-    m_spinModelZMin->setValue(m_doc->model().z_min());
+    m_spinModelZMax->setValue(m_doc->model().z_max_val());
+    m_spinModelZMin->setValue(m_doc->model().z_min_val());
 
     const auto &m = m_doc->model();
     m_lblModelDimensions->setText(QString("%1 × %2 cells (%3 × %4 m)\nX: [%5, %6] m\nY: [%7, %8] m")
         .arg(m.rows()).arg(m.cols())
-        .arg(m.dx(), 0, 'f', 1).arg(m.dy(), 0, 'f', 1)
-        .arg(m.x_min(), 0, 'f', 1).arg(m.x_max(), 0, 'f', 1)
-        .arg(m.y_min(), 0, 'f', 1).arg(m.y_max(), 0, 'f', 1));
+        .arg(m.dx_val(), 0, 'f', 1).arg(m.dy_val(), 0, 'f', 1)
+        .arg(m.x_min_val(), 0, 'f', 1).arg(m.x_max_val(), 0, 'f', 1)
+        .arg(m.y_min_val(), 0, 'f', 1).arg(m.y_max_val(), 0, 'f', 1));
 
     m_blockSync = false;
 }
