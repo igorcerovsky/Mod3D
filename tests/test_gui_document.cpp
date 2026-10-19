@@ -1525,7 +1525,6 @@ TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
 TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
     MainWindow mw;
     mw.resize(1400, 900);
-    mw.show();
 
     auto *pane = mw.settingsPane();
     ASSERT_NE(pane, nullptr);
@@ -1567,30 +1566,31 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
     EXPECT_TRUE(pv->showProfileIntersections());
 
     // 2. Tab switching & screenshot captures
-    QPixmap pix(mw.size());
+    pane->resize(380, 820);
+    QPixmap pix(380, 820);
 
     // Tab 1: Display Tab
     pane->selectDisplayTab();
     pix.fill(Qt::white);
-    mw.render(&pix);
+    pane->render(&pix);
     saveTestScreenshot(pix, "modern_settings_tab_display.png");
 
     // Tab 2: Profiles Tab
     pane->selectProfilesTab();
     pix.fill(Qt::white);
-    mw.render(&pix);
+    pane->render(&pix);
     saveTestScreenshot(pix, "modern_settings_tab_profiles.png");
 
     // Tab 3: Bodies Tab
     pane->selectBodyEditorTab();
     pix.fill(Qt::white);
-    mw.render(&pix);
+    pane->render(&pix);
     saveTestScreenshot(pix, "modern_settings_tab_bodies.png");
 
     // Tab 4: Physics Tab
     pane->selectPhysicsTab();
     pix.fill(Qt::white);
-    mw.render(&pix);
+    pane->render(&pix);
     saveTestScreenshot(pix, "modern_settings_tab_physics.png");
 
     // 3. Test Physics parameters reflection in ModelDocument
