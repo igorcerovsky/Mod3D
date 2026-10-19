@@ -1938,7 +1938,6 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
 TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     MainWindow mw;
     mw.resize(1440, 920);
-    mw.show();
 
     std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
     if (!std::filesystem::exists(samplePath)) {
@@ -1956,16 +1955,16 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     QPixmap pixMain(1440, 920);
     pixMain.fill(Qt::white);
     mw.render(&pixMain);
-    std::filesystem::create_directories("docs/images");
-    pixMain.save("docs/images/mod3d_main_workspace.png");
+    saveTestScreenshot(pixMain, "mod3d_main_workspace.png");
 
     // 2. Profile View close-up screenshot
     auto *pv = mw.activeProfileView();
     if (pv) {
-        QPixmap pixProfile(pv->size());
+        QSize s = (pv->width() >= 100 && pv->height() >= 100) ? pv->size() : QSize(800, 500);
+        QPixmap pixProfile(s);
         pixProfile.fill(Qt::white);
         pv->render(&pixProfile);
-        pixProfile.save("docs/images/mod3d_profile_cross_section.png");
+        saveTestScreenshot(pixProfile, "mod3d_profile_cross_section.png");
     }
 
     // 3. Map View screenshot (with relief contours and body footprints)
@@ -1979,16 +1978,18 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     if (mv) {
         mv->setShowReliefContours(true);
         mv->setShowBodyFootprints(true);
-        QPixmap pixMap(mv->size());
+        QSize s = (mv->width() >= 100 && mv->height() >= 100) ? mv->size() : QSize(600, 600);
+        QPixmap pixMap(s);
         pixMap.fill(Qt::white);
         mv->render(&pixMap);
-        pixMap.save("docs/images/mod3d_map_view.png");
+        saveTestScreenshot(pixMap, "mod3d_map_view.png");
     }
 
     // 4. Settings Pane Geological Body Editor screenshot
-    QPixmap pixPane(pane->width(), pane->height());
+    QSize sPane = (pane->width() >= 100 && pane->height() >= 100) ? pane->size() : QSize(380, 820);
+    QPixmap pixPane(sPane);
     pixPane.fill(Qt::white);
     pane->render(&pixPane);
-    pixPane.save("docs/images/mod3d_body_editor.png");
+    saveTestScreenshot(pixPane, "mod3d_body_editor.png");
 }
 
