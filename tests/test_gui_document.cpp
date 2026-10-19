@@ -1494,6 +1494,9 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
 }
 
 TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Skipping on Windows CI due to headless OpenGL context in 3D subwindow";
+#else
     MainWindow mw;
 
     auto *pane = mw.settingsPane();
@@ -1525,6 +1528,7 @@ TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
     // Activate 3D view
     mw.mdiArea()->setActiveSubWindow(sub3D);
     pane->setActiveSubWindow(sub3D);
+#endif
 }
 
 TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
@@ -1805,6 +1809,9 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
 }
 
 TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Skipping on Windows CI due to headless OpenGL context";
+#else
     MainWindow mw;
     mw.resize(1400, 900);
 
@@ -1870,9 +1877,13 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     int curIdx = comboBodies->findData(2);
     ASSERT_GE(curIdx, 0);
     EXPECT_TRUE(comboBodies->itemText(curIdx).contains("3550.0 kg/m³"));
+#endif
 }
 
 TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Skipping on Windows CI due to headless OpenGL context";
+#else
     MainWindow mw;
     mw.resize(1400, 900);
 
@@ -1942,6 +1953,7 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     EXPECT_TRUE(mv->showReliefContours());
     pane->setActiveSubWindow(subMap);
     EXPECT_TRUE(chkReliefContours->isChecked());
+#endif
 }
 
 TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
