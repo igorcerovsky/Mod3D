@@ -18,12 +18,16 @@ else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter -ffp-contract=off)
 endif()
 
-find_package(Threads REQUIRED)
+if(NOT TARGET units)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../units")
+        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../units" units)
+    endif()
+endif()
 
 # Header-only library
 add_library(pfld INTERFACE)
 
-target_link_libraries(pfld INTERFACE Threads::Threads)
+target_link_libraries(pfld INTERFACE units Threads::Threads)
 
 target_include_directories(pfld INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

@@ -1,13 +1,13 @@
 #pragma once
 
-#include "pfld/units.hpp"
+#include "units/units.hpp"
 
 namespace mod3d {
 
-namespace units = ::pfld::units;
+namespace units = ::units;
 
 namespace literals {
-    using namespace ::pfld::units::literals;
+    using namespace ::units::literals;
 }
 
 } // namespace mod3d
