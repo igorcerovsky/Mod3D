@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-126%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-146%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -60,11 +60,10 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 | <img src="docs/images/mod3d_profile_cross_section.png" alt="Profile Cross-Section" width="460"> | <img src="docs/images/mod3d_map_view.png" alt="Map View with Contours" width="460"> |
 | *Real-time gravity anomaly fitting (blue calculated vs. red measured crosses with RMS misfit) above geological polyhedra and topography.* | *Potential field color heatmap with station grid points, profile traverses, geological body footprints, and topography relief contours.* |
 
-<p align="center">
-  <img src="docs/images/mod3d_body_editor.png" alt="Settings Inspector Body Editor" width="380">
-  <br>
-  <em>Settings Inspector: Strict SI physical units ($\text{kg/m}^3$ and $\text{SI}$), 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.</em>
-</p>
+| 3D Perspective Turntable View | Settings Inspector Body Editor |
+| :---: | :---: |
+| <img src="docs/images/mod3d_3d_turntable.png" alt="3D Turntable View" width="460"> | <img src="docs/images/mod3d_body_editor.png" alt="Settings Inspector Body Editor" width="460"> |
+| *Interactive 3D faceted polyhedral bodies with active profile cut plane, bounding box, and orientation tripod.* | *Settings Inspector: Strict SI physical units ($\text{kg/m}^3$ and $\text{SI}$), 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.* |
 
 ---
 

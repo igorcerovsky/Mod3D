@@ -333,6 +333,262 @@ void GL3DView::paintGL() {
     }
 }
 
+void GL3DView::paintEvent(QPaintEvent *event) {
+    if (isValid() && context()) {
+        QOpenGLWidget::paintEvent(event);
+        return;
+    }
+    QPainter painter(this);
+    paintSoftware(painter);
+}
+
+void GL3DView::paintSoftware(QPainter &painter) {
+    int w = width();
+    int h = height();
+    if (w <= 0 || h <= 0) return;
+
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    // 1. Studio background gradient
+    QLinearGradient bgGrad(0, 0, 0, h);
+    bgGrad.setColorAt(0.0, QColor(246, 248, 252));
+    bgGrad.setColorAt(1.0, QColor(228, 233, 242));
+    painter.fillRect(0, 0, w, h, bgGrad);
+
+    if (!m_doc) {
+        painter.restore();
+        return;
+    }
+
+    const auto &model = m_doc->model();
+    double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
+    double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
+    double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
+    double maxDim = std::max({ model.x_max_val() - model.x_min_val(),
+                               model.y_max_val() - model.y_min_val(),
+                               model.z_max_val() - model.z_min_val() });
+    if (maxDim <= 0.0) maxDim = 10000.0;
+
+    double dist = maxDim * 1.8 / (m_zoom > 0.01f ? m_zoom : 1.0f);
+
+    auto project = [&](double x, double y, double z) {
+        double dx = x - midX;
+        double dy = y - midY;
+        double dz = z - midZ;
+
+        double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
+        double rx = dx * std::cos(azRad) - dy * std::sin(azRad);
+        double ry = dx * std::sin(azRad) + dy * std::cos(azRad);
+        double rz = dz;
+
+        double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
+        double px = rx;
+        double py = ry * std::cos(pitchRad) - rz * std::sin(pitchRad);
+        double pz = ry * std::sin(pitchRad) + rz * std::cos(pitchRad);
+
+        double cx = px + m_panX;
+        double cy = py + m_panY;
+        double cz = dist - pz;
+
+        double fov = 45.0 * 3.14159265358979323846 / 180.0;
+        double top = std::tan(fov * 0.5);
+        double scale = (cz > 10.0) ? (0.5 * h / (top * cz)) : (0.5 * h / (top * 10.0));
+
+        double sx = (w * 0.5) + cx * scale;
+        double sy = (h * 0.5) - cy * scale;
+
+        return std::make_pair(QPointF(sx, sy), pz);
+    };
+
+    // 2. Bounding Box
+    if (m_showBoundingBox) {
+        double x0 = model.x_min_val(), x1 = model.x_max_val();
+        double y0 = model.y_min_val(), y1 = model.y_max_val();
+        double z0 = model.z_min_val(), z1 = model.z_max_val();
+
+        QPointF c[8];
+        c[0] = project(x0, y0, z0).first;
+        c[1] = project(x1, y0, z0).first;
+        c[2] = project(x1, y1, z0).first;
+        c[3] = project(x0, y1, z0).first;
+        c[4] = project(x0, y0, z1).first;
+        c[5] = project(x1, y0, z1).first;
+        c[6] = project(x1, y1, z1).first;
+        c[7] = project(x0, y1, z1).first;
+
+        painter.setPen(QPen(QColor(160, 168, 185, 200), 1.2, Qt::SolidLine));
+        painter.drawLine(c[0], c[1]); painter.drawLine(c[1], c[2]);
+        painter.drawLine(c[2], c[3]); painter.drawLine(c[3], c[0]);
+        painter.drawLine(c[4], c[5]); painter.drawLine(c[5], c[6]);
+        painter.drawLine(c[6], c[7]); painter.drawLine(c[7], c[4]);
+        painter.drawLine(c[0], c[4]); painter.drawLine(c[1], c[5]);
+        painter.drawLine(c[2], c[6]); painter.drawLine(c[3], c[7]);
+
+        // Origin coordinate axes at (x0, y0, z0)
+        double axisLen = (x1 - x0) * 0.12;
+        QPointF pOrigin = c[0];
+        QPointF pAxX = project(x0 + axisLen, y0, z0).first;
+        QPointF pAxY = project(x0, y0 + axisLen, z0).first;
+        QPointF pAxZ = project(x0, y0, z0 + axisLen).first;
+
+        painter.setPen(QPen(QColor(220, 38, 38), 2.0));
+        painter.drawLine(pOrigin, pAxX);
+        painter.setPen(QPen(QColor(22, 163, 74), 2.0));
+        painter.drawLine(pOrigin, pAxY);
+        painter.setPen(QPen(QColor(37, 99, 235), 2.0));
+        painter.drawLine(pOrigin, pAxZ);
+    }
+
+    // 3. Active Profile Plane
+    if (m_showProfilePlane) {
+        int pIdx = m_doc->profileIndex();
+        double z0 = model.z_min_val();
+        double z1 = model.z_max_val();
+        QPolygonF poly;
+        if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
+            double y = model.yd_val(pIdx + 1);
+            poly << project(model.x_min_val(), y, z0).first
+                 << project(model.x_max_val(), y, z0).first
+                 << project(model.x_max_val(), y, z1).first
+                 << project(model.x_min_val(), y, z1).first;
+        } else {
+            double x = model.xd_val(pIdx + 1);
+            poly << project(x, model.y_min_val(), z0).first
+                 << project(x, model.y_max_val(), z0).first
+                 << project(x, model.y_max_val(), z1).first
+                 << project(x, model.y_min_val(), z1).first;
+        }
+        painter.setBrush(QColor(245, 158, 11, 45));
+        painter.setPen(QPen(QColor(217, 119, 6, 200), 1.5, Qt::DashLine));
+        painter.drawPolygon(poly);
+    }
+
+    // 4. 3D Polyhedral Bodies
+    if (m_meshDirty || m_bodyMeshes.empty()) {
+        m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
+        m_meshDirty = false;
+    }
+
+    struct SortFacet {
+        QPointF p[3];
+        double depth;
+        QColor fill;
+        QColor edge;
+    };
+    std::vector<SortFacet> facetsToDraw;
+
+    double dBot = model.z_min_val();
+    double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
+    double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
+
+    // Directional light vector in camera space from upper-right-front
+    double lx = 0.40, ly = 0.65, lz = 0.65;
+    double lLen = std::sqrt(lx*lx + ly*ly + lz*lz);
+    lx /= lLen; ly /= lLen; lz /= lLen;
+
+    for (const auto &mesh : m_bodyMeshes) {
+        if (!mesh.isVisible) continue;
+
+        auto bc = mesh.color;
+
+        for (const auto &fct : mesh.facets) {
+            if (!m_showBottom &&
+                fct[0].z <= dBot + 1e-3 &&
+                fct[1].z <= dBot + 1e-3 &&
+                fct[2].z <= dBot + 1e-3) {
+                continue;
+            }
+
+            auto pt0 = project(fct[0].x, fct[0].y, fct[0].z);
+            auto pt1 = project(fct[1].x, fct[1].y, fct[1].z);
+            auto pt2 = project(fct[2].x, fct[2].y, fct[2].z);
+
+            double avgDepth = (pt0.second + pt1.second + pt2.second) / 3.0;
+
+            // Rotate normal into camera space
+            auto norm = fct.normal();
+            double nrx = norm.x * std::cos(azRad) - norm.y * std::sin(azRad);
+            double nry = norm.x * std::sin(azRad) + norm.y * std::cos(azRad);
+            double nrz = norm.z;
+
+            double npx = nrx;
+            double npy = nry * std::cos(pitchRad) - nrz * std::sin(pitchRad);
+            double npz = nry * std::sin(pitchRad) + nrz * std::cos(pitchRad);
+
+            double dot = std::abs(npx * lx + npy * ly + npz * lz);
+            double shade = 0.35 + 0.65 * dot;
+
+            int r = std::clamp(static_cast<int>(bc.r * shade), 0, 255);
+            int g = std::clamp(static_cast<int>(bc.g * shade), 0, 255);
+            int b = std::clamp(static_cast<int>(bc.b * shade), 0, 255);
+            int alpha = mesh.isTransparent ? std::clamp(static_cast<int>(mesh.alpha * 255), 30, 240) : 255;
+
+            QColor fillColor(r, g, b, alpha);
+            QColor edgeColor(static_cast<int>(r * 0.65), static_cast<int>(g * 0.65), static_cast<int>(b * 0.65), 210);
+
+            facetsToDraw.push_back({ {pt0.first, pt1.first, pt2.first}, avgDepth, fillColor, edgeColor });
+        }
+    }
+
+    // Sort back-to-front (smaller depth is further from eye)
+    std::sort(facetsToDraw.begin(), facetsToDraw.end(), [](const SortFacet &a, const SortFacet &b) {
+        return a.depth < b.depth;
+    });
+
+    for (const auto &f : facetsToDraw) {
+        painter.setPen(QPen(f.edge, 0.8));
+        painter.setBrush(f.fill);
+        QPointF pts[3] = { f.p[0], f.p[1], f.p[2] };
+        painter.drawPolygon(pts, 3);
+    }
+
+    // 5. Orientation Indicator HUD (Compass Tripod in bottom-left corner)
+    if (m_showOrientationIndicator) {
+        double cx = 52.0;
+        double cy = h - 52.0;
+        double rHud = 40.0;
+
+        painter.setPen(QPen(QColor(203, 213, 225), 1.0));
+        painter.setBrush(QColor(255, 255, 255, 215));
+        painter.drawRoundedRect(QRectF(cx - rHud, cy - rHud, rHud * 2.0, rHud * 2.0), 10.0, 10.0);
+
+        auto projectAxis = [&](double ax, double ay, double az) {
+            double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
+            double rx = ax * std::cos(azRad) - ay * std::sin(azRad);
+            double ry = ax * std::sin(azRad) + ay * std::cos(azRad);
+            double rz = az;
+
+            double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
+            double px = rx;
+            double py = ry * std::cos(pitchRad) - rz * std::sin(pitchRad);
+            return QPointF(cx + px * 24.0, cy - py * 24.0);
+        };
+
+        QPointF pCenter(cx, cy);
+        QPointF pX = projectAxis(1.0, 0.0, 0.0);
+        QPointF pY = projectAxis(0.0, 1.0, 0.0);
+        QPointF pZ = projectAxis(0.0, 0.0, 1.0);
+
+        // X axis - East (Red)
+        painter.setPen(QPen(QColor(220, 38, 38), 2.2));
+        painter.drawLine(pCenter, pX);
+        painter.drawText(pX + QPointF(2, 4), "E");
+
+        // Y axis - North (Green)
+        painter.setPen(QPen(QColor(22, 163, 74), 2.2));
+        painter.drawLine(pCenter, pY);
+        painter.drawText(pY + QPointF(2, 4), "N");
+
+        // Z axis - Up (Blue)
+        painter.setPen(QPen(QColor(37, 99, 235), 2.2));
+        painter.drawLine(pCenter, pZ);
+        painter.drawText(pZ + QPointF(2, 4), "Z");
+    }
+
+    painter.restore();
+}
+
 void GL3DView::drawBoundingBox() {
     glDisable(GL_LIGHTING);
     glColor3f(0.55f, 0.55f, 0.60f);

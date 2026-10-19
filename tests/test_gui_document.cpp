@@ -1979,6 +1979,26 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     QPixmap pixMain(1440, 920);
     pixMain.fill(Qt::white);
     mw.render(&pixMain);
+
+    // Paint the 3D software rendering onto the 3D subwindow area of pixMain
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *glv = qobject_cast<GL3DView*>(sub->widget())) {
+            QPoint pos = glv->mapTo(&mw, QPoint(0, 0));
+            QPainter p(&pixMain);
+            p.translate(pos);
+            glv->paintSoftware(p);
+
+            // Also save standalone 3D turntable close-up screenshot
+            QSize s = (glv->width() >= 100 && glv->height() >= 100) ? glv->size() : QSize(700, 500);
+            QPixmap pix3D(s);
+            pix3D.fill(Qt::white);
+            QPainter p3D(&pix3D);
+            glv->paintSoftware(p3D);
+            saveTestScreenshot(pix3D, "mod3d_3d_turntable.png");
+            break;
+        }
+    }
+
     saveTestScreenshot(pixMain, "mod3d_main_workspace.png");
 
     // 2. Profile View close-up screenshot
