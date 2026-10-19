@@ -423,4 +423,53 @@ inline void Field_Gz(std::span<const facet> facets, std::span<const point> field
 	}
 }
 
+// ============================================================================
+// Unit-Aware Parallel Computation Overloads
+// ============================================================================
+
+/**
+ * @brief Computes vertical gravity field with strong unit types (default: MilliGal).
+ */
+template <units::UnitType AccelUnit = units::tag::MilliGal, typename FacetRange = pfld::facet_vec>
+[[nodiscard]] inline std::vector<units::Quantity<AccelUnit>> compute_gravity_z(
+	const FacetRange& facets,
+	const pfld::ptvec& field_points,
+	size_t num_threads = 0)
+{
+	pfld::valvec raw_gz(field_points.size(), 0.0);
+	Field_Gz(facets, field_points, raw_gz, num_threads);
+
+	std::vector<units::Quantity<AccelUnit>> results;
+	results.reserve(raw_gz.size());
+	for (double gz_si : raw_gz) {
+		results.push_back(units::SI_Acceleration(gz_si).template as<AccelUnit>());
+	}
+	return results;
+}
+
+/**
+ * @brief Computes vertical gravity field with constant density contrast and strong unit types.
+ */
+template <units::UnitType AccelUnit = units::tag::MilliGal,
+          units::UnitType DensityUnit = units::tag::KgPerM3,
+          typename FacetRange = pfld::facet_vec>
+[[nodiscard]] inline std::vector<units::Quantity<AccelUnit>> compute_gravity_z(
+	const FacetRange& facets,
+	const pfld::ptvec& field_points,
+	const units::Quantity<DensityUnit>& density_contrast,
+	size_t num_threads = 0)
+{
+	pfld::valvec raw_gz(field_points.size(), 0.0);
+	Field_Gz(facets, field_points, raw_gz, num_threads);
+
+	const double dens_factor = density_contrast.to_base() / 1.0;
+	std::vector<units::Quantity<AccelUnit>> results;
+	results.reserve(raw_gz.size());
+	for (double gz_si : raw_gz) {
+		results.push_back(units::SI_Acceleration(gz_si * dens_factor).template as<AccelUnit>());
+	}
+	return results;
+}
+
 } // namespace pfld
+

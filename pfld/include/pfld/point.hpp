@@ -8,6 +8,7 @@
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
+#include "units.hpp"
 
 namespace pfld {
 
@@ -36,6 +37,18 @@ public:
 	// Constructors
 	constexpr Point3D() noexcept = default;
 	constexpr Point3D(T x_, T y_, T z_) noexcept : x(x_), y(y_), z(z_) {}
+
+	// Unit-aware constructor from 3 length quantities (stored in SI base meters)
+	template <units::UnitType Ux, units::UnitType Uy, units::UnitType Uz>
+		requires (units::SameDimension<Ux, units::tag::Meters> &&
+		          units::SameDimension<Uy, units::tag::Meters> &&
+		          units::SameDimension<Uz, units::tag::Meters>)
+	constexpr Point3D(const units::Quantity<Ux>& qx,
+	                  const units::Quantity<Uy>& qy,
+	                  const units::Quantity<Uz>& qz) noexcept
+		: x(static_cast<T>(qx.to_base())),
+		  y(static_cast<T>(qy.to_base())),
+		  z(static_cast<T>(qz.to_base())) {}
 
 	// Standard special member functions (trivial copy, move, destruction)
 	constexpr Point3D(const Point3D&) noexcept = default;
@@ -128,6 +141,45 @@ public:
 	}
 	[[nodiscard]] T abs() const noexcept {
 		return norm();
+	}
+
+	// --- Unit-Aware Accessors (Length in Meters) ---
+	[[nodiscard]] constexpr units::Meters x_qty() const noexcept {
+		return units::Meters(static_cast<double>(x));
+	}
+	[[nodiscard]] constexpr units::Meters y_qty() const noexcept {
+		return units::Meters(static_cast<double>(y));
+	}
+	[[nodiscard]] constexpr units::Meters z_qty() const noexcept {
+		return units::Meters(static_cast<double>(z));
+	}
+
+	template <typename TargetUnit = units::tag::Meters>
+		requires units::SameDimension<units::extract_unit_t<TargetUnit>, units::tag::Meters>
+	[[nodiscard]] constexpr auto x_as() const noexcept {
+		return x_qty().template as<TargetUnit>();
+	}
+
+	template <typename TargetUnit = units::tag::Meters>
+		requires units::SameDimension<units::extract_unit_t<TargetUnit>, units::tag::Meters>
+	[[nodiscard]] constexpr auto y_as() const noexcept {
+		return y_qty().template as<TargetUnit>();
+	}
+
+	template <typename TargetUnit = units::tag::Meters>
+		requires units::SameDimension<units::extract_unit_t<TargetUnit>, units::tag::Meters>
+	[[nodiscard]] constexpr auto z_as() const noexcept {
+		return z_qty().template as<TargetUnit>();
+	}
+
+	[[nodiscard]] constexpr units::Meters length_qty() const noexcept {
+		return units::Meters(static_cast<double>(length()));
+	}
+	[[nodiscard]] constexpr units::Meters norm_qty() const noexcept {
+		return length_qty();
+	}
+	[[nodiscard]] constexpr units::Meters distance_to_qty(const Point3D& other) const noexcept {
+		return units::Meters(static_cast<double>((*this - other).norm()));
 	}
 
 	// --- Normalization (STL style: normalize() in-place, normalized()/unit() copy) ---
@@ -302,6 +354,14 @@ public:
 		return os << '(' << pt.x << ", " << pt.y << ", " << pt.z << ')';
 	}
 };
+
+// Deduction guide: constructing Point3D with length quantities deduces Point3D<double>
+template <units::UnitType Ux, units::UnitType Uy, units::UnitType Uz>
+	requires (units::SameDimension<Ux, units::tag::Meters> &&
+	          units::SameDimension<Uy, units::tag::Meters> &&
+	          units::SameDimension<Uz, units::tag::Meters>)
+Point3D(const units::Quantity<Ux>&, const units::Quantity<Uy>&, const units::Quantity<Uz>&)
+	-> Point3D<double>;
 
 // Aliases for common floating point precisions
 using Point3Dd = Point3D<double>;

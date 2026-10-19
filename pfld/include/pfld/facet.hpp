@@ -46,6 +46,23 @@ template <typename T>
 }
 
 /**
+ * @brief 3D Marussi gravity gradient tensor with physical unit types (default: Eötvös).
+ */
+struct GravityTensor {
+	units::Eotvos gxx{0};
+	units::Eotvos gyy{0};
+	units::Eotvos gzz{0};
+	units::Eotvos gxy{0};
+	units::Eotvos gxz{0};
+	units::Eotvos gyz{0};
+
+	/// Laplace condition check (trace of tensor should equal zero in source-free space)
+	[[nodiscard]] constexpr units::Eotvos trace() const noexcept {
+		return gxx + gyy + gzz;
+	}
+};
+
+/**
  * @brief Representation of an N-sided planar polygonal facet for 3D potential field calculations.
  *
  * Implements forward gravity and magnetic field calculation algorithms:
@@ -319,6 +336,64 @@ public:
 
 	void FldGS(const point& r, point& f) const;
 	[[nodiscard]] point FldGS(const point& r) const;
+
+	// --- Unit-Aware Field Computation ---
+
+	/**
+	 * @brief Computes vertical gravity acceleration component with strong unit type (SI m/s^2).
+	 */
+	[[nodiscard]] units::SI_Acceleration gravity_z(const point& r) const {
+		return units::SI_Acceleration(static_cast<double>(field_gz(r)));
+	}
+
+	/**
+	 * @brief Computes vertical gravity acceleration under constant density contrast.
+	 */
+	template <units::UnitType DensityUnit>
+		requires units::SameDimension<DensityUnit, units::tag::KgPerM3>
+	[[nodiscard]] units::SI_Acceleration gravity_z(const point& r, const units::Quantity<DensityUnit>& density_contrast) const {
+		return units::SI_Acceleration(static_cast<double>(field_gz(r)) * (density_contrast.to_base() / 1.0));
+	}
+
+	/**
+	 * @brief Computes vertical gravity acceleration with linear density gradient.
+	 */
+	template <units::UnitType DensityUnit>
+		requires units::SameDimension<DensityUnit, units::tag::KgPerM3>
+	[[nodiscard]] units::SI_Acceleration gravity_z(const point& r, const point& ro, const units::Quantity<DensityUnit>& ro0) const {
+		return units::SI_Acceleration(static_cast<double>(field_gz(r, ro, static_cast<T>(ro0.to_base()))));
+	}
+
+	/**
+	 * @brief Computes full Marussi gravity gradient tensor with units in Eötvös.
+	 */
+	template <units::UnitType DensityUnit = units::tag::KgPerM3>
+		requires units::SameDimension<DensityUnit, units::tag::KgPerM3>
+	[[nodiscard]] GravityTensor gravity_tensor(const point& r,
+	                                           const units::Quantity<DensityUnit>& refDensity,
+	                                           const units::Quantity<DensityUnit>& density,
+	                                           const units::Quantity<DensityUnit>& densityOpos = units::Quantity<DensityUnit>(0.0)) const {
+		T gxx{0}, gyy{0}, gzz{0}, gxy{0}, gxz{0}, gyz{0};
+		FldVladoGrd(r, static_cast<T>(refDensity.to_base()),
+		            gxx, gyy, gzz, gxy, gxz, gyz,
+		            static_cast<T>(densityOpos.to_base()), static_cast<T>(density.to_base()));
+		return GravityTensor{
+			.gxx = units::SI_Gradient(static_cast<double>(gxx)).template as<units::tag::Eotvos>(),
+			.gyy = units::SI_Gradient(static_cast<double>(gyy)).template as<units::tag::Eotvos>(),
+			.gzz = units::SI_Gradient(static_cast<double>(gzz)).template as<units::tag::Eotvos>(),
+			.gxy = units::SI_Gradient(static_cast<double>(gxy)).template as<units::tag::Eotvos>(),
+			.gxz = units::SI_Gradient(static_cast<double>(gxz)).template as<units::tag::Eotvos>(),
+			.gyz = units::SI_Gradient(static_cast<double>(gyz)).template as<units::tag::Eotvos>()
+		};
+	}
+
+	/**
+	 * @brief Computes 3D magnetic field anomaly vector in NanoTesla (nT).
+	 */
+	[[nodiscard]] point field_magnetic_nt(const point& r, const point& M) const {
+		point mag = field_gs_m(r, M);
+		return mag * 1.0e9;
+	}
 
 private:
 	void InitPoints(std::span<const point> pts) {

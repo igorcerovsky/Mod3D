@@ -533,4 +533,99 @@ TEST(PfldTest, Test_Facet_FixedArray_N3)
 	}
 }
 
+TEST(PfldUnitsTest, Point3DUnitConstructorsAndAccessors)
+{
+	using namespace pfld::units;
+	using namespace pfld::units::literals;
+
+	// Construct Point3D with mixed length units
+	pfld::Point3D pt(1.5_km, 250_m, -50_m);
+	EXPECT_DOUBLE_EQ(pt.x, 1500.0);
+	EXPECT_DOUBLE_EQ(pt.y, 250.0);
+	EXPECT_DOUBLE_EQ(pt.z, -50.0);
+
+	// Unit accessors
+	EXPECT_DOUBLE_EQ(pt.x_qty().value(), 1500.0);
+	EXPECT_DOUBLE_EQ(pt.x_as<tag::Kilometers>().value(), 1.5);
+	EXPECT_DOUBLE_EQ(pt.y_as<tag::Meters>().value(), 250.0);
+	EXPECT_DOUBLE_EQ(pt.z_as<tag::Meters>().value(), -50.0);
+
+	pfld::Point3D pt2(0.0_m, 250.0_m, -50.0_m);
+	EXPECT_DOUBLE_EQ(pt.distance_to_qty(pt2).in<tag::Kilometers>(), 1.5);
+}
+
+TEST(PfldUnitsTest, FacetUnitAwareFieldEvaluation)
+{
+	using namespace pfld::units;
+	using namespace pfld::units::literals;
+
+	using point = pfld::Point3D<double>;
+	std::vector<point> pts = { point(0, 0, 0), point(1000, 0, 0), point(0, 1000, 0) };
+	pfld::Facet<double, 3> fct(pts, true);
+
+	point obs(500, 500, 100);
+
+	// gravity_z returning units::SI_Acceleration
+	SI_Acceleration gz_si = fct.gravity_z(obs);
+	EXPECT_DOUBLE_EQ(gz_si.value(), fct.field_gz(obs));
+
+	// Convert to mGal and g.u.
+	MGal gz_mgal = gz_si.as<tag::MilliGal>();
+	EXPECT_DOUBLE_EQ(gz_mgal.value(), gz_si.value() * 1.0e5);
+
+	GU gz_gu = gz_si.as<tag::GravityUnit>();
+	EXPECT_DOUBLE_EQ(gz_gu.value(), gz_si.value() * 1.0e6);
+
+	// Gravity with density contrast
+	SI_Acceleration gz_dense = fct.gravity_z(obs, 2670.0_kg_m3);
+	EXPECT_DOUBLE_EQ(gz_dense.value(), gz_si.value() * 2670.0);
+
+	// Marussi Gravity gradient tensor with units
+	auto tensor = fct.gravity_tensor(obs, 2670.0_kg_m3, 2670.0_kg_m3);
+	EXPECT_NEAR(tensor.trace().value(), 0.0, 1e-6);
+
+	// Magnetic field evaluation in nT
+	point M(10.0, 20.0, 30.0);
+	point mag_nt = fct.field_magnetic_nt(obs, M);
+	point mag_raw = fct.field_gs_m(obs, M);
+	EXPECT_DOUBLE_EQ(mag_nt.x, mag_raw.x * 1.0e9);
+	EXPECT_DOUBLE_EQ(mag_nt.y, mag_raw.y * 1.0e9);
+	EXPECT_DOUBLE_EQ(mag_nt.z, mag_raw.z * 1.0e9);
+}
+
+TEST(PfldUnitsTest, ParallelComputeGravityZUnits)
+{
+	using namespace pfld::units;
+	using namespace pfld::units::literals;
+
+	using point = pfld::Point3D<double>;
+	std::vector<point> pts = { point(0, 0, 0), point(1000, 0, 0), point(0, 1000, 0) };
+	std::vector<pfld::Facet<double, 3>> facets;
+	facets.emplace_back(pts, true);
+
+	std::vector<point> grid_pts = {
+		point(100, 100, 50),
+		point(200, 200, 50),
+		point(300, 300, 50)
+	};
+
+	// Compute directly in mGal
+	auto results_mgal = pfld::compute_gravity_z<tag::MilliGal>(facets, grid_pts);
+	ASSERT_EQ(results_mgal.size(), grid_pts.size());
+
+	pfld::valvec raw_gz(grid_pts.size(), 0.0);
+	pfld::Field_Gz(facets, grid_pts, raw_gz);
+
+	for (size_t i = 0; i < grid_pts.size(); ++i) {
+		EXPECT_DOUBLE_EQ(results_mgal[i].value(), raw_gz[i] * 1.0e5);
+	}
+
+	// Compute with density contrast in g.u.
+	auto results_gu = pfld::compute_gravity_z<tag::GravityUnit>(facets, grid_pts, 2.67_g_cm3);
+	ASSERT_EQ(results_gu.size(), grid_pts.size());
+	for (size_t i = 0; i < grid_pts.size(); ++i) {
+		EXPECT_DOUBLE_EQ(results_gu[i].value(), raw_gz[i] * 2670.0 * 1.0e6);
+	}
+}
+
 } // namespace
