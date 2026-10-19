@@ -51,15 +51,39 @@ jobs:
         run: |
           QT_BIN="$(brew --prefix qt@6)/bin"
           ARCH="${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }}"
+          STAGE_DIR="dist_macos"
+          DMG_STAGE="dmg_stage"
 
-          # Deploy Qt frameworks into Mod3D.app
-          "$QT_BIN/macdeployqt" build/gui/Mod3D.app -always-overwrite
+          rm -rf "$STAGE_DIR" "$DMG_STAGE"
+          mkdir -p "$STAGE_DIR"
+          cp -R build/gui/Mod3D.app "$STAGE_DIR/"
+
+          # Deploy Qt frameworks into staged Mod3D.app
+          "$QT_BIN/macdeployqt" "$STAGE_DIR/Mod3D.app" -always-overwrite -no-strip -no-codesign
+          xattr -cr "$STAGE_DIR/Mod3D.app"
+          codesign --force --deep --sign - "$STAGE_DIR/Mod3D.app" || true
 
           # Create zip archive of the app bundle
-          ditto -c -k --sequesterRsrc --keepParent build/gui/Mod3D.app "Mod3D-macOS-${ARCH}.zip"
+          ditto -c -k --sequesterRsrc --keepParent "$STAGE_DIR/Mod3D.app" "Mod3D-macOS-${ARCH}.zip"
 
-          # Create distributable DMG disk image
-          hdiutil create -volname "Mod3D" -srcfolder build/gui/Mod3D.app -ov -format UDZO "Mod3D-macOS-${ARCH}.dmg"
+          # Prepare DMG stage directory with Applications symlink
+          mkdir -p "$DMG_STAGE"
+          cp -R "$STAGE_DIR/Mod3D.app" "$DMG_STAGE/"
+          ln -s /Applications "$DMG_STAGE/Applications"
+
+          # Create distributable DMG disk image with retry loop against filesystem lock
+          sync
+          for attempt in 1 2 3 4 5; do
+            echo "Attempt $attempt: creating DMG..."
+            if hdiutil create -volname "Mod3D" -srcfolder "$DMG_STAGE" -ov -format UDZO "Mod3D-macOS-${ARCH}.dmg"; then
+              echo "DMG created successfully."
+              break
+            fi
+            echo "hdiutil failed, waiting before retry..."
+            sleep 3
+            sync
+          done
+          rm -rf "$DMG_STAGE" "$STAGE_DIR"
 
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4

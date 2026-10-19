@@ -1342,11 +1342,13 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     // Active profile view should default to top-left E-W profile
     EXPECT_EQ(mw.activeProfileView(), pvEW);
 
+#ifndef _WIN32
     // Save screenshot for visual verification
     QPixmap pix(1200, 800);
     pix.fill(Qt::white);
     mw.render(&pix);
     saveTestScreenshot(pix, "quad_layout_3d_turntable.png");
+#endif
 }
 
 TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
@@ -1364,17 +1366,21 @@ TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     // Call arrange tiles
     mw.arrangeDefaultTiles();
 
+#ifndef _WIN32
     // Verify rendering with side pane (Profile View + Fields Display tab)
     QPixmap pix(1280, 820);
     pix.fill(Qt::white);
     mw.render(&pix);
     saveTestScreenshot(pix, "modern_settings_pane_layout.png");
+#endif
 
     // 2. Switch to Body Editor tab
     mw.settingsPane()->selectBodyEditorTab();
+#ifndef _WIN32
     pix.fill(Qt::white);
     mw.render(&pix);
     saveTestScreenshot(pix, "modern_settings_body_editor.png");
+#endif
 
     // 3. Switch to Map View and back to Fields tab
     QMdiSubWindow *subMap = nullptr;
@@ -1388,9 +1394,11 @@ TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     mw.mdiArea()->setActiveSubWindow(subMap);
     mw.settingsPane()->setActiveSubWindow(subMap);
     mw.settingsPane()->selectFieldsTab();
+#ifndef _WIN32
     pix.fill(Qt::white);
     mw.render(&pix);
     saveTestScreenshot(pix, "modern_settings_map_view.png");
+#endif
 }
 
 TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
@@ -1656,11 +1664,13 @@ TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
     EXPECT_TRUE(acts[1]->text().contains("Open"));
     EXPECT_TRUE(acts[2]->text().contains("Save"));
 
+#ifndef _WIN32
     // Capture screenshot to visually verify toolbar area
     QPixmap pix(1280, 800);
     pix.fill(Qt::white);
     mw.render(&pix);
     saveTestScreenshot(pix, "toolbar_clean_no_measured_overlap.png");
+#endif
 }
 
 TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceWidgets) {
@@ -1712,6 +1722,7 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
     EXPECT_FALSE(rbMapObserved->isEnabled());
     EXPECT_FALSE(rbMapDiff->isEnabled());
 
+#ifndef _WIN32
     // Grab screenshot of disabled/unchecked state
     mw.mdiArea()->setActiveSubWindow(subPv);
     pane->setActiveSubWindow(subPv);
@@ -1719,6 +1730,7 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
     pixNoObs.fill(Qt::white);
     mw.render(&pixNoObs);
     saveTestScreenshot(pixNoObs, "no_measured_field_disabled_state.png");
+#endif
 
     // 2. Now supply measured data for GZ
     mod3d::Grid obsGrid(21, 21, 0.0, 0.0, 500.0, 500.0);
@@ -1738,11 +1750,13 @@ TEST_F(GuiDocumentTest, NoMeasuredFieldDisablesAndUnchecksMeasuredAndDifferenceW
     EXPECT_TRUE(pv->showMeasuredCurve());
     EXPECT_TRUE(pv->showDifferenceCurve());
 
+#ifndef _WIN32
     // Grab screenshot of enabled/checked state
     QPixmap pixWithObs(1280, 800);
     pixWithObs.fill(Qt::white);
     mw.render(&pixWithObs);
     saveTestScreenshot(pixWithObs, "measured_field_enabled_state.png");
+#endif
 
     // Activate MapView: radio buttons should now be enabled
     mw.mdiArea()->setActiveSubWindow(subMv);
@@ -1781,11 +1795,13 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
     EXPECT_FALSE(chkDiff->isEnabled());
     EXPECT_FALSE(chkDiff->isChecked());
 
+#ifndef _WIN32
     mw.arrangeDefaultTiles();
     QPixmap pix(1400, 900);
     pix.fill(Qt::white);
     mw.render(&pix);
     saveTestScreenshot(pix, "sample_begin_loaded.png");
+#endif
 }
 
 TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
@@ -1929,6 +1945,9 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
 }
 
 TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
+#ifdef _WIN32
+    GTEST_SKIP() << "Skipping offscreen MainWindow OpenGL capture on Windows CI";
+#else
     MainWindow mw;
     mw.resize(1440, 920);
 
@@ -1984,5 +2003,6 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     pixPane.fill(Qt::white);
     pane->render(&pixPane);
     saveTestScreenshot(pixPane, "mod3d_body_editor.png");
+#endif
 }
 
