@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mod3d/Point3D.h"
+#include "mod3d/Units.h"
 #include <iosfwd>
 #include <type_traits>
 
@@ -32,6 +33,30 @@ public:
     constexpr ColumnPoint(double xVal, double yVal, double zVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
         : pt_(xVal, yVal, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
 
+    // Unit-aware constructors
+    template <units::UnitType Uz>
+        requires units::SameDimension<Uz, units::tag::Meters>
+    constexpr explicit ColumnPoint(const units::Quantity<Uz>& zVal) noexcept
+        : ColumnPoint(zVal.template in<units::tag::Meters>()) {}
+
+    template <units::UnitType Uz>
+        requires units::SameDimension<Uz, units::tag::Meters>
+    constexpr ColumnPoint(int bodyIdVal, const units::Quantity<Uz>& zVal, Body *bodyPtr = nullptr) noexcept
+        : ColumnPoint(bodyIdVal, zVal.template in<units::tag::Meters>(), bodyPtr) {}
+
+    template <units::UnitType Ux, units::UnitType Uy, units::UnitType Uz>
+        requires (units::SameDimension<Ux, units::tag::Meters> &&
+                  units::SameDimension<Uy, units::tag::Meters> &&
+                  units::SameDimension<Uz, units::tag::Meters>)
+    constexpr ColumnPoint(const units::Quantity<Ux>& xVal,
+                          const units::Quantity<Uy>& yVal,
+                          const units::Quantity<Uz>& zVal,
+                          int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
+        : ColumnPoint(xVal.template in<units::tag::Meters>(),
+                      yVal.template in<units::tag::Meters>(),
+                      zVal.template in<units::tag::Meters>(),
+                      bodyIdVal, bodyPtr) {}
+
     constexpr ColumnPoint(const ColumnPoint &) noexcept = default;
     constexpr ColumnPoint &operator=(const ColumnPoint &) noexcept = default;
     constexpr ColumnPoint(ColumnPoint &&) noexcept = default;
@@ -47,18 +72,41 @@ public:
     [[nodiscard]] constexpr double x() const noexcept { return pt_.x; }
     [[nodiscard]] constexpr double y() const noexcept { return pt_.y; }
 
+    [[nodiscard]] constexpr units::Meters z_qty() const noexcept { return pt_.z_qty(); }
+    [[nodiscard]] constexpr units::Meters x_qty() const noexcept { return pt_.x_qty(); }
+    [[nodiscard]] constexpr units::Meters y_qty() const noexcept { return pt_.y_qty(); }
+
     constexpr void set_z(double zVal) noexcept {
         pt_.z = zVal;
         modified_ = true;
+    }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    constexpr void set_z(const units::Quantity<U>& zVal) noexcept {
+        set_z(zVal.template in<units::tag::Meters>());
     }
 
     constexpr void set_x(double xVal) noexcept {
         pt_.x = xVal;
         modified_ = true;
     }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    constexpr void set_x(const units::Quantity<U>& xVal) noexcept {
+        set_x(xVal.template in<units::tag::Meters>());
+    }
+
     constexpr void set_y(double yVal) noexcept {
         pt_.y = yVal;
         modified_ = true;
+    }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    constexpr void set_y(const units::Quantity<U>& yVal) noexcept {
+        set_y(yVal.template in<units::tag::Meters>());
     }
 
     constexpr void set_coords(double xVal, double yVal, double zVal) noexcept {
@@ -66,6 +114,18 @@ public:
         pt_.y = yVal;
         pt_.z = zVal;
         modified_ = true;
+    }
+
+    template <units::UnitType Ux, units::UnitType Uy, units::UnitType Uz>
+        requires (units::SameDimension<Ux, units::tag::Meters> &&
+                  units::SameDimension<Uy, units::tag::Meters> &&
+                  units::SameDimension<Uz, units::tag::Meters>)
+    constexpr void set_coords(const units::Quantity<Ux>& xVal,
+                              const units::Quantity<Uy>& yVal,
+                              const units::Quantity<Uz>& zVal) noexcept {
+        set_coords(xVal.template in<units::tag::Meters>(),
+                   yVal.template in<units::tag::Meters>(),
+                   zVal.template in<units::tag::Meters>());
     }
 
     [[nodiscard]] constexpr const Point3D &point() const noexcept { return pt_; }

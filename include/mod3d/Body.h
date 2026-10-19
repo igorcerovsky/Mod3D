@@ -1,6 +1,8 @@
 #pragma once
 
 #include "mod3d/Point3D.h"
+#include "mod3d/Units.h"
+#include "mod3d/Magnetics.h"
 #include <string>
 #include <string_view>
 #include <vector>
@@ -48,6 +50,20 @@ struct BodyDensity {
         return value - gradient * origin;
     }
 
+    [[nodiscard]] units::KgPerM3 density_qty() const noexcept {
+        return units::KgPerM3(value);
+    }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::KgPerM3>
+    void set_density(const units::Quantity<U>& d) noexcept {
+        value = d.template in<units::tag::KgPerM3>();
+    }
+
+    [[nodiscard]] units::KgPerM3 at_qty(const Point3D &pt, bool active = true) const noexcept {
+        return units::KgPerM3(at(pt, active));
+    }
+
     [[nodiscard]] constexpr bool operator==(const BodyDensity &other) const noexcept = default;
 };
 
@@ -60,6 +76,18 @@ struct BodyMagnetics {
     Point3D total_vector{0, 0, 0};        // Total magnetization vector
 
     void compute_vector(const Point3D &vIndFld);
+
+    template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>
+        requires (units::SameDimension<IncU, units::tag::Degrees> &&
+                  units::SameDimension<DecU, units::tag::Degrees> &&
+                  units::SameDimension<IntensityU, units::tag::NanoTesla>)
+    void compute_vector(const units::Quantity<IncU>& inc,
+                        const units::Quantity<DecU>& dec,
+                        const units::Quantity<IntensityU>& intensity) {
+        compute_vector(Point3D(inc.template in<units::tag::Degrees>(),
+                               dec.template in<units::tag::Degrees>(),
+                               intensity.template in<units::tag::NanoTesla>()));
+    }
 
     [[nodiscard]] constexpr bool operator==(const BodyMagnetics &other) const noexcept = default;
 };
@@ -89,6 +117,12 @@ public:
     // ========================================================================
     Body();
     explicit Body(int id, std::string name = "Body", double density = 2670.0);
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::KgPerM3>
+    explicit Body(int id, std::string name, const units::Quantity<U>& density)
+        : Body(id, std::move(name), density.template in<units::tag::KgPerM3>()) {}
+
     ~Body() = default;
 
     Body(const Body &) = default;
@@ -151,6 +185,15 @@ public:
     [[nodiscard]] double raw_density() const noexcept { return density_.value; }
     void set_density(double dens) noexcept { density_.value = dens; }
 
+    [[nodiscard]] units::KgPerM3 density_qty() const noexcept { return units::KgPerM3(density()); }
+    [[nodiscard]] units::KgPerM3 raw_density_qty() const noexcept { return units::KgPerM3(density_.value); }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::KgPerM3>
+    void set_density(const units::Quantity<U>& dens) noexcept {
+        density_.value = dens.template in<units::tag::KgPerM3>();
+    }
+
     [[nodiscard]] const Point3D &density_gradient() const noexcept { return density_.gradient; }
     void set_density_gradient(const Point3D &grad) noexcept { density_.gradient = grad; }
 
@@ -159,6 +202,9 @@ public:
 
     [[nodiscard]] double density_at_origin() const noexcept { return density_.at_origin(); }
     [[nodiscard]] double density_at(const Point3D &pt) const noexcept { return density_.at(pt, active_); }
+
+    [[nodiscard]] units::KgPerM3 density_at_origin_qty() const noexcept { return units::KgPerM3(density_.at_origin()); }
+    [[nodiscard]] units::KgPerM3 density_at_qty(const Point3D &pt) const noexcept { return units::KgPerM3(density_.at(pt, active_)); }
 
     // Physical Properties Forwarders (Magnetics)
     [[nodiscard]] double susceptibility() const noexcept { return magnetics_.susceptibility; }
@@ -171,6 +217,18 @@ public:
     void set_remanent_magnetization(const Point3D &rem) noexcept { magnetics_.remanence = rem; }
 
     void compute_magnetization_vector(const Point3D &vIndFld);
+
+    template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>
+        requires (units::SameDimension<IncU, units::tag::Degrees> &&
+                  units::SameDimension<DecU, units::tag::Degrees> &&
+                  units::SameDimension<IntensityU, units::tag::NanoTesla>)
+    void compute_magnetization_vector(const units::Quantity<IncU>& inc,
+                                      const units::Quantity<DecU>& dec,
+                                      const units::Quantity<IntensityU>& intensity) {
+        compute_magnetization_vector(Point3D(inc.template in<units::tag::Degrees>(),
+                                             dec.template in<units::tag::Degrees>(),
+                                             intensity.template in<units::tag::NanoTesla>()));
+    }
 
     // Comparisons
     [[nodiscard]] bool operator==(const Body &other) const noexcept;

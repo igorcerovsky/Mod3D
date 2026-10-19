@@ -91,6 +91,29 @@ public:
     // Initialization
     bool init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
     bool init(const Grid &reliefGrid, double zMin, double zMax);
+
+    template <units::UnitType U0, units::UnitType Us, units::UnitType Uz>
+        requires (units::SameDimension<U0, units::tag::Meters> &&
+                  units::SameDimension<Us, units::tag::Meters> &&
+                  units::SameDimension<Uz, units::tag::Meters>)
+    bool init(int nRows, int nCols,
+              const units::Quantity<U0>& x0Val, const units::Quantity<U0>& y0Val,
+              const units::Quantity<Us>& xSzVal, const units::Quantity<Us>& ySzVal,
+              const units::Quantity<Uz>& zMinVal, const units::Quantity<Uz>& zMaxVal) {
+        return init(nRows, nCols,
+                    x0Val.template in<units::tag::Meters>(), y0Val.template in<units::tag::Meters>(),
+                    xSzVal.template in<units::tag::Meters>(), ySzVal.template in<units::tag::Meters>(),
+                    zMinVal.template in<units::tag::Meters>(), zMaxVal.template in<units::tag::Meters>());
+    }
+
+    template <units::UnitType Uz>
+        requires units::SameDimension<Uz, units::tag::Meters>
+    bool init(const Grid &reliefGrid, const units::Quantity<Uz>& zMinVal, const units::Quantity<Uz>& zMaxVal) {
+        return init(reliefGrid,
+                    zMinVal.template in<units::tag::Meters>(),
+                    zMaxVal.template in<units::tag::Meters>());
+    }
+
     bool init_empty(int totalRows, int totalCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax);
     void clear();
     [[nodiscard]] bool is_initialized() const noexcept { return initialized_; }
@@ -113,6 +136,32 @@ public:
     [[nodiscard]] double y_min() const noexcept { return y_min_; }
     [[nodiscard]] double y_max() const noexcept { return y_max_; }
 
+    // Unit-aware dimension queries
+    [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return units::Meters(x0_); }
+    [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return units::Meters(y0_); }
+    [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return units::Meters(x_size_); }
+    [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return units::Meters(y_size_); }
+    [[nodiscard]] constexpr units::Meters x_size_qty() const noexcept { return units::Meters(x_size_); }
+    [[nodiscard]] constexpr units::Meters y_size_qty() const noexcept { return units::Meters(y_size_); }
+    [[nodiscard]] constexpr units::Meters z_min_qty() const noexcept { return units::Meters(z_min_); }
+    [[nodiscard]] constexpr units::Meters z_max_qty() const noexcept { return units::Meters(z_max_); }
+    [[nodiscard]] constexpr units::Meters x_min_qty() const noexcept { return units::Meters(x_min_); }
+    [[nodiscard]] constexpr units::Meters x_max_qty() const noexcept { return units::Meters(x_max_); }
+    [[nodiscard]] constexpr units::Meters y_min_qty() const noexcept { return units::Meters(y_min_); }
+    [[nodiscard]] constexpr units::Meters y_max_qty() const noexcept { return units::Meters(y_max_); }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    void set_z_min(const units::Quantity<U>& zMin) noexcept {
+        set_z_min(zMin.template in<units::tag::Meters>());
+    }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    void set_z_max(const units::Quantity<U>& zMax) noexcept {
+        set_z_max(zMax.template in<units::tag::Meters>());
+    }
+
     [[nodiscard]] double xd(int col) const noexcept { return x0_ + (col - 1) * x_size_; }
     [[nodiscard]] double yd(int row) const noexcept { return y0_ + (row - 1) * y_size_; }
     [[nodiscard]] double xe(int col) const;
@@ -134,6 +183,13 @@ public:
     [[nodiscard]] double thickness(int row, int col, int index) const;
     [[nodiscard]] double default_thickness() const noexcept { return (z_max_ - z_min_) / 10.0; }
 
+    [[nodiscard]] units::Meters thickness_qty(int row, int col, int index) const {
+        return units::Meters(thickness(row, col, index));
+    }
+    [[nodiscard]] units::Meters default_thickness_qty() const noexcept {
+        return units::Meters(default_thickness());
+    }
+
     // Vertex Manipulation
     int move_vertex(int &index, int row, int col, double z, BodyMoveType moveType = BodyMoveType::Normal);
 
@@ -151,6 +207,18 @@ public:
     [[nodiscard]] const std::vector<std::unique_ptr<Body>> &bodies() const noexcept { return bodies_; }
     void compute_body_magnetization_vector(const Point3D &indFld);
     void compute_body_magnetization_vector(double incDeg, double decDeg, double intensityNT);
+
+    template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>
+        requires (units::SameDimension<IncU, units::tag::Degrees> &&
+                  units::SameDimension<DecU, units::tag::Degrees> &&
+                  units::SameDimension<IntensityU, units::tag::NanoTesla>)
+    void compute_body_magnetization_vector(const units::Quantity<IncU>& inc,
+                                          const units::Quantity<DecU>& dec,
+                                          const units::Quantity<IntensityU>& intensity) {
+        compute_body_magnetization_vector(inc.template in<units::tag::Degrees>(),
+                                          dec.template in<units::tag::Degrees>(),
+                                          intensity.template in<units::tag::NanoTesla>());
+    }
 
     // Facet Generation
     void init_facet_list();

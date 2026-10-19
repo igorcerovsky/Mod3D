@@ -28,6 +28,11 @@ add_executable(test_units test_units.cpp)
 target_link_libraries(test_units PRIVATE mod3d_core GTest::gtest_main)
 gtest_discover_tests(test_units)
 
+# Test Mod3D Units Safety
+add_executable(test_mod3d_units test_mod3d_units.cpp)
+target_link_libraries(test_mod3d_units PRIVATE mod3d_core GTest::gtest_main)
+gtest_discover_tests(test_mod3d_units)
+
 # Test pfld ground truth
 add_executable(test_pfld_groundtruth test_pfld_groundtruth.cpp)
 target_link_libraries(test_pfld_groundtruth PRIVATE mod3d_core GTest::gtest_main)

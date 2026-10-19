@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mod3d/Point3D.h"
+#include "mod3d/Units.h"
 #include <vector>
 #include <string>
 #include <limits>
@@ -60,6 +61,20 @@ public:
     // ========================================================================
     Grid() = default;
     Grid(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg = 0.0);
+
+    template <units::UnitType U0, units::UnitType Us, units::UnitType RotU = units::tag::Degrees>
+        requires (units::SameDimension<U0, units::tag::Meters> &&
+                  units::SameDimension<Us, units::tag::Meters> &&
+                  units::SameDimension<RotU, units::tag::Degrees>)
+    Grid(size_t rows, size_t cols,
+         const units::Quantity<U0>& x0Val, const units::Quantity<U0>& y0Val,
+         const units::Quantity<Us>& xSzVal, const units::Quantity<Us>& ySzVal,
+         const units::Quantity<RotU>& rotVal = units::Degrees(0.0))
+        : Grid(rows, cols,
+               x0Val.template in<units::tag::Meters>(), y0Val.template in<units::tag::Meters>(),
+               xSzVal.template in<units::tag::Meters>(), ySzVal.template in<units::tag::Meters>(),
+               rotVal.template in<units::tag::Degrees>()) {}
+
     Grid(const Grid &) = default;
     Grid &operator=(const Grid &) = default;
     Grid(Grid &&) noexcept = default;
@@ -91,6 +106,16 @@ public:
     [[nodiscard]] constexpr double rotation_deg() const noexcept { return rot_deg_; }
     [[nodiscard]] double rotation_rad() const noexcept { return rot_deg_ * std::numbers::pi_v<double> / 180.0; }
 
+    // Unit-aware dimension queries
+    [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return units::Meters(x0_); }
+    [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return units::Meters(y0_); }
+    [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return units::Meters(x_size_); }
+    [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return units::Meters(y_size_); }
+    [[nodiscard]] constexpr units::Meters x_size_qty() const noexcept { return units::Meters(x_size_); }
+    [[nodiscard]] constexpr units::Meters y_size_qty() const noexcept { return units::Meters(y_size_); }
+    [[nodiscard]] constexpr units::Degrees rotation_deg_qty() const noexcept { return units::Degrees(rot_deg_); }
+    [[nodiscard]] units::Radians rotation_rad_qty() const noexcept { return units::Radians(rotation_rad()); }
+
     // World coordinate bounding box
     [[nodiscard]] double x_min() const noexcept;
     [[nodiscard]] double x_max() const noexcept;
@@ -99,18 +124,64 @@ public:
     [[nodiscard]] double z_min() const noexcept;
     [[nodiscard]] double z_max() const noexcept;
 
+    [[nodiscard]] units::Meters x_min_qty() const noexcept { return units::Meters(x_min()); }
+    [[nodiscard]] units::Meters x_max_qty() const noexcept { return units::Meters(x_max()); }
+    [[nodiscard]] units::Meters y_min_qty() const noexcept { return units::Meters(y_min()); }
+    [[nodiscard]] units::Meters y_max_qty() const noexcept { return units::Meters(y_max()); }
+    [[nodiscard]] units::Meters z_min_qty() const noexcept { return units::Meters(z_min()); }
+    [[nodiscard]] units::Meters z_max_qty() const noexcept { return units::Meters(z_max()); }
+
     // Coordinate conversions
     [[nodiscard]] double x(size_t row, size_t col) const noexcept;
     [[nodiscard]] double y(size_t row, size_t col) const noexcept;
+    [[nodiscard]] units::Meters x_qty(size_t row, size_t col) const noexcept { return units::Meters(x(row, col)); }
+    [[nodiscard]] units::Meters y_qty(size_t row, size_t col) const noexcept { return units::Meters(y(row, col)); }
     [[nodiscard]] Point3D point(size_t row, size_t col) const noexcept;
 
     [[nodiscard]] bool world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept;
     [[nodiscard]] bool grid_to_world(double row, double col, double &xVal, double &yVal) const noexcept;
     [[nodiscard]] bool contains(double xVal, double yVal) const noexcept;
 
+    template <units::UnitType Ux, units::UnitType Uy>
+        requires (units::SameDimension<Ux, units::tag::Meters> &&
+                  units::SameDimension<Uy, units::tag::Meters>)
+    [[nodiscard]] bool world_to_grid(const units::Quantity<Ux>& xVal,
+                                     const units::Quantity<Uy>& yVal,
+                                     double &row, double &col) const noexcept {
+        return world_to_grid(xVal.template in<units::tag::Meters>(),
+                             yVal.template in<units::tag::Meters>(),
+                             row, col);
+    }
+
+    template <units::UnitType Ux, units::UnitType Uy>
+        requires (units::SameDimension<Ux, units::tag::Meters> &&
+                  units::SameDimension<Uy, units::tag::Meters>)
+    [[nodiscard]] bool contains(const units::Quantity<Ux>& xVal,
+                                const units::Quantity<Uy>& yVal) const noexcept {
+        return contains(xVal.template in<units::tag::Meters>(),
+                        yVal.template in<units::tag::Meters>());
+    }
+
     // Bilinear interpolation in world coordinates
     [[nodiscard]] double interpolate(double xVal, double yVal) const;
     [[nodiscard]] double sample(double xVal, double yVal) const { return interpolate(xVal, yVal); }
+
+    template <units::UnitType Ux, units::UnitType Uy>
+        requires (units::SameDimension<Ux, units::tag::Meters> &&
+                  units::SameDimension<Uy, units::tag::Meters>)
+    [[nodiscard]] double interpolate(const units::Quantity<Ux>& xVal,
+                                     const units::Quantity<Uy>& yVal) const {
+        return interpolate(xVal.template in<units::tag::Meters>(),
+                           yVal.template in<units::tag::Meters>());
+    }
+
+    template <units::UnitType Ux, units::UnitType Uy>
+        requires (units::SameDimension<Ux, units::tag::Meters> &&
+                  units::SameDimension<Uy, units::tag::Meters>)
+    [[nodiscard]] double sample(const units::Quantity<Ux>& xVal,
+                                const units::Quantity<Uy>& yVal) const {
+        return interpolate(xVal, yVal);
+    }
 
     // Element Access
     [[nodiscard]] double operator()(size_t row, size_t col) const noexcept {

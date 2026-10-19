@@ -93,25 +93,56 @@ public:
     [[nodiscard]] double rotation_deg() const noexcept { return rot_deg_; }
     [[nodiscard]] double rotation_rad() const noexcept { return rot_deg_ * std::numbers::pi_v<double> / 180.0; }
 
+    [[nodiscard]] units::Meters dx_qty() const noexcept { return units::Meters(dx_); }
+    [[nodiscard]] units::Meters dy_qty() const noexcept { return units::Meters(dy_); }
+    [[nodiscard]] units::Meters x0_qty() const noexcept { return units::Meters(x0_); }
+    [[nodiscard]] units::Meters y0_qty() const noexcept { return units::Meters(y0_); }
+    [[nodiscard]] units::Degrees rotation_deg_qty() const noexcept { return units::Degrees(rot_deg_); }
+    [[nodiscard]] units::Radians rotation_rad_qty() const noexcept { return units::Radians(rotation_rad()); }
+
     // Gravity Observation Settings
     void set_gravity_observation(ObservationMode mode, double heightVal);
     void set_gravity_observation_grid(const Grid &grid);
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    void set_gravity_observation(ObservationMode mode, const units::Quantity<U>& heightVal) {
+        set_gravity_observation(mode, heightVal.template in<units::tag::Meters>());
+    }
+
     [[nodiscard]] ObservationMode gravity_mode() const noexcept { return grv_mode_; }
     [[nodiscard]] double gravity_height() const noexcept { return grv_height_; }
+    [[nodiscard]] units::Meters gravity_height_qty() const noexcept { return units::Meters(grv_height_); }
     [[nodiscard]] const Grid &gravity_elevation_grid() const noexcept { return grv_elev_grid_; }
 
     // Magnetic Observation Settings
     void set_magnetic_observation(ObservationMode mode, double heightVal);
     void set_magnetic_observation_grid(const Grid &grid);
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    void set_magnetic_observation(ObservationMode mode, const units::Quantity<U>& heightVal) {
+        set_magnetic_observation(mode, heightVal.template in<units::tag::Meters>());
+    }
+
     [[nodiscard]] ObservationMode magnetic_mode() const noexcept { return mag_mode_; }
     [[nodiscard]] double magnetic_height() const noexcept { return mag_height_; }
+    [[nodiscard]] units::Meters magnetic_height_qty() const noexcept { return units::Meters(mag_height_); }
     [[nodiscard]] const Grid &magnetic_elevation_grid() const noexcept { return mag_elev_grid_; }
 
     // Tensor Observation Settings
     void set_tensor_observation(ObservationMode mode, double heightVal);
     void set_tensor_observation_grid(const Grid &grid);
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::Meters>
+    void set_tensor_observation(ObservationMode mode, const units::Quantity<U>& heightVal) {
+        set_tensor_observation(mode, heightVal.template in<units::tag::Meters>());
+    }
+
     [[nodiscard]] ObservationMode tensor_mode() const noexcept { return tensor_mode_; }
     [[nodiscard]] double tensor_height() const noexcept { return tensor_height_; }
+    [[nodiscard]] units::Meters tensor_height_qty() const noexcept { return units::Meters(tensor_height_); }
     [[nodiscard]] const Grid &tensor_elevation_grid() const noexcept { return tensor_elev_grid_; }
 
     // Surface Relief
@@ -120,14 +151,48 @@ public:
 
     // Ambient Geomagnetic Field Parameters
     void set_ambient_field_params(double inclinationDeg, double declinationDeg, double intensityNT);
+
+    template <units::UnitType IncU, units::UnitType DecU, units::UnitType IntensityU>
+        requires (units::SameDimension<IncU, units::tag::Degrees> &&
+                  units::SameDimension<DecU, units::tag::Degrees> &&
+                  units::SameDimension<IntensityU, units::tag::NanoTesla>)
+    void set_ambient_field_params(const units::Quantity<IncU>& inclination,
+                                  const units::Quantity<DecU>& declination,
+                                  const units::Quantity<IntensityU>& intensity) {
+        set_ambient_field_params(inclination.template in<units::tag::Degrees>(),
+                                 declination.template in<units::tag::Degrees>(),
+                                 intensity.template in<units::tag::NanoTesla>());
+    }
+
     [[nodiscard]] Point3D ambient_field_vector() const;
+    [[nodiscard]] MagneticVector ambient_field_vector_qty() const {
+        Point3D af = ambient_field_vector();
+        return MagneticVector{
+            .mx = units::NanoTesla(af.x),
+            .my = units::NanoTesla(af.y),
+            .mz = units::NanoTesla(af.z)
+        };
+    }
+
     [[nodiscard]] double inclination_deg() const noexcept { return inc_deg_; }
     [[nodiscard]] double declination_deg() const noexcept { return dec_deg_; }
     [[nodiscard]] double magnetic_intensity() const noexcept { return mag_intensity_; }
 
+    [[nodiscard]] units::Degrees inclination_qty() const noexcept { return units::Degrees(inc_deg_); }
+    [[nodiscard]] units::Degrees declination_qty() const noexcept { return units::Degrees(dec_deg_); }
+    [[nodiscard]] units::NanoTesla magnetic_intensity_qty() const noexcept { return units::NanoTesla(mag_intensity_); }
+
     // Reference Density
     void set_reference_density(double refDens) noexcept { ref_density_ = refDens; }
+
+    template <units::UnitType U>
+        requires units::SameDimension<U, units::tag::KgPerM3>
+    void set_reference_density(const units::Quantity<U>& refDens) noexcept {
+        set_reference_density(refDens.template in<units::tag::KgPerM3>());
+    }
+
     [[nodiscard]] double reference_density() const noexcept { return ref_density_; }
+    [[nodiscard]] units::KgPerM3 reference_density_qty() const noexcept { return units::KgPerM3(ref_density_); }
 
     // Physical Field Units Scaling Factors (matches legacy m_dGrvUnits, m_dMagUnits, m_gvrTens.dUnits)
     void set_gravity_units(double units) noexcept { grv_units_ = units; }

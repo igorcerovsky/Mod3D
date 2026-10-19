@@ -2,6 +2,7 @@
 
 #include "mod3d/Point3D.h"
 #include "mod3d/Body.h"
+#include "mod3d/Units.h"
 #include "pfld/facet.hpp"
 #include <vector>
 #include <array>
@@ -77,12 +78,16 @@ public:
     [[nodiscard]] bool is_opposite(const Facet3Pt &fct) const noexcept;
 
     [[nodiscard]] double mean_elevation() const noexcept;
+    [[nodiscard]] units::Meters mean_elevation_qty() const noexcept { return units::Meters(mean_elevation()); }
+
     [[nodiscard]] Point3D centroid() const noexcept;
     [[nodiscard]] Point3D center() const noexcept {
         const auto &pts = pfld_.points();
         return (pts[0] + pts[1] + pts[2]) / 3.0;
     }
     [[nodiscard]] double area() const noexcept;
+    [[nodiscard]] units::SquareMeters area_qty() const noexcept { return units::SquareMeters(area()); }
+
     [[nodiscard]] const Point3D &normal() const noexcept { return pfld_.normal(); }
 
     [[nodiscard]] bool contains_vertex(const Point3D &pt) const noexcept;
@@ -91,13 +96,38 @@ public:
     [[nodiscard]] double solid_angle(std::span<const Point3D, 3> spts) const;
     [[nodiscard]] double solid_angle(const Point3D *spts) const;
 
-    // Modern pfld Integration
+    // Modern pfld Integration & Unit-Aware Evaluators
     [[nodiscard]] const pfld::Facet<double, 3> &pfld_facet() const noexcept { return pfld_; }
     [[nodiscard]] pfld::Facet<double, 3> &pfld_facet() noexcept { return pfld_; }
     operator const pfld::Facet<double, 3> &() const noexcept { return pfld_; }
     operator pfld::Facet<double, 3> &() noexcept { return pfld_; }
     [[nodiscard]] double field_gz(const Point3D &r) const { return pfld_.field_gz(r); }
     [[nodiscard]] Point3D field_g(const Point3D &r) const { return pfld_.field_g(r); }
+
+    [[nodiscard]] units::SI_Acceleration field_gz_si(const Point3D &r) const { return pfld_.gravity_z(r); }
+    [[nodiscard]] units::MilliGal field_gz_mgal(const Point3D &r) const {
+        return units::SI_Acceleration(field_gz(r)).as<units::tag::MilliGal>();
+    }
+    [[nodiscard]] units::GravityUnit field_gz_gu(const Point3D &r) const {
+        return units::SI_Acceleration(field_gz(r)).as<units::tag::GravityUnit>();
+    }
+
+    template <units::UnitType DensityU = units::tag::KgPerM3>
+        requires units::SameDimension<DensityU, units::tag::KgPerM3>
+    [[nodiscard]] GravityGradientTensor gravity_gradient_tensor(
+        const Point3D &r,
+        const units::Quantity<DensityU>& ref_density) const {
+        double gxx{0}, gyy{0}, gzz{0}, gxy{0}, gxz{0}, gyz{0};
+        fld_vlado_grd(r, ref_density.template in<units::tag::KgPerM3>(), gxx, gyy, gzz, gxy, gxz, gyz);
+        return GravityGradientTensor{
+            .gxx = units::SI_Gradient(gxx).template as<units::tag::Eotvos>(),
+            .gyy = units::SI_Gradient(gyy).template as<units::tag::Eotvos>(),
+            .gzz = units::SI_Gradient(gzz).template as<units::tag::Eotvos>(),
+            .gxy = units::SI_Gradient(gxy).template as<units::tag::Eotvos>(),
+            .gxz = units::SI_Gradient(gxz).template as<units::tag::Eotvos>(),
+            .gyz = units::SI_Gradient(gyz).template as<units::tag::Eotvos>()
+        };
+    }
 
     // Comparisons
     [[nodiscard]] bool operator==(const Facet3Pt &fct) const noexcept {
@@ -164,6 +194,9 @@ public:
 
     [[nodiscard]] double density() const noexcept { return primary ? primary->density() : 0.0; }
     [[nodiscard]] double opposite_density() const noexcept { return opposite ? opposite->density() : 0.0; }
+
+    [[nodiscard]] units::KgPerM3 density_qty() const noexcept { return units::KgPerM3(density()); }
+    [[nodiscard]] units::KgPerM3 opposite_density_qty() const noexcept { return units::KgPerM3(opposite_density()); }
 
 public:
     FacetType nType{FacetType::FCT_NORMAL};
