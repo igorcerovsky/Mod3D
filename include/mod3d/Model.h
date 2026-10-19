@@ -149,7 +149,6 @@ public:
     [[nodiscard]] int update_move_index(int indexOld, int row, int col, int bodyId) const;
     [[nodiscard]] int id(int index, int row, int col) const;
     [[nodiscard]] const std::vector<std::unique_ptr<Body>> &bodies() const noexcept { return bodies_; }
-    void update_body_index();
     void compute_body_magnetization_vector(const Point3D &indFld);
     void compute_body_magnetization_vector(double incDeg, double decDeg, double intensityNT);
 

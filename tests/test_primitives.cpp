@@ -294,10 +294,8 @@ TEST(BodyTest, ModernizedFeaturesAndOperators) {
 
     // Default construction & modern getters
     Body b1(5, "Layer1", 2500.0);
-    b1.set_index(2);
     b1.set_description("Test geological unit");
     EXPECT_EQ(b1.id(), 5);
-    EXPECT_EQ(b1.index(), 2);
     EXPECT_EQ(b1.name(), "Layer1");
     EXPECT_EQ(b1.description(), "Test geological unit");
     EXPECT_DOUBLE_EQ(b1.density(), 2500.0);

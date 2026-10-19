@@ -107,9 +107,6 @@ public:
     [[nodiscard]] int id() const noexcept { return id_; }
     void set_id(int id) noexcept { id_ = id; }
 
-    [[nodiscard]] int index() const noexcept { return index_; }
-    void set_index(int idx) noexcept { index_ = idx; }
-
     [[nodiscard]] const std::string &name() const noexcept { return name_; }
     void set_name(std::string name) { name_ = std::move(name); }
 
@@ -183,7 +180,6 @@ public:
 
 private:
     int id_{0};
-    int index_{0};
 
     std::string name_{"Name the body..."};
     std::string description_{"Body description..."};

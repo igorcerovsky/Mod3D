@@ -284,7 +284,6 @@ Body *Model::create_body()
     b->set_color(defaultPalette[pIdx]);
     Body *raw = b.get();
     bodies_.push_back(std::move(b));
-    update_body_index();
     return raw;
 }
 
@@ -295,7 +294,6 @@ void Model::add_body(std::unique_ptr<Body> body)
             next_body_id_ = body->id() + 1;
         }
         bodies_.push_back(std::move(body));
-        update_body_index();
     }
 }
 
@@ -313,13 +311,6 @@ const Body *Model::body(int bodyId) const
         if (b->id() == bodyId) return b.get();
     }
     return nullptr;
-}
-
-void Model::update_body_index()
-{
-    for (size_t i = 0; i < bodies_.size(); ++i) {
-        bodies_[i]->set_index(static_cast<int>(i));
-    }
 }
 
 void Model::compute_body_magnetization_vector(const Point3D &indFld)
@@ -507,7 +498,6 @@ int Model::delete_body(int bodyId)
     });
     if (it != bodies_.end()) {
         bodies_.erase(it, bodies_.end());
-        update_body_index();
         bool oldRealTime = compute_real_time_;
         compute_real_time_ = false;
         init_facet_list();

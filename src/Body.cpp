@@ -8,7 +8,7 @@ namespace mod3d {
 Body::Body() = default;
 
 Body::Body(int id, std::string name, double density)
-    : id_(id), index_(0), name_(std::move(name))
+    : id_(id), name_(std::move(name))
 {
     density_.value = density;
     if (name_.empty()) {
@@ -24,7 +24,6 @@ void BodyMagnetics::compute_vector(const Point3D &vIndFld) {
 void Body::swap(Body &other) noexcept {
     using std::swap;
     swap(id_, other.id_);
-    swap(index_, other.index_);
     swap(name_, other.name_);
     swap(description_, other.description_);
     swap(active_, other.active_);
@@ -40,7 +39,6 @@ void Body::compute_magnetization_vector(const Point3D &vIndFld) {
 
 bool Body::operator==(const Body &other) const noexcept {
     return id_ == other.id_ &&
-           index_ == other.index_ &&
            name_ == other.name_ &&
            description_ == other.description_ &&
            active_ == other.active_ &&

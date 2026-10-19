@@ -109,7 +109,6 @@ Grid gridFromJson(const nlohmann::json &j) {
 nlohmann::json bodyToJson(const Body &b) {
     nlohmann::json j;
     j["id"] = b.id();
-    j["index"] = b.index();
     j["name"] = b.name();
     j["description"] = b.description();
     j["active"] = b.is_active();
@@ -133,7 +132,6 @@ std::unique_ptr<Body> bodyFromJson(const nlohmann::json &j) {
     std::string name = j.value("name", "Body");
     double dens = j.value("density", 2670.0);
     auto b = std::make_unique<Body>(id, name, dens);
-    b->set_index(j.value("index", 0));
     b->set_description(j.value("description", ""));
     b->set_active(j.value("active", true));
     b->set_visible(j.value("visible", true));
@@ -441,8 +439,7 @@ bool Project::from_json_string(std::string_view jsonStr)
                 }
             }
 
-            // Regenerate facets and body indices
-            model_.update_body_index();
+            // Regenerate facets
             model_.init_facet_list();
             model_.set_compute_real_time(settings_.compute_real_time);
         }
@@ -1400,7 +1397,6 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
     }
 
     // Regenerate 3D polyhedral facets
-    model_.update_body_index();
     model_.init_facet_list();
     model_.compute_body_magnetization_vector(
         observation_.inclination_deg(),
