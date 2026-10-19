@@ -24,25 +24,17 @@ public:
     // Lifecycle & Rule of 5 (constexpr)
     // ========================================================================
     constexpr ColumnPoint() noexcept = default;
-    constexpr explicit ColumnPoint(double zVal) noexcept
-        : pt_(0.0, 0.0, zVal), body_(nullptr), body_id_(-1), modified_(true) {}
-    constexpr ColumnPoint(int bodyIdVal, double zVal, Body *bodyPtr = nullptr) noexcept
-        : pt_(0.0, 0.0, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
-    constexpr ColumnPoint(const Point3D &ptVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
-        : pt_(ptVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
-    constexpr ColumnPoint(double xVal, double yVal, double zVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
-        : pt_(xVal, yVal, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
 
     // Unit-aware constructors
     template <units::UnitType Uz>
         requires units::SameDimension<Uz, units::tag::Meters>
     constexpr explicit ColumnPoint(const units::Quantity<Uz>& zVal) noexcept
-        : ColumnPoint(zVal.template in<units::tag::Meters>()) {}
+        : pt_(units::Meters(0.0), units::Meters(0.0), zVal), body_(nullptr), body_id_(-1), modified_(true) {}
 
     template <units::UnitType Uz>
         requires units::SameDimension<Uz, units::tag::Meters>
     constexpr ColumnPoint(int bodyIdVal, const units::Quantity<Uz>& zVal, Body *bodyPtr = nullptr) noexcept
-        : ColumnPoint(bodyIdVal, zVal.template in<units::tag::Meters>(), bodyPtr) {}
+        : pt_(units::Meters(0.0), units::Meters(0.0), zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
 
     template <units::UnitType Ux, units::UnitType Uy, units::UnitType Uz>
         requires (units::SameDimension<Ux, units::tag::Meters> &&
@@ -52,10 +44,20 @@ public:
                           const units::Quantity<Uy>& yVal,
                           const units::Quantity<Uz>& zVal,
                           int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
-        : ColumnPoint(xVal.template in<units::tag::Meters>(),
-                      yVal.template in<units::tag::Meters>(),
-                      zVal.template in<units::tag::Meters>(),
-                      bodyIdVal, bodyPtr) {}
+        : pt_(xVal, yVal, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+
+    constexpr explicit ColumnPoint(const Position3D &posVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
+        : pt_(posVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+
+    // Convenience constructors accepting raw numeric values (interpreted in meters)
+    constexpr explicit ColumnPoint(double zVal) noexcept
+        : pt_(0.0, 0.0, zVal), body_(nullptr), body_id_(-1), modified_(true) {}
+    constexpr ColumnPoint(int bodyIdVal, double zVal, Body *bodyPtr = nullptr) noexcept
+        : pt_(0.0, 0.0, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+    constexpr ColumnPoint(const Point3D &ptVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
+        : pt_(Position3D(ptVal)), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
+    constexpr ColumnPoint(double xVal, double yVal, double zVal, int bodyIdVal = -1, Body *bodyPtr = nullptr) noexcept
+        : pt_(xVal, yVal, zVal), body_(bodyPtr), body_id_(bodyIdVal), modified_(true) {}
 
     constexpr ColumnPoint(const ColumnPoint &) noexcept = default;
     constexpr ColumnPoint &operator=(const ColumnPoint &) noexcept = default;
@@ -67,52 +69,45 @@ public:
     // Modern C++20 API (STL snake_case convention, constexpr, noexcept, [[nodiscard]])
     // ========================================================================
 
-    // Coordinate accessors
-    [[nodiscard]] constexpr double z() const noexcept { return pt_.z; }
-    [[nodiscard]] constexpr double x() const noexcept { return pt_.x; }
-    [[nodiscard]] constexpr double y() const noexcept { return pt_.y; }
+    // Coordinate accessors (physical quantities in meters)
+    [[nodiscard]] constexpr units::Meters z() const noexcept { return pt_.z; }
+    [[nodiscard]] constexpr units::Meters x() const noexcept { return pt_.x; }
+    [[nodiscard]] constexpr units::Meters y() const noexcept { return pt_.y; }
 
-    [[nodiscard]] constexpr units::Meters z_qty() const noexcept { return pt_.z_qty(); }
-    [[nodiscard]] constexpr units::Meters x_qty() const noexcept { return pt_.x_qty(); }
-    [[nodiscard]] constexpr units::Meters y_qty() const noexcept { return pt_.y_qty(); }
-
-    constexpr void set_z(double zVal) noexcept {
-        pt_.z = zVal;
-        modified_ = true;
-    }
+    [[nodiscard]] constexpr double z_val() const noexcept { return pt_.z.value(); }
+    [[nodiscard]] constexpr double x_val() const noexcept { return pt_.x.value(); }
+    [[nodiscard]] constexpr double y_val() const noexcept { return pt_.y.value(); }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::Meters>
     constexpr void set_z(const units::Quantity<U>& zVal) noexcept {
-        set_z(zVal.template in<units::tag::Meters>());
+        pt_.z = zVal.template as<units::tag::Meters>();
+        modified_ = true;
     }
-
-    constexpr void set_x(double xVal) noexcept {
-        pt_.x = xVal;
+    constexpr void set_z(double zVal) noexcept {
+        pt_.z = units::Meters(zVal);
         modified_ = true;
     }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::Meters>
     constexpr void set_x(const units::Quantity<U>& xVal) noexcept {
-        set_x(xVal.template in<units::tag::Meters>());
+        pt_.x = xVal.template as<units::tag::Meters>();
+        modified_ = true;
     }
-
-    constexpr void set_y(double yVal) noexcept {
-        pt_.y = yVal;
+    constexpr void set_x(double xVal) noexcept {
+        pt_.x = units::Meters(xVal);
         modified_ = true;
     }
 
     template <units::UnitType U>
         requires units::SameDimension<U, units::tag::Meters>
     constexpr void set_y(const units::Quantity<U>& yVal) noexcept {
-        set_y(yVal.template in<units::tag::Meters>());
+        pt_.y = yVal.template as<units::tag::Meters>();
+        modified_ = true;
     }
-
-    constexpr void set_coords(double xVal, double yVal, double zVal) noexcept {
-        pt_.x = xVal;
-        pt_.y = yVal;
-        pt_.z = zVal;
+    constexpr void set_y(double yVal) noexcept {
+        pt_.y = units::Meters(yVal);
         modified_ = true;
     }
 
@@ -123,15 +118,28 @@ public:
     constexpr void set_coords(const units::Quantity<Ux>& xVal,
                               const units::Quantity<Uy>& yVal,
                               const units::Quantity<Uz>& zVal) noexcept {
-        set_coords(xVal.template in<units::tag::Meters>(),
-                   yVal.template in<units::tag::Meters>(),
-                   zVal.template in<units::tag::Meters>());
+        pt_.x = xVal.template as<units::tag::Meters>();
+        pt_.y = yVal.template as<units::tag::Meters>();
+        pt_.z = zVal.template as<units::tag::Meters>();
+        modified_ = true;
+    }
+    constexpr void set_coords(double xVal, double yVal, double zVal) noexcept {
+        pt_.x = units::Meters(xVal);
+        pt_.y = units::Meters(yVal);
+        pt_.z = units::Meters(zVal);
+        modified_ = true;
     }
 
-    [[nodiscard]] constexpr const Point3D &point() const noexcept { return pt_; }
-    [[nodiscard]] constexpr Point3D &point() noexcept { return pt_; }
+    [[nodiscard]] constexpr const Position3D &position() const noexcept { return pt_; }
+    [[nodiscard]] constexpr Position3D &position() noexcept { return pt_; }
+    constexpr void set_position(const Position3D &posVal) noexcept {
+        pt_ = posVal;
+        modified_ = true;
+    }
+
+    [[nodiscard]] constexpr Point3D point() const noexcept { return pt_.to_point3d(); }
     constexpr void set_point(const Point3D &ptVal) noexcept {
-        pt_ = ptVal;
+        pt_ = Position3D(ptVal);
         modified_ = true;
     }
 
@@ -171,7 +179,7 @@ public:
 
 
 private:
-    Point3D pt_{0.0, 0.0, 0.0};
+    Position3D pt_{};
     Body *body_{nullptr};
     int body_id_{-1};
     bool modified_{true};

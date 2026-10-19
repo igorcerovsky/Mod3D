@@ -265,9 +265,9 @@ std::string Project::to_json_string(int indent) const
                     if (pt) {
                         ptArray.push_back({
                             {"body_id", pt->body_id()},
-                            {"z", pt->z()},
-                            {"x", pt->point().x},
-                            {"y", pt->point().y}
+                            {"z", pt->z().value()},
+                            {"x", pt->x().value()},
+                            {"y", pt->y().value()}
                         });
                     }
                 }

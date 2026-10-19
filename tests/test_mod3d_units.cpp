@@ -107,22 +107,31 @@ TEST(Mod3DUnitsSafety, BodyMagneticsWithUnits) {
 TEST(Mod3DUnitsSafety, ColumnPointUnitsSafety) {
     // Construct with length literals
     ColumnPoint cp1(100.0_m, 200.0_m, -500.0_m, 5);
-    EXPECT_DOUBLE_EQ(cp1.x_qty().value(), 100.0);
-    EXPECT_DOUBLE_EQ(cp1.y_qty().value(), 200.0);
-    EXPECT_DOUBLE_EQ(cp1.z_qty().value(), -500.0);
+    EXPECT_EQ(cp1.x(), 100.0_m);
+    EXPECT_EQ(cp1.y(), 200.0_m);
+    EXPECT_EQ(cp1.z(), -500.0_m);
 
-    EXPECT_DOUBLE_EQ(cp1.x_qty().in<Kilometers>(), 0.1);
-    EXPECT_DOUBLE_EQ(cp1.z_qty().in<Kilometers>(), -0.5);
+    EXPECT_DOUBLE_EQ(cp1.x().value(), 100.0);
+    EXPECT_DOUBLE_EQ(cp1.y().value(), 200.0);
+    EXPECT_DOUBLE_EQ(cp1.z().value(), -500.0);
+
+    EXPECT_DOUBLE_EQ(cp1.x().in<Kilometers>(), 0.1);
+    EXPECT_DOUBLE_EQ(cp1.z().in<Kilometers>(), -0.5);
+
+    // Position3D structured access
+    EXPECT_EQ(cp1.position().x, 100.0_m);
+    EXPECT_EQ(cp1.position().y, 200.0_m);
+    EXPECT_EQ(cp1.position().z, -500.0_m);
 
     // Mutate with units in kilometers and meters
     cp1.set_z(-1.2_km);
-    EXPECT_DOUBLE_EQ(cp1.z(), -1200.0);
-    EXPECT_DOUBLE_EQ(cp1.z_qty().value(), -1200.0);
+    EXPECT_EQ(cp1.z(), -1200.0_m);
+    EXPECT_DOUBLE_EQ(cp1.z().value(), -1200.0);
 
     cp1.set_coords(0.5_km, 1.5_km, -800.0_m);
-    EXPECT_DOUBLE_EQ(cp1.x(), 500.0);
-    EXPECT_DOUBLE_EQ(cp1.y(), 1500.0);
-    EXPECT_DOUBLE_EQ(cp1.z(), -800.0);
+    EXPECT_EQ(cp1.x(), 500.0_m);
+    EXPECT_EQ(cp1.y(), 1500.0_m);
+    EXPECT_EQ(cp1.z(), -800.0_m);
 
     // Relative vertical position queries
     ColumnPoint cp2(500.0_m, 1500.0_m, -200.0_m, 5);

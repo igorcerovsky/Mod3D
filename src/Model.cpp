@@ -47,9 +47,7 @@ double Model::y2e(int row) const
 
 void Model::set_column_point_coords(ColumnPoint &pt, int row, int col, double z)
 {
-    pt.point().x = xe(col);
-    pt.point().y = ye(row);
-    pt.set_z(z);
+    pt.set_coords(xe(col), ye(row), z);
 }
 
 bool Model::init(int nRows, int nCols, double x0, double y0, double xSize, double ySize, double zMin, double zMax)
@@ -216,7 +214,7 @@ void Model::add(int row, int col, const ColumnPoint &pt)
     int idx = flat_index(row, col);
     if (idx < 0) return;
     ColumnPoint pCopy = pt;
-    set_column_point_coords(pCopy, row, col, pCopy.z());
+    set_column_point_coords(pCopy, row, col, pCopy.z().value());
     data_[idx].push_back(pCopy);
 }
 
@@ -225,7 +223,7 @@ void Model::insert_at(int row, int col, int index, const ColumnPoint &pt)
     int idx = flat_index(row, col);
     if (idx < 0) return;
     ColumnPoint pCopy = pt;
-    set_column_point_coords(pCopy, row, col, pCopy.z());
+    set_column_point_coords(pCopy, row, col, pCopy.z().value());
     if (index >= 0 && static_cast<size_t>(index) <= data_[idx].size()) {
         data_[idx].insert(data_[idx].begin() + index, pCopy);
     }
@@ -245,7 +243,7 @@ double Model::z(int row, int col, int index) const
     if (index < 0) return z_max();
     if (index > upper_bound(row, col)) return z_min();
     const ColumnPoint *pt = at(row, col, index);
-    return pt ? pt->z() : 0.0;
+    return pt ? pt->z().value() : 0.0;
 }
 
 void Model::set_z(int row, int col, int index, double z_val)
@@ -262,7 +260,7 @@ double Model::thickness(int row, int col, int index) const
     const ColumnPoint *top = at(row, col, index);
     const ColumnPoint *bot = at(row, col, index + 1);
     if (!top || !bot) return 0.0;
-    return std::abs(top->z() - bot->z());
+    return std::abs((top->z() - bot->z()).value());
 }
 
 Body *Model::create_body()

@@ -75,52 +75,57 @@ TEST(Point3DTest, DistanceAndAngle) {
 // ============================================================================
 
 TEST(ColumnPointTest, ConstructorsAndDefaults) {
+    using namespace mod3d::literals;
+
     // Compile-time layout guarantees
     static_assert(std::is_standard_layout_v<ColumnPoint>, "ColumnPoint must be standard layout");
     static_assert(std::is_trivially_copyable_v<ColumnPoint>, "ColumnPoint must be trivially copyable");
 
     // Compile-time constexpr evaluation
     constexpr ColumnPoint cpConst(Point3D(100.0, 200.0, -500.0), 7);
-    static_assert(cpConst.z() == -500.0);
-    static_assert(cpConst.x() == 100.0);
-    static_assert(cpConst.y() == 200.0);
+    static_assert(cpConst.z() == -500.0_m);
+    static_assert(cpConst.x() == 100.0_m);
+    static_assert(cpConst.y() == 200.0_m);
     static_assert(cpConst.body_id() == 7);
     static_assert(cpConst.is_modified());
 
     ColumnPoint cpDefault;
-    EXPECT_DOUBLE_EQ(cpDefault.z(), 0.0);
+    EXPECT_EQ(cpDefault.z(), 0.0_m);
+    EXPECT_DOUBLE_EQ(cpDefault.z().value(), 0.0);
     EXPECT_EQ(cpDefault.body_id(), -1);
     EXPECT_EQ(cpDefault.body(), nullptr);
     EXPECT_TRUE(cpDefault.is_modified());
     EXPECT_FALSE(cpDefault.has_body());
 
     ColumnPoint cpZ(-450.0);
-    EXPECT_DOUBLE_EQ(cpZ.z(), -450.0);
+    EXPECT_EQ(cpZ.z(), -450.0_m);
     EXPECT_DOUBLE_EQ(cpZ.point().z, -450.0);
 
     Body testBody(42, "Basement", 2800.0);
     ColumnPoint cpBody(42, -600.0, &testBody);
     EXPECT_EQ(cpBody.body_id(), 42);
     EXPECT_EQ(cpBody.body(), &testBody);
-    EXPECT_DOUBLE_EQ(cpBody.z(), -600.0);
+    EXPECT_EQ(cpBody.z(), -600.0_m);
     EXPECT_TRUE(cpBody.has_body());
 
     // 5-arg coordinate constructor
     ColumnPoint cpCoords(10.0, 20.0, -30.0, 5, &testBody);
-    EXPECT_DOUBLE_EQ(cpCoords.x(), 10.0);
-    EXPECT_DOUBLE_EQ(cpCoords.y(), 20.0);
-    EXPECT_DOUBLE_EQ(cpCoords.z(), -30.0);
+    EXPECT_EQ(cpCoords.x(), 10.0_m);
+    EXPECT_EQ(cpCoords.y(), 20.0_m);
+    EXPECT_EQ(cpCoords.z(), -30.0_m);
     EXPECT_EQ(cpCoords.body_id(), 5);
 }
 
 TEST(ColumnPointTest, SettersAndSync) {
+    using namespace mod3d::literals;
+
     ColumnPoint cp;
     cp.set_modified(false);
     EXPECT_FALSE(cp.is_modified());
 
     // set_z must update both m_z and m_pt.z, and mark modified
     cp.set_z(-720.5);
-    EXPECT_DOUBLE_EQ(cp.z(), -720.5);
+    EXPECT_EQ(cp.z(), -720.5_m);
     EXPECT_DOUBLE_EQ(cp.point().z, -720.5);
     EXPECT_TRUE(cp.is_modified());
 
@@ -129,23 +134,23 @@ TEST(ColumnPointTest, SettersAndSync) {
     Point3D newPt(1200.0, 3400.0, -850.0);
     cp.set_point(newPt);
     EXPECT_EQ(cp.point(), newPt);
-    EXPECT_DOUBLE_EQ(cp.z(), -850.0);
+    EXPECT_EQ(cp.z(), -850.0_m);
     EXPECT_TRUE(cp.is_modified());
 
     // set_coords and individual component setters
     cp.set_modified(false);
     cp.set_coords(50.0, 60.0, -100.0);
-    EXPECT_DOUBLE_EQ(cp.x(), 50.0);
-    EXPECT_DOUBLE_EQ(cp.y(), 60.0);
-    EXPECT_DOUBLE_EQ(cp.z(), -100.0);
+    EXPECT_EQ(cp.x(), 50.0_m);
+    EXPECT_EQ(cp.y(), 60.0_m);
+    EXPECT_EQ(cp.z(), -100.0_m);
     EXPECT_TRUE(cp.is_modified());
 
     cp.set_x(75.0);
     cp.set_y(85.0);
     cp.set_z(-120.0);
-    EXPECT_DOUBLE_EQ(cp.x(), 75.0);
-    EXPECT_DOUBLE_EQ(cp.y(), 85.0);
-    EXPECT_DOUBLE_EQ(cp.z(), -120.0);
+    EXPECT_EQ(cp.x(), 75.0_m);
+    EXPECT_EQ(cp.y(), 85.0_m);
+    EXPECT_EQ(cp.z(), -120.0_m);
 }
 
 TEST(ColumnPointTest, ComparisonsAndPredicates) {
