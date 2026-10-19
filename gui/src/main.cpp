@@ -5,7 +5,7 @@
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
     app.setApplicationName("Mod3D");
-    app.setApplicationVersion("2.1.4");
+    app.setApplicationVersion("2.4.0");
     app.setOrganizationName("Mod3D Geophysical Modeling");
     app.setWindowIcon(QIcon(":/icons/app_icon.png"));
 
