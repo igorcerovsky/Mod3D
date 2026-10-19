@@ -217,17 +217,6 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     });
 }
 
-void GL3DView::paintEvent(QPaintEvent *event) {
-    if (!isValid() || !context()) {
-        QPainter p(this);
-        p.fillRect(rect(), QColor(235, 237, 242));
-        p.setPen(QColor(120, 130, 145));
-        p.drawText(rect(), Qt::AlignCenter, tr("3D View (OpenGL context unavailable)"));
-        return;
-    }
-    QOpenGLWidget::paintEvent(event);
-}
-
 void GL3DView::initializeGL() {
     if (!isValid() || !context()) return;
     initializeOpenGLFunctions();

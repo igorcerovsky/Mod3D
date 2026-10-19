@@ -77,7 +77,6 @@ MainWindow::MainWindow(QWidget *parent)
 
     resize(1260, 820);
     arrangeDefaultTiles();
-    QTimer::singleShot(0, this, [this]() { arrangeDefaultTiles(); });
 }
 
 void MainWindow::updateWindowTitle() {
@@ -484,22 +483,30 @@ void MainWindow::arrangeDefaultTiles() {
     // Default layout per user specifications:
     //  - top left: E-W profile
     if (subPvEW) {
-        subPvEW->showNormal();
+        if (subPvEW->isMinimized() || subPvEW->isMaximized()) {
+            subPvEW->showNormal();
+        }
         subPvEW->setGeometry(0, 0, halfW, halfH);
     }
     //  - top right: map view
     if (subMap) {
-        subMap->showNormal();
+        if (subMap->isMinimized() || subMap->isMaximized()) {
+            subMap->showNormal();
+        }
         subMap->setGeometry(halfW, 0, w - halfW, halfH);
     }
     //  - bottom left: 3D view
     if (sub3D) {
-        sub3D->showNormal();
+        if (sub3D->isMinimized() || sub3D->isMaximized()) {
+            sub3D->showNormal();
+        }
         sub3D->setGeometry(0, halfH, halfW, h - halfH);
     }
     //  - bottom right: N-S / perpendicular profile
     if (subPvNS) {
-        subPvNS->showNormal();
+        if (subPvNS->isMinimized() || subPvNS->isMaximized()) {
+            subPvNS->showNormal();
+        }
         subPvNS->setGeometry(halfW, halfH, w - halfW, h - halfH);
     }
 

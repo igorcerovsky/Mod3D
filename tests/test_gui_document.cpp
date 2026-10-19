@@ -1797,7 +1797,6 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
 TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
     MainWindow mw;
     mw.resize(1400, 900);
-    mw.show();
 
     std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
     if (!std::filesystem::exists(samplePath)) {
@@ -1861,8 +1860,6 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     int curIdx = comboBodies->findData(2);
     ASSERT_GE(curIdx, 0);
     EXPECT_TRUE(comboBodies->itemText(curIdx).contains("3550.0 kg/m³"));
-
-    QApplication::processEvents();
 }
 
 TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
