@@ -473,8 +473,12 @@ void MainWindow::arrangeDefaultTiles() {
     int w = r.width();
     int h = r.height();
     if (w < 200 || h < 200) {
-        w = 1180;
-        h = 720;
+        int paneW = (m_settingsPane && !m_settingsPane->isHidden()) ? m_settingsPane->width() : 350;
+        if (paneW <= 50) paneW = 350;
+        int mainW = (width() > 400) ? width() : 1260;
+        int mainH = (height() > 300) ? height() : 820;
+        w = std::max(200, mainW - paneW);
+        h = std::max(200, mainH - 85);
     }
 
     int halfW = w / 2;

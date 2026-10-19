@@ -1970,7 +1970,6 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
     ASSERT_TRUE(ok);
 
-    mw.arrangeDefaultTiles();
     auto *pane = mw.settingsPane();
     ASSERT_NE(pane, nullptr);
     pane->selectBodyEditorTab();
@@ -1978,7 +1977,12 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     // 1. Full Main Workspace screenshot
     QPixmap pixMain(1440, 920);
     pixMain.fill(Qt::white);
-    mw.render(&pixMain);
+    mw.render(&pixMain); // First pass forces MainWindow & QMdiArea layout
+
+    mw.arrangeDefaultTiles(); // Tiles perfectly to actual mdiArea geometry!
+
+    pixMain.fill(Qt::white);
+    mw.render(&pixMain); // Final render with perfectly fitted tiles
 
     // Paint the 3D software rendering onto the 3D subwindow area of pixMain
     for (auto *sub : mw.mdiArea()->subWindowList()) {
