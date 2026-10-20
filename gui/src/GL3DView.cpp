@@ -18,17 +18,12 @@
 #include <algorithm>
 #include <string>
 
-#if defined(__APPLE__)
-#include <OpenGL/gl.h>
-#else
-#include <GL/gl.h>
-#endif
-
 namespace mod3d_gui {
 
 namespace {
 
-void drawStrokeChar(char c, float cx, float cy, float size) {
+template <typename Emitter>
+void emitStrokeChar(char c, float cx, float cy, float size, Emitter &&outSeg) {
     float h = size * 0.5f;
     float w = size * 0.35f;
     float x0 = cx - w;
@@ -38,227 +33,232 @@ void drawStrokeChar(char c, float cx, float cy, float size) {
     float ym = cy;
     float xm = cx;
 
+    auto seg = [&](float ax, float ay, float bx, float by) {
+        outSeg(ax, ay, bx, by);
+    };
+
     switch (c) {
     case 'N':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x1, y1);
+        seg(x0, y0, x0, y1);
+        seg(x0, y1, x1, y0);
+        seg(x1, y0, x1, y1);
         break;
     case 'S':
-        glVertex2f(x1, y1); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x0, ym);
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        seg(x1, y1, x0, y1);
+        seg(x0, y1, x0, ym);
+        seg(x0, ym, x1, ym);
+        seg(x1, ym, x1, y0);
+        seg(x1, y0, x0, y0);
         break;
     case 'E':
-        glVertex2f(x1, y1); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x0, y0);
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
-        glVertex2f(x0, ym); glVertex2f(xm + w * 0.2f, ym);
+        seg(x1, y1, x0, y1);
+        seg(x0, y1, x0, y0);
+        seg(x0, y0, x1, y0);
+        seg(x0, ym, xm + w * 0.2f, ym);
         break;
     case 'W':
-        glVertex2f(x0, y1); glVertex2f(x0 + w * 0.4f, y0);
-        glVertex2f(x0 + w * 0.4f, y0); glVertex2f(xm, ym);
-        glVertex2f(xm, ym); glVertex2f(x1 - w * 0.4f, y0);
-        glVertex2f(x1 - w * 0.4f, y0); glVertex2f(x1, y1);
+        seg(x0, y1, x0 + w * 0.4f, y0);
+        seg(x0 + w * 0.4f, y0, xm, ym);
+        seg(xm, ym, x1 - w * 0.4f, y0);
+        seg(x1 - w * 0.4f, y0, x1, y1);
         break;
     case 'U':
-        glVertex2f(x0, y1); glVertex2f(x0, y0);
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x1, y1);
+        seg(x0, y1, x0, y0);
+        seg(x0, y0, x1, y0);
+        seg(x1, y0, x1, y1);
         break;
     case 'P':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x0, ym);
+        seg(x0, y0, x0, y1);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x1, ym);
+        seg(x1, ym, x0, ym);
         break;
     case 'O':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        seg(x0, y0, x0, y1);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x1, y0);
+        seg(x1, y0, x0, y0);
         break;
     case 'R':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x0, ym);
-        glVertex2f(xm, ym); glVertex2f(x1, y0);
+        seg(x0, y0, x0, y1);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x1, ym);
+        seg(x1, ym, x0, ym);
+        seg(xm, ym, x1, y0);
         break;
     case 'T':
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(xm, y1); glVertex2f(xm, y0);
+        seg(x0, y1, x1, y1);
+        seg(xm, y1, xm, y0);
         break;
     case 'H':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x1, y0); glVertex2f(x1, y1);
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        seg(x0, y0, x0, y1);
+        seg(x1, y0, x1, y1);
+        seg(x0, ym, x1, ym);
         break;
     case 'A':
-        glVertex2f(x0, y0); glVertex2f(xm, y1);
-        glVertex2f(xm, y1); glVertex2f(x1, y0);
-        glVertex2f(x0 + w * 0.35f, ym - h * 0.15f); glVertex2f(x1 - w * 0.35f, ym - h * 0.15f);
+        seg(x0, y0, xm, y1);
+        seg(xm, y1, x1, y0);
+        seg(x0 + w * 0.35f, ym - h * 0.15f, x1 - w * 0.35f, ym - h * 0.15f);
         break;
     case 'Z':
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x0, y0);
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x0, y0);
+        seg(x0, y0, x1, y0);
         break;
     case 'B':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x1 - w * 0.2f, y1);
-        glVertex2f(x1 - w * 0.2f, y1); glVertex2f(x1, ym + h * 0.5f);
-        glVertex2f(x1, ym + h * 0.5f); glVertex2f(x0, ym);
-        glVertex2f(x0, ym); glVertex2f(x1 - w * 0.2f, ym);
-        glVertex2f(x1 - w * 0.2f, ym); glVertex2f(x1, ym - h * 0.5f);
-        glVertex2f(x1, ym - h * 0.5f); glVertex2f(x0, y0);
+        seg(x0, y0, x0, y1);
+        seg(x0, y1, x1 - w * 0.2f, y1);
+        seg(x1 - w * 0.2f, y1, x1, ym + h * 0.5f);
+        seg(x1, ym + h * 0.5f, x0, ym);
+        seg(x0, ym, x1 - w * 0.2f, ym);
+        seg(x1 - w * 0.2f, ym, x1, ym - h * 0.5f);
+        seg(x1, ym - h * 0.5f, x0, y0);
         break;
     case '0':
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x0, y0);
+        seg(x0, y0, x1, y0);
+        seg(x1, y0, x1, y1);
+        seg(x1, y1, x0, y1);
+        seg(x0, y1, x0, y0);
         break;
     case '1':
-        glVertex2f(xm, y0); glVertex2f(xm, y1);
-        glVertex2f(x0, y1 - h * 0.25f); glVertex2f(xm, y1);
-        glVertex2f(x0 + w * 0.2f, y0); glVertex2f(x1 - w * 0.2f, y0);
+        seg(xm, y0, xm, y1);
+        seg(x0, y1 - h * 0.25f, xm, y1);
+        seg(x0 + w * 0.2f, y0, x1 - w * 0.2f, y0);
         break;
     case '2':
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x0, y0);
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x1, ym);
+        seg(x1, ym, x0, y0);
+        seg(x0, y0, x1, y0);
         break;
     case '3':
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x1, ym);
-        glVertex2f(x0 + w * 0.25f, ym); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x1, ym);
+        seg(x0 + w * 0.25f, ym, x1, ym);
+        seg(x1, ym, x1, y0);
+        seg(x1, y0, x0, y0);
         break;
     case '4':
-        glVertex2f(x0, y1); glVertex2f(x0, ym);
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
-        glVertex2f(x1 - w * 0.2f, y1); glVertex2f(x1 - w * 0.2f, y0);
+        seg(x0, y1, x0, ym);
+        seg(x0, ym, x1, ym);
+        seg(x1 - w * 0.2f, y1, x1 - w * 0.2f, y0);
         break;
     case '5':
-        glVertex2f(x1, y1); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x0, ym);
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        seg(x1, y1, x0, y1);
+        seg(x0, y1, x0, ym);
+        seg(x0, ym, x1, ym);
+        seg(x1, ym, x1, y0);
+        seg(x1, y0, x0, y0);
         break;
     case '6':
-        glVertex2f(x1, y1); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x0, y0);
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x0, ym);
+        seg(x1, y1, x0, y1);
+        seg(x0, y1, x0, y0);
+        seg(x0, y0, x1, y0);
+        seg(x1, y0, x1, ym);
+        seg(x1, ym, x0, ym);
         break;
     case '7':
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x0 + w * 0.25f, y0);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x0 + w * 0.25f, y0);
         break;
     case '8':
-        glVertex2f(x0, y0); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x0, y0);
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        seg(x0, y0, x1, y0);
+        seg(x1, y0, x1, y1);
+        seg(x1, y1, x0, y1);
+        seg(x0, y1, x0, y0);
+        seg(x0, ym, x1, ym);
         break;
     case '9':
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
-        glVertex2f(x0, ym); glVertex2f(x0, y1);
-        glVertex2f(x0, y1); glVertex2f(x1, y1);
-        glVertex2f(x1, y1); glVertex2f(x1, y0);
-        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        seg(x0, ym, x1, ym);
+        seg(x0, ym, x0, y1);
+        seg(x0, y1, x1, y1);
+        seg(x1, y1, x1, y0);
+        seg(x1, y0, x0, y0);
         break;
     case '-':
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        seg(x0, ym, x1, ym);
         break;
     case '+':
-        glVertex2f(x0, ym); glVertex2f(x1, ym);
-        glVertex2f(xm, y0 + h * 0.15f); glVertex2f(xm, y1 - h * 0.15f);
+        seg(x0, ym, x1, ym);
+        seg(xm, y0 + h * 0.15f, xm, y1 - h * 0.15f);
         break;
     case '.':
-        glVertex2f(xm - w * 0.2f, y0); glVertex2f(xm + w * 0.2f, y0);
+        seg(xm - w * 0.2f, y0, xm + w * 0.2f, y0);
         break;
     case '(':
-        glVertex2f(x1, y1); glVertex2f(x0, ym);
-        glVertex2f(x0, ym); glVertex2f(x1, y0);
+        seg(x1, y1, x0, ym);
+        seg(x0, ym, x1, y0);
         break;
     case ')':
-        glVertex2f(x0, y1); glVertex2f(x1, ym);
-        glVertex2f(x1, ym); glVertex2f(x0, y0);
+        seg(x0, y1, x1, ym);
+        seg(x1, ym, x0, y0);
         break;
     case 'm':
-        glVertex2f(x0, y0); glVertex2f(x0, ym + h * 0.1f);
-        glVertex2f(x0, ym + h * 0.1f); glVertex2f(xm, ym + h * 0.1f);
-        glVertex2f(xm, ym + h * 0.1f); glVertex2f(xm, y0);
-        glVertex2f(xm, ym + h * 0.1f); glVertex2f(x1, ym + h * 0.1f);
-        glVertex2f(x1, ym + h * 0.1f); glVertex2f(x1, y0);
+        seg(x0, y0, x0, ym + h * 0.1f);
+        seg(x0, ym + h * 0.1f, xm, ym + h * 0.1f);
+        seg(xm, ym + h * 0.1f, xm, y0);
+        seg(xm, ym + h * 0.1f, x1, ym + h * 0.1f);
+        seg(x1, ym + h * 0.1f, x1, y0);
         break;
     case 'k':
-        glVertex2f(x0, y0); glVertex2f(x0, y1);
-        glVertex2f(x0, ym); glVertex2f(x1, y1);
-        glVertex2f(x0, ym); glVertex2f(x1, y0);
+        seg(x0, y0, x0, y1);
+        seg(x0, ym, x1, y1);
+        seg(x0, ym, x1, y0);
+        break;
+    case 'X':
+        seg(x0, y0, x1, y1);
+        seg(x0, y1, x1, y0);
+        break;
+    case 'Y':
+        seg(x0, y1, xm, ym);
+        seg(x1, y1, xm, ym);
+        seg(xm, ym, xm, y0);
         break;
     case ' ':
-        break;
     default:
         break;
     }
 }
 
-void drawStrokeString(const std::string &str, float size, float spacing = 0.85f) {
-    if (str.empty()) return;
+void addBillboardLabel(std::vector<GL3DView::FlatVertex3D> &lines,
+                       const std::string &text,
+                       float x, float y, float z,
+                       float r, float g, float b, float a,
+                       float size,
+                       const QVector3D &camRight,
+                       const QVector3D &camUp,
+                       float spacing = 0.85f) {
+    if (text.empty()) return;
+
     float step = size * spacing;
-    float totalW = static_cast<float>(str.size() - 1) * step;
+    float totalW = static_cast<float>(text.size() - 1) * step;
     float startX = -totalW * 0.5f;
 
-    glBegin(GL_LINES);
-    for (size_t i = 0; i < str.size(); ++i) {
+    QVector3D center(x, y, z);
+
+    for (size_t i = 0; i < text.size(); ++i) {
         float cx = startX + static_cast<float>(i) * step;
-        drawStrokeChar(str[i], cx, 0.0f, size);
+        emitStrokeChar(text[i], cx, 0.0f, size, [&](float ax, float ay, float bx, float by) {
+            QVector3D p0 = center + camRight * ax + camUp * ay;
+            QVector3D p1 = center + camRight * bx + camUp * by;
+            lines.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+            lines.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+        });
     }
-    glEnd();
 }
 
-void drawBillboardLabel(const std::string &text, float x, float y, float z,
-                        float r, float g, float b, float size,
-                        float pitch, float azimuth) {
-    glPushMatrix();
-    glTranslatef(x, y, z);
-    // Invert the camera rotation so label remains strictly parallel to screen
-    glRotatef(-azimuth, 0.0f, 0.0f, 1.0f);
-    glRotatef(-(pitch - 90.0f), 1.0f, 0.0f, 0.0f);
-
-    // 1. Dark outline / drop shadow for legibility
-    glColor4f(0.06f, 0.07f, 0.10f, 0.85f);
-    glLineWidth(2.8f);
-    drawStrokeString(text, size);
-
-    // 2. Foreground core
-    glColor4f(r, g, b, 1.0f);
-    glLineWidth(1.6f);
-    drawStrokeString(text, size);
-
-    glPopMatrix();
-}
-
-void drawArrowCone(float tipX, float tipY, float tipZ,
-                   float dirX, float dirY, float dirZ,
-                   float length, float radius, int slices = 12) {
+void addArrowCone(std::vector<GL3DView::FlatVertex3D> &tris,
+                  float tipX, float tipY, float tipZ,
+                  float dirX, float dirY, float dirZ,
+                  float length, float radius,
+                  float r, float g, float b, float a = 1.0f,
+                  int slices = 12) {
     float len = std::sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
     if (len < 1e-6f) return;
     dirX /= len; dirY /= len; dirZ /= len;
 
-    float baseX = tipX - dirX * length;
-    float baseY = tipY - dirY * length;
-    float baseZ = tipZ - dirZ * length;
+    QVector3D tip(tipX, tipY, tipZ);
+    QVector3D baseCenter = tip - QVector3D(dirX, dirY, dirZ) * length;
 
     // Perpendicular vectors u and v
     float ux, uy, uz;
@@ -273,32 +273,28 @@ void drawArrowCone(float tipX, float tipY, float tipZ,
     float vx = dirY * uz - dirZ * uy;
     float vy = dirZ * ux - dirX * uz;
     float vz = dirX * uy - dirY * ux;
+    QVector3D u(ux, uy, uz);
+    QVector3D v(vx, vy, vz);
 
-    // Cone sides
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(tipX, tipY, tipZ);
+    std::vector<QVector3D> circlePts(slices + 1);
     for (int i = 0; i <= slices; ++i) {
         float angle = 2.0f * 3.14159265f * static_cast<float>(i) / static_cast<float>(slices);
         float ca = std::cos(angle) * radius;
         float sa = std::sin(angle) * radius;
-        glVertex3f(baseX + ca * ux + sa * vx,
-                   baseY + ca * uy + sa * vy,
-                   baseZ + ca * uz + sa * vz);
+        circlePts[i] = baseCenter + u * ca + v * sa;
     }
-    glEnd();
 
-    // Base cap
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(baseX, baseY, baseZ);
-    for (int i = slices; i >= 0; --i) {
-        float angle = 2.0f * 3.14159265f * static_cast<float>(i) / static_cast<float>(slices);
-        float ca = std::cos(angle) * radius;
-        float sa = std::sin(angle) * radius;
-        glVertex3f(baseX + ca * ux + sa * vx,
-                   baseY + ca * uy + sa * vy,
-                   baseZ + ca * uz + sa * vz);
+    for (int i = 0; i < slices; ++i) {
+        // Cone side triangle
+        tris.push_back({ tip.x(), tip.y(), tip.z(), r, g, b, a });
+        tris.push_back({ circlePts[i].x(), circlePts[i].y(), circlePts[i].z(), r, g, b, a });
+        tris.push_back({ circlePts[i + 1].x(), circlePts[i + 1].y(), circlePts[i + 1].z(), r, g, b, a });
+
+        // Base cap triangle
+        tris.push_back({ baseCenter.x(), baseCenter.y(), baseCenter.z(), r, g, b, a });
+        tris.push_back({ circlePts[i + 1].x(), circlePts[i + 1].y(), circlePts[i + 1].z(), r, g, b, a });
+        tris.push_back({ circlePts[i].x(), circlePts[i].y(), circlePts[i].z(), r, g, b, a });
     }
-    glEnd();
 }
 
 } // namespace
@@ -335,8 +331,27 @@ GL3DView::~GL3DView() {
         m_camAnim->stop();
         delete m_camAnim;
     }
-    delete m_shaderProg;
-    m_shaderProg = nullptr;
+    if (isValid() && context()) {
+        makeCurrent();
+        if (m_bodyVao.isCreated()) m_bodyVao.destroy();
+        if (m_bodyVbo.isCreated()) m_bodyVbo.destroy();
+        if (m_transVao.isCreated()) m_transVao.destroy();
+        if (m_transVbo.isCreated()) m_transVbo.destroy();
+        if (m_linesVao.isCreated()) m_linesVao.destroy();
+        if (m_linesVbo.isCreated()) m_linesVbo.destroy();
+        if (m_flatTrisVao.isCreated()) m_flatTrisVao.destroy();
+        if (m_flatTrisVbo.isCreated()) m_flatTrisVbo.destroy();
+        delete m_shaderProg;
+        m_shaderProg = nullptr;
+        delete m_flatShaderProg;
+        m_flatShaderProg = nullptr;
+        doneCurrent();
+    } else {
+        delete m_shaderProg;
+        m_shaderProg = nullptr;
+        delete m_flatShaderProg;
+        m_flatShaderProg = nullptr;
+    }
 }
 
 void GL3DView::setSelectedBodyId(int bodyId) {
@@ -505,13 +520,6 @@ void GL3DView::setupMatrices(int w, int h) {
     m_mvMatrix.rotate(m_azimuth, 0.0f, 0.0f, 1.0f);
     m_mvMatrix.translate(-m_target.x(), -m_target.y(), -m_target.z());
 
-    if (isValid() && context()) {
-        glMatrixMode(GL_PROJECTION);
-        glLoadMatrixf(m_projMatrix.constData());
-
-        glMatrixMode(GL_MODELVIEW);
-        glLoadMatrixf(m_mvMatrix.constData());
-    }
 }
 
 void GL3DView::initShaders() {
@@ -521,27 +529,48 @@ void GL3DView::initShaders() {
     delete m_shaderProg;
     m_shaderProg = new QOpenGLShaderProgram(this);
 
-    const char *vsrc =
-        "#version 120\n"
+    auto tryCompile = [](QOpenGLShaderProgram *prog, const char *verStr,
+                         const char *vbody, const char *fbody,
+                         const std::vector<std::pair<const char*, int>> &attribs) -> bool {
+        QString vsrc = QString("%1\n%2").arg(verStr, vbody);
+        QString fsrc = QString("%1\n%2").arg(verStr, fbody);
+        if (!prog->addShaderFromSourceCode(QOpenGLShader::Vertex, vsrc)) return false;
+        if (!prog->addShaderFromSourceCode(QOpenGLShader::Fragment, fsrc)) return false;
+        for (const auto &at : attribs) {
+            prog->bindAttributeLocation(at.first, at.second);
+        }
+        return prog->link();
+    };
+
+    const char *vbodyShaded =
+        "layout(location = 0) in vec3 a_position;\n"
+        "layout(location = 1) in vec3 a_normal;\n"
+        "layout(location = 2) in vec4 a_color;\n"
         "uniform mat4 u_mvpMatrix;\n"
         "uniform mat4 u_mvMatrix;\n"
         "uniform mat3 u_normalMatrix;\n"
-        "varying vec3 v_normal;\n"
-        "varying vec3 v_eyePos;\n"
-        "varying vec4 v_color;\n"
+        "uniform float u_zMid;\n"
+        "uniform float u_zScale;\n"
+        "out vec3 v_normal;\n"
+        "out vec3 v_eyePos;\n"
+        "out vec4 v_color;\n"
         "void main() {\n"
-        "    vec4 eyePos4 = u_mvMatrix * gl_Vertex;\n"
+        "    vec3 pos = a_position;\n"
+        "    pos.z = u_zMid + (pos.z - u_zMid) * u_zScale;\n"
+        "    vec3 norm = a_normal;\n"
+        "    norm.z = norm.z / max(0.05, u_zScale);\n"
+        "    norm = normalize(norm);\n"
+        "    vec4 eyePos4 = u_mvMatrix * vec4(pos, 1.0);\n"
         "    v_eyePos = eyePos4.xyz;\n"
-        "    v_normal = normalize(u_normalMatrix * gl_Normal);\n"
-        "    v_color = gl_Color;\n"
-        "    gl_Position = u_mvpMatrix * gl_Vertex;\n"
+        "    v_normal = normalize(u_normalMatrix * norm);\n"
+        "    v_color = a_color;\n"
+        "    gl_Position = u_mvpMatrix * vec4(pos, 1.0);\n"
         "}\n";
 
-    const char *fsrc =
-        "#version 120\n"
-        "varying vec3 v_normal;\n"
-        "varying vec3 v_eyePos;\n"
-        "varying vec4 v_color;\n"
+    const char *fbodyShaded =
+        "in vec3 v_normal;\n"
+        "in vec3 v_eyePos;\n"
+        "in vec4 v_color;\n"
         "uniform vec3 u_light0Dir;\n"
         "uniform vec3 u_light1Dir;\n"
         "uniform vec4 u_light0Color;\n"
@@ -553,6 +582,7 @@ void GL3DView::initShaders() {
         "uniform vec4 u_fogColor;\n"
         "uniform bool u_highlight;\n"
         "uniform vec4 u_highlightColor;\n"
+        "out vec4 fragColor;\n"
         "void main() {\n"
         "    vec3 N = normalize(v_normal);\n"
         "    if (!gl_FrontFacing) N = -N;\n"
@@ -580,71 +610,266 @@ void GL3DView::initShaders() {
         "        float fogFactor = clamp((dist - u_fogStart) / (u_fogEnd - u_fogStart), 0.0, 1.0);\n"
         "        lit = mix(lit, u_fogColor.rgb, fogFactor);\n"
         "    }\n"
-        "    gl_FragColor = vec4(lit, alpha);\n"
+        "    fragColor = vec4(lit, alpha);\n"
         "}\n";
 
-    if (!m_shaderProg->addShaderFromSourceCode(QOpenGLShader::Vertex, vsrc)) {
+    std::vector<std::pair<const char*, int>> shadedAttribs = {
+        { "a_position", 0 },
+        { "a_normal", 1 },
+        { "a_color", 2 }
+    };
+
+    bool okShaded = tryCompile(m_shaderProg, "#version 410 core", vbodyShaded, fbodyShaded, shadedAttribs);
+    if (!okShaded) {
         delete m_shaderProg;
-        m_shaderProg = nullptr;
-        m_shadersInitialized = false;
-        return;
-    }
-    if (!m_shaderProg->addShaderFromSourceCode(QOpenGLShader::Fragment, fsrc)) {
-        delete m_shaderProg;
-        m_shaderProg = nullptr;
-        m_shadersInitialized = false;
-        return;
-    }
-    if (!m_shaderProg->link()) {
-        delete m_shaderProg;
-        m_shaderProg = nullptr;
-        m_shadersInitialized = false;
-        return;
+        m_shaderProg = new QOpenGLShaderProgram(this);
+        okShaded = tryCompile(m_shaderProg, "#version 330 core", vbodyShaded, fbodyShaded, shadedAttribs);
     }
 
-    m_shadersInitialized = true;
+    delete m_flatShaderProg;
+    m_flatShaderProg = new QOpenGLShaderProgram(this);
+
+    const char *vbodyFlat =
+        "layout(location = 0) in vec3 a_position;\n"
+        "layout(location = 1) in vec4 a_color;\n"
+        "uniform mat4 u_mvpMatrix;\n"
+        "out vec4 v_color;\n"
+        "void main() {\n"
+        "    v_color = a_color;\n"
+        "    gl_Position = u_mvpMatrix * vec4(a_position, 1.0);\n"
+        "}\n";
+
+    const char *fbodyFlat =
+        "in vec4 v_color;\n"
+        "out vec4 fragColor;\n"
+        "void main() {\n"
+        "    fragColor = v_color;\n"
+        "}\n";
+
+    std::vector<std::pair<const char*, int>> flatAttribs = {
+        { "a_position", 0 },
+        { "a_color", 1 }
+    };
+
+    bool okFlat = tryCompile(m_flatShaderProg, "#version 410 core", vbodyFlat, fbodyFlat, flatAttribs);
+    if (!okFlat) {
+        delete m_flatShaderProg;
+        m_flatShaderProg = new QOpenGLShaderProgram(this);
+        okFlat = tryCompile(m_flatShaderProg, "#version 330 core", vbodyFlat, fbodyFlat, flatAttribs);
+    }
+
+    m_shadersInitialized = okShaded && okFlat;
+}
+
+void GL3DView::initBuffers() {
+    if (m_buffersInitialized) return;
+    if (!isValid() || !context()) return;
+
+    // Body VAO & VBO
+    m_bodyVao.create();
+    m_bodyVao.bind();
+    m_bodyVbo.create();
+    m_bodyVbo.bind();
+    m_bodyVbo.setUsagePattern(QOpenGLBuffer::StaticDraw);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), reinterpret_cast<void*>(offsetof(Vertex3D, x)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), reinterpret_cast<void*>(offsetof(Vertex3D, nx)));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), reinterpret_cast<void*>(offsetof(Vertex3D, r)));
+
+    m_bodyVao.release();
+    m_bodyVbo.release();
+
+    // Transparent VAO & VBO
+    m_transVao.create();
+    m_transVao.bind();
+    m_transVbo.create();
+    m_transVbo.bind();
+    m_transVbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), reinterpret_cast<void*>(offsetof(Vertex3D, x)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), reinterpret_cast<void*>(offsetof(Vertex3D, nx)));
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex3D), reinterpret_cast<void*>(offsetof(Vertex3D, r)));
+
+    m_transVao.release();
+    m_transVbo.release();
+
+    // Lines VAO & VBO
+    m_linesVao.create();
+    m_linesVao.bind();
+    m_linesVbo.create();
+    m_linesVbo.bind();
+    m_linesVbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(FlatVertex3D), reinterpret_cast<void*>(offsetof(FlatVertex3D, x)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(FlatVertex3D), reinterpret_cast<void*>(offsetof(FlatVertex3D, r)));
+
+    m_linesVao.release();
+    m_linesVbo.release();
+
+    // Flat Triangles VAO & VBO
+    m_flatTrisVao.create();
+    m_flatTrisVao.bind();
+    m_flatTrisVbo.create();
+    m_flatTrisVbo.bind();
+    m_flatTrisVbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(FlatVertex3D), reinterpret_cast<void*>(offsetof(FlatVertex3D, x)));
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(FlatVertex3D), reinterpret_cast<void*>(offsetof(FlatVertex3D, r)));
+
+    m_flatTrisVao.release();
+    m_flatTrisVbo.release();
+
+    m_buffersInitialized = true;
+}
+
+void GL3DView::updateBodyBuffers() {
+    if (!m_doc) return;
+    initBuffers();
+
+    if (m_meshDirty || m_bodyMeshes.empty()) {
+        m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
+        m_meshDirty = false;
+    }
+
+    std::vector<Vertex3D> opaqueVerts;
+    m_bodyRanges.clear();
+
+    double dBot = m_doc->model().z_min_val();
+
+    for (const auto &mesh : m_bodyMeshes) {
+        if (!mesh.isVisible) continue;
+
+        BodyRange range;
+        range.bodyId = mesh.bodyId;
+        range.isTransparent = (m_transparentBodies && mesh.isTransparent);
+        range.first = static_cast<int>(opaqueVerts.size());
+
+        if (!range.isTransparent) {
+            float r = mesh.color.r / 255.0f;
+            float g = mesh.color.g / 255.0f;
+            float b = mesh.color.b / 255.0f;
+            float a = 1.0f;
+
+            for (const auto &fct : mesh.facets) {
+                if (!m_showBottom &&
+                    fct[0].z <= dBot + 1e-3 &&
+                    fct[1].z <= dBot + 1e-3 &&
+                    fct[2].z <= dBot + 1e-3) {
+                    continue;
+                }
+
+                auto norm = fct.normal();
+                double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
+                if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
+
+                for (int i = 0; i < 3; ++i) {
+                    Vertex3D v;
+                    v.x = static_cast<float>(fct[i].x);
+                    v.y = static_cast<float>(fct[i].y);
+                    v.z = static_cast<float>(fct[i].z);
+                    v.nx = static_cast<float>(norm.x);
+                    v.ny = static_cast<float>(norm.y);
+                    v.nz = static_cast<float>(norm.z);
+                    v.r = r;
+                    v.g = g;
+                    v.b = b;
+                    v.a = a;
+                    opaqueVerts.push_back(v);
+                }
+            }
+        }
+
+        range.count = static_cast<int>(opaqueVerts.size()) - range.first;
+        m_bodyRanges.push_back(range);
+    }
+
+    m_bodyVbo.bind();
+    m_bodyVbo.allocate(opaqueVerts.data(), static_cast<int>(opaqueVerts.size() * sizeof(Vertex3D)));
+    m_bodyVbo.release();
+}
+
+void GL3DView::renderLines(const std::vector<FlatVertex3D> &lines, float lineWidth) {
+    if (lines.empty()) return;
+    if (!m_flatShaderProg) return;
+
+    initBuffers();
+
+    glLineWidth(lineWidth);
+    m_flatShaderProg->bind();
+    m_flatShaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+
+    m_linesVao.bind();
+    m_linesVbo.bind();
+    m_linesVbo.allocate(lines.data(), static_cast<int>(lines.size() * sizeof(FlatVertex3D)));
+
+    glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lines.size()));
+
+    m_linesVbo.release();
+    m_linesVao.release();
+    m_flatShaderProg->release();
+}
+
+void GL3DView::renderFlatTriangles(const std::vector<FlatVertex3D> &tris, bool blend) {
+    if (tris.empty()) return;
+    if (!m_flatShaderProg) return;
+
+    initBuffers();
+
+    if (blend) {
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+    }
+
+    m_flatShaderProg->bind();
+    m_flatShaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+
+    m_flatTrisVao.bind();
+    m_flatTrisVbo.bind();
+    m_flatTrisVbo.allocate(tris.data(), static_cast<int>(tris.size() * sizeof(FlatVertex3D)));
+
+    glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(tris.size()));
+
+    m_flatTrisVbo.release();
+    m_flatTrisVao.release();
+    m_flatShaderProg->release();
+
+    if (blend) {
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+    }
 }
 
 void GL3DView::initializeGL() {
     if (!isValid() || !context()) return;
     initializeOpenGLFunctions();
     initShaders();
+    initBuffers();
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
-    glEnable(GL_NORMALIZE);
 
-    // Alpha blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    // Two-sided lighting & materials
-    glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
-    glEnable(GL_LIGHT1);
-    glLightModeli(GL_LIGHT_MODEL_TWO_SIDE, GL_TRUE);
-
-    GLfloat lmodel_ambient[] = { 0.28f, 0.28f, 0.30f, 1.0f };
-    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, lmodel_ambient);
-
-    glEnable(GL_COLOR_MATERIAL);
-    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
-
-    // Subtle specular material sheen
-    GLfloat matSpec[] = { 0.35f, 0.35f, 0.35f, 1.0f };
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
-    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 32.0f);
-
     // Clean modern studio neutral background
     glClearColor(0.92f, 0.93f, 0.95f, 1.0f);
-
-    // Optional modern depth fog for visual depth comprehension
-    if (m_showDepthFog) {
-        glFogi(GL_FOG_MODE, GL_LINEAR);
-        GLfloat fogColor[] = { 0.92f, 0.93f, 0.95f, 1.0f };
-        glFogfv(GL_FOG_COLOR, fogColor);
-        glHint(GL_FOG_HINT, GL_NICEST);
-    }
 }
 
 void GL3DView::resizeGL(int w, int h) {
@@ -663,34 +888,6 @@ void GL3DView::paintGL() {
 
     if (!m_doc) return;
 
-    // Directional Key Light & Soft Fill Light in Eye Coordinates (headlight / sun)
-    GLfloat light0Pos[] = { 0.5f, 0.7f, 1.0f, 0.0f }; // Directional key light from upper-right-front
-    GLfloat light0Amb[] = { 0.18f, 0.18f, 0.20f, 1.0f };
-    GLfloat light0Diff[] = { 0.85f, 0.85f, 0.85f, 1.0f };
-    GLfloat light0Spec[] = { 0.40f, 0.40f, 0.40f, 1.0f };
-    glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
-    glLightfv(GL_LIGHT0, GL_AMBIENT, light0Amb);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, light0Diff);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, light0Spec);
-
-    GLfloat light1Pos[] = { -0.5f, -0.6f, 0.4f, 0.0f }; // Soft fill light from lower-left-front
-    GLfloat light1Amb[] = { 0.05f, 0.05f, 0.05f, 1.0f };
-    GLfloat light1Diff[] = { 0.30f, 0.30f, 0.35f, 1.0f };
-    glLightfv(GL_LIGHT1, GL_POSITION, light1Pos);
-    glLightfv(GL_LIGHT1, GL_AMBIENT, light1Amb);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, light1Diff);
-
-    // Setup Depth Fog parameters
-    if (m_showDepthFog) {
-        glEnable(GL_FOG);
-        float effDist = m_distance / std::max(0.01f, m_zoom);
-        glFogf(GL_FOG_START, effDist * 0.75f);
-        glFogf(GL_FOG_END, effDist * 2.2f);
-    } else {
-        glDisable(GL_FOG);
-    }
-
-    // Draw elements
     if (m_showBoundingBox) {
         drawBoundingBox();
     }
@@ -708,17 +905,15 @@ void GL3DView::paintGL() {
     if (m_mouseDragging && (m_dragButton == Qt::LeftButton) && !m_draggingGizmo) {
         drawPivotIndicator();
     }
-
-    glDisable(GL_FOG);
-
-    if (m_showOrientationIndicator) {
-        drawOrientationHud();
-    }
 }
 
 void GL3DView::paintEvent(QPaintEvent *event) {
     if (isValid() && context()) {
         QOpenGLWidget::paintEvent(event);
+        if (m_showOrientationIndicator) {
+            QPainter painter(this);
+            drawOrientationHud(painter);
+        }
         return;
     }
     QPainter painter(this);
@@ -944,45 +1139,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
 
     // 5. Orientation Indicator HUD (Compass Tripod in bottom-left corner)
     if (m_showOrientationIndicator) {
-        double cx = 58.0;
-        double cy = h - 58.0;
-        double rHud = 44.0;
-
-        painter.setPen(QPen(QColor(203, 213, 225), 1.2));
-        painter.setBrush(QColor(255, 255, 255, 225));
-        painter.drawRoundedRect(QRectF(cx - rHud, cy - rHud, rHud * 2.0, rHud * 2.0), 12.0, 12.0);
-
-        auto projectAxis = [&](double ax, double ay, double az) {
-            double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
-            double rx = ax * std::cos(azRad) - ay * std::sin(azRad);
-            double ry = ax * std::sin(azRad) + ay * std::cos(azRad);
-            double rz = az;
-
-            double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
-            double px = rx;
-            double py = ry * std::cos(pitchRad) - rz * std::sin(pitchRad);
-            return QPointF(cx + px * 26.0, cy - py * 26.0);
-        };
-
-        QPointF pCenter(cx, cy);
-        QPointF pX = projectAxis(1.0, 0.0, 0.0);
-        QPointF pY = projectAxis(0.0, 1.0, 0.0);
-        QPointF pZ = projectAxis(0.0, 0.0, 1.0);
-
-        // X axis - East (Red)
-        painter.setPen(QPen(QColor(220, 38, 38), 2.2));
-        painter.drawLine(pCenter, pX);
-        painter.drawText(pX + QPointF(2, 4), "E");
-
-        // Y axis - North (Green)
-        painter.setPen(QPen(QColor(22, 163, 74), 2.2));
-        painter.drawLine(pCenter, pY);
-        painter.drawText(pY + QPointF(2, 4), "N");
-
-        // Z axis - Up (Blue)
-        painter.setPen(QPen(QColor(37, 99, 235), 2.2));
-        painter.drawLine(pCenter, pZ);
-        painter.drawText(pZ + QPointF(2, 4), "Z");
+        drawOrientationHud(painter);
     }
 
     painter.restore();
@@ -990,46 +1147,51 @@ void GL3DView::paintSoftware(QPainter &painter) {
 
 void GL3DView::drawPivotIndicator() {
     // Draws a subtle visual reticle at m_target during mouse orbit
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    glPushMatrix();
-    glTranslatef(m_target.x(), m_target.y(), m_target.z());
-    glRotatef(-m_azimuth, 0.0f, 0.0f, 1.0f);
-    glRotatef(-(m_pitch - 90.0f), 1.0f, 0.0f, 0.0f);
-
     float effDist = m_distance / std::max(0.01f, m_zoom);
     float size = effDist * 0.018f;
 
-    glColor4f(0.96f, 0.55f, 0.12f, 0.85f);
-    glLineWidth(2.0f);
+    QVector3D camRight(m_mvMatrix(0, 0), m_mvMatrix(0, 1), m_mvMatrix(0, 2));
+    QVector3D camUp(m_mvMatrix(1, 0), m_mvMatrix(1, 1), m_mvMatrix(1, 2));
+
+    std::vector<FlatVertex3D> lines;
+    float r = 0.96f, g = 0.55f, b = 0.12f, a = 0.85f;
 
     // Reticle circle
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < 24; ++i) {
-        float angle = 2.0f * 3.14159265f * static_cast<float>(i) / 24.0f;
-        glVertex2f(std::cos(angle) * size, std::sin(angle) * size);
+    const int numSegs = 24;
+    for (int i = 0; i < numSegs; ++i) {
+        float a0 = 2.0f * 3.14159265f * static_cast<float>(i) / static_cast<float>(numSegs);
+        float a1 = 2.0f * 3.14159265f * static_cast<float>(i + 1) / static_cast<float>(numSegs);
+        QVector3D p0 = m_target + camRight * (std::cos(a0) * size) + camUp * (std::sin(a0) * size);
+        QVector3D p1 = m_target + camRight * (std::cos(a1) * size) + camUp * (std::sin(a1) * size);
+        lines.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+        lines.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
     }
-    glEnd();
 
     // Crosshairs
-    glBegin(GL_LINES);
-    glVertex2f(-size * 1.5f, 0.0f); glVertex2f(-size * 0.5f, 0.0f);
-    glVertex2f(size * 0.5f, 0.0f);  glVertex2f(size * 1.5f, 0.0f);
-    glVertex2f(0.0f, -size * 1.5f); glVertex2f(0.0f, -size * 0.5f);
-    glVertex2f(0.0f, size * 0.5f);  glVertex2f(0.0f, size * 1.5f);
-    glEnd();
+    QVector3D h0 = m_target - camRight * (size * 1.5f);
+    QVector3D h1 = m_target - camRight * (size * 0.5f);
+    QVector3D h2 = m_target + camRight * (size * 0.5f);
+    QVector3D h3 = m_target + camRight * (size * 1.5f);
 
-    glPopMatrix();
-    glEnable(GL_LIGHTING);
+    QVector3D v0 = m_target - camUp * (size * 1.5f);
+    QVector3D v1 = m_target - camUp * (size * 0.5f);
+    QVector3D v2 = m_target + camUp * (size * 0.5f);
+    QVector3D v3 = m_target + camUp * (size * 1.5f);
+
+    lines.push_back({ h0.x(), h0.y(), h0.z(), r, g, b, a });
+    lines.push_back({ h1.x(), h1.y(), h1.z(), r, g, b, a });
+    lines.push_back({ h2.x(), h2.y(), h2.z(), r, g, b, a });
+    lines.push_back({ h3.x(), h3.y(), h3.z(), r, g, b, a });
+
+    lines.push_back({ v0.x(), v0.y(), v0.z(), r, g, b, a });
+    lines.push_back({ v1.x(), v1.y(), v1.z(), r, g, b, a });
+    lines.push_back({ v2.x(), v2.y(), v2.z(), r, g, b, a });
+    lines.push_back({ v3.x(), v3.y(), v3.z(), r, g, b, a });
+
+    renderLines(lines, 2.0f);
 }
 
 void GL3DView::drawBoundingBox() {
-    glDisable(GL_LIGHTING);
-    glColor3f(0.55f, 0.55f, 0.60f);
-    glLineWidth(1.0f);
-
     const auto &m = m_doc->model();
     float x0 = static_cast<float>(m.x_min_val());
     float x1 = static_cast<float>(m.x_max_val());
@@ -1042,28 +1204,40 @@ void GL3DView::drawBoundingBox() {
     float z0 = zMid + (z0Raw - zMid) * m_zScale;
     float z1 = zMid + (z1Raw - zMid) * m_zScale;
 
-    glBegin(GL_LINES);
+    std::vector<FlatVertex3D> boxLines;
+    std::vector<FlatVertex3D> thickLines;
+    std::vector<FlatVertex3D> coneTris;
+
+    float rBox = 0.55f, gBox = 0.55f, bBox = 0.60f, aBox = 1.0f;
+
+    auto addBoxLine = [&](float ax, float ay, float az, float bx, float by, float bz) {
+        boxLines.push_back({ ax, ay, az, rBox, gBox, bBox, aBox });
+        boxLines.push_back({ bx, by, bz, rBox, gBox, bBox, aBox });
+    };
+
     // Bottom
-    glVertex3f(x0, y0, z0); glVertex3f(x1, y0, z0);
-    glVertex3f(x1, y0, z0); glVertex3f(x1, y1, z0);
-    glVertex3f(x1, y1, z0); glVertex3f(x0, y1, z0);
-    glVertex3f(x0, y1, z0); glVertex3f(x0, y0, z0);
+    addBoxLine(x0, y0, z0, x1, y0, z0);
+    addBoxLine(x1, y0, z0, x1, y1, z0);
+    addBoxLine(x1, y1, z0, x0, y1, z0);
+    addBoxLine(x0, y1, z0, x0, y0, z0);
     // Top
-    glVertex3f(x0, y0, z1); glVertex3f(x1, y0, z1);
-    glVertex3f(x1, y0, z1); glVertex3f(x1, y1, z1);
-    glVertex3f(x1, y1, z1); glVertex3f(x0, y1, z1);
-    glVertex3f(x0, y1, z1); glVertex3f(x0, y0, z1);
+    addBoxLine(x0, y0, z1, x1, y0, z1);
+    addBoxLine(x1, y0, z1, x1, y1, z1);
+    addBoxLine(x1, y1, z1, x0, y1, z1);
+    addBoxLine(x0, y1, z1, x0, y0, z1);
     // Pillars
-    glVertex3f(x0, y0, z0); glVertex3f(x0, y0, z1);
-    glVertex3f(x1, y0, z0); glVertex3f(x1, y0, z1);
-    glVertex3f(x1, y1, z0); glVertex3f(x1, y1, z1);
-    glVertex3f(x0, y1, z0); glVertex3f(x0, y1, z1);
-    glEnd();
+    addBoxLine(x0, y0, z0, x0, y0, z1);
+    addBoxLine(x1, y0, z0, x1, y0, z1);
+    addBoxLine(x1, y1, z0, x1, y1, z1);
+    addBoxLine(x0, y1, z0, x0, y1, z1);
 
     float dx = x1 - x0;
     float dy = y1 - y0;
     float diagXY = std::sqrt(dx * dx + dy * dy);
     if (diagXY < 1.0f) diagXY = 1000.0f;
+
+    QVector3D camRight(m_mvMatrix(0, 0), m_mvMatrix(0, 1), m_mvMatrix(0, 2));
+    QVector3D camUp(m_mvMatrix(1, 0), m_mvMatrix(1, 1), m_mvMatrix(1, 2));
 
     // Coordinate orientation axis tripod at origin corner (x0, y0, z0)
     float axisLen = diagXY * 0.055f;
@@ -1072,38 +1246,31 @@ void GL3DView::drawBoundingBox() {
     float labelSize = axisLen * 0.22f;
 
     // East (+X) Axis - Red
-    glColor3f(0.92f, 0.22f, 0.22f);
-    glLineWidth(2.0f);
-    glBegin(GL_LINES);
-    glVertex3f(x0, y0, z0); glVertex3f(x0 + axisLen, y0, z0);
-    glEnd();
-    drawArrowCone(x0 + axisLen, y0, z0, 1.0f, 0.0f, 0.0f, coneLen, coneRadius);
-    drawBillboardLabel("E", x0 + axisLen + coneLen * 0.9f, y0, z0,
-                       0.95f, 0.25f, 0.25f, labelSize, m_pitch, m_azimuth);
+    thickLines.push_back({ x0, y0, z0, 0.92f, 0.22f, 0.22f, 1.0f });
+    thickLines.push_back({ x0 + axisLen, y0, z0, 0.92f, 0.22f, 0.22f, 1.0f });
+    addArrowCone(coneTris, x0 + axisLen, y0, z0, 1.0f, 0.0f, 0.0f, coneLen, coneRadius, 0.92f, 0.22f, 0.22f);
+    addBillboardLabel(boxLines, "E", x0 + axisLen + coneLen * 0.9f, y0, z0,
+                      0.95f, 0.25f, 0.25f, 1.0f, labelSize, camRight, camUp);
 
     // North (+Y) Axis - Green
-    glColor3f(0.18f, 0.80f, 0.32f);
-    glLineWidth(2.0f);
-    glBegin(GL_LINES);
-    glVertex3f(x0, y0, z0); glVertex3f(x0, y0 + axisLen, z0);
-    glEnd();
-    drawArrowCone(x0, y0 + axisLen, z0, 0.0f, 1.0f, 0.0f, coneLen, coneRadius);
-    drawBillboardLabel("N", x0, y0 + axisLen + coneLen * 0.9f, z0,
-                       0.20f, 0.85f, 0.35f, labelSize, m_pitch, m_azimuth);
+    thickLines.push_back({ x0, y0, z0, 0.18f, 0.80f, 0.32f, 1.0f });
+    thickLines.push_back({ x0, y0 + axisLen, z0, 0.18f, 0.80f, 0.32f, 1.0f });
+    addArrowCone(coneTris, x0, y0 + axisLen, z0, 0.0f, 1.0f, 0.0f, coneLen, coneRadius, 0.18f, 0.80f, 0.32f);
+    addBillboardLabel(boxLines, "N", x0, y0 + axisLen + coneLen * 0.9f, z0,
+                      0.20f, 0.85f, 0.35f, 1.0f, labelSize, camRight, camUp);
 
     // Compass cardinal direction labels on outer bounding box top edges
     float edgeLabelSize = diagXY * 0.016f;
     float midX = (x0 + x1) * 0.5f;
     float midY = (y0 + y1) * 0.5f;
-    drawBillboardLabel("NORTH", midX, y1, z1, 0.18f, 0.80f, 0.32f, edgeLabelSize, m_pitch, m_azimuth);
-    drawBillboardLabel("SOUTH", midX, y0, z1, 0.55f, 0.60f, 0.68f, edgeLabelSize, m_pitch, m_azimuth);
-    drawBillboardLabel("EAST",  x1, midY, z1, 0.92f, 0.25f, 0.25f, edgeLabelSize, m_pitch, m_azimuth);
-    drawBillboardLabel("WEST",  x0, midY, z1, 0.55f, 0.60f, 0.68f, edgeLabelSize, m_pitch, m_azimuth);
+    addBillboardLabel(boxLines, "NORTH", midX, y1, z1, 0.18f, 0.80f, 0.32f, 1.0f, edgeLabelSize, camRight, camUp);
+    addBillboardLabel(boxLines, "SOUTH", midX, y0, z1, 0.55f, 0.60f, 0.68f, 1.0f, edgeLabelSize, camRight, camUp);
+    addBillboardLabel(boxLines, "EAST",  x1, midY, z1, 0.92f, 0.25f, 0.25f, 1.0f, edgeLabelSize, camRight, camUp);
+    addBillboardLabel(boxLines, "WEST",  x0, midY, z1, 0.55f, 0.60f, 0.68f, 1.0f, edgeLabelSize, camRight, camUp);
 
     // Elevation / Depth Ticks on Vertical Corner Post (Southwest pillar)
     float zSpan = z1Raw - z0Raw;
     if (zSpan > 0.0f) {
-        // Calculate standard "nice step" (multiples of 1, 2, or 5 * 10^k)
         double roughStep = static_cast<double>(zSpan) / 4.0;
         double exponent = std::floor(std::log10(std::max(1e-4, roughStep)));
         double fraction = roughStep / std::pow(10.0, exponent);
@@ -1115,48 +1282,40 @@ void GL3DView::drawBoundingBox() {
         double step = niceFraction * std::pow(10.0, exponent);
         if (step < 1.0) step = 1.0;
 
-        // Size the tick marks and labels appropriately (subtle, non-intrusive)
         float tickLen = diagXY * 0.012f;
         float scaledSpacing = static_cast<float>(step) * m_zScale;
         float tickFontSize = std::min(diagXY * 0.0075f, scaledSpacing * 0.25f);
         tickFontSize = std::max(tickFontSize, diagXY * 0.0035f);
 
-        // First tick at or above z0Raw
         double startZ = std::ceil(static_cast<double>(z0Raw) / step) * step;
 
-        glLineWidth(1.2f);
         for (double zVal = startZ; zVal <= static_cast<double>(z1Raw) + 1e-4; zVal += step) {
             float zPos = zMid + (static_cast<float>(zVal) - zMid) * m_zScale;
 
-            // Draw clean tick notch pointing outward diagonally (-X, -Y) from corner
-            glColor3f(0.65f, 0.70f, 0.80f);
-            glBegin(GL_LINES);
-            glVertex3f(x0, y0, zPos);
-            glVertex3f(x0 - tickLen * 0.7071f, y0 - tickLen * 0.7071f, zPos);
-            glEnd();
+            thickLines.push_back({ x0, y0, zPos, 0.65f, 0.70f, 0.80f, 1.0f });
+            thickLines.push_back({ x0 - tickLen * 0.7071f, y0 - tickLen * 0.7071f, zPos, 0.65f, 0.70f, 0.80f, 1.0f });
 
             int zInt = static_cast<int>(std::round(zVal));
             std::string tickStr = std::to_string(zInt) + "m";
 
             float labelDist = tickLen * 0.7071f + tickFontSize * static_cast<float>(tickStr.size()) * 0.42f + diagXY * 0.003f;
-            drawBillboardLabel(tickStr,
+            addBillboardLabel(boxLines, tickStr,
                                x0 - labelDist * 0.7071f,
                                y0 - labelDist * 0.7071f,
                                zPos,
-                               0.65f, 0.72f, 0.82f,
+                               0.65f, 0.72f, 0.82f, 1.0f,
                                tickFontSize,
-                               m_pitch, m_azimuth);
+                               camRight, camUp);
         }
 
-        // Draw axis title "Z (m)" near the top of the pillar
         float topZPos = z1 + tickFontSize * 1.5f;
-        drawBillboardLabel("Z (m)",
+        addBillboardLabel(boxLines, "Z (m)",
                            x0 - tickLen * 0.7071f,
                            y0 - tickLen * 0.7071f,
                            topZPos,
-                           0.30f, 0.65f, 1.0f,
+                           0.30f, 0.65f, 1.0f, 1.0f,
                            tickFontSize * 1.15f,
-                           m_pitch, m_azimuth);
+                           camRight, camUp);
     }
 
     // South Base Edge (X-Axis) Coordinate Ticks
@@ -1176,22 +1335,18 @@ void GL3DView::drawBoundingBox() {
         float tickFontSize = std::max(diagXY * 0.0075f, diagXY * 0.0035f);
         double startX = std::ceil(static_cast<double>(x0) / step) * step;
 
-        glLineWidth(1.2f);
         for (double xVal = startX; xVal <= static_cast<double>(x1) + 1e-4; xVal += step) {
             float xPos = static_cast<float>(xVal);
-            glColor3f(0.65f, 0.70f, 0.80f);
-            glBegin(GL_LINES);
-            glVertex3f(xPos, y0, z0);
-            glVertex3f(xPos, y0 - tickLen, z0);
-            glEnd();
+            thickLines.push_back({ xPos, y0, z0, 0.65f, 0.70f, 0.80f, 1.0f });
+            thickLines.push_back({ xPos, y0 - tickLen, z0, 0.65f, 0.70f, 0.80f, 1.0f });
 
             int xInt = static_cast<int>(std::round(xVal));
             std::string tickStr = std::to_string(xInt) + "m";
-            drawBillboardLabel(tickStr, xPos, y0 - tickLen * 1.8f, z0,
-                               0.65f, 0.72f, 0.82f, tickFontSize, m_pitch, m_azimuth);
+            addBillboardLabel(boxLines, tickStr, xPos, y0 - tickLen * 1.8f, z0,
+                               0.65f, 0.72f, 0.82f, 1.0f, tickFontSize, camRight, camUp);
         }
-        drawBillboardLabel("X (m)", x1 + tickLen * 2.0f, y0 - tickLen * 1.8f, z0,
-                           0.92f, 0.25f, 0.25f, tickFontSize * 1.15f, m_pitch, m_azimuth);
+        addBillboardLabel(boxLines, "X (m)", x1 + tickLen * 2.0f, y0 - tickLen * 1.8f, z0,
+                           0.92f, 0.25f, 0.25f, 1.0f, tickFontSize * 1.15f, camRight, camUp);
     }
 
     // West Base Edge (Y-Axis) Coordinate Ticks
@@ -1211,32 +1366,26 @@ void GL3DView::drawBoundingBox() {
         float tickFontSize = std::max(diagXY * 0.0075f, diagXY * 0.0035f);
         double startY = std::ceil(static_cast<double>(y0) / step) * step;
 
-        glLineWidth(1.2f);
         for (double yVal = startY; yVal <= static_cast<double>(y1) + 1e-4; yVal += step) {
             float yPos = static_cast<float>(yVal);
-            glColor3f(0.65f, 0.70f, 0.80f);
-            glBegin(GL_LINES);
-            glVertex3f(x0, yPos, z0);
-            glVertex3f(x0 - tickLen, yPos, z0);
-            glEnd();
+            thickLines.push_back({ x0, yPos, z0, 0.65f, 0.70f, 0.80f, 1.0f });
+            thickLines.push_back({ x0 - tickLen, yPos, z0, 0.65f, 0.70f, 0.80f, 1.0f });
 
             int yInt = static_cast<int>(std::round(yVal));
             std::string tickStr = std::to_string(yInt) + "m";
-            drawBillboardLabel(tickStr, x0 - tickLen * 1.8f, yPos, z0,
-                               0.65f, 0.72f, 0.82f, tickFontSize, m_pitch, m_azimuth);
+            addBillboardLabel(boxLines, tickStr, x0 - tickLen * 1.8f, yPos, z0,
+                               0.65f, 0.72f, 0.82f, 1.0f, tickFontSize, camRight, camUp);
         }
-        drawBillboardLabel("Y (m)", x0 - tickLen * 1.8f, y1 + tickLen * 2.0f, z0,
-                           0.20f, 0.85f, 0.35f, tickFontSize * 1.15f, m_pitch, m_azimuth);
+        addBillboardLabel(boxLines, "Y (m)", x0 - tickLen * 1.8f, y1 + tickLen * 2.0f, z0,
+                           0.20f, 0.85f, 0.35f, 1.0f, tickFontSize * 1.15f, camRight, camUp);
     }
 
-    glEnable(GL_LIGHTING);
+    renderLines(boxLines, 1.2f);
+    renderLines(thickLines, 2.0f);
+    renderFlatTriangles(coneTris, false);
 }
 
 void GL3DView::drawRelief() {
-    glDisable(GL_LIGHTING);
-    glColor4f(0.35f, 0.65f, 0.40f, 0.40f);
-    glLineWidth(1.0f);
-
     const auto &m = m_doc->model();
     int rows = m.rows();
     int cols = m.cols();
@@ -1250,41 +1399,43 @@ void GL3DView::drawRelief() {
         return zMid + static_cast<float>(zRaw - zMid) * m_zScale;
     };
 
-    // Wireframe terrain mesh conforming to the actual model surface elevations at index 0
-    glBegin(GL_LINES);
+    std::vector<FlatVertex3D> reliefLines;
+    float r = 0.35f, g = 0.65f, b = 0.40f, a = 0.40f;
+
     // Grid lines along X (running West-East at each core row)
-    for (int r = 1; r <= rMax; ++r) {
-        float y = static_cast<float>(m.yd_val(r));
+    for (int rIdx = 1; rIdx <= rMax; ++rIdx) {
+        float y = static_cast<float>(m.yd_val(rIdx));
         for (int c = 1; c < cMax; ++c) {
             float xA = static_cast<float>(m.xd_val(c));
             float xB = static_cast<float>(m.xd_val(c + 1));
-            float zA = scaleZ(m.z(r, c, 0));
-            float zB = scaleZ(m.z(r, c + 1, 0));
-            glVertex3f(xA, y, zA);
-            glVertex3f(xB, y, zB);
+            float zA = scaleZ(m.z(rIdx, c, 0));
+            float zB = scaleZ(m.z(rIdx, c + 1, 0));
+            reliefLines.push_back({ xA, y, zA, r, g, b, a });
+            reliefLines.push_back({ xB, y, zB, r, g, b, a });
         }
     }
     // Grid lines along Y (running South-North at each core col)
     for (int c = 1; c <= cMax; ++c) {
         float x = static_cast<float>(m.xd_val(c));
-        for (int r = 1; r < rMax; ++r) {
-            float yA = static_cast<float>(m.yd_val(r));
-            float yB = static_cast<float>(m.yd_val(r + 1));
-            float zA = scaleZ(m.z(r, c, 0));
-            float zB = scaleZ(m.z(r + 1, c, 0));
-            glVertex3f(x, yA, zA);
-            glVertex3f(x, yB, zB);
+        for (int rIdx = 1; rIdx < rMax; ++rIdx) {
+            float yA = static_cast<float>(m.yd_val(rIdx));
+            float yB = static_cast<float>(m.yd_val(rIdx + 1));
+            float zA = scaleZ(m.z(rIdx, c, 0));
+            float zB = scaleZ(m.z(rIdx + 1, c, 0));
+            reliefLines.push_back({ x, yA, zA, r, g, b, a });
+            reliefLines.push_back({ x, yB, zB, r, g, b, a });
         }
     }
-    glEnd();
 
-    glEnable(GL_LIGHTING);
+    renderLines(reliefLines, 1.0f);
 }
 
 void GL3DView::drawBodies() {
-    if (m_meshDirty) {
-        m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
-        m_meshDirty = false;
+    initShaders();
+    initBuffers();
+
+    if (m_meshDirty || m_bodyRanges.empty()) {
+        updateBodyBuffers();
     }
 
     if (m_bodyMeshes.empty()) return;
@@ -1297,7 +1448,6 @@ void GL3DView::drawBodies() {
     };
 
     // 1. OPAQUE BODIES PASS
-    glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
@@ -1310,12 +1460,13 @@ void GL3DView::drawBodies() {
         glPolygonOffset(1.0f, 1.0f);
     }
 
-    bool useShader = (m_shadersInitialized && m_shaderProg != nullptr && !m_wireframe);
-    if (useShader) {
+    if (m_shadersInitialized && m_shaderProg) {
         m_shaderProg->bind();
         m_shaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
         m_shaderProg->setUniformValue("u_mvMatrix", m_mvMatrix);
         m_shaderProg->setUniformValue("u_normalMatrix", m_mvMatrix.normalMatrix());
+        m_shaderProg->setUniformValue("u_zMid", zMid);
+        m_shaderProg->setUniformValue("u_zScale", m_zScale);
         m_shaderProg->setUniformValue("u_light0Dir", QVector3D(0.5f, 0.7f, 1.0f));
         m_shaderProg->setUniformValue("u_light1Dir", QVector3D(-0.5f, -0.6f, 0.4f));
         m_shaderProg->setUniformValue("u_light0Color", QVector4D(0.85f, 0.85f, 0.85f, 1.0f));
@@ -1327,40 +1478,14 @@ void GL3DView::drawBodies() {
         m_shaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
         m_shaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
         m_shaderProg->setUniformValue("u_highlightColor", QVector4D(1.0f, 0.85f, 0.15f, 1.0f));
-    }
 
-    for (const auto &mesh : m_bodyMeshes) {
-        if (!mesh.isVisible || (m_transparentBodies && mesh.isTransparent)) continue;
-
-        if (useShader) {
-            m_shaderProg->setUniformValue("u_highlight", (mesh.bodyId == m_selectedBodyId));
+        m_bodyVao.bind();
+        for (const auto &range : m_bodyRanges) {
+            if (range.isTransparent || range.count == 0) continue;
+            m_shaderProg->setUniformValue("u_highlight", (range.bodyId == m_selectedBodyId));
+            glDrawArrays(GL_TRIANGLES, range.first, range.count);
         }
-
-        auto bc = mesh.color;
-        glColor4f(bc.r / 255.0f, bc.g / 255.0f, bc.b / 255.0f, 1.0f);
-
-        glBegin(GL_TRIANGLES);
-        for (const auto &fct : mesh.facets) {
-            if (!m_showBottom &&
-                fct[0].z <= dBot + 1e-3 &&
-                fct[1].z <= dBot + 1e-3 &&
-                fct[2].z <= dBot + 1e-3) {
-                continue;
-            }
-            auto norm = fct.normal();
-            norm.z /= std::max(0.1f, m_zScale);
-            double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
-            if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
-
-            glNormal3d(norm.x, norm.y, norm.z);
-            glVertex3f(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
-            glVertex3f(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
-            glVertex3f(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), scaleZ(fct[2].z));
-        }
-        glEnd();
-    }
-
-    if (useShader) {
+        m_bodyVao.release();
         m_shaderProg->release();
     }
 
@@ -1369,30 +1494,37 @@ void GL3DView::drawBodies() {
 
         // Feature edge outlines for opaque bodies
         if (m_showFeatureEdges) {
-            glDisable(GL_LIGHTING);
+            std::vector<FlatVertex3D> edgeLines;
+            std::vector<FlatVertex3D> selEdgeLines;
+
             for (const auto &mesh : m_bodyMeshes) {
                 if (!mesh.isVisible || (m_transparentBodies && mesh.isTransparent)) continue;
 
                 bool isSelected = (mesh.bodyId == m_selectedBodyId);
+                auto &targetList = isSelected ? selEdgeLines : edgeLines;
+
+                float r, g, b, a;
                 if (isSelected) {
-                    glLineWidth(2.5f);
-                    glColor4f(1.0f, 0.85f, 0.15f, 1.0f);
+                    r = 1.0f; g = 0.85f; b = 0.15f; a = 1.0f;
                 } else {
-                    glLineWidth(1.2f);
                     auto bc = mesh.color;
-                    glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.85f);
+                    r = bc.r * 0.45f / 255.0f;
+                    g = bc.g * 0.45f / 255.0f;
+                    b = bc.b * 0.45f / 255.0f;
+                    a = 0.85f;
                 }
 
-                glBegin(GL_LINES);
                 for (const auto &edge : mesh.featureEdges) {
                     if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
                         continue;
                     }
-                    glVertex3f(static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z));
-                    glVertex3f(static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z));
+                    targetList.push_back({ static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z), r, g, b, a });
+                    targetList.push_back({ static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z), r, g, b, a });
                 }
-                glEnd();
             }
+
+            renderLines(edgeLines, 1.2f);
+            renderLines(selEdgeLines, 2.5f);
         }
     }
 
@@ -1411,7 +1543,7 @@ void GL3DView::drawBodies() {
         struct TransFacet {
             QVector3D p0, p1, p2;
             QVector3D normal;
-            QColor color;
+            float r, g, b, a;
             float depth;
             int bodyId;
         };
@@ -1436,8 +1568,10 @@ void GL3DView::drawBodies() {
             if (!mesh.isVisible || !mesh.isTransparent) continue;
 
             auto bc = mesh.color;
-            int alpha = static_cast<int>(std::clamp(mesh.alpha, 0.15f, 0.85f) * 255.0f);
-            QColor color(bc.r, bc.g, bc.b, alpha);
+            float alphaVal = std::clamp(mesh.alpha, 0.15f, 0.85f);
+            float rVal = bc.r / 255.0f;
+            float gVal = bc.g / 255.0f;
+            float bVal = bc.b / 255.0f;
 
             for (const auto &fct : mesh.facets) {
                 if (!m_showBottom &&
@@ -1447,17 +1581,20 @@ void GL3DView::drawBodies() {
                     continue;
                 }
 
-                QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
-                QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
-                QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), scaleZ(fct[2].z));
+                QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), static_cast<float>(fct[0].z));
+                QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), static_cast<float>(fct[1].z));
+                QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), static_cast<float>(fct[2].z));
 
                 auto norm = fct.normal();
-                norm.z /= std::max(0.1f, m_zScale);
                 double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
                 if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
 
-                float d = eyeDepth((v0 + v1 + v2) * (1.0f / 3.0f));
-                transFacets.push_back({ v0, v1, v2, QVector3D(norm.x, norm.y, norm.z), color, d, mesh.bodyId });
+                QVector3D v0Scaled(v0.x(), v0.y(), scaleZ(v0.z()));
+                QVector3D v1Scaled(v1.x(), v1.y(), scaleZ(v1.z()));
+                QVector3D v2Scaled(v2.x(), v2.y(), scaleZ(v2.z()));
+                float d = eyeDepth((v0Scaled + v1Scaled + v2Scaled) * (1.0f / 3.0f));
+
+                transFacets.push_back({ v0, v1, v2, QVector3D(norm.x, norm.y, norm.z), rVal, gVal, bVal, alphaVal, d, mesh.bodyId });
             }
         }
 
@@ -1466,86 +1603,93 @@ void GL3DView::drawBodies() {
             return a.depth < b.depth;
         });
 
-        glEnable(GL_LIGHTING);
-        glEnable(GL_DEPTH_TEST);
-        glDepthMask(GL_FALSE);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        std::vector<Vertex3D> transVerts;
+        transVerts.reserve(transFacets.size() * 3);
 
-        if (m_wireframe) {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
-        } else {
-            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+        for (const auto &tf : transFacets) {
+            float rVal = tf.r;
+            float gVal = tf.g;
+            float bVal = tf.b;
+            if (tf.bodyId == m_selectedBodyId) {
+                rVal = std::min(1.0f, rVal * 0.6f + 0.40f);
+                gVal = std::min(1.0f, gVal * 0.6f + 0.34f);
+                bVal = std::min(1.0f, bVal * 0.6f + 0.06f);
+            }
+
+            transVerts.push_back({ tf.p0.x(), tf.p0.y(), tf.p0.z(), tf.normal.x(), tf.normal.y(), tf.normal.z(), rVal, gVal, bVal, tf.a });
+            transVerts.push_back({ tf.p1.x(), tf.p1.y(), tf.p1.z(), tf.normal.x(), tf.normal.y(), tf.normal.z(), rVal, gVal, bVal, tf.a });
+            transVerts.push_back({ tf.p2.x(), tf.p2.y(), tf.p2.z(), tf.normal.x(), tf.normal.y(), tf.normal.z(), rVal, gVal, bVal, tf.a });
         }
 
-        if (useShader) {
+        if (!transVerts.empty() && m_shadersInitialized && m_shaderProg) {
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            if (m_wireframe) {
+                glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+            } else {
+                glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            }
+
+            m_transVbo.bind();
+            m_transVbo.allocate(transVerts.data(), static_cast<int>(transVerts.size() * sizeof(Vertex3D)));
+            m_transVbo.release();
+
             m_shaderProg->bind();
             m_shaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
             m_shaderProg->setUniformValue("u_mvMatrix", m_mvMatrix);
             m_shaderProg->setUniformValue("u_normalMatrix", m_mvMatrix.normalMatrix());
-            m_shaderProg->setUniformValue("u_light0Dir", QVector3D(0.5f, 0.7f, 1.0f));
-            m_shaderProg->setUniformValue("u_light1Dir", QVector3D(-0.5f, -0.6f, 0.4f));
-            m_shaderProg->setUniformValue("u_light0Color", QVector4D(0.85f, 0.85f, 0.85f, 1.0f));
-            m_shaderProg->setUniformValue("u_light1Color", QVector4D(0.30f, 0.30f, 0.35f, 1.0f));
-            m_shaderProg->setUniformValue("u_ambientColor", QVector4D(0.28f, 0.28f, 0.30f, 1.0f));
-            m_shaderProg->setUniformValue("u_enableFog", m_showDepthFog);
-            float effDist = m_distance / std::max(0.01f, m_zoom);
-            m_shaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
-            m_shaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
-            m_shaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
-            m_shaderProg->setUniformValue("u_highlightColor", QVector4D(1.0f, 0.85f, 0.15f, 1.0f));
-        }
+            m_shaderProg->setUniformValue("u_zMid", zMid);
+            m_shaderProg->setUniformValue("u_zScale", m_zScale);
+            m_shaderProg->setUniformValue("u_highlight", false);
 
-        glBegin(GL_TRIANGLES);
-        for (const auto &tf : transFacets) {
-            if (useShader) {
-                m_shaderProg->setUniformValue("u_highlight", (tf.bodyId == m_selectedBodyId));
-            }
-            glColor4f(tf.color.redF(), tf.color.greenF(), tf.color.blueF(), tf.color.alphaF());
-            glNormal3f(tf.normal.x(), tf.normal.y(), tf.normal.z());
-            glVertex3f(tf.p0.x(), tf.p0.y(), tf.p0.z());
-            glVertex3f(tf.p1.x(), tf.p1.y(), tf.p1.z());
-            glVertex3f(tf.p2.x(), tf.p2.y(), tf.p2.z());
-        }
-        glEnd();
-
-        if (useShader) {
+            m_transVao.bind();
+            glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(transVerts.size()));
+            m_transVao.release();
             m_shaderProg->release();
+
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
         }
 
         if (!m_wireframe && m_showFeatureEdges) {
-            glDisable(GL_LIGHTING);
+            std::vector<FlatVertex3D> transEdgeLines;
+            std::vector<FlatVertex3D> transSelEdgeLines;
+
             for (const auto &mesh : m_bodyMeshes) {
                 if (!mesh.isVisible || !mesh.isTransparent) continue;
 
                 bool isSelected = (mesh.bodyId == m_selectedBodyId);
+                auto &targetList = isSelected ? transSelEdgeLines : transEdgeLines;
+
+                float r, g, b, a;
                 if (isSelected) {
-                    glLineWidth(2.5f);
-                    glColor4f(1.0f, 0.85f, 0.15f, 1.0f);
+                    r = 1.0f; g = 0.85f; b = 0.15f; a = 1.0f;
                 } else {
-                    glLineWidth(1.2f);
                     auto bc = mesh.color;
-                    glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.65f);
+                    r = bc.r * 0.45f / 255.0f;
+                    g = bc.g * 0.45f / 255.0f;
+                    b = bc.b * 0.45f / 255.0f;
+                    a = 0.65f;
                 }
 
-                glBegin(GL_LINES);
                 for (const auto &edge : mesh.featureEdges) {
                     if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
                         continue;
                     }
-                    glVertex3f(static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z));
-                    glVertex3f(static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z));
+                    targetList.push_back({ static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z), r, g, b, a });
+                    targetList.push_back({ static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z), r, g, b, a });
                 }
-                glEnd();
             }
-        }
 
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
+            renderLines(transEdgeLines, 1.2f);
+            renderLines(transSelEdgeLines, 2.5f);
+        }
     }
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-    glEnable(GL_LIGHTING);
 }
 
 QMdiArea *GL3DView::findMdiArea() const {
@@ -1615,99 +1759,104 @@ void GL3DView::drawProfilePlane() {
         slices.push_back({ m_doc->profileOrientation(), m_doc->profileIndex(), true });
     }
 
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
     // 1. Semi-transparent slice planes pass
     if (m_transparentProfiles) {
-        glDepthMask(GL_FALSE);
-        glBegin(GL_QUADS);
+        std::vector<FlatVertex3D> profileTris;
+
+        auto addQuad = [&](const QVector3D &p0, const QVector3D &p1, const QVector3D &p2, const QVector3D &p3,
+                           float r, float g, float b, float a) {
+            profileTris.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+            profileTris.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+            profileTris.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+
+            profileTris.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+            profileTris.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+            profileTris.push_back({ p3.x(), p3.y(), p3.z(), r, g, b, a });
+        };
 
         // Inactive profile planes
         for (const auto &sl : slices) {
             if (sl.isActive) continue;
-            glColor4f(0.35f, 0.55f, 0.85f, 0.08f);
+            float r = 0.35f, g = 0.55f, b = 0.85f, a = 0.08f;
             if (sl.orient == ProfileOrientation::EastWest) {
                 float y = static_cast<float>(m.yd_val(sl.index + 1));
-                glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
-                glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
+                addQuad(QVector3D(x0, y, z0), QVector3D(x1, y, z0), QVector3D(x1, y, z1), QVector3D(x0, y, z1), r, g, b, a);
             } else {
                 float x = static_cast<float>(m.xd_val(sl.index + 1));
-                glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
-                glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+                addQuad(QVector3D(x, y0, z0), QVector3D(x, y1, z0), QVector3D(x, y1, z1), QVector3D(x, y0, z1), r, g, b, a);
             }
         }
 
         // Active profile plane
         for (const auto &sl : slices) {
             if (!sl.isActive) continue;
-            glColor4f(0.96f, 0.28f, 0.22f, 0.26f);
+            float r = 0.96f, g = 0.28f, b = 0.22f, a = 0.26f;
             if (sl.orient == ProfileOrientation::EastWest) {
                 float y = static_cast<float>(m.yd_val(sl.index + 1));
-                glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
-                glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
+                addQuad(QVector3D(x0, y, z0), QVector3D(x1, y, z0), QVector3D(x1, y, z1), QVector3D(x0, y, z1), r, g, b, a);
             } else {
                 float x = static_cast<float>(m.xd_val(sl.index + 1));
-                glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
-                glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+                addQuad(QVector3D(x, y0, z0), QVector3D(x, y1, z0), QVector3D(x, y1, z1), QVector3D(x, y0, z1), r, g, b, a);
             }
         }
-        glEnd();
-        glDepthMask(GL_TRUE);
+
+        renderFlatTriangles(profileTris, true);
     }
 
     // 2. Profile outlines
-    glLineWidth(1.2f);
-    glColor4f(0.35f, 0.60f, 0.85f, 0.50f);
+    std::vector<FlatVertex3D> inactiveLines;
+    std::vector<FlatVertex3D> activeLines;
+    std::vector<FlatVertex3D> ridgeLines;
+
+    auto addLoopLines = [&](std::vector<FlatVertex3D> &target,
+                            const QVector3D &p0, const QVector3D &p1, const QVector3D &p2, const QVector3D &p3,
+                            float r, float g, float b, float a) {
+        target.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+        target.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+
+        target.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+        target.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+
+        target.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+        target.push_back({ p3.x(), p3.y(), p3.z(), r, g, b, a });
+
+        target.push_back({ p3.x(), p3.y(), p3.z(), r, g, b, a });
+        target.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+    };
+
     for (const auto &sl : slices) {
         if (sl.isActive) continue;
-        glBegin(GL_LINE_LOOP);
+        float r = 0.35f, g = 0.60f, b = 0.85f, a = 0.50f;
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
+            addLoopLines(inactiveLines, QVector3D(x0, y, z0), QVector3D(x1, y, z0), QVector3D(x1, y, z1), QVector3D(x0, y, z1), r, g, b, a);
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+            addLoopLines(inactiveLines, QVector3D(x, y0, z0), QVector3D(x, y1, z0), QVector3D(x, y1, z1), QVector3D(x, y0, z1), r, g, b, a);
         }
-        glEnd();
     }
 
-    // Active profile highlighted outline
     for (const auto &sl : slices) {
         if (!sl.isActive) continue;
-        glLineWidth(2.8f);
-        glColor4f(0.96f, 0.20f, 0.15f, 0.95f);
-        glBegin(GL_LINE_LOOP);
+        float r = 0.96f, g = 0.20f, b = 0.15f, a = 0.95f;
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
+            addLoopLines(activeLines, QVector3D(x0, y, z0), QVector3D(x1, y, z0), QVector3D(x1, y, z1), QVector3D(x0, y, z1), r, g, b, a);
+            // Golden accent line on top ridge
+            ridgeLines.push_back({ x0, y, z1, 1.0f, 0.85f, 0.20f, 0.95f });
+            ridgeLines.push_back({ x1, y, z1, 1.0f, 0.85f, 0.20f, 0.95f });
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+            addLoopLines(activeLines, QVector3D(x, y0, z0), QVector3D(x, y1, z0), QVector3D(x, y1, z1), QVector3D(x, y0, z1), r, g, b, a);
+            // Golden accent line on top ridge
+            ridgeLines.push_back({ x, y0, z1, 1.0f, 0.85f, 0.20f, 0.95f });
+            ridgeLines.push_back({ x, y1, z1, 1.0f, 0.85f, 0.20f, 0.95f });
         }
-        glEnd();
-
-        // Golden accent line on top ridge of active profile
-        glLineWidth(3.0f);
-        glColor4f(1.0f, 0.85f, 0.20f, 0.95f);
-        glBegin(GL_LINES);
-        if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z1); glVertex3f(x1, y, z1);
-        } else {
-            float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z1); glVertex3f(x, y1, z1);
-        }
-        glEnd();
     }
 
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
+    renderLines(inactiveLines, 1.2f);
+    renderLines(activeLines, 2.8f);
+    renderLines(ridgeLines, 3.0f);
 }
 
 int GL3DView::hitTestGizmo(const QPoint &pos) {
@@ -1759,149 +1908,116 @@ int GL3DView::hitTestGizmo(const QPoint &pos) {
     return -1;
 }
 
-void GL3DView::drawOrientationHud() {
+void GL3DView::drawOrientationHud(QPainter &painter) {
     int hudSize = 130;
-    qreal dpr = devicePixelRatioF();
-    int physSize = static_cast<int>(hudSize * dpr);
-    int margin = static_cast<int>(16 * dpr);
+    int margin = 16;
+    int x0 = margin;
+    int y0 = height() - margin - hudSize;
+    m_gizmoRect = QRect(x0, y0, hudSize, hudSize);
 
-    GLint prevViewport[4];
-    glGetIntegerv(GL_VIEWPORT, prevViewport);
+    float cx = x0 + hudSize * 0.5f;
+    float cy = y0 + hudSize * 0.5f;
+    float r = hudSize * 0.42f;
 
-    // Use glScissor so clearing depth inside HUD does NOT wipe the main 3D depth buffer
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(margin, margin, physSize, physSize);
-    glViewport(margin, margin, physSize, physSize);
+    float pRad = (m_pitch - 90.0f) * 3.14159265f / 180.0f;
+    float azRad = m_azimuth * 3.14159265f / 180.0f;
+    float cosAz = std::cos(azRad), sinAz = std::sin(azRad);
+    float cosP = std::cos(pRad), sinP = std::sin(pRad);
 
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    glOrtho(-1.8, 1.8, -1.8, 1.8, -10.0, 10.0);
+    auto projAxis = [&](float ax, float ay, float az) -> QPointF {
+        float rx = ax * cosAz - ay * sinAz;
+        float ry = ax * sinAz + ay * cosAz;
+        float rz = az;
+        float px = rx;
+        float py = ry * cosP - rz * sinP;
+        return QPointF(cx + px * r, cy - py * r);
+    };
 
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
+    painter.save();
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
 
-    glClear(GL_DEPTH_BUFFER_BIT);
-    glDisable(GL_SCISSOR_TEST);
+    // 1. Frosted circular background plate
+    painter.setPen(QPen(QColor(90, 105, 130, 180), 1.5));
+    painter.setBrush(QColor(18, 24, 34, 185));
+    painter.drawEllipse(QPointF(cx, cy), r * 1.18f, r * 1.18f);
 
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    // 1. Frosted circular background plate in screen space
-    glColor4f(0.12f, 0.14f, 0.18f, 0.72f);
-    glBegin(GL_TRIANGLE_FAN);
-    glVertex2f(0.0f, 0.0f);
+    // 2. Compass ring on horizontal XY plane
+    painter.setPen(QPen(QColor(120, 140, 170, 90), 1.0));
+    painter.setBrush(Qt::NoBrush);
+    QPolygonF xyRing;
     for (int i = 0; i <= 36; ++i) {
-        float angle = 2.0f * 3.14159265f * static_cast<float>(i) / 36.0f;
-        glVertex2f(std::cos(angle) * 1.68f, std::sin(angle) * 1.68f);
+        float ang = 2.0f * 3.14159265f * static_cast<float>(i) / 36.0f;
+        xyRing << projAxis(std::cos(ang) * 0.90f, std::sin(ang) * 0.90f, 0.0f);
     }
-    glEnd();
+    painter.drawPolygon(xyRing);
 
-    // Outer border ring
-    glColor4f(0.35f, 0.42f, 0.52f, 0.85f);
-    glLineWidth(1.8f);
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < 36; ++i) {
-        float angle = 2.0f * 3.14159265f * static_cast<float>(i) / 36.0f;
-        glVertex2f(std::cos(angle) * 1.68f, std::sin(angle) * 1.68f);
+    // 3. Axes
+    struct AxisDrawInfo {
+        int id;
+        float ax, ay, az;
+        QString label;
+        QColor normalColor;
+        QColor hoverColor;
+        bool isNegative;
+    };
+
+    AxisDrawInfo axes[] = {
+        { 0,  1.0f,  0.0f,  0.0f, "E",  QColor(235, 60, 60),   QColor(255, 110, 110), false },
+        { 1, -1.0f,  0.0f,  0.0f, "W",  QColor(140, 155, 175), QColor(200, 215, 235), true  },
+        { 2,  0.0f,  1.0f,  0.0f, "N",  QColor(40, 200, 85),   QColor(80, 240, 130),  false },
+        { 3,  0.0f, -1.0f,  0.0f, "S",  QColor(140, 155, 175), QColor(200, 215, 235), true  },
+        { 4,  0.0f,  0.0f,  1.0f, "UP", QColor(50, 140, 255),  QColor(110, 180, 255), false },
+        { 5,  0.0f,  0.0f, -1.0f, "DN", QColor(140, 155, 175), QColor(200, 215, 235), true  },
+    };
+
+    auto axisDepth = [&](const AxisDrawInfo &a) -> float {
+        float ry = a.ax * sinAz + a.ay * cosAz;
+        return ry * sinP + a.az * cosP;
+    };
+
+    std::vector<AxisDrawInfo> sortedAxes(std::begin(axes), std::end(axes));
+    std::sort(sortedAxes.begin(), sortedAxes.end(), [&](const AxisDrawInfo &a, const AxisDrawInfo &b) {
+        return axisDepth(a) < axisDepth(b);
+    });
+
+    QFont labelFont = painter.font();
+    labelFont.setPixelSize(11);
+    labelFont.setBold(true);
+    painter.setFont(labelFont);
+
+    QPointF pCenter(cx, cy);
+
+    for (const auto &ax : sortedAxes) {
+        bool isHovered = (m_gizmoHoverAxis == ax.id);
+        QColor col = isHovered ? ax.hoverColor : ax.normalColor;
+        float width = isHovered ? (ax.isNegative ? 2.5f : 3.5f) : (ax.isNegative ? 1.5f : 2.5f);
+
+        QPointF pEnd = projAxis(ax.ax * 0.85f, ax.ay * 0.85f, ax.az * 0.85f);
+        QPointF pLabel = projAxis(ax.ax * 1.05f, ax.ay * 1.05f, ax.az * 1.05f);
+
+        QPen pen(col, width);
+        if (ax.isNegative) {
+            pen.setStyle(Qt::DashLine);
+        }
+        painter.setPen(pen);
+        painter.drawLine(pCenter, pEnd);
+
+        painter.setBrush(col);
+        painter.setPen(QPen(QColor(20, 24, 30, 200), 1.0));
+        float nodeRadius = isHovered ? 5.0f : 3.5f;
+        painter.drawEllipse(pEnd, nodeRadius, nodeRadius);
+
+        painter.setPen(col);
+        QRectF textRect(pLabel.x() - 12.0, pLabel.y() - 8.0, 24.0, 16.0);
+        painter.drawText(textRect, Qt::AlignCenter, ax.label);
     }
-    glEnd();
 
-    // 2. 3D Rotating Coordinate Tripod
-    glPushMatrix();
-    glRotatef(m_pitch - 90.0f, 1.0f, 0.0f, 0.0f);
-    glRotatef(m_azimuth, 0.0f, 0.0f, 1.0f);
+    painter.setBrush(QColor(240, 245, 255));
+    painter.setPen(QPen(QColor(30, 35, 45), 1.0));
+    painter.drawEllipse(pCenter, 3.5, 3.5);
 
-    // Compass ring on horizontal (XY) plane
-    glColor4f(0.40f, 0.50f, 0.65f, 0.45f);
-    glLineWidth(1.2f);
-    glBegin(GL_LINE_LOOP);
-    for (int i = 0; i < 36; ++i) {
-        float angle = 2.0f * 3.14159265f * static_cast<float>(i) / 36.0f;
-        glVertex3f(std::cos(angle) * 0.92f, std::sin(angle) * 0.92f, 0.0f);
-    }
-    glEnd();
-
-    // Cardinal tick marks
-    glBegin(GL_LINES);
-    for (int i = 0; i < 8; ++i) {
-        float angle = static_cast<float>(i) * (3.14159265f / 4.0f);
-        float ca = std::cos(angle), sa = std::sin(angle);
-        float r1 = (i % 2 == 0) ? 0.82f : 0.87f;
-        glVertex3f(ca * r1, sa * r1, 0.0f);
-        glVertex3f(ca * 0.92f, sa * 0.92f, 0.0f);
-    }
-    glEnd();
-
-    // North (+Y) Axis & Cone - Vibrant Green (Highlight if hovered)
-    if (m_gizmoHoverAxis == 2) glColor3f(0.40f, 1.0f, 0.60f); else glColor3f(0.18f, 0.85f, 0.35f);
-    glLineWidth(m_gizmoHoverAxis == 2 ? 3.8f : 2.8f);
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.0f, 0.88f, 0.0f);
-    glEnd();
-    drawArrowCone(0.0f, 0.88f, 0.0f, 0.0f, 1.0f, 0.0f, 0.22f, 0.075f);
-
-    // South (-Y) Axis & Cone
-    if (m_gizmoHoverAxis == 3) glColor3f(0.85f, 0.90f, 1.0f); else glColor3f(0.55f, 0.62f, 0.72f);
-    glLineWidth(m_gizmoHoverAxis == 3 ? 3.0f : 1.8f);
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.0f, -0.68f, 0.0f);
-    glEnd();
-    drawArrowCone(0.0f, -0.68f, 0.0f, 0.0f, -1.0f, 0.0f, 0.16f, 0.055f);
-
-    // East (+X) Axis & Cone - Vibrant Red
-    if (m_gizmoHoverAxis == 0) glColor3f(1.0f, 0.45f, 0.45f); else glColor3f(0.92f, 0.22f, 0.22f);
-    glLineWidth(m_gizmoHoverAxis == 0 ? 3.8f : 2.8f);
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.88f, 0.0f, 0.0f);
-    glEnd();
-    drawArrowCone(0.88f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.22f, 0.075f);
-
-    // West (-X) Axis & Cone
-    if (m_gizmoHoverAxis == 1) glColor3f(0.85f, 0.90f, 1.0f); else glColor3f(0.55f, 0.62f, 0.72f);
-    glLineWidth(m_gizmoHoverAxis == 1 ? 3.0f : 1.8f);
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(-0.68f, 0.0f, 0.0f);
-    glEnd();
-    drawArrowCone(-0.68f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.16f, 0.055f);
-
-    // Up (+Z) Axis & Cone - Vibrant Royal Blue
-    if (m_gizmoHoverAxis == 4) glColor3f(0.45f, 0.80f, 1.0f); else glColor3f(0.20f, 0.60f, 1.0f);
-    glLineWidth(m_gizmoHoverAxis == 4 ? 3.8f : 2.8f);
-    glBegin(GL_LINES);
-    glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.0f, 0.0f, 0.88f);
-    glEnd();
-    drawArrowCone(0.0f, 0.0f, 0.88f, 0.0f, 0.0f, 1.0f, 0.22f, 0.075f);
-
-    // Center pivot node
-    glColor3f(0.92f, 0.92f, 0.95f);
-    glPointSize(5.0f);
-    glBegin(GL_POINTS);
-    glVertex3f(0.0f, 0.0f, 0.0f);
-    glEnd();
-
-    // Labels
-    float hudLabelSize = 0.24f;
-    drawBillboardLabel("N",  0.0f,  1.18f, 0.0f, 0.20f, 0.95f, 0.40f, hudLabelSize, m_pitch, m_azimuth);
-    drawBillboardLabel("S",  0.0f, -0.96f, 0.0f, 0.75f, 0.82f, 0.90f, hudLabelSize * 0.85f, m_pitch, m_azimuth);
-    drawBillboardLabel("E",  1.18f, 0.0f,  0.0f, 1.0f,  0.30f, 0.30f, hudLabelSize, m_pitch, m_azimuth);
-    drawBillboardLabel("W", -0.96f, 0.0f,  0.0f, 0.75f, 0.82f, 0.90f, hudLabelSize * 0.85f, m_pitch, m_azimuth);
-    drawBillboardLabel("UP", 0.0f,  0.0f,  1.18f, 0.35f, 0.75f, 1.0f,  hudLabelSize * 0.90f, m_pitch, m_azimuth);
-
-    glPopMatrix(); // End 3D rotating triad
-
-    // Restore ModelView & Projection
-    glMatrixMode(GL_MODELVIEW);
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-
-    // Restore Viewport
-    glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
-    glEnable(GL_LIGHTING);
+    painter.restore();
 }
 
 void GL3DView::animateToCamera(float targetPitch, float targetAzimuth, float targetDist, const QVector3D *targetLookAt, int durationMs) {
@@ -2447,8 +2563,11 @@ void GL3DView::setShowFeatureEdges(bool show) {
 }
 
 void GL3DView::setShowBottom(bool show) {
-    m_showBottom = show;
-    update();
+    if (m_showBottom != show) {
+        m_showBottom = show;
+        m_meshDirty = true;
+        update();
+    }
 }
 
 void GL3DView::setShowOuterFacets(bool show) {
@@ -2470,6 +2589,7 @@ void GL3DView::setShowOrientationIndicator(bool show) {
 void GL3DView::setShowTransparentBodies(bool enable) {
     if (m_transparentBodies != enable) {
         m_transparentBodies = enable;
+        m_meshDirty = true;
         update();
     }
 }

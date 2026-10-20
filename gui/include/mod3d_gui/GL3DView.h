@@ -8,9 +8,12 @@
 #include <QMatrix4x4>
 #include <QRect>
 
+#include <QOpenGLBuffer>
+#include <QOpenGLVertexArrayObject>
+#include <QOpenGLShaderProgram>
+
 class QMdiArea;
 class QVariantAnimation;
-class QOpenGLShaderProgram;
 
 namespace mod3d_gui {
 
@@ -18,6 +21,24 @@ class GL3DView : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
 
 public:
+    struct BodyRange {
+        int bodyId{0};
+        int first{0};
+        int count{0};
+        bool isTransparent{false};
+    };
+
+    struct Vertex3D {
+        float x, y, z;
+        float nx, ny, nz;
+        float r, g, b, a;
+    };
+
+    struct FlatVertex3D {
+        float x, y, z;
+        float r, g, b, a;
+    };
+
     explicit GL3DView(ModelDocument *doc, QWidget *parent = nullptr);
     ~GL3DView() override;
 
@@ -118,11 +139,16 @@ public:
 private:
     void setupMatrices(int w, int h);
     void initShaders();
+    void initBuffers();
+    void updateBodyBuffers();
+    void renderLines(const std::vector<FlatVertex3D> &lines, float lineWidth = 1.0f);
+    void renderFlatTriangles(const std::vector<FlatVertex3D> &tris, bool blend = false);
+
     void drawBoundingBox();
     void drawBodies();
     void drawProfilePlane();
     void drawRelief();
-    void drawOrientationHud();
+    void drawOrientationHud(QPainter &painter);
     void drawPivotIndicator();
     void showContextMenu(const QPoint &globalPos);
     QMdiArea *findMdiArea() const;
@@ -169,9 +195,26 @@ private:
     // Smooth animation
     QVariantAnimation *m_camAnim{nullptr};
 
-    // Shaders
+    // Modern Shaders
     QOpenGLShaderProgram *m_shaderProg{nullptr};
+    QOpenGLShaderProgram *m_flatShaderProg{nullptr};
     bool m_shadersInitialized{false};
+
+    // GPU Buffers & VAOs
+    std::vector<BodyRange> m_bodyRanges;
+    QOpenGLVertexArrayObject m_bodyVao;
+    QOpenGLBuffer m_bodyVbo{QOpenGLBuffer::VertexBuffer};
+
+    QOpenGLVertexArrayObject m_transVao;
+    QOpenGLBuffer m_transVbo{QOpenGLBuffer::VertexBuffer};
+
+    QOpenGLVertexArrayObject m_linesVao;
+    QOpenGLBuffer m_linesVbo{QOpenGLBuffer::VertexBuffer};
+
+    QOpenGLVertexArrayObject m_flatTrisVao;
+    QOpenGLBuffer m_flatTrisVbo{QOpenGLBuffer::VertexBuffer};
+
+    bool m_buffersInitialized{false};
 
     // Render toggles
     bool m_wireframe{false};

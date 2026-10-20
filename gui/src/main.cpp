@@ -5,8 +5,10 @@
 #include <QSurfaceFormat>
 
 int main(int argc, char *argv[]) {
-    // Modern 3D graphics defaults: 24-bit depth buffer, 8-bit stencil, 4x MSAA
+    // Modern 3D graphics defaults: 24-bit depth buffer, 8-bit stencil, 4x MSAA, OpenGL 4.1 Core Profile
     QSurfaceFormat fmt;
+    fmt.setVersion(4, 1);
+    fmt.setProfile(QSurfaceFormat::CoreProfile);
     fmt.setDepthBufferSize(24);
     fmt.setStencilBufferSize(8);
     fmt.setSamples(4);
