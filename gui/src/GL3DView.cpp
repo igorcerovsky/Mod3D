@@ -115,47 +115,97 @@ void drawStrokeChar(char c, float cx, float cy, float size) {
         glVertex2f(x1, ym - h * 0.5f); glVertex2f(x0, y0);
         break;
     case '0':
+        glVertex2f(x0, y0); glVertex2f(x1, y0);
+        glVertex2f(x1, y0); glVertex2f(x1, y1);
+        glVertex2f(x1, y1); glVertex2f(x0, y1);
+        glVertex2f(x0, y1); glVertex2f(x0, y0);
+        break;
     case '1':
+        glVertex2f(xm, y0); glVertex2f(xm, y1);
+        glVertex2f(x0, y1 - h * 0.25f); glVertex2f(xm, y1);
+        glVertex2f(x0 + w * 0.2f, y0); glVertex2f(x1 - w * 0.2f, y0);
+        break;
     case '2':
+        glVertex2f(x0, y1); glVertex2f(x1, y1);
+        glVertex2f(x1, y1); glVertex2f(x1, ym);
+        glVertex2f(x1, ym); glVertex2f(x0, y0);
+        glVertex2f(x0, y0); glVertex2f(x1, y0);
+        break;
     case '3':
+        glVertex2f(x0, y1); glVertex2f(x1, y1);
+        glVertex2f(x1, y1); glVertex2f(x1, ym);
+        glVertex2f(x0 + w * 0.25f, ym); glVertex2f(x1, ym);
+        glVertex2f(x1, ym); glVertex2f(x1, y0);
+        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        break;
     case '4':
+        glVertex2f(x0, y1); glVertex2f(x0, ym);
+        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        glVertex2f(x1 - w * 0.2f, y1); glVertex2f(x1 - w * 0.2f, y0);
+        break;
     case '5':
+        glVertex2f(x1, y1); glVertex2f(x0, y1);
+        glVertex2f(x0, y1); glVertex2f(x0, ym);
+        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        glVertex2f(x1, ym); glVertex2f(x1, y0);
+        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        break;
     case '6':
+        glVertex2f(x1, y1); glVertex2f(x0, y1);
+        glVertex2f(x0, y1); glVertex2f(x0, y0);
+        glVertex2f(x0, y0); glVertex2f(x1, y0);
+        glVertex2f(x1, y0); glVertex2f(x1, ym);
+        glVertex2f(x1, ym); glVertex2f(x0, ym);
+        break;
     case '7':
+        glVertex2f(x0, y1); glVertex2f(x1, y1);
+        glVertex2f(x1, y1); glVertex2f(x0 + w * 0.25f, y0);
+        break;
     case '8':
+        glVertex2f(x0, y0); glVertex2f(x1, y0);
+        glVertex2f(x1, y0); glVertex2f(x1, y1);
+        glVertex2f(x1, y1); glVertex2f(x0, y1);
+        glVertex2f(x0, y1); glVertex2f(x0, y0);
+        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        break;
     case '9':
+        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        glVertex2f(x0, ym); glVertex2f(x0, y1);
+        glVertex2f(x0, y1); glVertex2f(x1, y1);
+        glVertex2f(x1, y1); glVertex2f(x1, y0);
+        glVertex2f(x1, y0); glVertex2f(x0, y0);
+        break;
     case '-':
+        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        break;
     case '+':
+        glVertex2f(x0, ym); glVertex2f(x1, ym);
+        glVertex2f(xm, y0 + h * 0.15f); glVertex2f(xm, y1 - h * 0.15f);
+        break;
     case '.':
+        glVertex2f(xm - w * 0.2f, y0); glVertex2f(xm + w * 0.2f, y0);
+        break;
+    case '(':
+        glVertex2f(x1, y1); glVertex2f(x0, ym);
+        glVertex2f(x0, ym); glVertex2f(x1, y0);
+        break;
+    case ')':
+        glVertex2f(x0, y1); glVertex2f(x1, ym);
+        glVertex2f(x1, ym); glVertex2f(x0, y0);
+        break;
     case 'm':
+        glVertex2f(x0, y0); glVertex2f(x0, ym + h * 0.1f);
+        glVertex2f(x0, ym + h * 0.1f); glVertex2f(xm, ym + h * 0.1f);
+        glVertex2f(xm, ym + h * 0.1f); glVertex2f(xm, y0);
+        glVertex2f(xm, ym + h * 0.1f); glVertex2f(x1, ym + h * 0.1f);
+        glVertex2f(x1, ym + h * 0.1f); glVertex2f(x1, y0);
+        break;
     case 'k':
-        // Simplified basic strokes for numbers and units
-        if (c == '-') {
-            glVertex2f(x0, ym); glVertex2f(x1, ym);
-        } else if (c == '+') {
-            glVertex2f(x0, ym); glVertex2f(x1, ym);
-            glVertex2f(xm, y0); glVertex2f(xm, y1);
-        } else if (c == '.') {
-            glVertex2f(xm - w * 0.2f, y0); glVertex2f(xm + w * 0.2f, y0);
-        } else if (c == '1') {
-            glVertex2f(xm, y0); glVertex2f(xm, y1);
-        } else if (c == 'm') {
-            glVertex2f(x0, y0); glVertex2f(x0, ym);
-            glVertex2f(x0, ym); glVertex2f(xm, ym);
-            glVertex2f(xm, ym); glVertex2f(xm, y0);
-            glVertex2f(xm, ym); glVertex2f(x1, ym);
-            glVertex2f(x1, ym); glVertex2f(x1, y0);
-        } else if (c == 'k') {
-            glVertex2f(x0, y0); glVertex2f(x0, y1);
-            glVertex2f(x0, ym); glVertex2f(x1, y1);
-            glVertex2f(x0, ym); glVertex2f(x1, y0);
-        } else {
-            // Box number fallback
-            glVertex2f(x0, y0); glVertex2f(x1, y0);
-            glVertex2f(x1, y0); glVertex2f(x1, y1);
-            glVertex2f(x1, y1); glVertex2f(x0, y1);
-            glVertex2f(x0, y1); glVertex2f(x0, y0);
-        }
+        glVertex2f(x0, y0); glVertex2f(x0, y1);
+        glVertex2f(x0, ym); glVertex2f(x1, y1);
+        glVertex2f(x0, ym); glVertex2f(x1, y0);
+        break;
+    case ' ':
         break;
     default:
         break;
@@ -186,13 +236,13 @@ void drawBillboardLabel(const std::string &text, float x, float y, float z,
     glRotatef(-(pitch - 90.0f), 1.0f, 0.0f, 0.0f);
 
     // 1. Dark outline / drop shadow for legibility
-    glColor4f(0.06f, 0.07f, 0.10f, 0.90f);
-    glLineWidth(3.8f);
+    glColor4f(0.06f, 0.07f, 0.10f, 0.85f);
+    glLineWidth(2.8f);
     drawStrokeString(text, size);
 
-    // 2. Vivid foreground core
+    // 2. Foreground core
     glColor4f(r, g, b, 1.0f);
-    glLineWidth(2.2f);
+    glLineWidth(1.6f);
     drawStrokeString(text, size);
 
     glPopMatrix();
@@ -805,15 +855,20 @@ void GL3DView::drawBoundingBox() {
     glVertex3f(x0, y1, z0); glVertex3f(x0, y1, z1);
     glEnd();
 
+    float dx = x1 - x0;
+    float dy = y1 - y0;
+    float diagXY = std::sqrt(dx * dx + dy * dy);
+    if (diagXY < 1.0f) diagXY = 1000.0f;
+
     // Coordinate orientation axis tripod at origin corner (x0, y0, z0)
-    float axisLen = static_cast<float>((x1 - x0) * 0.14f);
+    float axisLen = diagXY * 0.055f;
     float coneLen = axisLen * 0.22f;
     float coneRadius = axisLen * 0.065f;
-    float labelSize = axisLen * 0.18f;
+    float labelSize = axisLen * 0.22f;
 
     // East (+X) Axis - Red
     glColor3f(0.92f, 0.22f, 0.22f);
-    glLineWidth(2.5f);
+    glLineWidth(2.0f);
     glBegin(GL_LINES);
     glVertex3f(x0, y0, z0); glVertex3f(x0 + axisLen, y0, z0);
     glEnd();
@@ -823,7 +878,7 @@ void GL3DView::drawBoundingBox() {
 
     // North (+Y) Axis - Green
     glColor3f(0.18f, 0.80f, 0.32f);
-    glLineWidth(2.5f);
+    glLineWidth(2.0f);
     glBegin(GL_LINES);
     glVertex3f(x0, y0, z0); glVertex3f(x0, y0 + axisLen, z0);
     glEnd();
@@ -831,18 +886,8 @@ void GL3DView::drawBoundingBox() {
     drawBillboardLabel("N", x0, y0 + axisLen + coneLen * 0.9f, z0,
                        0.20f, 0.85f, 0.35f, labelSize, m_pitch, m_azimuth);
 
-    // Up (+Z) Axis - Blue
-    glColor3f(0.20f, 0.55f, 0.95f);
-    glLineWidth(2.5f);
-    glBegin(GL_LINES);
-    glVertex3f(x0, y0, z0); glVertex3f(x0, y0, z0 + axisLen);
-    glEnd();
-    drawArrowCone(x0, y0, z0 + axisLen, 0.0f, 0.0f, 1.0f, coneLen, coneRadius);
-    drawBillboardLabel("UP", x0, y0, z0 + axisLen + coneLen * 0.9f,
-                       0.25f, 0.65f, 1.0f, labelSize * 0.85f, m_pitch, m_azimuth);
-
     // Compass cardinal direction labels on outer bounding box top edges
-    float edgeLabelSize = (x1 - x0) * 0.035f;
+    float edgeLabelSize = diagXY * 0.016f;
     float midX = (x0 + x1) * 0.5f;
     float midY = (y0 + y1) * 0.5f;
     drawBillboardLabel("NORTH", midX, y1, z1, 0.18f, 0.80f, 0.32f, edgeLabelSize, m_pitch, m_azimuth);
@@ -850,23 +895,63 @@ void GL3DView::drawBoundingBox() {
     drawBillboardLabel("EAST",  x1, midY, z1, 0.92f, 0.25f, 0.25f, edgeLabelSize, m_pitch, m_azimuth);
     drawBillboardLabel("WEST",  x0, midY, z1, 0.55f, 0.60f, 0.68f, edgeLabelSize, m_pitch, m_azimuth);
 
-    // Elevation / Depth Ticks on Vertical Corner Post
-    int numTicks = 4;
-    for (int i = 0; i <= numTicks; ++i) {
-        float t = static_cast<float>(i) / static_cast<float>(numTicks);
-        float zReal = z0Raw + t * (z1Raw - z0Raw);
-        float zPos = z0 + t * (z1 - z0);
+    // Elevation / Depth Ticks on Vertical Corner Post (Southwest pillar)
+    float zSpan = z1Raw - z0Raw;
+    if (zSpan > 0.0f) {
+        // Calculate standard "nice step" (multiples of 1, 2, or 5 * 10^k)
+        double roughStep = static_cast<double>(zSpan) / 4.0;
+        double exponent = std::floor(std::log10(std::max(1e-4, roughStep)));
+        double fraction = roughStep / std::pow(10.0, exponent);
+        double niceFraction;
+        if (fraction <= 1.5) niceFraction = 1.0;
+        else if (fraction <= 3.0) niceFraction = 2.0;
+        else if (fraction <= 7.0) niceFraction = 5.0;
+        else niceFraction = 10.0;
+        double step = niceFraction * std::pow(10.0, exponent);
+        if (step < 1.0) step = 1.0;
 
-        glLineWidth(1.5f);
-        glColor3f(0.60f, 0.65f, 0.75f);
-        glBegin(GL_LINES);
-        glVertex3f(x0, y0, zPos);
-        glVertex3f(x0 - axisLen * 0.12f, y0 - axisLen * 0.12f, zPos);
-        glEnd();
+        // Size the tick marks and labels appropriately (subtle, non-intrusive)
+        float tickLen = diagXY * 0.012f;
+        float scaledSpacing = static_cast<float>(step) * m_zScale;
+        float tickFontSize = std::min(diagXY * 0.0075f, scaledSpacing * 0.25f);
+        tickFontSize = std::max(tickFontSize, diagXY * 0.0035f);
 
-        std::string tickStr = std::to_string(static_cast<int>(zReal)) + "m";
-        drawBillboardLabel(tickStr, x0 - axisLen * 0.30f, y0 - axisLen * 0.30f, zPos,
-                           0.45f, 0.50f, 0.60f, edgeLabelSize * 0.70f, m_pitch, m_azimuth);
+        // First tick at or above z0Raw
+        double startZ = std::ceil(static_cast<double>(z0Raw) / step) * step;
+
+        glLineWidth(1.2f);
+        for (double zVal = startZ; zVal <= static_cast<double>(z1Raw) + 1e-4; zVal += step) {
+            float zPos = zMid + (static_cast<float>(zVal) - zMid) * m_zScale;
+
+            // Draw clean tick notch pointing outward diagonally (-X, -Y) from corner
+            glColor3f(0.65f, 0.70f, 0.80f);
+            glBegin(GL_LINES);
+            glVertex3f(x0, y0, zPos);
+            glVertex3f(x0 - tickLen * 0.7071f, y0 - tickLen * 0.7071f, zPos);
+            glEnd();
+
+            int zInt = static_cast<int>(std::round(zVal));
+            std::string tickStr = std::to_string(zInt) + "m";
+
+            float labelDist = tickLen * 0.7071f + tickFontSize * static_cast<float>(tickStr.size()) * 0.42f + diagXY * 0.003f;
+            drawBillboardLabel(tickStr,
+                               x0 - labelDist * 0.7071f,
+                               y0 - labelDist * 0.7071f,
+                               zPos,
+                               0.65f, 0.72f, 0.82f,
+                               tickFontSize,
+                               m_pitch, m_azimuth);
+        }
+
+        // Draw axis title "Z (m)" near the top of the pillar
+        float topZPos = z1 + tickFontSize * 1.5f;
+        drawBillboardLabel("Z (m)",
+                           x0 - tickLen * 0.7071f,
+                           y0 - tickLen * 0.7071f,
+                           topZPos,
+                           0.30f, 0.65f, 1.0f,
+                           tickFontSize * 1.15f,
+                           m_pitch, m_azimuth);
     }
 
     glEnable(GL_LIGHTING);
