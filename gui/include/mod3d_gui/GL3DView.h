@@ -75,6 +75,11 @@ public:
     [[nodiscard]] float zoom() const noexcept { return m_zoom; }
     void setZoom(float zoom);
 
+    [[nodiscard]] int selectedBodyId() const noexcept { return m_selectedBodyId; }
+    void setSelectedBodyId(int bodyId);
+    int hitTestBody(const QPoint &pos);
+    [[nodiscard]] bool shadersInitialized() const noexcept { return m_shadersInitialized; }
+
     void animateToCamera(float targetPitch, float targetAzimuth, float targetDist = -1.0f, const QVector3D *targetLookAt = nullptr, int durationMs = 250);
 
     void invalidateMeshes() noexcept { m_meshDirty = true; update(); }
@@ -83,6 +88,7 @@ signals:
     void cameraChanged();
     void zScaleChanged(float zScale);
     void projectionChanged(bool isOrtho);
+    void bodySelected(int bodyId);
 
 protected:
     void initializeGL() override;
@@ -105,6 +111,7 @@ public:
 
 private:
     void setupMatrices(int w, int h);
+    void initShaders();
     void drawBoundingBox();
     void drawBodies();
     void drawProfilePlane();
@@ -147,6 +154,11 @@ private:
     bool m_draggingGizmo{false};
     int m_gizmoHoverAxis{-1};
     QRect m_gizmoRect;
+    int m_selectedBodyId{-1};
+
+    // Matrices
+    QMatrix4x4 m_projMatrix;
+    QMatrix4x4 m_mvMatrix;
 
     // Smooth animation
     QVariantAnimation *m_camAnim{nullptr};

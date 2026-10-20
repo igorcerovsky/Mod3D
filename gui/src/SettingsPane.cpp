@@ -1367,6 +1367,13 @@ void SettingsPane::updateBodyList() {
 
 void SettingsPane::loadBodyData() {
     int bId = m_comboBodies->currentData().toInt();
+    if (m_mainWindow && m_mainWindow->mdiArea()) {
+        for (auto *sub : m_mainWindow->mdiArea()->subWindowList()) {
+            if (auto *glv = qobject_cast<GL3DView*>(sub->widget())) {
+                glv->setSelectedBodyId(bId);
+            }
+        }
+    }
     auto *b = m_doc->model().body(bId);
     if (!b) {
         m_editBodyName->clear();

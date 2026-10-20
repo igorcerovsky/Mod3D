@@ -1376,6 +1376,41 @@ TEST_F(GuiDocumentTest, GL3DViewMouseDragStateNotStuckOnMoveWithoutButtonOrReset
     EXPECT_FLOAT_EQ(view.target().y(), pannedTarget.y());
 }
 
+TEST_F(GuiDocumentTest, GL3DViewBodySelectionAndRaycastHitTesting) {
+    ModelDocument doc;
+    doc.newProject(8, 10, 0.0, 0.0, 50.0, 50.0, -2000.0, 0.0);
+    GL3DView view(&doc);
+    view.resize(600, 400);
+    view.resetCamera();
+
+    EXPECT_EQ(view.selectedBodyId(), -1);
+
+    int receivedBodyId = -999;
+    QObject::connect(&view, &GL3DView::bodySelected, [&](int bId) {
+        receivedBodyId = bId;
+    });
+
+    view.setSelectedBodyId(2);
+    EXPECT_EQ(view.selectedBodyId(), 2);
+
+    // Simulate clicking in empty outer space -> should deselect
+    QMouseEvent pressEmpty(QEvent::MouseButtonPress, QPointF(10, 10), QPointF(10, 10),
+                           Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    view.mousePressEvent(&pressEmpty);
+    QMouseEvent releaseEmpty(QEvent::MouseButtonRelease, QPointF(10, 10), QPointF(10, 10),
+                             Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+    view.mouseReleaseEvent(&releaseEmpty);
+
+    EXPECT_EQ(view.selectedBodyId(), -1);
+    EXPECT_EQ(receivedBodyId, -1);
+
+    // Verify software painting with selected body executes cleanly
+    view.setSelectedBodyId(1);
+    QPixmap pm(300, 200);
+    QPainter p(&pm);
+    view.paintSoftware(p);
+}
+
 TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     MainWindow mw;
     mw.resize(1200, 800);

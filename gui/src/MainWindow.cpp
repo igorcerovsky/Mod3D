@@ -436,6 +436,21 @@ GL3DView *MainWindow::openGL3DView() {
     sub->setWindowTitle(tr("3D View"));
     sub->resize(540, 420);
     sub->show();
+
+    if (m_settingsPane) {
+        connect(glv, &GL3DView::bodySelected, this, [this](int bodyId) {
+            if (m_settingsPane && bodyId >= 0) {
+                int idx = m_settingsPane->bodyComboBox()->findData(bodyId);
+                if (idx >= 0) {
+                    m_settingsPane->bodyComboBox()->setCurrentIndex(idx);
+                }
+            }
+        });
+        if (m_settingsPane->bodyComboBox()->count() > 0) {
+            glv->setSelectedBodyId(m_settingsPane->bodyComboBox()->currentData().toInt());
+        }
+    }
+
     return glv;
 }
 

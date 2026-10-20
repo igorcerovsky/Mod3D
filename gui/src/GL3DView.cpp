@@ -317,6 +317,11 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) {
         update();
     });
+    connect(m_doc, &ModelDocument::activeProfileCursorChanged, this, [this](const ModelDocument::ProfileCursorPoint &pt) {
+        if (pt.bodyId >= 0 && pt.bodyId != m_selectedBodyId) {
+            setSelectedBodyId(pt.bodyId);
+        }
+    });
     connect(m_doc, &ModelDocument::documentReset, this, [this]() {
         m_meshDirty = true;
         m_targetInitialized = false;
@@ -331,6 +336,103 @@ GL3DView::~GL3DView() {
         delete m_camAnim;
     }
     delete m_shaderProg;
+    m_shaderProg = nullptr;
+}
+
+void GL3DView::setSelectedBodyId(int bodyId) {
+    if (m_selectedBodyId == bodyId) return;
+    m_selectedBodyId = bodyId;
+    update();
+}
+
+int GL3DView::hitTestBody(const QPoint &pos) {
+    if (!m_doc) return -1;
+    if (m_meshDirty || m_bodyMeshes.empty()) {
+        m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
+        m_meshDirty = false;
+    }
+    if (m_bodyMeshes.empty()) return -1;
+
+    float w = static_cast<float>(width());
+    float h = static_cast<float>(height());
+    if (w <= 0.0f || h <= 0.0f) return -1;
+
+    float ndcX = (2.0f * pos.x()) / w - 1.0f;
+    float ndcY = 1.0f - (2.0f * pos.y()) / h;
+
+    bool invertible = false;
+    QMatrix4x4 invMvp = (m_projMatrix * m_mvMatrix).inverted(&invertible);
+    if (!invertible) return -1;
+
+    QVector4D nearPt4 = invMvp * QVector4D(ndcX, ndcY, -1.0f, 1.0f);
+    QVector4D farPt4  = invMvp * QVector4D(ndcX, ndcY,  1.0f, 1.0f);
+    if (std::abs(nearPt4.w()) < 1e-6f || std::abs(farPt4.w()) < 1e-6f) return -1;
+
+    QVector3D rayOrigin = nearPt4.toVector3DAffine();
+    QVector3D rayFar    = farPt4.toVector3DAffine();
+    QVector3D rayDir    = (rayFar - rayOrigin).normalized();
+
+    double zMid = (m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5;
+    auto scaleZ = [this, zMid](double zRaw) -> float {
+        return static_cast<float>(zMid + (zRaw - zMid) * m_zScale);
+    };
+
+    double dBot = m_doc->model().z_min_val();
+    int bestBodyId = -1;
+    float minT = std::numeric_limits<float>::max();
+
+    auto intersectTriangle = [](const QVector3D &orig, const QVector3D &dir,
+                               const QVector3D &v0, const QVector3D &v1, const QVector3D &v2,
+                               float &outT) -> bool {
+        const float EPS = 1e-7f;
+        QVector3D edge1 = v1 - v0;
+        QVector3D edge2 = v2 - v0;
+        QVector3D h = QVector3D::crossProduct(dir, edge2);
+        float a = QVector3D::dotProduct(edge1, h);
+        if (a > -EPS && a < EPS) return false;
+
+        float f = 1.0f / a;
+        QVector3D s = orig - v0;
+        float u = f * QVector3D::dotProduct(s, h);
+        if (u < 0.0f || u > 1.0f) return false;
+
+        QVector3D q = QVector3D::crossProduct(s, edge1);
+        float v = f * QVector3D::dotProduct(dir, q);
+        if (v < 0.0f || u + v > 1.0f) return false;
+
+        float t = f * QVector3D::dotProduct(edge2, q);
+        if (t > EPS) {
+            outT = t;
+            return true;
+        }
+        return false;
+    };
+
+    for (const auto &mesh : m_bodyMeshes) {
+        if (!mesh.isVisible) continue;
+        for (const auto &fct : mesh.facets) {
+            if (!m_showBottom &&
+                fct[0].z <= dBot + 1e-3 &&
+                fct[1].z <= dBot + 1e-3 &&
+                fct[2].z <= dBot + 1e-3) {
+                continue;
+            }
+
+            QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
+            QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
+            QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), scaleZ(fct[2].z));
+
+            float t = 0.0f;
+            if (intersectTriangle(rayOrigin, rayDir, v0, v1, v2, t)) {
+                if (t < minT) {
+                    minT = t;
+                    bestBodyId = mesh.bodyId;
+                }
+            }
+        }
+    }
+
+    return bestBodyId;
 }
 
 void GL3DView::ensureDefaultTargetAndDistance() {
@@ -361,7 +463,9 @@ void GL3DView::setupMatrices(int w, int h) {
     if (physW <= 0) physW = (w > 0 ? w : 1);
     if (physH <= 0) physH = (h > 0 ? h : 1);
 
-    glViewport(0, 0, physW, physH);
+    if (isValid() && context()) {
+        glViewport(0, 0, physW, physH);
+    }
 
     float aspect = (physH > 0) ? (static_cast<float>(physW) / static_cast<float>(physH)) : 1.0f;
     float fov = 45.0f;
@@ -386,35 +490,125 @@ void GL3DView::setupMatrices(int w, int h) {
     float zFar  = effDist + boundingRadius * 2.2f;
     if (zFar <= zNear * 1.2f) zFar = zNear * 10.0f;
 
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-
+    m_projMatrix.setToIdentity();
     if (m_orthographic) {
         float orthoH = 2.0f * effDist * std::tan(fov * 0.5f * 3.14159265f / 180.0f);
         float orthoW = orthoH * aspect;
-        glOrtho(-orthoW * 0.5f, orthoW * 0.5f, -orthoH * 0.5f, orthoH * 0.5f, zNear, zFar);
+        m_projMatrix.ortho(-orthoW * 0.5f, orthoW * 0.5f, -orthoH * 0.5f, orthoH * 0.5f, zNear, zFar);
     } else {
-        float top = zNear * std::tan(fov * 0.5f * 3.14159265f / 180.0f);
-        float bottom = -top;
-        float left = bottom * aspect;
-        float right = top * aspect;
-        glFrustum(left, right, bottom, top, zNear, zFar);
+        m_projMatrix.perspective(fov, aspect, zNear, zFar);
     }
 
-    // Set up LookAt ModelView Matrix
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
+    m_mvMatrix.setToIdentity();
+    m_mvMatrix.translate(m_panX, m_panY, -effDist);
+    m_mvMatrix.rotate(m_pitch - 90.0f, 1.0f, 0.0f, 0.0f);
+    m_mvMatrix.rotate(m_azimuth, 0.0f, 0.0f, 1.0f);
+    m_mvMatrix.translate(-m_target.x(), -m_target.y(), -m_target.z());
 
-    // Apply eye distance, pan, and spherical orientation around m_target
-    glTranslatef(m_panX, m_panY, -effDist);
-    glRotatef(m_pitch - 90.0f, 1.0f, 0.0f, 0.0f);
-    glRotatef(m_azimuth, 0.0f, 0.0f, 1.0f);
-    glTranslatef(-m_target.x(), -m_target.y(), -m_target.z());
+    if (isValid() && context()) {
+        glMatrixMode(GL_PROJECTION);
+        glLoadMatrixf(m_projMatrix.constData());
+
+        glMatrixMode(GL_MODELVIEW);
+        glLoadMatrixf(m_mvMatrix.constData());
+    }
+}
+
+void GL3DView::initShaders() {
+    if (m_shadersInitialized) return;
+    if (!isValid() || !context()) return;
+
+    delete m_shaderProg;
+    m_shaderProg = new QOpenGLShaderProgram(this);
+
+    const char *vsrc =
+        "#version 120\n"
+        "uniform mat4 u_mvpMatrix;\n"
+        "uniform mat4 u_mvMatrix;\n"
+        "uniform mat3 u_normalMatrix;\n"
+        "varying vec3 v_normal;\n"
+        "varying vec3 v_eyePos;\n"
+        "varying vec4 v_color;\n"
+        "void main() {\n"
+        "    vec4 eyePos4 = u_mvMatrix * gl_Vertex;\n"
+        "    v_eyePos = eyePos4.xyz;\n"
+        "    v_normal = normalize(u_normalMatrix * gl_Normal);\n"
+        "    v_color = gl_Color;\n"
+        "    gl_Position = u_mvpMatrix * gl_Vertex;\n"
+        "}\n";
+
+    const char *fsrc =
+        "#version 120\n"
+        "varying vec3 v_normal;\n"
+        "varying vec3 v_eyePos;\n"
+        "varying vec4 v_color;\n"
+        "uniform vec3 u_light0Dir;\n"
+        "uniform vec3 u_light1Dir;\n"
+        "uniform vec4 u_light0Color;\n"
+        "uniform vec4 u_light1Color;\n"
+        "uniform vec4 u_ambientColor;\n"
+        "uniform bool u_enableFog;\n"
+        "uniform float u_fogStart;\n"
+        "uniform float u_fogEnd;\n"
+        "uniform vec4 u_fogColor;\n"
+        "uniform bool u_highlight;\n"
+        "uniform vec4 u_highlightColor;\n"
+        "void main() {\n"
+        "    vec3 N = normalize(v_normal);\n"
+        "    if (!gl_FrontFacing) N = -N;\n"
+        "    vec3 V = normalize(-v_eyePos);\n"
+        "    vec3 L0 = normalize(u_light0Dir);\n"
+        "    vec3 H0 = normalize(L0 + V);\n"
+        "    float diff0 = max(dot(N, L0), 0.0);\n"
+        "    float spec0 = pow(max(dot(N, H0), 0.0), 32.0);\n"
+        "    vec3 L1 = normalize(u_light1Dir);\n"
+        "    float diff1 = max(dot(N, L1), 0.0);\n"
+        "    float fresnel = pow(1.0 - max(dot(N, V), 0.0), 3.0) * 0.22;\n"
+        "    vec3 baseCol = v_color.rgb;\n"
+        "    if (u_highlight) {\n"
+        "        baseCol = mix(baseCol, u_highlightColor.rgb, 0.40);\n"
+        "    }\n"
+        "    vec3 lit = baseCol * (u_ambientColor.rgb + diff0 * u_light0Color.rgb + diff1 * u_light1Color.rgb)\n"
+        "             + spec0 * vec3(0.35)\n"
+        "             + fresnel * vec3(1.0);\n"
+        "    if (u_highlight) {\n"
+        "        lit += u_highlightColor.rgb * 0.15;\n"
+        "    }\n"
+        "    float alpha = v_color.a;\n"
+        "    if (u_enableFog) {\n"
+        "        float dist = length(v_eyePos);\n"
+        "        float fogFactor = clamp((dist - u_fogStart) / (u_fogEnd - u_fogStart), 0.0, 1.0);\n"
+        "        lit = mix(lit, u_fogColor.rgb, fogFactor);\n"
+        "    }\n"
+        "    gl_FragColor = vec4(lit, alpha);\n"
+        "}\n";
+
+    if (!m_shaderProg->addShaderFromSourceCode(QOpenGLShader::Vertex, vsrc)) {
+        delete m_shaderProg;
+        m_shaderProg = nullptr;
+        m_shadersInitialized = false;
+        return;
+    }
+    if (!m_shaderProg->addShaderFromSourceCode(QOpenGLShader::Fragment, fsrc)) {
+        delete m_shaderProg;
+        m_shaderProg = nullptr;
+        m_shadersInitialized = false;
+        return;
+    }
+    if (!m_shaderProg->link()) {
+        delete m_shaderProg;
+        m_shaderProg = nullptr;
+        m_shadersInitialized = false;
+        return;
+    }
+
+    m_shadersInitialized = true;
 }
 
 void GL3DView::initializeGL() {
     if (!isValid() || !context()) return;
     initializeOpenGLFunctions();
+    initShaders();
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
@@ -668,6 +862,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
         double depth;
         QColor fill;
         QColor edge;
+        double edgeWidth;
     };
     std::vector<SortFacet> facetsToDraw;
 
@@ -682,6 +877,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible) continue;
         auto bc = mesh.color;
+        bool isSelected = (mesh.bodyId == m_selectedBodyId);
 
         for (const auto &fct : mesh.facets) {
             if (!m_showBottom &&
@@ -720,9 +916,13 @@ void GL3DView::paintSoftware(QPainter &painter) {
             int alpha = mesh.isTransparent ? std::clamp(static_cast<int>(mesh.alpha * 255), 30, 240) : 255;
 
             QColor fillColor(r, g, b, alpha);
-            QColor edgeColor(static_cast<int>(r * 0.65), static_cast<int>(g * 0.65), static_cast<int>(b * 0.65), 210);
+            if (isSelected) {
+                fillColor = QColor(std::min(255, r + 40), std::min(255, g + 35), std::min(255, b + 10), alpha);
+            }
+            QColor edgeColor = isSelected ? QColor(234, 179, 8, 240) : QColor(static_cast<int>(r * 0.65), static_cast<int>(g * 0.65), static_cast<int>(b * 0.65), 210);
+            double edgeWidth = isSelected ? 1.8 : 0.8;
 
-            facetsToDraw.push_back({ {pt0.first, pt1.first, pt2.first}, avgDepth, fillColor, edgeColor });
+            facetsToDraw.push_back({ {pt0.first, pt1.first, pt2.first}, avgDepth, fillColor, edgeColor, edgeWidth });
         }
     }
 
@@ -732,7 +932,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
     });
 
     for (const auto &f : facetsToDraw) {
-        painter.setPen(QPen(f.edge, 0.8));
+        painter.setPen(QPen(f.edge, f.edgeWidth));
         painter.setBrush(f.fill);
         QPointF pts[3] = { f.p[0], f.p[1], f.p[2] };
         painter.drawPolygon(pts, 3);
@@ -955,6 +1155,76 @@ void GL3DView::drawBoundingBox() {
                            m_pitch, m_azimuth);
     }
 
+    // South Base Edge (X-Axis) Coordinate Ticks
+    if (dx > 0.0f) {
+        double roughStep = static_cast<double>(dx) / 4.0;
+        double exponent = std::floor(std::log10(std::max(1e-4, roughStep)));
+        double fraction = roughStep / std::pow(10.0, exponent);
+        double niceFraction = 1.0;
+        if (fraction <= 1.5) niceFraction = 1.0;
+        else if (fraction <= 3.0) niceFraction = 2.0;
+        else if (fraction <= 7.0) niceFraction = 5.0;
+        else niceFraction = 10.0;
+        double step = niceFraction * std::pow(10.0, exponent);
+        if (step < 1.0) step = 1.0;
+
+        float tickLen = diagXY * 0.012f;
+        float tickFontSize = std::max(diagXY * 0.0075f, diagXY * 0.0035f);
+        double startX = std::ceil(static_cast<double>(x0) / step) * step;
+
+        glLineWidth(1.2f);
+        for (double xVal = startX; xVal <= static_cast<double>(x1) + 1e-4; xVal += step) {
+            float xPos = static_cast<float>(xVal);
+            glColor3f(0.65f, 0.70f, 0.80f);
+            glBegin(GL_LINES);
+            glVertex3f(xPos, y0, z0);
+            glVertex3f(xPos, y0 - tickLen, z0);
+            glEnd();
+
+            int xInt = static_cast<int>(std::round(xVal));
+            std::string tickStr = std::to_string(xInt) + "m";
+            drawBillboardLabel(tickStr, xPos, y0 - tickLen * 1.8f, z0,
+                               0.65f, 0.72f, 0.82f, tickFontSize, m_pitch, m_azimuth);
+        }
+        drawBillboardLabel("X (m)", x1 + tickLen * 2.0f, y0 - tickLen * 1.8f, z0,
+                           0.92f, 0.25f, 0.25f, tickFontSize * 1.15f, m_pitch, m_azimuth);
+    }
+
+    // West Base Edge (Y-Axis) Coordinate Ticks
+    if (dy > 0.0f) {
+        double roughStep = static_cast<double>(dy) / 4.0;
+        double exponent = std::floor(std::log10(std::max(1e-4, roughStep)));
+        double fraction = roughStep / std::pow(10.0, exponent);
+        double niceFraction = 1.0;
+        if (fraction <= 1.5) niceFraction = 1.0;
+        else if (fraction <= 3.0) niceFraction = 2.0;
+        else if (fraction <= 7.0) niceFraction = 5.0;
+        else niceFraction = 10.0;
+        double step = niceFraction * std::pow(10.0, exponent);
+        if (step < 1.0) step = 1.0;
+
+        float tickLen = diagXY * 0.012f;
+        float tickFontSize = std::max(diagXY * 0.0075f, diagXY * 0.0035f);
+        double startY = std::ceil(static_cast<double>(y0) / step) * step;
+
+        glLineWidth(1.2f);
+        for (double yVal = startY; yVal <= static_cast<double>(y1) + 1e-4; yVal += step) {
+            float yPos = static_cast<float>(yVal);
+            glColor3f(0.65f, 0.70f, 0.80f);
+            glBegin(GL_LINES);
+            glVertex3f(x0, yPos, z0);
+            glVertex3f(x0 - tickLen, yPos, z0);
+            glEnd();
+
+            int yInt = static_cast<int>(std::round(yVal));
+            std::string tickStr = std::to_string(yInt) + "m";
+            drawBillboardLabel(tickStr, x0 - tickLen * 1.8f, yPos, z0,
+                               0.65f, 0.72f, 0.82f, tickFontSize, m_pitch, m_azimuth);
+        }
+        drawBillboardLabel("Y (m)", x0 - tickLen * 1.8f, y1 + tickLen * 2.0f, z0,
+                           0.20f, 0.85f, 0.35f, tickFontSize * 1.15f, m_pitch, m_azimuth);
+    }
+
     glEnable(GL_LIGHTING);
 }
 
@@ -1036,8 +1306,31 @@ void GL3DView::drawBodies() {
         glPolygonOffset(1.0f, 1.0f);
     }
 
+    bool useShader = (m_shadersInitialized && m_shaderProg != nullptr && !m_wireframe);
+    if (useShader) {
+        m_shaderProg->bind();
+        m_shaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+        m_shaderProg->setUniformValue("u_mvMatrix", m_mvMatrix);
+        m_shaderProg->setUniformValue("u_normalMatrix", m_mvMatrix.normalMatrix());
+        m_shaderProg->setUniformValue("u_light0Dir", QVector3D(0.5f, 0.7f, 1.0f));
+        m_shaderProg->setUniformValue("u_light1Dir", QVector3D(-0.5f, -0.6f, 0.4f));
+        m_shaderProg->setUniformValue("u_light0Color", QVector4D(0.85f, 0.85f, 0.85f, 1.0f));
+        m_shaderProg->setUniformValue("u_light1Color", QVector4D(0.30f, 0.30f, 0.35f, 1.0f));
+        m_shaderProg->setUniformValue("u_ambientColor", QVector4D(0.28f, 0.28f, 0.30f, 1.0f));
+        m_shaderProg->setUniformValue("u_enableFog", m_showDepthFog);
+        float effDist = m_distance / std::max(0.01f, m_zoom);
+        m_shaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
+        m_shaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
+        m_shaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
+        m_shaderProg->setUniformValue("u_highlightColor", QVector4D(1.0f, 0.85f, 0.15f, 1.0f));
+    }
+
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible || mesh.isTransparent) continue;
+
+        if (useShader) {
+            m_shaderProg->setUniformValue("u_highlight", (mesh.bodyId == m_selectedBodyId));
+        }
 
         auto bc = mesh.color;
         glColor4f(bc.r / 255.0f, bc.g / 255.0f, bc.b / 255.0f, 1.0f);
@@ -1063,18 +1356,28 @@ void GL3DView::drawBodies() {
         glEnd();
     }
 
+    if (useShader) {
+        m_shaderProg->release();
+    }
+
     if (!m_wireframe) {
         glDisable(GL_POLYGON_OFFSET_FILL);
 
         // Feature edge outlines for opaque bodies
         if (m_showFeatureEdges) {
             glDisable(GL_LIGHTING);
-            glLineWidth(1.2f);
             for (const auto &mesh : m_bodyMeshes) {
                 if (!mesh.isVisible || mesh.isTransparent) continue;
 
-                auto bc = mesh.color;
-                glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.85f);
+                bool isSelected = (mesh.bodyId == m_selectedBodyId);
+                if (isSelected) {
+                    glLineWidth(2.5f);
+                    glColor4f(1.0f, 0.85f, 0.15f, 1.0f);
+                } else {
+                    glLineWidth(1.2f);
+                    auto bc = mesh.color;
+                    glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.85f);
+                }
 
                 glBegin(GL_LINES);
                 for (const auto &edge : mesh.featureEdges) {
@@ -1104,6 +1407,7 @@ void GL3DView::drawBodies() {
             QVector3D normal;
             QColor color;
             float depth;
+            int bodyId;
         };
         std::vector<TransFacet> transFacets;
 
@@ -1147,7 +1451,7 @@ void GL3DView::drawBodies() {
                 if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
 
                 float d = eyeDepth((v0 + v1 + v2) * (1.0f / 3.0f));
-                transFacets.push_back({ v0, v1, v2, QVector3D(norm.x, norm.y, norm.z), color, d });
+                transFacets.push_back({ v0, v1, v2, QVector3D(norm.x, norm.y, norm.z), color, d, mesh.bodyId });
             }
         }
 
@@ -1168,8 +1472,29 @@ void GL3DView::drawBodies() {
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
         }
 
+        if (useShader) {
+            m_shaderProg->bind();
+            m_shaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+            m_shaderProg->setUniformValue("u_mvMatrix", m_mvMatrix);
+            m_shaderProg->setUniformValue("u_normalMatrix", m_mvMatrix.normalMatrix());
+            m_shaderProg->setUniformValue("u_light0Dir", QVector3D(0.5f, 0.7f, 1.0f));
+            m_shaderProg->setUniformValue("u_light1Dir", QVector3D(-0.5f, -0.6f, 0.4f));
+            m_shaderProg->setUniformValue("u_light0Color", QVector4D(0.85f, 0.85f, 0.85f, 1.0f));
+            m_shaderProg->setUniformValue("u_light1Color", QVector4D(0.30f, 0.30f, 0.35f, 1.0f));
+            m_shaderProg->setUniformValue("u_ambientColor", QVector4D(0.28f, 0.28f, 0.30f, 1.0f));
+            m_shaderProg->setUniformValue("u_enableFog", m_showDepthFog);
+            float effDist = m_distance / std::max(0.01f, m_zoom);
+            m_shaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
+            m_shaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
+            m_shaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
+            m_shaderProg->setUniformValue("u_highlightColor", QVector4D(1.0f, 0.85f, 0.15f, 1.0f));
+        }
+
         glBegin(GL_TRIANGLES);
         for (const auto &tf : transFacets) {
+            if (useShader) {
+                m_shaderProg->setUniformValue("u_highlight", (tf.bodyId == m_selectedBodyId));
+            }
             glColor4f(tf.color.redF(), tf.color.greenF(), tf.color.blueF(), tf.color.alphaF());
             glNormal3f(tf.normal.x(), tf.normal.y(), tf.normal.z());
             glVertex3f(tf.p0.x(), tf.p0.y(), tf.p0.z());
@@ -1178,14 +1503,24 @@ void GL3DView::drawBodies() {
         }
         glEnd();
 
+        if (useShader) {
+            m_shaderProg->release();
+        }
+
         if (!m_wireframe && m_showFeatureEdges) {
             glDisable(GL_LIGHTING);
-            glLineWidth(1.2f);
             for (const auto &mesh : m_bodyMeshes) {
                 if (!mesh.isVisible || !mesh.isTransparent) continue;
 
-                auto bc = mesh.color;
-                glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.65f);
+                bool isSelected = (mesh.bodyId == m_selectedBodyId);
+                if (isSelected) {
+                    glLineWidth(2.5f);
+                    glColor4f(1.0f, 0.85f, 0.15f, 1.0f);
+                } else {
+                    glLineWidth(1.2f);
+                    auto bc = mesh.color;
+                    glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.65f);
+                }
 
                 glBegin(GL_LINES);
                 for (const auto &edge : mesh.featureEdges) {
@@ -1722,6 +2057,13 @@ void GL3DView::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void GL3DView::mouseReleaseEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton && !m_draggingGizmo) {
+        if ((event->pos() - m_dragStartPos).manhattanLength() < 5) {
+            int hitId = hitTestBody(event->pos());
+            setSelectedBodyId(hitId);
+            emit bodySelected(hitId);
+        }
+    }
     m_mouseDragging = false;
     m_draggingGizmo = false;
     update();
