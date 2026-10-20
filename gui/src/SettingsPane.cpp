@@ -485,8 +485,17 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chk3DBoundingBox->setChecked(true);
     m_chk3DFeatureEdges = new QCheckBox(tr("Feature Edges"), box3DToggles);
     m_chk3DFeatureEdges->setChecked(true);
-    m_chk3DRelief = new QCheckBox(tr("Relief Wireframe"), box3DToggles);
+
+    auto *reliefLayout = new QHBoxLayout();
+    reliefLayout->setContentsMargins(0, 0, 0, 0);
+    m_chk3DRelief = new QCheckBox(tr("Show Relief"), box3DToggles);
     m_chk3DRelief->setChecked(true);
+    m_combo3DReliefMode = new QComboBox(box3DToggles);
+    m_combo3DReliefMode->addItem(tr("Surface"), static_cast<int>(GL3DView::ReliefMode::Surface));
+    m_combo3DReliefMode->addItem(tr("Wireframe"), static_cast<int>(GL3DView::ReliefMode::Wireframe));
+    reliefLayout->addWidget(m_chk3DRelief);
+    reliefLayout->addWidget(m_combo3DReliefMode);
+
     m_chk3DWireframe = new QCheckBox(tr("Wireframe Mode"), box3DToggles);
     m_chk3DOrtho = new QCheckBox(tr("Orthographic Projection"), box3DToggles);
     m_chk3DDepthFog = new QCheckBox(tr("Depth Cueing / Atmospheric Fog"), box3DToggles);
@@ -500,7 +509,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     toggles3DLayout->addWidget(m_chk3DCompass);
     toggles3DLayout->addWidget(m_chk3DBoundingBox);
     toggles3DLayout->addWidget(m_chk3DFeatureEdges);
-    toggles3DLayout->addWidget(m_chk3DRelief);
+    toggles3DLayout->addLayout(reliefLayout);
     toggles3DLayout->addWidget(m_chk3DWireframe);
     toggles3DLayout->addWidget(m_chk3DOrtho);
     toggles3DLayout->addWidget(m_chk3DDepthFog);
@@ -534,7 +543,14 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowFeatureEdges(c);
     });
     connect(m_chk3DRelief, &QCheckBox::toggled, this, [this](bool c) {
+        m_combo3DReliefMode->setEnabled(c);
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowRelief(c);
+    });
+    connect(m_combo3DReliefMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) {
+            auto mode = static_cast<GL3DView::ReliefMode>(m_combo3DReliefMode->currentData().toInt());
+            glv->setReliefMode(mode);
+        }
     });
     connect(m_chk3DWireframe, &QCheckBox::toggled, this, [this](bool c) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setWireframeMode(c);
@@ -1344,6 +1360,11 @@ void SettingsPane::updateViewContext() {
         m_chk3DBoundingBox->setChecked(glv->showBoundingBox());
         m_chk3DFeatureEdges->setChecked(glv->showFeatureEdges());
         m_chk3DRelief->setChecked(glv->showRelief());
+        m_combo3DReliefMode->setEnabled(glv->showRelief());
+        int reliefModeIdx = m_combo3DReliefMode->findData(static_cast<int>(glv->reliefMode()));
+        if (reliefModeIdx >= 0) {
+            m_combo3DReliefMode->setCurrentIndex(reliefModeIdx);
+        }
         m_chk3DWireframe->setChecked(glv->wireframeMode());
         m_chk3DOrtho->setChecked(glv->isOrthographic());
         m_chk3DDepthFog->setChecked(glv->showDepthFog());

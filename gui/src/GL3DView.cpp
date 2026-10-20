@@ -16,6 +16,7 @@
 #include <QApplication>
 #include <cmath>
 #include <algorithm>
+#include <array>
 #include <string>
 
 namespace mod3d_gui {
@@ -295,6 +296,63 @@ void addArrowCone(std::vector<GL3DView::FlatVertex3D> &tris,
         tris.push_back({ circlePts[i + 1].x(), circlePts[i + 1].y(), circlePts[i + 1].z(), r, g, b, a });
         tris.push_back({ circlePts[i].x(), circlePts[i].y(), circlePts[i].z(), r, g, b, a });
     }
+}
+
+struct ReliefColorPeg {
+    float pos;
+    float r, g, b;
+};
+
+// Standard CTBL_REL topographic relief hypsometric colormap (11 pegs from 0.0 to 1.0)
+static const std::array<ReliefColorPeg, 11> kReliefPegs = {{
+    {0.0f, 221.0f / 255.0f, 250.0f / 255.0f, 218.0f / 255.0f}, // light valley green
+    {0.1f, 168.0f / 255.0f, 251.0f / 255.0f, 185.0f / 255.0f}, // pale green
+    {0.2f,  27.0f / 255.0f, 206.0f / 255.0f,  96.0f / 255.0f}, // emerald meadow green
+    {0.3f,  58.0f / 255.0f, 160.0f / 255.0f,  81.0f / 255.0f}, // forest green
+    {0.4f, 238.0f / 255.0f, 247.0f / 255.0f, 189.0f / 255.0f}, // yellow-green plateau
+    {0.5f, 236.0f / 255.0f, 230.0f / 255.0f, 168.0f / 255.0f}, // warm ochre tan
+    {0.6f, 231.0f / 255.0f, 219.0f / 255.0f, 167.0f / 255.0f}, // sandstone
+    {0.7f, 161.0f / 255.0f, 127.0f / 255.0f, 111.0f / 255.0f}, // mountain rock / brown
+    {0.8f, 108.0f / 255.0f,  74.0f / 255.0f,  76.0f / 255.0f}, // alpine dark brown
+    {0.9f, 147.0f / 255.0f, 137.0f / 255.0f, 133.0f / 255.0f}, // crag / slate
+    {1.0f, 249.0f / 255.0f, 245.0f / 255.0f, 231.0f / 255.0f}  // snow-capped white
+}};
+
+inline void getReliefColor(float t, float &r, float &g, float &b) {
+    t = std::clamp(t, 0.0f, 1.0f);
+    if (t <= kReliefPegs.front().pos) {
+        r = kReliefPegs.front().r;
+        g = kReliefPegs.front().g;
+        b = kReliefPegs.front().b;
+        return;
+    }
+    if (t >= kReliefPegs.back().pos) {
+        r = kReliefPegs.back().r;
+        g = kReliefPegs.back().g;
+        b = kReliefPegs.back().b;
+        return;
+    }
+    for (size_t i = 0; i + 1 < kReliefPegs.size(); ++i) {
+        if (t >= kReliefPegs[i].pos && t <= kReliefPegs[i + 1].pos) {
+            float frac = (t - kReliefPegs[i].pos) / (kReliefPegs[i + 1].pos - kReliefPegs[i].pos);
+            r = kReliefPegs[i].r + frac * (kReliefPegs[i + 1].r - kReliefPegs[i].r);
+            g = kReliefPegs[i].g + frac * (kReliefPegs[i + 1].g - kReliefPegs[i].g);
+            b = kReliefPegs[i].b + frac * (kReliefPegs[i + 1].b - kReliefPegs[i].b);
+            return;
+        }
+    }
+    r = kReliefPegs.back().r;
+    g = kReliefPegs.back().g;
+    b = kReliefPegs.back().b;
+}
+
+inline QColor getReliefQColor(float t, int alpha = 255) {
+    float r = 0.0f, g = 0.0f, b = 0.0f;
+    getReliefColor(t, r, g, b);
+    return QColor(std::clamp(static_cast<int>(r * 255.0f + 0.5f), 0, 255),
+                  std::clamp(static_cast<int>(g * 255.0f + 0.5f), 0, 255),
+                  std::clamp(static_cast<int>(b * 255.0f + 0.5f), 0, 255),
+                  alpha);
 }
 
 } // namespace
@@ -892,11 +950,11 @@ void GL3DView::paintGL() {
         drawBoundingBox();
     }
 
+    drawBodies();
+
     if (m_showRelief) {
         drawRelief();
     }
-
-    drawBodies();
 
     if (m_showProfilePlane) {
         drawProfilePlane();
@@ -1125,6 +1183,66 @@ void GL3DView::paintSoftware(QPainter &painter) {
         }
     }
 
+    // 4b. Relief Surface in Software Paint Mode
+    if (m_showRelief && m_reliefMode == ReliefMode::Surface) {
+        int rMax = model.rows() - 2;
+        int cMax = model.cols() - 2;
+        if (rMax >= 1 && cMax >= 1) {
+            float zMinRelief = std::numeric_limits<float>::max();
+            float zMaxRelief = -std::numeric_limits<float>::max();
+            for (int rIdx = 1; rIdx <= rMax; ++rIdx) {
+                for (int c = 1; c <= cMax; ++c) {
+                    float zv = static_cast<float>(model.z(rIdx, c, 0));
+                    if (zv < zMinRelief) zMinRelief = zv;
+                    if (zv > zMaxRelief) zMaxRelief = zv;
+                }
+            }
+            float zSpan = zMaxRelief - zMinRelief;
+            if (zSpan < 1e-4f) zSpan = 1.0f;
+
+            auto getT = [zMinRelief, zSpan](float z) -> float {
+                return std::clamp((z - zMinRelief) / zSpan, 0.0f, 1.0f);
+            };
+
+            for (int rIdx = 1; rIdx < rMax; ++rIdx) {
+                double y0 = model.yd_val(rIdx);
+                double y1 = model.yd_val(rIdx + 1);
+                for (int c = 1; c < cMax; ++c) {
+                    double x0 = model.xd_val(c);
+                    double x1 = model.xd_val(c + 1);
+
+                    float z00Raw = static_cast<float>(model.z(rIdx, c, 0));
+                    float z10Raw = static_cast<float>(model.z(rIdx, c + 1, 0));
+                    float z11Raw = static_cast<float>(model.z(rIdx + 1, c + 1, 0));
+                    float z01Raw = static_cast<float>(model.z(rIdx + 1, c, 0));
+
+                    auto pt00 = project(x0, y0, z00Raw);
+                    auto pt10 = project(x1, y0, z10Raw);
+                    auto pt11 = project(x1, y1, z11Raw);
+                    auto pt01 = project(x0, y1, z01Raw);
+
+                    float t00 = getT(z00Raw);
+                    float t10 = getT(z10Raw);
+                    float t11 = getT(z11Raw);
+                    float t01 = getT(z01Raw);
+
+                    float avgT1 = (t00 + t10 + t11) / 3.0f;
+                    float avgT2 = (t00 + t11 + t01) / 3.0f;
+
+                    QColor col1 = getReliefQColor(avgT1, 215);
+                    QColor edge1 = getReliefQColor(avgT1, 90);
+                    double d1 = (pt00.second + pt10.second + pt11.second) / 3.0;
+                    facetsToDraw.push_back({ {pt00.first, pt10.first, pt11.first}, d1, col1, edge1, 0.6 });
+
+                    QColor col2 = getReliefQColor(avgT2, 215);
+                    QColor edge2 = getReliefQColor(avgT2, 90);
+                    double d2 = (pt00.second + pt11.second + pt01.second) / 3.0;
+                    facetsToDraw.push_back({ {pt00.first, pt11.first, pt01.first}, d2, col2, edge2, 0.6 });
+                }
+            }
+        }
+    }
+
     // Sort back-to-front (smaller depth is further from eye)
     std::sort(facetsToDraw.begin(), facetsToDraw.end(), [](const SortFacet &a, const SortFacet &b) {
         return a.depth < b.depth;
@@ -1135,6 +1253,58 @@ void GL3DView::paintSoftware(QPainter &painter) {
         painter.setBrush(f.fill);
         QPointF pts[3] = { f.p[0], f.p[1], f.p[2] };
         painter.drawPolygon(pts, 3);
+    }
+
+    // 4c. Relief Wireframe in Software Paint Mode
+    if (m_showRelief && m_reliefMode == ReliefMode::Wireframe) {
+        int rMax = model.rows() - 2;
+        int cMax = model.cols() - 2;
+        if (rMax >= 1 && cMax >= 1) {
+            float zMinRelief = std::numeric_limits<float>::max();
+            float zMaxRelief = -std::numeric_limits<float>::max();
+            for (int rIdx = 1; rIdx <= rMax; ++rIdx) {
+                for (int c = 1; c <= cMax; ++c) {
+                    float zv = static_cast<float>(model.z(rIdx, c, 0));
+                    if (zv < zMinRelief) zMinRelief = zv;
+                    if (zv > zMaxRelief) zMaxRelief = zv;
+                }
+            }
+            float zSpan = zMaxRelief - zMinRelief;
+            if (zSpan < 1e-4f) zSpan = 1.0f;
+
+            auto getT = [zMinRelief, zSpan](float z) -> float {
+                return std::clamp((z - zMinRelief) / zSpan, 0.0f, 1.0f);
+            };
+
+            for (int rIdx = 1; rIdx <= rMax; ++rIdx) {
+                double y = model.yd_val(rIdx);
+                for (int c = 1; c < cMax; ++c) {
+                    double xA = model.xd_val(c);
+                    double xB = model.xd_val(c + 1);
+                    float zA = static_cast<float>(model.z(rIdx, c, 0));
+                    float zB = static_cast<float>(model.z(rIdx, c + 1, 0));
+                    auto ptA = project(xA, y, zA);
+                    auto ptB = project(xB, y, zB);
+                    float midT = (getT(zA) + getT(zB)) * 0.5f;
+                    painter.setPen(QPen(getReliefQColor(midT, 225), 1.2));
+                    painter.drawLine(ptA.first, ptB.first);
+                }
+            }
+            for (int c = 1; c <= cMax; ++c) {
+                double x = model.xd_val(c);
+                for (int rIdx = 1; rIdx < rMax; ++rIdx) {
+                    double yA = model.yd_val(rIdx);
+                    double yB = model.yd_val(rIdx + 1);
+                    float zA = static_cast<float>(model.z(rIdx, c, 0));
+                    float zB = static_cast<float>(model.z(rIdx + 1, c, 0));
+                    auto ptA = project(x, yA, zA);
+                    auto ptB = project(x, yB, zB);
+                    float midT = (getT(zA) + getT(zB)) * 0.5f;
+                    painter.setPen(QPen(getReliefQColor(midT, 225), 1.2));
+                    painter.drawLine(ptA.first, ptB.first);
+                }
+            }
+        }
     }
 
     // 5. Orientation Indicator HUD (Compass Tripod in bottom-left corner)
@@ -1399,35 +1569,123 @@ void GL3DView::drawRelief() {
         return zMid + static_cast<float>(zRaw - zMid) * m_zScale;
     };
 
-    std::vector<FlatVertex3D> reliefLines;
-    float r = 0.35f, g = 0.65f, b = 0.40f, a = 0.40f;
-
-    // Grid lines along X (running West-East at each core row)
+    // Calculate elevation range across core grid for colormap normalization
+    float zMinRelief = std::numeric_limits<float>::max();
+    float zMaxRelief = -std::numeric_limits<float>::max();
     for (int rIdx = 1; rIdx <= rMax; ++rIdx) {
-        float y = static_cast<float>(m.yd_val(rIdx));
-        for (int c = 1; c < cMax; ++c) {
-            float xA = static_cast<float>(m.xd_val(c));
-            float xB = static_cast<float>(m.xd_val(c + 1));
-            float zA = scaleZ(m.z(rIdx, c, 0));
-            float zB = scaleZ(m.z(rIdx, c + 1, 0));
-            reliefLines.push_back({ xA, y, zA, r, g, b, a });
-            reliefLines.push_back({ xB, y, zB, r, g, b, a });
+        for (int c = 1; c <= cMax; ++c) {
+            float zv = static_cast<float>(m.z(rIdx, c, 0));
+            if (zv < zMinRelief) zMinRelief = zv;
+            if (zv > zMaxRelief) zMaxRelief = zv;
         }
     }
-    // Grid lines along Y (running South-North at each core col)
-    for (int c = 1; c <= cMax; ++c) {
-        float x = static_cast<float>(m.xd_val(c));
-        for (int rIdx = 1; rIdx < rMax; ++rIdx) {
-            float yA = static_cast<float>(m.yd_val(rIdx));
-            float yB = static_cast<float>(m.yd_val(rIdx + 1));
-            float zA = scaleZ(m.z(rIdx, c, 0));
-            float zB = scaleZ(m.z(rIdx + 1, c, 0));
-            reliefLines.push_back({ x, yA, zA, r, g, b, a });
-            reliefLines.push_back({ x, yB, zB, r, g, b, a });
-        }
-    }
+    float zSpan = zMaxRelief - zMinRelief;
+    if (zSpan < 1e-4f) zSpan = 1.0f;
 
-    renderLines(reliefLines, 1.0f);
+    auto getT = [zMinRelief, zSpan](float z) -> float {
+        return std::clamp((z - zMinRelief) / zSpan, 0.0f, 1.0f);
+    };
+
+    if (m_reliefMode == ReliefMode::Surface) {
+        std::vector<FlatVertex3D> reliefTris;
+        std::vector<FlatVertex3D> reliefGridLines;
+        reliefTris.reserve(static_cast<size_t>(rMax * cMax * 6));
+        reliefGridLines.reserve(static_cast<size_t>(rMax * cMax * 4));
+
+        float alphaSurf = 0.88f;
+
+        for (int rIdx = 1; rIdx < rMax; ++rIdx) {
+            float y0 = static_cast<float>(m.yd_val(rIdx));
+            float y1 = static_cast<float>(m.yd_val(rIdx + 1));
+            for (int c = 1; c < cMax; ++c) {
+                float x0 = static_cast<float>(m.xd_val(c));
+                float x1 = static_cast<float>(m.xd_val(c + 1));
+
+                float z00Raw = static_cast<float>(m.z(rIdx, c, 0));
+                float z10Raw = static_cast<float>(m.z(rIdx, c + 1, 0));
+                float z11Raw = static_cast<float>(m.z(rIdx + 1, c + 1, 0));
+                float z01Raw = static_cast<float>(m.z(rIdx + 1, c, 0));
+
+                float z00 = scaleZ(z00Raw);
+                float z10 = scaleZ(z10Raw);
+                float z11 = scaleZ(z11Raw);
+                float z01 = scaleZ(z01Raw);
+
+                float r00, g00, b00;
+                float r10, g10, b10;
+                float r11, g11, b11;
+                float r01, g01, b01;
+
+                getReliefColor(getT(z00Raw), r00, g00, b00);
+                getReliefColor(getT(z10Raw), r10, g10, b10);
+                getReliefColor(getT(z11Raw), r11, g11, b11);
+                getReliefColor(getT(z01Raw), r01, g01, b01);
+
+                // Two triangles forming quad: (00 -> 10 -> 11) and (00 -> 11 -> 01)
+                reliefTris.push_back({ x0, y0, z00, r00, g00, b00, alphaSurf });
+                reliefTris.push_back({ x1, y0, z10, r10, g10, b10, alphaSurf });
+                reliefTris.push_back({ x1, y1, z11, r11, g11, b11, alphaSurf });
+
+                reliefTris.push_back({ x0, y0, z00, r00, g00, b00, alphaSurf });
+                reliefTris.push_back({ x1, y1, z11, r11, g11, b11, alphaSurf });
+                reliefTris.push_back({ x0, y1, z01, r01, g01, b01, alphaSurf });
+
+                // Subtle grid overlay for high-definition topographic features
+                float lineAlpha = 0.35f;
+                reliefGridLines.push_back({ x0, y0, z00, r00 * 0.7f, g00 * 0.7f, b00 * 0.7f, lineAlpha });
+                reliefGridLines.push_back({ x1, y0, z10, r10 * 0.7f, g10 * 0.7f, b10 * 0.7f, lineAlpha });
+
+                reliefGridLines.push_back({ x0, y0, z00, r00 * 0.7f, g00 * 0.7f, b00 * 0.7f, lineAlpha });
+                reliefGridLines.push_back({ x0, y1, z01, r01 * 0.7f, g01 * 0.7f, b01 * 0.7f, lineAlpha });
+            }
+        }
+
+        renderFlatTriangles(reliefTris, true);
+        renderLines(reliefGridLines, 1.0f);
+    } else {
+        // ReliefMode::Wireframe
+        std::vector<FlatVertex3D> reliefLines;
+        float lineAlpha = 0.90f;
+
+        // Grid lines along X (running West-East at each core row)
+        for (int rIdx = 1; rIdx <= rMax; ++rIdx) {
+            float y = static_cast<float>(m.yd_val(rIdx));
+            for (int c = 1; c < cMax; ++c) {
+                float xA = static_cast<float>(m.xd_val(c));
+                float xB = static_cast<float>(m.xd_val(c + 1));
+                float zARaw = static_cast<float>(m.z(rIdx, c, 0));
+                float zBRaw = static_cast<float>(m.z(rIdx, c + 1, 0));
+                float zA = scaleZ(zARaw);
+                float zB = scaleZ(zBRaw);
+                float rA, gA, bA, rB, gB, bB;
+                getReliefColor(getT(zARaw), rA, gA, bA);
+                getReliefColor(getT(zBRaw), rB, gB, bB);
+
+                reliefLines.push_back({ xA, y, zA, rA, gA, bA, lineAlpha });
+                reliefLines.push_back({ xB, y, zB, rB, gB, bB, lineAlpha });
+            }
+        }
+        // Grid lines along Y (running South-North at each core col)
+        for (int c = 1; c <= cMax; ++c) {
+            float x = static_cast<float>(m.xd_val(c));
+            for (int rIdx = 1; rIdx < rMax; ++rIdx) {
+                float yA = static_cast<float>(m.yd_val(rIdx));
+                float yB = static_cast<float>(m.yd_val(rIdx + 1));
+                float zARaw = static_cast<float>(m.z(rIdx, c, 0));
+                float zBRaw = static_cast<float>(m.z(rIdx + 1, c, 0));
+                float zA = scaleZ(zARaw);
+                float zB = scaleZ(zBRaw);
+                float rA, gA, bA, rB, gB, bB;
+                getReliefColor(getT(zARaw), rA, gA, bA);
+                getReliefColor(getT(zBRaw), rB, gB, bB);
+
+                reliefLines.push_back({ x, yA, zA, rA, gA, bA, lineAlpha });
+                reliefLines.push_back({ x, yB, zB, rB, gB, bB, lineAlpha });
+            }
+        }
+
+        renderLines(reliefLines, 1.4f);
+    }
 }
 
 void GL3DView::drawBodies() {
@@ -2375,6 +2633,19 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     actRelief->setCheckable(true);
     actRelief->setChecked(m_showRelief);
 
+    auto *reliefModeMenu = menu.addMenu(tr("Relief Display Mode"));
+    auto *actSurf = reliefModeMenu->addAction(tr("Surface"), this, [this]() {
+        setReliefMode(ReliefMode::Surface);
+    });
+    actSurf->setCheckable(true);
+    actSurf->setChecked(m_reliefMode == ReliefMode::Surface);
+
+    auto *actWireRelief = reliefModeMenu->addAction(tr("Wireframe"), this, [this]() {
+        setReliefMode(ReliefMode::Wireframe);
+    });
+    actWireRelief->setCheckable(true);
+    actWireRelief->setChecked(m_reliefMode == ReliefMode::Wireframe);
+
     auto *actProfile = menu.addAction(tr("Show Profile Slices"), this, [this](bool checked) {
         setShowProfilePlane(checked);
     });
@@ -2550,6 +2821,14 @@ void GL3DView::setWireframeMode(bool wireframe) {
 void GL3DView::setShowRelief(bool show) {
     m_showRelief = show;
     update();
+}
+
+void GL3DView::setReliefMode(ReliefMode mode) {
+    if (m_reliefMode != mode) {
+        m_reliefMode = mode;
+        emit reliefModeChanged(mode);
+        update();
+    }
 }
 
 void GL3DView::setShowProfilePlane(bool show) {

@@ -2318,4 +2318,93 @@ TEST_F(GuiDocumentTest, GL3DViewAndSettingsPaneTransparencyToggles) {
     EXPECT_EQ(b0->is_transparent(), initTrans);
 }
 
+TEST_F(GuiDocumentTest, GL3DViewReliefColormapAndSurfaceWireframeModes) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    GL3DView *glv = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = g;
+            sub3D = sub;
+            break;
+        }
+    }
+    ASSERT_NE(glv, nullptr);
+    ASSERT_NE(sub3D, nullptr);
+
+    // 1. Verify default 3D relief settings
+    EXPECT_TRUE(glv->showRelief());
+    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Surface);
+
+    // 2. Direct setter and signal emission
+    int signalCount = 0;
+    GL3DView::ReliefMode emittedMode = GL3DView::ReliefMode::Surface;
+    QObject::connect(glv, &GL3DView::reliefModeChanged, [&](GL3DView::ReliefMode m) {
+        emittedMode = m;
+        ++signalCount;
+    });
+
+    glv->setReliefMode(GL3DView::ReliefMode::Wireframe);
+    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Wireframe);
+    EXPECT_EQ(signalCount, 1);
+    EXPECT_EQ(emittedMode, GL3DView::ReliefMode::Wireframe);
+
+    // Setting same mode should not re-emit
+    glv->setReliefMode(GL3DView::ReliefMode::Wireframe);
+    EXPECT_EQ(signalCount, 1);
+
+    // 3. SettingsPane synchronization and controls
+    mw.mdiArea()->setActiveSubWindow(sub3D);
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    pane->selectDisplayTab();
+
+    auto *chkRelief = pane->reliefCheckBox3D();
+    auto *comboMode = pane->reliefModeComboBox3D();
+    ASSERT_NE(chkRelief, nullptr);
+    ASSERT_NE(comboMode, nullptr);
+
+    EXPECT_TRUE(chkRelief->isChecked());
+    EXPECT_TRUE(comboMode->isEnabled());
+    EXPECT_EQ(comboMode->currentData().toInt(), static_cast<int>(GL3DView::ReliefMode::Wireframe));
+
+    // Change combo to Surface via UI
+    int surfIdx = comboMode->findData(static_cast<int>(GL3DView::ReliefMode::Surface));
+    ASSERT_GE(surfIdx, 0);
+    comboMode->setCurrentIndex(surfIdx);
+    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Surface);
+    EXPECT_EQ(signalCount, 2);
+
+    // Toggle relief off via checkbox
+    chkRelief->setChecked(false);
+    EXPECT_FALSE(glv->showRelief());
+    EXPECT_FALSE(comboMode->isEnabled());
+
+    // Toggle relief on via checkbox
+    chkRelief->setChecked(true);
+    EXPECT_TRUE(glv->showRelief());
+    EXPECT_TRUE(comboMode->isEnabled());
+
+    // 4. Software painter renders cleanly in both Surface and Wireframe modes
+    QPixmap pmSurf(500, 500);
+    pmSurf.fill(Qt::white);
+    {
+        QPainter painter(&pmSurf);
+        glv->setReliefMode(GL3DView::ReliefMode::Surface);
+        glv->paintSoftware(painter);
+    }
+    EXPECT_FALSE(pmSurf.isNull());
+
+    QPixmap pmWire(500, 500);
+    pmWire.fill(Qt::white);
+    {
+        QPainter painter(&pmWire);
+        glv->setReliefMode(GL3DView::ReliefMode::Wireframe);
+        glv->paintSoftware(painter);
+    }
+    EXPECT_FALSE(pmWire.isNull());
+}
+
 

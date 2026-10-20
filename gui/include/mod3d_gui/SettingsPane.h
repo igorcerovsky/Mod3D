@@ -49,6 +49,8 @@ public:
     QCheckBox *transparentBodiesCheckBox() const { return m_chk3DTransparentBodies; }
     QCheckBox *transparentSlicesCheckBox() const { return m_chk3DTransparentSlices; }
     QCheckBox *bodyTransparentCheckBox() const { return m_chkBodyTransparent; }
+    QCheckBox *reliefCheckBox3D() const { return m_chk3DRelief; }
+    QComboBox *reliefModeComboBox3D() const { return m_combo3DReliefMode; }
 
 signals:
     void requestBodyPropertiesDialog(int bodyId);
@@ -124,6 +126,7 @@ private:
     QCheckBox *m_chk3DFeatureEdges{nullptr};
     QCheckBox *m_chk3DWireframe{nullptr};
     QCheckBox *m_chk3DRelief{nullptr};
+    QComboBox *m_combo3DReliefMode{nullptr};
     QDoubleSpinBox *m_spin3DZScale{nullptr};
     QCheckBox *m_chk3DOrtho{nullptr};
     QCheckBox *m_chk3DDepthFog{nullptr};

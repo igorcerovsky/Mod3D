@@ -50,11 +50,19 @@ public:
     void resetCamera();
     void fitToView();
 
+    enum class ReliefMode {
+        Surface,
+        Wireframe
+    };
+
     [[nodiscard]] bool wireframeMode() const noexcept { return m_wireframe; }
     void setWireframeMode(bool wireframe);
 
     [[nodiscard]] bool showRelief() const noexcept { return m_showRelief; }
     void setShowRelief(bool show);
+
+    [[nodiscard]] ReliefMode reliefMode() const noexcept { return m_reliefMode; }
+    void setReliefMode(ReliefMode mode);
 
     [[nodiscard]] bool showProfilePlane() const noexcept { return m_showProfilePlane; }
     void setShowProfilePlane(bool show);
@@ -116,6 +124,7 @@ signals:
     void zScaleChanged(float zScale);
     void projectionChanged(bool isOrtho);
     void bodySelected(int bodyId);
+    void reliefModeChanged(ReliefMode mode);
 
 protected:
     void initializeGL() override;
@@ -222,6 +231,7 @@ private:
     bool m_showBottom{false};
     bool m_showOuterFacets{false};
     bool m_showRelief{true};
+    ReliefMode m_reliefMode{ReliefMode::Surface};
     bool m_showProfilePlane{true};
     bool m_showBoundingBox{true};
     bool m_showOrientationIndicator{true};
