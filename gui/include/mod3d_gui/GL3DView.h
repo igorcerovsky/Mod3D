@@ -13,12 +13,11 @@
 #include <QOpenGLShaderProgram>
 
 class QMdiArea;
-class QVariantAnimation;
+#include <QVariantAnimation>
 #include <QPointer>
+#include "mod3d_gui/ProfileView.h"
 
 namespace mod3d_gui {
-
-class ProfileView;
 
 class GL3DView : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT

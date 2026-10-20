@@ -9,10 +9,9 @@
 #include <QLabel>
 
 #include <QPointer>
+#include "mod3d_gui/ProfileView.h"
 
 namespace mod3d_gui {
-
-class ProfileView;
 
 QIcon createZoomIcon(bool zoomIn);
 
