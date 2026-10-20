@@ -1289,11 +1289,12 @@ TEST_F(GuiDocumentTest, GL3DViewTurntableOrbitAndCameraPresets) {
     view.setOrthographic(false);
     EXPECT_FALSE(view.isOrthographic());
 
-    // Depth Fog / Atmospheric Haze
+    // Depth Fog / Atmospheric Haze (default off)
+    EXPECT_FALSE(view.showDepthFog());
+    view.setShowDepthFog(true);
     EXPECT_TRUE(view.showDepthFog());
     view.setShowDepthFog(false);
     EXPECT_FALSE(view.showDepthFog());
-    view.setShowDepthFog(true);
 
     // Target (LookAt Center) & Distance
     QVector3D newTarget(150.0f, 250.0f, -600.0f);

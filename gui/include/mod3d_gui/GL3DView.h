@@ -137,7 +137,7 @@ private:
     // Controls & Visual Options
     float m_zScale{1.0f};
     bool m_orthographic{false};
-    bool m_showDepthFog{true};
+    bool m_showDepthFog{false};
 
     // Interaction state
     QPoint m_lastMousePos;

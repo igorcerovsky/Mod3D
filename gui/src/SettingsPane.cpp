@@ -490,7 +490,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chk3DWireframe = new QCheckBox(tr("Wireframe Mode"), box3DToggles);
     m_chk3DOrtho = new QCheckBox(tr("Orthographic Projection"), box3DToggles);
     m_chk3DDepthFog = new QCheckBox(tr("Depth Cueing / Atmospheric Fog"), box3DToggles);
-    m_chk3DDepthFog->setChecked(true);
+    m_chk3DDepthFog->setChecked(false);
 
     toggles3DLayout->addWidget(m_chk3DSlices);
     toggles3DLayout->addWidget(m_chk3DCompass);
