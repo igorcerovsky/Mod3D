@@ -1485,6 +1485,9 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
 }
 
 TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
+#if defined(__linux__)
+    GTEST_SKIP() << "Skipped on Linux CI (QOpenGLWidget unsupported on headless offscreen)";
+#endif
     MainWindow mw;
     mw.resize(1200, 800);
 
