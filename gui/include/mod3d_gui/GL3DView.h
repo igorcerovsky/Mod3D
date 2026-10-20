@@ -14,8 +14,11 @@
 
 class QMdiArea;
 class QVariantAnimation;
+#include <QPointer>
 
 namespace mod3d_gui {
+
+class ProfileView;
 
 class GL3DView : public QOpenGLWidget, protected QOpenGLFunctions {
     Q_OBJECT
@@ -237,6 +240,7 @@ private:
     bool m_showOrientationIndicator{true};
     bool m_transparentBodies{false};
     bool m_transparentProfiles{true};
+    QPointer<ProfileView> m_lastActiveProfileView{nullptr};
 };
 
 } // namespace mod3d_gui

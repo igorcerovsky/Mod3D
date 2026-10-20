@@ -44,15 +44,16 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPane, &SettingsPane::requestBodyPropertiesDialog, this, &MainWindow::onBodyProperties);
 
     connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this](QMdiSubWindow *sub) {
-        if (m_settingsPane) {
-            m_settingsPane->setActiveSubWindow(sub);
-        }
         if (sub) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                m_lastActiveProfileView = pv;
                 m_toolbarsMgr->setActiveProfileView(pv);
                 m_doc->setProfileOrientation(pv->profileOrientation());
                 m_doc->setProfileIndex(pv->profileIndex());
             }
+        }
+        if (m_settingsPane) {
+            m_settingsPane->setActiveSubWindow(sub);
         }
         for (auto *s : m_mdiArea->subWindowList()) {
             if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
@@ -355,14 +356,19 @@ void MainWindow::setupMenus() {
 }
 
 ProfileView *MainWindow::activeProfileView() const {
-    auto *sub = m_mdiArea->activeSubWindow();
-    return sub ? qobject_cast<ProfileView*>(sub->widget()) : nullptr;
+    if (auto *sub = m_mdiArea->activeSubWindow()) {
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            return pv;
+        }
+    }
+    return m_lastActiveProfileView.data();
 }
 
 ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileIndex) {
     auto *pv = new ProfileView(m_doc, orient, profileIndex, this);
     auto *sub = m_mdiArea->addSubWindow(pv);
     pv->updateTitle();
+    m_lastActiveProfileView = pv;
     sub->resize(600, 420);
     sub->show();
 
@@ -388,11 +394,11 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
     });
 
     connect(pv, &ProfileView::profileSettingsChanged, this, [this, pv](int idx, ProfileOrientation o) {
-        if (activeProfileView() == pv) {
-            m_toolbarsMgr->updateProfileWidgets();
-            m_doc->setProfileOrientation(o);
-            m_doc->setProfileIndex(idx);
-        }
+        m_lastActiveProfileView = pv;
+        m_toolbarsMgr->setActiveProfileView(pv);
+        m_doc->setProfileOrientation(o);
+        m_doc->setProfileIndex(idx);
+        m_toolbarsMgr->updateProfileWidgets();
         for (auto *s : m_mdiArea->subWindowList()) {
             if (auto *otherPv = qobject_cast<ProfileView*>(s->widget())) {
                 if (otherPv != pv) otherPv->update();
@@ -627,6 +633,7 @@ void MainWindow::arrangeDefaultTiles() {
         if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
             if (pv->profileOrientation() == ProfileOrientation::EastWest) {
                 m_mdiArea->setActiveSubWindow(sub);
+                m_lastActiveProfileView = pv;
                 m_toolbarsMgr->setActiveProfileView(pv);
                 m_doc->setProfileOrientation(pv->profileOrientation());
                 m_doc->setProfileIndex(pv->profileIndex());

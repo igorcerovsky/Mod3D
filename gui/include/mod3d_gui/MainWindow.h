@@ -14,6 +14,7 @@
 #include <QMdiSubWindow>
 #include <QResizeEvent>
 #include <QShowEvent>
+#include <QPointer>
 
 namespace mod3d_gui {
 
@@ -30,6 +31,7 @@ public:
 
     ProfileView *openProfileView(ProfileOrientation orient = ProfileOrientation::EastWest, int profileIndex = -1);
     ProfileView *activeProfileView() const;
+    ProfileView *lastActiveProfileView() const { return m_lastActiveProfileView.data(); }
     MapView *openMapView();
     GL3DView *openGL3DView();
     SpreadsheetView *openSpreadsheetView();
@@ -72,6 +74,7 @@ private:
     StatusBarManager *m_statusBarMgr;
     ToolbarsManager *m_toolbarsMgr;
     SettingsPane *m_settingsPane{nullptr};
+    QPointer<ProfileView> m_lastActiveProfileView{nullptr};
 };
 
 } // namespace mod3d_gui

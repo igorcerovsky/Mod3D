@@ -618,6 +618,8 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
     connect(m_btnProfTabOrientEW, &QPushButton::clicked, this, [this]() {
         if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
             pv->setProfileOrientation(ProfileOrientation::EastWest);
+        } else if (m_mainWindow && m_mainWindow->activeProfileView()) {
+            m_mainWindow->activeProfileView()->setProfileOrientation(ProfileOrientation::EastWest);
         } else {
             m_doc->setProfileOrientation(ProfileOrientation::EastWest);
         }
@@ -625,6 +627,8 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
     connect(m_btnProfTabOrientSN, &QPushButton::clicked, this, [this]() {
         if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
             pv->setProfileOrientation(ProfileOrientation::SouthNorth);
+        } else if (m_mainWindow && m_mainWindow->activeProfileView()) {
+            m_mainWindow->activeProfileView()->setProfileOrientation(ProfileOrientation::SouthNorth);
         } else {
             m_doc->setProfileOrientation(ProfileOrientation::SouthNorth);
         }
@@ -648,17 +652,32 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
     navLayout->addLayout(idxRow);
 
     connect(m_btnProfTabPrev, &QPushButton::clicked, this, [this]() {
-        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) pv->moveProfile(-1);
-        else m_doc->moveProfile(-1);
+        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
+            pv->moveProfile(-1);
+        } else if (m_mainWindow && m_mainWindow->activeProfileView()) {
+            m_mainWindow->activeProfileView()->moveProfile(-1);
+        } else {
+            m_doc->moveProfile(-1);
+        }
     });
     connect(m_btnProfTabNext, &QPushButton::clicked, this, [this]() {
-        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) pv->moveProfile(1);
-        else m_doc->moveProfile(1);
+        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
+            pv->moveProfile(1);
+        } else if (m_mainWindow && m_mainWindow->activeProfileView()) {
+            m_mainWindow->activeProfileView()->moveProfile(1);
+        } else {
+            m_doc->moveProfile(1);
+        }
     });
     connect(m_spinProfTabIdx, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int val) {
         if (m_blockSync) return;
-        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) pv->setProfileIndex(val);
-        else m_doc->setProfileIndex(val);
+        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
+            pv->setProfileIndex(val);
+        } else if (m_mainWindow && m_mainWindow->activeProfileView()) {
+            m_mainWindow->activeProfileView()->setProfileIndex(val);
+        } else {
+            m_doc->setProfileIndex(val);
+        }
     });
 
     m_lblProfTabCoord = new QLabel(tr("Y = 0.0 m"), boxNav);
@@ -678,14 +697,17 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
 
     connect(m_btnJumpMin, &QPushButton::clicked, this, [this]() {
         if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) pv->jumpToMin();
+        else if (m_mainWindow && m_mainWindow->activeProfileView()) m_mainWindow->activeProfileView()->jumpToMin();
         else m_doc->jumpToMin();
     });
     connect(m_btnJumpMax, &QPushButton::clicked, this, [this]() {
         if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) pv->jumpToMax();
+        else if (m_mainWindow && m_mainWindow->activeProfileView()) m_mainWindow->activeProfileView()->jumpToMax();
         else m_doc->jumpToMax();
     });
     connect(m_btnJumpExtremum, &QPushButton::clicked, this, [this]() {
         if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) pv->jumpToExtreme();
+        else if (m_mainWindow && m_mainWindow->activeProfileView()) m_mainWindow->activeProfileView()->jumpToExtreme();
         else m_doc->jumpToExtreme();
     });
 
@@ -1371,6 +1393,26 @@ void SettingsPane::updateViewContext() {
         m_chk3DTransparentBodies->setChecked(glv->showTransparentBodies());
         m_chk3DTransparentSlices->setChecked(glv->showTransparentProfilePlane());
         m_spin3DZScale->setValue(glv->zScale());
+
+        // Keep Profiles Tab in sync with the latest active profile
+        ProfileOrientation prfOrient = m_doc->profileOrientation();
+        int prfIdx = m_doc->profileIndex();
+        int maxPrfIdx = m_doc->maxProfileIndex();
+        if (m_mainWindow && m_mainWindow->activeProfileView()) {
+            prfOrient = m_mainWindow->activeProfileView()->profileOrientation();
+            prfIdx = m_mainWindow->activeProfileView()->profileIndex();
+            maxPrfIdx = m_mainWindow->activeProfileView()->maxProfileIndex();
+        }
+        m_btnProfTabOrientEW->setChecked(prfOrient == ProfileOrientation::EastWest);
+        m_btnProfTabOrientSN->setChecked(prfOrient == ProfileOrientation::SouthNorth);
+        m_spinProfTabIdx->setMaximum(maxPrfIdx);
+        m_spinProfTabIdx->setValue(prfIdx);
+
+        double coord = (prfOrient == ProfileOrientation::EastWest)
+            ? m_doc->model().yd_val(prfIdx + 1)
+            : m_doc->model().xd_val(prfIdx + 1);
+        QString coordName = (prfOrient == ProfileOrientation::EastWest) ? "Y" : "X";
+        m_lblProfTabCoord->setText(QString("%1 = %2 m").arg(coordName).arg(coord, 0, 'f', 1));
 
     } else {
         m_lblViewContext->setText(tr("Active View: Workspace"));

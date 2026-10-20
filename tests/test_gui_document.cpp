@@ -2407,4 +2407,89 @@ TEST_F(GuiDocumentTest, GL3DViewReliefColormapAndSurfaceWireframeModes) {
     EXPECT_FALSE(pmWire.isNull());
 }
 
+TEST_F(GuiDocumentTest, GL3DViewRetainsLastlySelectedProfileViewOnFocus) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    ProfileView *pvEW = nullptr;
+    ProfileView *pvSN = nullptr;
+    GL3DView *glv = nullptr;
+    QMdiSubWindow *subEW = nullptr;
+    QMdiSubWindow *subSN = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest) {
+                pvEW = pv;
+                subEW = sub;
+            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth) {
+                pvSN = pv;
+                subSN = sub;
+            }
+        } else if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = g;
+            sub3D = sub;
+        }
+    }
+
+    ASSERT_NE(pvEW, nullptr);
+    ASSERT_NE(pvSN, nullptr);
+    ASSERT_NE(glv, nullptr);
+    ASSERT_NE(subEW, nullptr);
+    ASSERT_NE(subSN, nullptr);
+    ASSERT_NE(sub3D, nullptr);
+
+    // 1. Activate South-North profile view and change its profile
+    mw.mdiArea()->setActiveSubWindow(subSN);
+    pvSN->setProfileIndex(3);
+    EXPECT_EQ(mw.activeProfileView(), pvSN);
+    EXPECT_EQ(mw.lastActiveProfileView(), pvSN);
+    EXPECT_EQ(mw.document()->profileOrientation(), ProfileOrientation::SouthNorth);
+    EXPECT_EQ(mw.document()->profileIndex(), 3);
+
+    // 2. Click / activate 3D View subwindow
+    mw.mdiArea()->setActiveSubWindow(sub3D);
+
+    // Verify activeProfileView() and lastActiveProfileView() still return pvSN
+    EXPECT_EQ(mw.activeProfileView(), pvSN);
+    EXPECT_EQ(mw.lastActiveProfileView(), pvSN);
+    EXPECT_EQ(mw.document()->profileOrientation(), ProfileOrientation::SouthNorth);
+    EXPECT_EQ(mw.document()->profileIndex(), 3);
+
+    // Render software painter without crashing or resetting profile
+    QPixmap pm(400, 400);
+    QPainter p(&pm);
+    glv->paintSoftware(p);
+
+    EXPECT_EQ(mw.document()->profileOrientation(), ProfileOrientation::SouthNorth);
+    EXPECT_EQ(mw.document()->profileIndex(), 3);
+
+    // 3. Now activate East-West profile view and change its profile
+    mw.mdiArea()->setActiveSubWindow(subEW);
+    pvEW->setProfileIndex(7);
+    EXPECT_EQ(mw.activeProfileView(), pvEW);
+    EXPECT_EQ(mw.lastActiveProfileView(), pvEW);
+    EXPECT_EQ(mw.document()->profileOrientation(), ProfileOrientation::EastWest);
+    EXPECT_EQ(mw.document()->profileIndex(), 7);
+
+    // 4. Click / activate 3D View again
+    mw.mdiArea()->setActiveSubWindow(sub3D);
+
+    // Verify active profile stays on East-West at index 7, NOT switching back to South-North
+    EXPECT_EQ(mw.activeProfileView(), pvEW);
+    EXPECT_EQ(mw.lastActiveProfileView(), pvEW);
+    EXPECT_EQ(mw.document()->profileOrientation(), ProfileOrientation::EastWest);
+    EXPECT_EQ(mw.document()->profileIndex(), 7);
+
+    glv->paintSoftware(p);
+    EXPECT_EQ(mw.document()->profileOrientation(), ProfileOrientation::EastWest);
+    EXPECT_EQ(mw.document()->profileIndex(), 7);
+
+    // 5. While 3D view is active, navigation via activeProfileView advances the latest profile
+    mw.activeProfileView()->moveProfile(1);
+    EXPECT_EQ(pvEW->profileIndex(), 8);
+    EXPECT_EQ(mw.document()->profileIndex(), 8);
+}
+
 

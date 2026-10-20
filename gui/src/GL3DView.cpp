@@ -1080,32 +1080,116 @@ void GL3DView::paintSoftware(QPainter &painter) {
         painter.drawLine(pOrigin, pAxZ);
     }
 
-    // 3. Active Profile Plane
+    // 3. Active and Inactive Profile Plane Slices
     if (m_showProfilePlane) {
-        int pIdx = m_doc->profileIndex();
+        struct SoftwareSlice {
+            ProfileOrientation orient;
+            int index;
+            bool isActive;
+        };
+        std::vector<SoftwareSlice> swSlices;
+
+        QMdiArea *mdi = findMdiArea();
+        if (mdi) {
+            std::vector<ProfileView*> openPvs;
+            for (auto *sub : mdi->subWindowList()) {
+                if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                    openPvs.push_back(pv);
+                }
+            }
+
+            ProfileView *activePv = nullptr;
+            if (auto *actSub = mdi->activeSubWindow()) {
+                activePv = qobject_cast<ProfileView*>(actSub->widget());
+            }
+            if (activePv) {
+                m_lastActiveProfileView = activePv;
+            } else {
+                if (auto *mw = qobject_cast<MainWindow*>(mdi->window())) {
+                    activePv = mw->activeProfileView();
+                }
+                if (!activePv && m_lastActiveProfileView) {
+                    if (std::find(openPvs.begin(), openPvs.end(), m_lastActiveProfileView.data()) != openPvs.end()) {
+                        activePv = m_lastActiveProfileView.data();
+                    }
+                }
+                if (!activePv) {
+                    for (auto *pv : openPvs) {
+                        if (pv->profileOrientation() == m_doc->profileOrientation() &&
+                            pv->profileIndex() == m_doc->profileIndex()) {
+                            activePv = pv;
+                            break;
+                        }
+                    }
+                }
+                if (!activePv) {
+                    for (auto *pv : openPvs) {
+                        if (pv->profileOrientation() == m_doc->profileOrientation()) {
+                            activePv = pv;
+                            break;
+                        }
+                    }
+                }
+                if (!activePv && !openPvs.empty()) {
+                    activePv = openPvs.front();
+                }
+            }
+
+            for (auto *pv : openPvs) {
+                swSlices.push_back({ pv->profileOrientation(), pv->profileIndex(), (pv == activePv) });
+            }
+        }
+
+        if (swSlices.empty()) {
+            swSlices.push_back({ m_doc->profileOrientation(), m_doc->profileIndex(), true });
+        }
+
         double z0 = model.z_min_val();
         double z1 = model.z_max_val();
-        QPolygonF poly;
-        if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
-            double y = model.yd_val(pIdx + 1);
-            poly << project(model.x_min_val(), y, z0).first
-                 << project(model.x_max_val(), y, z0).first
-                 << project(model.x_max_val(), y, z1).first
-                 << project(model.x_min_val(), y, z1).first;
-        } else {
-            double x = model.xd_val(pIdx + 1);
-            poly << project(x, model.y_min_val(), z0).first
-                 << project(x, model.y_max_val(), z0).first
-                 << project(x, model.y_max_val(), z1).first
-                 << project(x, model.y_min_val(), z1).first;
+
+        // Inactive slices (subtle blue)
+        for (const auto &sl : swSlices) {
+            if (sl.isActive) continue;
+            QPolygonF poly;
+            if (sl.orient == ProfileOrientation::EastWest) {
+                double y = model.yd_val(sl.index + 1);
+                poly << project(model.x_min_val(), y, z0).first
+                     << project(model.x_max_val(), y, z0).first
+                     << project(model.x_max_val(), y, z1).first
+                     << project(model.x_min_val(), y, z1).first;
+            } else {
+                double x = model.xd_val(sl.index + 1);
+                poly << project(x, model.y_min_val(), z0).first
+                     << project(x, model.y_max_val(), z0).first
+                     << project(x, model.y_max_val(), z1).first
+                     << project(x, model.y_min_val(), z1).first;
+            }
+            painter.setBrush(m_transparentProfiles ? QColor(59, 130, 246, 20) : Qt::NoBrush);
+            painter.setPen(QPen(QColor(59, 130, 246, 120), 1.0, Qt::DashLine));
+            painter.drawPolygon(poly);
         }
-        if (m_transparentProfiles) {
-            painter.setBrush(QColor(245, 158, 11, 45));
-        } else {
-            painter.setBrush(Qt::NoBrush);
+
+        // Active slice (prominent amber)
+        for (const auto &sl : swSlices) {
+            if (!sl.isActive) continue;
+            QPolygonF poly;
+            if (sl.orient == ProfileOrientation::EastWest) {
+                double y = model.yd_val(sl.index + 1);
+                poly << project(model.x_min_val(), y, z0).first
+                     << project(model.x_max_val(), y, z0).first
+                     << project(model.x_max_val(), y, z1).first
+                     << project(model.x_min_val(), y, z1).first;
+            } else {
+                double x = model.xd_val(sl.index + 1);
+                poly << project(x, model.y_min_val(), z0).first
+                     << project(x, model.y_max_val(), z0).first
+                     << project(x, model.y_max_val(), z1).first
+                     << project(x, model.y_min_val(), z1).first;
+            }
+            painter.setBrush(m_transparentProfiles ? QColor(245, 158, 11, 45) : Qt::NoBrush);
+            painter.setPen(QPen(QColor(217, 119, 6, 220), 1.8, Qt::DashLine));
+            painter.drawPolygon(poly);
         }
-        painter.setPen(QPen(QColor(217, 119, 6, 200), 1.5, Qt::DashLine));
-        painter.drawPolygon(poly);
     }
 
     // 4. 3D Polyhedral Bodies (Depth-Sorted Back-to-Front)
@@ -1999,13 +2083,37 @@ void GL3DView::drawProfilePlane() {
         if (auto *actSub = mdi->activeSubWindow()) {
             activePv = qobject_cast<ProfileView*>(actSub->widget());
         }
-        if (!activePv) {
+        if (activePv) {
+            m_lastActiveProfileView = activePv;
+        } else {
             if (auto *mw = qobject_cast<MainWindow*>(mdi->window())) {
                 activePv = mw->activeProfileView();
             }
-        }
-        if (!activePv && !openPvs.empty()) {
-            activePv = openPvs.front();
+            if (!activePv && m_lastActiveProfileView) {
+                if (std::find(openPvs.begin(), openPvs.end(), m_lastActiveProfileView.data()) != openPvs.end()) {
+                    activePv = m_lastActiveProfileView.data();
+                }
+            }
+            if (!activePv) {
+                for (auto *pv : openPvs) {
+                    if (pv->profileOrientation() == m_doc->profileOrientation() &&
+                        pv->profileIndex() == m_doc->profileIndex()) {
+                        activePv = pv;
+                        break;
+                    }
+                }
+            }
+            if (!activePv) {
+                for (auto *pv : openPvs) {
+                    if (pv->profileOrientation() == m_doc->profileOrientation()) {
+                        activePv = pv;
+                        break;
+                    }
+                }
+            }
+            if (!activePv && !openPvs.empty()) {
+                activePv = openPvs.front();
+            }
         }
 
         for (auto *pv : openPvs) {
