@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-146%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-152%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -26,7 +26,7 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 
 <p align="center">
   <img src="docs/images/mod3d_main_workspace.png" alt="Mod3D Main Workspace" width="100%">
-  <em>Mod3D Multi-View Workspace: East-West and South-North geological cross-sections, 2D potential field map with topography contours, 3D turntable view, and Settings Inspector.</em>
+  <em>Mod3D Multi-View Workspace: Synchronized East-West and South-North cross-sections with live anomaly curves, 2D potential field heatmap with CONREC topography contours and body footprints, hardware-accelerated 3D turntable view with elevation-colored relief surface and active profile slice, and modern 4-tab Settings Inspector.</em>
 </p>
 
 ---
@@ -43,12 +43,13 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 - 🗺️ **Comprehensive Multi-View Architecture**:
   - **Geological Profile View**: Synchronized East-West and South-North cross-sections, multi-body polygon editing, vertex dragging, body splitting, and real-time field profile fitting.
   - **Map View**: 2D potential field color raster heatmaps, station points, profile traverses, body footprints, and automatic CONREC surface relief/topography contours.
-  - **3D Perspective Turntable View**: Interactive 3D visualization of faceted polyhedral subsurface bodies.
-  - **Geological Body Editor & Settings Inspector**: SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color picker, active toggles, and linear gradients.
+  - **3D Perspective Turntable View**: OpenGL 4.1 hardware-accelerated 3D rendering with LookAt camera, smooth turntable orbit & pan, faceted polyhedral subsurface bodies, active profile cut plane slice highlighting, 3D body raycast hit testing/selection, topographic relief surface & wireframe rendering with elevation colormapping, orientation compass sphere & coordinate tripod, and transparency controls.
+  - **Unified Settings Inspector**: 4-tab docked controls (**Display**, **Profiles**, **Bodies**, **Physics/Inversion**) with strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
 - 🎯 **Automated Inversion**:
   - Built-in 1D least-squares automated density contrast inversion to match calculated anomalies to observed field surveys.
 - 🌐 **Modern C++20 & Qt 6 Design**:
   - Decoupled `mod3d_core` static library (zero GUI dependencies) and hardware-accelerated Qt 6 GUI.
+  - Dynamic responsive auto-resizing MDI layout that scales client subwindows smoothly.
   - Complete cross-platform compatibility across macOS (Apple Silicon & Intel), Linux, and Windows.
 
 ---
@@ -58,12 +59,12 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 | Interactive Geological Cross-Section | Topography & Field Map View |
 | :---: | :---: |
 | <img src="docs/images/mod3d_profile_cross_section.png" alt="Profile Cross-Section" width="460"> | <img src="docs/images/mod3d_map_view.png" alt="Map View with Contours" width="460"> |
-| *Real-time gravity anomaly fitting (blue calculated vs. red measured crosses with RMS misfit) above geological polyhedra and topography.* | *Potential field color heatmap with station grid points, profile traverses, geological body footprints, and topography relief contours.* |
+| *Real-time gravity anomaly fitting (blue calculated vs. red measured crosses with live RMS misfit) above geological polyhedra, profile topography, and cross-section cut indicator.* | *Potential field color heatmap with station grid points, profile traverses with directional indicators, geological body footprints, and automatic CONREC topography relief contours.* |
 
 | 3D Perspective Turntable View | Settings Inspector Body Editor |
 | :---: | :---: |
 | <img src="docs/images/mod3d_3d_turntable.png" alt="3D Turntable View" width="460"> | <img src="docs/images/mod3d_body_editor.png" alt="Settings Inspector Body Editor" width="460"> |
-| *Interactive 3D faceted polyhedral bodies with active profile cut plane, bounding box, and orientation tripod.* | *Settings Inspector: Strict SI physical units ($\text{kg/m}^3$ and $\text{SI}$), 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.* |
+| *Interactive 3D view: OpenGL 4.1 core shaders, colormapped topographic relief surface, polyhedral subsurface bodies, active profile cut plane slice, 3D orientation sphere, and coordinate tripod.* | *Settings Inspector: 4-tab docked controls (Display, Profiles, Bodies, Physics), strict SI physical units ($\text{kg/m}^3$ and $\text{SI}$), 3D linear density gradients ($\nabla\rho$), and real-time inversion.* |
 
 ---
 
@@ -109,7 +110,7 @@ Mod3D/
 ├── gui/                   # Modern Qt 6 desktop application (mod3d_gui)
 │   ├── include/mod3d_gui/ # Views: ProfileView, MapView, GL3DView, SettingsPane
 │   └── src/               # Rendering, interaction, and undo/redo controllers
-├── tests/                 # Comprehensive Google Test suite (126 tests)
+├── tests/                 # Comprehensive Google Test suite (152 tests)
 └── Examples/              # Authentic sample models (.m3d) & survey grids
 ```
 
@@ -178,15 +179,19 @@ ctest --test-dir build -C Release --output-on-failure
 
 ## Keyboard Shortcuts & Quick Reference
 
-| Shortcut | Action | Description |
+| Shortcut / Gesture | Action | Description |
 | :--- | :--- | :--- |
 | `F5` | **Compute All** | Recalculate forward potential field across all stations |
 | `H` / `E-W` | **East-West Profile** | Switch active profile view to horizontal E-W orientation |
 | `V` / `S-N` | **South-North Profile** | Switch active profile view to vertical S-N orientation |
 | `P` / `N` | **Previous / Next Profile** | Step through parallel survey profiles |
 | `Tile V` / `Tile H` | **Tile Views** | Arrange Profile, Map, and 3D views automatically |
-| `Ctrl + Wheel` | **Zoom** | Smooth proportional zoom on profile or map view |
-| `Left Drag` | **Move Vertex** | Interactively move geological boundary vertices |
+| `Ctrl + Wheel` | **Zoom 2D** | Smooth proportional zoom on profile or map view |
+| `Left Drag` (Profile) | **Move Vertex** | Interactively move geological boundary vertices |
+| `Left Drag` (3D) | **Orbit Camera** | Turntable 3D camera rotation (azimuth & pitch) |
+| `Shift + Left Drag` / `Middle Drag` (3D) | **Pan Camera** | Smooth 3D scene translation |
+| `Wheel` / `Right Drag` (3D) | **Zoom 3D** | Smooth perspective / orthographic zoom |
+| `Left Click` (3D) | **Select Body** | Raycast 3D body selection synchronized across all views |
 
 ---
 

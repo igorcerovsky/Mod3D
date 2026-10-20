@@ -24,6 +24,15 @@ void saveTestScreenshot(const QPixmap &pix, const QString &filename) {
     std::error_code ec;
     std::filesystem::create_directories(dir, ec);
     pix.save(QString::fromStdString(dir + "/" + filename.toStdString()));
+
+    if (filename.startsWith("mod3d_")) {
+        const std::vector<std::string> candidateDirs = { "../../docs/images", "../docs/images" };
+        for (const auto &d : candidateDirs) {
+            if (std::filesystem::exists(d)) {
+                pix.save(QString::fromStdString(d + "/" + filename.toStdString()));
+            }
+        }
+    }
 }
 } // namespace
 
