@@ -182,7 +182,7 @@ private:
     bool m_showProfilePlane{true};
     bool m_showBoundingBox{true};
     bool m_showOrientationIndicator{true};
-    bool m_transparentBodies{true};
+    bool m_transparentBodies{false};
     bool m_transparentProfiles{true};
 };
 

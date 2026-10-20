@@ -2259,8 +2259,8 @@ TEST_F(GuiDocumentTest, GL3DViewAndSettingsPaneTransparencyToggles) {
     ASSERT_NE(glv, nullptr);
     ASSERT_NE(sub3D, nullptr);
 
-    // 1. Verify default 3D transparency values
-    EXPECT_TRUE(glv->showTransparentBodies());
+    // 1. Verify default 3D transparency values (transparent bodies off by default)
+    EXPECT_FALSE(glv->showTransparentBodies());
     EXPECT_TRUE(glv->showTransparentProfilePlane());
 
     // 2. Activate 3D subwindow and check SettingsPane synchronization
@@ -2274,25 +2274,25 @@ TEST_F(GuiDocumentTest, GL3DViewAndSettingsPaneTransparencyToggles) {
     ASSERT_NE(chkTranspBodies, nullptr);
     ASSERT_NE(chkTranspSlices, nullptr);
 
-    EXPECT_TRUE(chkTranspBodies->isChecked());
+    EXPECT_FALSE(chkTranspBodies->isChecked());
     EXPECT_TRUE(chkTranspSlices->isChecked());
 
     // 3. Toggle via SettingsPane checkboxes and verify GL3DView updates
-    chkTranspBodies->setChecked(false);
-    EXPECT_FALSE(glv->showTransparentBodies());
+    chkTranspBodies->setChecked(true);
+    EXPECT_TRUE(glv->showTransparentBodies());
 
     chkTranspSlices->setChecked(false);
     EXPECT_FALSE(glv->showTransparentProfilePlane());
 
-    // Software paint test without crashes when toggled off
+    // Software paint test without crashes
     QPixmap pm(400, 400);
     QPainter painter(&pm);
     glv->paintSoftware(painter);
 
-    // Re-enable
-    chkTranspBodies->setChecked(true);
+    // Reset back to defaults
+    chkTranspBodies->setChecked(false);
     chkTranspSlices->setChecked(true);
-    EXPECT_TRUE(glv->showTransparentBodies());
+    EXPECT_FALSE(glv->showTransparentBodies());
     EXPECT_TRUE(glv->showTransparentProfilePlane());
 
     // 4. Per-body transparency toggle in Tab 3 (Body Editor)

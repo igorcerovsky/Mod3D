@@ -492,7 +492,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chk3DDepthFog = new QCheckBox(tr("Depth Cueing / Atmospheric Fog"), box3DToggles);
     m_chk3DDepthFog->setChecked(false);
     m_chk3DTransparentBodies = new QCheckBox(tr("Transparent Bodies"), box3DToggles);
-    m_chk3DTransparentBodies->setChecked(true);
+    m_chk3DTransparentBodies->setChecked(false);
     m_chk3DTransparentSlices = new QCheckBox(tr("Transparent Profile / Section Slices"), box3DToggles);
     m_chk3DTransparentSlices->setChecked(true);
 
