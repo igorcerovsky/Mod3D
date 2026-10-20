@@ -970,15 +970,21 @@ void GL3DView::paintEvent(QPaintEvent *event) {
         QOpenGLWidget::paintEvent(event);
         if (m_showOrientationIndicator) {
             QPainter painter(this);
-            drawOrientationHud(painter);
+            if (painter.isActive()) {
+                drawOrientationHud(painter);
+            }
         }
         return;
     }
-    QPainter painter(this);
-    paintSoftware(painter);
+    QPainter painter;
+    if (painter.begin(this)) {
+        paintSoftware(painter);
+        painter.end();
+    }
 }
 
 void GL3DView::paintSoftware(QPainter &painter) {
+    if (!painter.isActive()) return;
     int w = width();
     int h = height();
     if (w <= 0 || h <= 0) return;
@@ -2275,6 +2281,7 @@ int GL3DView::hitTestGizmo(const QPoint &pos) {
 }
 
 void GL3DView::drawOrientationHud(QPainter &painter) {
+    if (!painter.isActive()) return;
     int hudSize = 130;
     int margin = 16;
     int x0 = margin;
