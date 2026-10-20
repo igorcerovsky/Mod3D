@@ -1388,6 +1388,71 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
 #endif
 }
 
+TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    auto subs = mw.mdiArea()->subWindowList();
+    ASSERT_EQ(subs.size(), 4);
+
+    QMdiSubWindow *subEW = nullptr;
+    QMdiSubWindow *subMap = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+    QMdiSubWindow *subNS = nullptr;
+
+    for (auto *sub : subs) {
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest && !subEW) {
+                subEW = sub;
+            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth && !subNS) {
+                subNS = sub;
+            }
+        } else if (qobject_cast<MapView*>(sub->widget())) {
+            subMap = sub;
+        } else if (qobject_cast<GL3DView*>(sub->widget())) {
+            sub3D = sub;
+        }
+    }
+
+    ASSERT_NE(subEW, nullptr);
+    ASSERT_NE(subMap, nullptr);
+    ASSERT_NE(sub3D, nullptr);
+    ASSERT_NE(subNS, nullptr);
+
+    mw.show();
+    QCoreApplication::processEvents();
+
+    // Initial tile fitting at 1200x800
+    int w1 = subEW->width() + subMap->width();
+    int h1 = subEW->height() + sub3D->height();
+    EXPECT_GT(w1, 500);
+    EXPECT_GT(h1, 400);
+
+    // Resize main window to larger geometry
+    mw.resize(1500, 960);
+    QCoreApplication::processEvents();
+
+    int w2 = subEW->width() + subMap->width();
+    int h2 = subEW->height() + sub3D->height();
+    EXPECT_GT(w2, w1);
+    EXPECT_GT(h2, h1);
+    EXPECT_EQ(subEW->width(), sub3D->width());
+    EXPECT_EQ(subMap->width(), subNS->width());
+    EXPECT_EQ(subEW->height(), subMap->height());
+    EXPECT_EQ(sub3D->height(), subNS->height());
+
+    // Resize main window to smaller geometry
+    mw.resize(1000, 680);
+    QCoreApplication::processEvents();
+
+    int w3 = subEW->width() + subMap->width();
+    int h3 = subEW->height() + sub3D->height();
+    EXPECT_LT(w3, w2);
+    EXPECT_LT(h3, h2);
+    EXPECT_EQ(subEW->width(), sub3D->width());
+    EXPECT_EQ(subMap->width(), subNS->width());
+}
+
 TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     MainWindow mw;
     mw.resize(1280, 820);

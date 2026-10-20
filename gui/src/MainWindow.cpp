@@ -77,6 +77,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     resize(1260, 820);
     arrangeDefaultTiles();
+
+    // Auto-fit subwindows whenever the MDI viewport client area is resized
+    m_mdiArea->installEventFilter(this);
+    m_mdiArea->viewport()->installEventFilter(this);
 }
 
 void MainWindow::updateWindowTitle() {
@@ -444,13 +448,60 @@ SpreadsheetView *MainWindow::openSpreadsheetView() {
     return sv;
 }
 
-void MainWindow::arrangeDefaultTiles() {
+void MainWindow::resizeEvent(QResizeEvent *event) {
+    QMainWindow::resizeEvent(event);
+    resizeSubWindowsToFit();
+}
+
+void MainWindow::showEvent(QShowEvent *event) {
+    QMainWindow::showEvent(event);
+    resizeSubWindowsToFit();
+}
+
+bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
+    if ((obj == m_mdiArea || obj == m_mdiArea->viewport()) && event->type() == QEvent::Resize) {
+        resizeSubWindowsToFit();
+    }
+    return QMainWindow::eventFilter(obj, event);
+}
+
+void MainWindow::resizeSubWindowsToFit() {
+    if (m_inResizeSubWindows) return;
+    m_inResizeSubWindows = true;
+
+    auto subWindows = m_mdiArea->subWindowList();
+    if (subWindows.empty()) {
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // If any window is currently maximized, QMdiArea natively handles fitting it to full client area
+    for (auto *sub : subWindows) {
+        if (sub && sub->isMaximized()) {
+            m_inResizeSubWindows = false;
+            return;
+        }
+    }
+
+    QRect r = m_mdiArea->viewport()->contentsRect();
+    int w = r.width();
+    int h = r.height();
+    if (w < 100 || h < 100) {
+        int paneW = (m_settingsPane && !m_settingsPane->isHidden()) ? m_settingsPane->width() : 350;
+        if (paneW <= 50) paneW = 350;
+        int mainW = (width() > 400) ? width() : 1260;
+        int mainH = (height() > 300) ? height() : 820;
+        w = std::max(200, mainW - paneW);
+        h = std::max(200, mainH - 85);
+    }
+
+    // Classify the standard 4 quad subwindows
     QMdiSubWindow *subPvEW = nullptr;
     QMdiSubWindow *subMap = nullptr;
     QMdiSubWindow *sub3D = nullptr;
     QMdiSubWindow *subPvNS = nullptr;
 
-    for (auto *sub : m_mdiArea->subWindowList()) {
+    for (auto *sub : subWindows) {
         if (!sub || !sub->widget()) continue;
         if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
             if (pv->profileOrientation() == ProfileOrientation::EastWest && !subPvEW) {
@@ -469,58 +520,103 @@ void MainWindow::arrangeDefaultTiles() {
         }
     }
 
-    QRect r = m_mdiArea->viewport()->contentsRect();
-    int w = r.width();
-    int h = r.height();
-    if (w < 200 || h < 200) {
-        int paneW = (m_settingsPane && !m_settingsPane->isHidden()) ? m_settingsPane->width() : 350;
-        if (paneW <= 50) paneW = 350;
-        int mainW = (width() > 400) ? width() : 1260;
-        int mainH = (height() > 300) ? height() : 820;
-        w = std::max(200, mainW - paneW);
-        h = std::max(200, mainH - 85);
+    // 1. Standard 2x2 quad layout auto-fit
+    if (subPvEW && subMap && sub3D && subPvNS) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+
+        if (!subPvEW->isMinimized()) subPvEW->setGeometry(0, 0, halfW, halfH);
+        if (!subMap->isMinimized()) subMap->setGeometry(halfW, 0, w - halfW, halfH);
+        if (!sub3D->isMinimized()) sub3D->setGeometry(0, halfH, halfW, h - halfH);
+        if (!subPvNS->isMinimized()) subPvNS->setGeometry(halfW, halfH, w - halfW, h - halfH);
+
+        m_inResizeSubWindows = false;
+        return;
     }
 
-    int halfW = w / 2;
-    int halfH = h / 2;
-
-    // Default layout per user specifications:
-    //  - top left: E-W profile
-    if (subPvEW) {
-        if (subPvEW->isMinimized() || subPvEW->isMaximized()) {
-            subPvEW->showNormal();
+    // 2. Exactly 3 subwindows open
+    if (subWindows.size() == 3) {
+        auto *w0 = subWindows[0];
+        auto *w1 = subWindows[1];
+        auto *w2 = subWindows[2];
+        int halfW = w / 2;
+        int halfH = h / 2;
+        if (w >= h) {
+            if (!w0->isMinimized()) w0->setGeometry(0, 0, halfW, h);
+            if (!w1->isMinimized()) w1->setGeometry(halfW, 0, w - halfW, halfH);
+            if (!w2->isMinimized()) w2->setGeometry(halfW, halfH, w - halfW, h - halfH);
+        } else {
+            if (!w0->isMinimized()) w0->setGeometry(0, 0, w, halfH);
+            if (!w1->isMinimized()) w1->setGeometry(0, halfH, halfW, h - halfH);
+            if (!w2->isMinimized()) w2->setGeometry(halfW, halfH, w - halfW, h - halfH);
         }
-        subPvEW->setGeometry(0, 0, halfW, halfH);
-    }
-    //  - top right: map view
-    if (subMap) {
-        if (subMap->isMinimized() || subMap->isMaximized()) {
-            subMap->showNormal();
-        }
-        subMap->setGeometry(halfW, 0, w - halfW, halfH);
-    }
-    //  - bottom left: 3D view
-    if (sub3D) {
-        if (sub3D->isMinimized() || sub3D->isMaximized()) {
-            sub3D->showNormal();
-        }
-        sub3D->setGeometry(0, halfH, halfW, h - halfH);
-    }
-    //  - bottom right: N-S / perpendicular profile
-    if (subPvNS) {
-        if (subPvNS->isMinimized() || subPvNS->isMaximized()) {
-            subPvNS->showNormal();
-        }
-        subPvNS->setGeometry(halfW, halfH, w - halfW, h - halfH);
+        m_inResizeSubWindows = false;
+        return;
     }
 
-    // Set Top-Left E-W profile active by default
-    if (subPvEW) {
-        m_mdiArea->setActiveSubWindow(subPvEW);
-        if (auto *pv = qobject_cast<ProfileView*>(subPvEW->widget())) {
-            m_toolbarsMgr->setActiveProfileView(pv);
-            m_doc->setProfileOrientation(pv->profileOrientation());
-            m_doc->setProfileIndex(pv->profileIndex());
+    // 3. Exactly 2 subwindows open
+    if (subWindows.size() == 2) {
+        auto *w0 = subWindows[0];
+        auto *w1 = subWindows[1];
+        if (w >= h) {
+            int halfW = w / 2;
+            if (!w0->isMinimized()) w0->setGeometry(0, 0, halfW, h);
+            if (!w1->isMinimized()) w1->setGeometry(halfW, 0, w - halfW, h);
+        } else {
+            int halfH = h / 2;
+            if (!w0->isMinimized()) w0->setGeometry(0, 0, w, halfH);
+            if (!w1->isMinimized()) w1->setGeometry(0, halfH, w, h - halfH);
+        }
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 4. Exactly 1 subwindow open
+    if (subWindows.size() == 1) {
+        if (!subWindows[0]->isMinimized()) {
+            subWindows[0]->setGeometry(0, 0, w, h);
+        }
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 5. Generic 4 subwindows
+    if (subWindows.size() == 4) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+        if (!subWindows[0]->isMinimized()) subWindows[0]->setGeometry(0, 0, halfW, halfH);
+        if (!subWindows[1]->isMinimized()) subWindows[1]->setGeometry(halfW, 0, w - halfW, halfH);
+        if (!subWindows[2]->isMinimized()) subWindows[2]->setGeometry(0, halfH, halfW, h - halfH);
+        if (!subWindows[3]->isMinimized()) subWindows[3]->setGeometry(halfW, halfH, w - halfW, h - halfH);
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 6. General N windows fallback: tile to fill client area
+    m_mdiArea->tileSubWindows();
+    m_inResizeSubWindows = false;
+}
+
+void MainWindow::arrangeDefaultTiles() {
+    for (auto *sub : m_mdiArea->subWindowList()) {
+        if (sub && (sub->isMinimized() || sub->isMaximized())) {
+            sub->showNormal();
+        }
+    }
+
+    resizeSubWindowsToFit();
+
+    // Set Top-Left E-W profile active by default when explicitly requested
+    for (auto *sub : m_mdiArea->subWindowList()) {
+        if (!sub || !sub->widget()) continue;
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest) {
+                m_mdiArea->setActiveSubWindow(sub);
+                m_toolbarsMgr->setActiveProfileView(pv);
+                m_doc->setProfileOrientation(pv->profileOrientation());
+                m_doc->setProfileIndex(pv->profileIndex());
+                break;
+            }
         }
     }
 }

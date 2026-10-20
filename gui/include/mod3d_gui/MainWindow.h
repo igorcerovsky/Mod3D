@@ -12,6 +12,8 @@
 #include <QMainWindow>
 #include <QMdiArea>
 #include <QMdiSubWindow>
+#include <QResizeEvent>
+#include <QShowEvent>
 
 namespace mod3d_gui {
 
@@ -32,11 +34,16 @@ public:
     GL3DView *openGL3DView();
     SpreadsheetView *openSpreadsheetView();
     void arrangeDefaultTiles();
+    void resizeSubWindowsToFit();
 
 protected:
+    void resizeEvent(QResizeEvent *event) override;
+    void showEvent(QShowEvent *event) override;
     void closeEvent(QCloseEvent *event) override;
+    bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
+    bool m_inResizeSubWindows{false};
     void setupMenus();
     void setupConnections();
     void updateWindowTitle();
