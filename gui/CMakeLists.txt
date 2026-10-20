@@ -97,6 +97,13 @@ if (APPLE)
             MACOSX_BUNDLE_ICON_FILE "Mod3D.icns"
         )
     endif()
+
+    add_custom_command(TARGET mod3d_gui POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            $<TARGET_FILE:mod3d_gui>
+            ${CMAKE_CURRENT_BINARY_DIR}/mod3d_gui
+        COMMENT "Creating symlink for mod3d_gui CLI execution"
+    )
 elseif (WIN32)
     set_target_properties(mod3d_gui PROPERTIES
         WIN32_EXECUTABLE TRUE
