@@ -4,7 +4,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 COMPONENTS Core Gui Widgets OpenGLWidgets REQUIRED)
+find_package(Qt6 COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets REQUIRED)
 find_package(OpenGL REQUIRED)
 
 set(GUI_HEADERS
@@ -62,6 +62,7 @@ target_link_libraries(mod3d_gui_lib PUBLIC
     Qt6::Core
     Qt6::Gui
     Qt6::Widgets
+    Qt6::OpenGL
     Qt6::OpenGLWidgets
     OpenGL::GL
 )

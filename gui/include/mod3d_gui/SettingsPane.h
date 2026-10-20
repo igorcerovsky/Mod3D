@@ -121,6 +121,9 @@ private:
     QCheckBox *m_chk3DFeatureEdges{nullptr};
     QCheckBox *m_chk3DWireframe{nullptr};
     QCheckBox *m_chk3DRelief{nullptr};
+    QDoubleSpinBox *m_spin3DZScale{nullptr};
+    QCheckBox *m_chk3DOrtho{nullptr};
+    QCheckBox *m_chk3DDepthFog{nullptr};
 
     // Tab 2: Profiles Tab Controls
     QPushButton *m_btnProfTabOrientEW{nullptr};

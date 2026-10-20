@@ -1276,6 +1276,43 @@ TEST_F(GuiDocumentTest, GL3DViewTurntableOrbitAndCameraPresets) {
     view.setCameraAngles(45.0f, -60.0f);
     EXPECT_FLOAT_EQ(view.pitch(), 45.0f);
     EXPECT_FLOAT_EQ(view.azimuth(), -60.0f);
+
+    // Vertical Exaggeration (Z-Scale)
+    EXPECT_FLOAT_EQ(view.zScale(), 1.0f);
+    view.setZScale(4.5f);
+    EXPECT_FLOAT_EQ(view.zScale(), 4.5f);
+
+    // Projection Mode (Perspective vs Orthographic)
+    EXPECT_FALSE(view.isOrthographic());
+    view.setOrthographic(true);
+    EXPECT_TRUE(view.isOrthographic());
+    view.setOrthographic(false);
+    EXPECT_FALSE(view.isOrthographic());
+
+    // Depth Fog / Atmospheric Haze
+    EXPECT_TRUE(view.showDepthFog());
+    view.setShowDepthFog(false);
+    EXPECT_FALSE(view.showDepthFog());
+    view.setShowDepthFog(true);
+
+    // Target (LookAt Center) & Distance
+    QVector3D newTarget(150.0f, 250.0f, -600.0f);
+    view.setTarget(newTarget);
+    EXPECT_FLOAT_EQ(view.target().x(), 150.0f);
+    EXPECT_FLOAT_EQ(view.target().y(), 250.0f);
+    EXPECT_FLOAT_EQ(view.target().z(), -600.0f);
+
+    view.setCameraDistance(4500.0f);
+    EXPECT_FLOAT_EQ(view.cameraDistance(), 4500.0f);
+
+    view.setZoom(2.0f);
+    EXPECT_FLOAT_EQ(view.zoom(), 2.0f);
+
+    view.fitToView();
+    view.resetCamera();
+    EXPECT_FLOAT_EQ(view.pitch(), 30.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -45.0f);
+    EXPECT_FLOAT_EQ(view.zoom(), 1.0f);
 }
 
 TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {

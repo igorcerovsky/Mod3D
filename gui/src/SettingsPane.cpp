@@ -488,6 +488,9 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chk3DRelief = new QCheckBox(tr("Relief Wireframe"), box3DToggles);
     m_chk3DRelief->setChecked(true);
     m_chk3DWireframe = new QCheckBox(tr("Wireframe Mode"), box3DToggles);
+    m_chk3DOrtho = new QCheckBox(tr("Orthographic Projection"), box3DToggles);
+    m_chk3DDepthFog = new QCheckBox(tr("Depth Cueing / Atmospheric Fog"), box3DToggles);
+    m_chk3DDepthFog->setChecked(true);
 
     toggles3DLayout->addWidget(m_chk3DSlices);
     toggles3DLayout->addWidget(m_chk3DCompass);
@@ -495,7 +498,22 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     toggles3DLayout->addWidget(m_chk3DFeatureEdges);
     toggles3DLayout->addWidget(m_chk3DRelief);
     toggles3DLayout->addWidget(m_chk3DWireframe);
+    toggles3DLayout->addWidget(m_chk3DOrtho);
+    toggles3DLayout->addWidget(m_chk3DDepthFog);
     v3dLayout->addWidget(box3DToggles);
+
+    auto *box3DDepth = new QGroupBox(tr("Depth & Elevation Scaling"), m_pane3DView);
+    auto *depthLayout = new QHBoxLayout(box3DDepth);
+    depthLayout->setContentsMargins(8, 8, 8, 8);
+    auto *lblZScale = new QLabel(tr("Z-Exaggeration:"), box3DDepth);
+    m_spin3DZScale = new QDoubleSpinBox(box3DDepth);
+    m_spin3DZScale->setRange(0.1, 30.0);
+    m_spin3DZScale->setSingleStep(0.5);
+    m_spin3DZScale->setValue(1.0);
+    m_spin3DZScale->setSuffix("x");
+    depthLayout->addWidget(lblZScale);
+    depthLayout->addWidget(m_spin3DZScale);
+    v3dLayout->addWidget(box3DDepth);
 
     connect(m_chk3DSlices, &QCheckBox::toggled, this, [this](bool c) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowProfilePlane(c);
@@ -514,6 +532,15 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     });
     connect(m_chk3DWireframe, &QCheckBox::toggled, this, [this](bool c) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setWireframeMode(c);
+    });
+    connect(m_chk3DOrtho, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setOrthographic(c);
+    });
+    connect(m_chk3DDepthFog, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowDepthFog(c);
+    });
+    connect(m_spin3DZScale, &QDoubleSpinBox::valueChanged, this, [this](double val) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setZScale(static_cast<float>(val));
     });
 
     layout->addWidget(m_pane3DView);
@@ -1303,6 +1330,9 @@ void SettingsPane::updateViewContext() {
         m_chk3DFeatureEdges->setChecked(glv->showFeatureEdges());
         m_chk3DRelief->setChecked(glv->showRelief());
         m_chk3DWireframe->setChecked(glv->wireframeMode());
+        m_chk3DOrtho->setChecked(glv->isOrthographic());
+        m_chk3DDepthFog->setChecked(glv->showDepthFog());
+        m_spin3DZScale->setValue(glv->zScale());
 
     } else {
         m_lblViewContext->setText(tr("Active View: Workspace"));

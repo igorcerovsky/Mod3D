@@ -9,10 +9,13 @@
 #include <QContextMenuEvent>
 #include <QMenu>
 #include <QAction>
+#include <QVariantAnimation>
+#include <QEasingCurve>
+#include <QOpenGLShaderProgram>
+#include <QPainter>
 #include <cmath>
 #include <algorithm>
 #include <string>
-#include <QPainter>
 
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
@@ -102,6 +105,58 @@ void drawStrokeChar(char c, float cx, float cy, float size) {
         glVertex2f(x1, y1); glVertex2f(x0, y0);
         glVertex2f(x0, y0); glVertex2f(x1, y0);
         break;
+    case 'B':
+        glVertex2f(x0, y0); glVertex2f(x0, y1);
+        glVertex2f(x0, y1); glVertex2f(x1 - w * 0.2f, y1);
+        glVertex2f(x1 - w * 0.2f, y1); glVertex2f(x1, ym + h * 0.5f);
+        glVertex2f(x1, ym + h * 0.5f); glVertex2f(x0, ym);
+        glVertex2f(x0, ym); glVertex2f(x1 - w * 0.2f, ym);
+        glVertex2f(x1 - w * 0.2f, ym); glVertex2f(x1, ym - h * 0.5f);
+        glVertex2f(x1, ym - h * 0.5f); glVertex2f(x0, y0);
+        break;
+    case '0':
+    case '1':
+    case '2':
+    case '3':
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8':
+    case '9':
+    case '-':
+    case '+':
+    case '.':
+    case 'm':
+    case 'k':
+        // Simplified basic strokes for numbers and units
+        if (c == '-') {
+            glVertex2f(x0, ym); glVertex2f(x1, ym);
+        } else if (c == '+') {
+            glVertex2f(x0, ym); glVertex2f(x1, ym);
+            glVertex2f(xm, y0); glVertex2f(xm, y1);
+        } else if (c == '.') {
+            glVertex2f(xm - w * 0.2f, y0); glVertex2f(xm + w * 0.2f, y0);
+        } else if (c == '1') {
+            glVertex2f(xm, y0); glVertex2f(xm, y1);
+        } else if (c == 'm') {
+            glVertex2f(x0, y0); glVertex2f(x0, ym);
+            glVertex2f(x0, ym); glVertex2f(xm, ym);
+            glVertex2f(xm, ym); glVertex2f(xm, y0);
+            glVertex2f(xm, ym); glVertex2f(x1, ym);
+            glVertex2f(x1, ym); glVertex2f(x1, y0);
+        } else if (c == 'k') {
+            glVertex2f(x0, y0); glVertex2f(x0, y1);
+            glVertex2f(x0, ym); glVertex2f(x1, y1);
+            glVertex2f(x0, ym); glVertex2f(x1, y0);
+        } else {
+            // Box number fallback
+            glVertex2f(x0, y0); glVertex2f(x1, y0);
+            glVertex2f(x1, y0); glVertex2f(x1, y1);
+            glVertex2f(x1, y1); glVertex2f(x0, y1);
+            glVertex2f(x0, y1); glVertex2f(x0, y0);
+        }
+        break;
     default:
         break;
     }
@@ -126,11 +181,11 @@ void drawBillboardLabel(const std::string &text, float x, float y, float z,
                         float pitch, float azimuth) {
     glPushMatrix();
     glTranslatef(x, y, z);
-    // Invert the camera rotation so the label is strictly parallel to screen / camera
+    // Invert the camera rotation so label remains strictly parallel to screen
     glRotatef(-azimuth, 0.0f, 0.0f, 1.0f);
     glRotatef(-(pitch - 90.0f), 1.0f, 0.0f, 0.0f);
 
-    // 1. Dark outline / drop shadow
+    // 1. Dark outline / drop shadow for legibility
     glColor4f(0.06f, 0.07f, 0.10f, 0.90f);
     glLineWidth(3.8f);
     drawStrokeString(text, size);
@@ -202,6 +257,7 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     , m_doc(doc)
 {
     setFocusPolicy(Qt::StrongFocus);
+    setMouseTracking(true);
 
     connect(m_doc, &ModelDocument::modelGeometryChanged, this, [this]() {
         m_meshDirty = true;
@@ -212,9 +268,91 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     });
     connect(m_doc, &ModelDocument::documentReset, this, [this]() {
         m_meshDirty = true;
+        m_targetInitialized = false;
         resetCamera();
         update();
     });
+}
+
+GL3DView::~GL3DView() {
+    if (m_camAnim) {
+        m_camAnim->stop();
+        delete m_camAnim;
+    }
+    delete m_shaderProg;
+}
+
+void GL3DView::ensureDefaultTargetAndDistance() {
+    if (!m_doc) return;
+    const auto &model = m_doc->model();
+    double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
+    double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
+    double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
+
+    double maxDim = std::max({ model.x_max_val() - model.x_min_val(),
+                               model.y_max_val() - model.y_min_val(),
+                               (model.z_max_val() - model.z_min_val()) * std::max(1.0f, m_zScale) });
+    if (maxDim <= 0.0) maxDim = 10000.0;
+
+    if (!m_targetInitialized) {
+        m_target = QVector3D(static_cast<float>(midX), static_cast<float>(midY), static_cast<float>(midZ));
+        m_distance = static_cast<float>(maxDim * 1.8 / std::max(0.01f, m_zoom));
+        m_targetInitialized = true;
+    }
+}
+
+void GL3DView::setupMatrices(int w, int h) {
+    ensureDefaultTargetAndDistance();
+
+    glViewport(0, 0, w, h);
+
+    float aspect = (h > 0) ? (static_cast<float>(w) / h) : 1.0f;
+    float fov = 45.0f;
+
+    // Calculate scene bounding radius for tight, optimal depth range
+    double maxDim = 10000.0;
+    if (m_doc) {
+        const auto &m = m_doc->model();
+        maxDim = std::max({ m.x_max_val() - m.x_min_val(),
+                            m.y_max_val() - m.y_min_val(),
+                            (m.z_max_val() - m.z_min_val()) * std::max(1.0f, m_zScale) });
+    }
+    float boundingRadius = static_cast<float>(maxDim * 0.75);
+    if (boundingRadius < 100.0f) boundingRadius = 100.0f;
+
+    // Effective camera distance based on zoom factor
+    float effDist = m_distance / std::max(0.01f, m_zoom);
+
+    // Dynamic Near and Far clipping planes:
+    // Ensures high precision 24-bit depth buffer without near-plane slicing or z-fighting
+    float zNear = std::max(1.0f, std::max(0.02f * boundingRadius, effDist - boundingRadius * 1.6f));
+    float zFar  = effDist + boundingRadius * 2.2f;
+    if (zFar <= zNear * 1.2f) zFar = zNear * 10.0f;
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    if (m_orthographic) {
+        float orthoH = 2.0f * effDist * std::tan(fov * 0.5f * 3.14159265f / 180.0f);
+        float orthoW = orthoH * aspect;
+        glOrtho(-orthoW * 0.5f, orthoW * 0.5f, -orthoH * 0.5f, orthoH * 0.5f, zNear, zFar);
+    } else {
+        float top = zNear * std::tan(fov * 0.5f * 3.14159265f / 180.0f);
+        float bottom = -top;
+        float left = bottom * aspect;
+        float right = top * aspect;
+        glFrustum(left, right, bottom, top, zNear, zFar);
+    }
+
+    // Set up LookAt ModelView Matrix
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    // Apply eye distance, pan, and spherical orientation around m_target
+    glTranslatef(m_panX, m_panY, -effDist);
+    glRotatef(m_pitch - 90.0f, 1.0f, 0.0f, 0.0f);
+    glRotatef(m_azimuth, 0.0f, 0.0f, 1.0f);
+    glTranslatef(-m_target.x(), -m_target.y(), -m_target.z());
 }
 
 void GL3DView::initializeGL() {
@@ -223,6 +361,7 @@ void GL3DView::initializeGL() {
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LEQUAL);
+    glEnable(GL_NORMALIZE);
 
     // Alpha blending
     glEnable(GL_BLEND);
@@ -247,38 +386,34 @@ void GL3DView::initializeGL() {
 
     // Clean modern studio neutral background
     glClearColor(0.92f, 0.93f, 0.95f, 1.0f);
+
+    // Optional modern depth fog for visual depth comprehension
+    if (m_showDepthFog) {
+        glFogi(GL_FOG_MODE, GL_LINEAR);
+        GLfloat fogColor[] = { 0.92f, 0.93f, 0.95f, 1.0f };
+        glFogfv(GL_FOG_COLOR, fogColor);
+        glHint(GL_FOG_HINT, GL_NICEST);
+    }
 }
 
 void GL3DView::resizeGL(int w, int h) {
     if (!isValid() || !context()) return;
-    glViewport(0, 0, w, h);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-
-    float aspect = (h > 0) ? (static_cast<float>(w) / h) : 1.0f;
-    float fov = 45.0f * 3.14159265f / 180.0f;
-    float zNear = 100.0f;
-    float zFar = 100000.0f;
-    float top = zNear * std::tan(fov * 0.5f);
-    float bottom = -top;
-    float left = bottom * aspect;
-    float right = top * aspect;
-    glFrustum(left, right, bottom, top, zNear, zFar);
-
-    glMatrixMode(GL_MODELVIEW);
+    setupMatrices(w, h);
 }
 
 void GL3DView::paintGL() {
     if (!isValid() || !context()) return;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glLoadIdentity();
+
+    int w = width();
+    int h = height();
+    setupMatrices(w, h);
 
     if (!m_doc) return;
-    const auto &model = m_doc->model();
 
     // Directional Key Light & Soft Fill Light in Eye Coordinates (headlight / sun)
     GLfloat light0Pos[] = { 0.5f, 0.7f, 1.0f, 0.0f }; // Directional key light from upper-right-front
-    GLfloat light0Amb[] = { 0.15f, 0.15f, 0.15f, 1.0f };
+    GLfloat light0Amb[] = { 0.18f, 0.18f, 0.20f, 1.0f };
     GLfloat light0Diff[] = { 0.85f, 0.85f, 0.85f, 1.0f };
     GLfloat light0Spec[] = { 0.40f, 0.40f, 0.40f, 1.0f };
     glLightfv(GL_LIGHT0, GL_POSITION, light0Pos);
@@ -293,25 +428,15 @@ void GL3DView::paintGL() {
     glLightfv(GL_LIGHT1, GL_AMBIENT, light1Amb);
     glLightfv(GL_LIGHT1, GL_DIFFUSE, light1Diff);
 
-    // Center model at origin
-    double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
-    double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
-    double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
-    double maxDim = std::max({ model.x_max_val() - model.x_min_val(),
-                               model.y_max_val() - model.y_min_val(),
-                               model.z_max_val() - model.z_min_val() });
-    if (maxDim <= 0.0) maxDim = 10000.0;
-
-    // Camera eye position back along Z
-    float dist = static_cast<float>(maxDim * 1.8 / m_zoom);
-    glTranslatef(m_panX, m_panY, -dist);
-
-    // Apply Turntable Orbit (Pitch tilts from horizontal, Azimuth orbits around global Z)
-    glRotatef(m_pitch - 90.0f, 1.0f, 0.0f, 0.0f);
-    glRotatef(m_azimuth, 0.0f, 0.0f, 1.0f);
-
-    // Shift to model center
-    glTranslatef(static_cast<float>(-midX), static_cast<float>(-midY), static_cast<float>(-midZ));
+    // Setup Depth Fog parameters
+    if (m_showDepthFog) {
+        glEnable(GL_FOG);
+        float effDist = m_distance / std::max(0.01f, m_zoom);
+        glFogf(GL_FOG_START, effDist * 0.75f);
+        glFogf(GL_FOG_END, effDist * 2.2f);
+    } else {
+        glDisable(GL_FOG);
+    }
 
     // Draw elements
     if (m_showBoundingBox) {
@@ -327,6 +452,12 @@ void GL3DView::paintGL() {
     if (m_showProfilePlane) {
         drawProfilePlane();
     }
+
+    if (m_mouseDragging && (m_dragButton == Qt::LeftButton) && !m_draggingGizmo) {
+        drawPivotIndicator();
+    }
+
+    glDisable(GL_FOG);
 
     if (m_showOrientationIndicator) {
         drawOrientationHud();
@@ -361,21 +492,19 @@ void GL3DView::paintSoftware(QPainter &painter) {
         return;
     }
 
+    ensureDefaultTargetAndDistance();
     const auto &model = m_doc->model();
-    double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
-    double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
-    double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
-    double maxDim = std::max({ model.x_max_val() - model.x_min_val(),
-                               model.y_max_val() - model.y_min_val(),
-                               model.z_max_val() - model.z_min_val() });
-    if (maxDim <= 0.0) maxDim = 10000.0;
 
-    double dist = maxDim * 1.8 / (m_zoom > 0.01f ? m_zoom : 1.0f);
+    double zMid = (model.z_min_val() + model.z_max_val()) * 0.5;
+    double effDist = m_distance / std::max(0.01f, m_zoom);
 
     auto project = [&](double x, double y, double z) {
-        double dx = x - midX;
-        double dy = y - midY;
-        double dz = z - midZ;
+        // Apply vertical exaggeration around mid-elevation
+        double zScaled = zMid + (z - zMid) * m_zScale;
+
+        double dx = x - m_target.x();
+        double dy = y - m_target.y();
+        double dz = zScaled - m_target.z();
 
         double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
         double rx = dx * std::cos(azRad) - dy * std::sin(azRad);
@@ -389,11 +518,17 @@ void GL3DView::paintSoftware(QPainter &painter) {
 
         double cx = px + m_panX;
         double cy = py + m_panY;
-        double cz = dist - pz;
+        double cz = effDist - pz;
 
         double fov = 45.0 * 3.14159265358979323846 / 180.0;
         double top = std::tan(fov * 0.5);
-        double scale = (cz > 10.0) ? (0.5 * h / (top * cz)) : (0.5 * h / (top * 10.0));
+
+        double scale;
+        if (m_orthographic) {
+            scale = 0.5 * h / (top * effDist);
+        } else {
+            scale = (cz > 10.0) ? (0.5 * h / (top * cz)) : (0.5 * h / (top * 10.0));
+        }
 
         double sx = (w * 0.5) + cx * scale;
         double sy = (h * 0.5) - cy * scale;
@@ -464,7 +599,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
         painter.drawPolygon(poly);
     }
 
-    // 4. 3D Polyhedral Bodies
+    // 4. 3D Polyhedral Bodies (Depth-Sorted Back-to-Front)
     if (m_meshDirty || m_bodyMeshes.empty()) {
         m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
         m_meshDirty = false;
@@ -482,14 +617,12 @@ void GL3DView::paintSoftware(QPainter &painter) {
     double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
     double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
 
-    // Directional light vector in camera space from upper-right-front
     double lx = 0.40, ly = 0.65, lz = 0.65;
     double lLen = std::sqrt(lx*lx + ly*ly + lz*lz);
     lx /= lLen; ly /= lLen; lz /= lLen;
 
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible) continue;
-
         auto bc = mesh.color;
 
         for (const auto &fct : mesh.facets) {
@@ -508,6 +641,10 @@ void GL3DView::paintSoftware(QPainter &painter) {
 
             // Rotate normal into camera space
             auto norm = fct.normal();
+            norm.z /= std::max(0.1f, m_zScale);
+            double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
+            if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
+
             double nrx = norm.x * std::cos(azRad) - norm.y * std::sin(azRad);
             double nry = norm.x * std::sin(azRad) + norm.y * std::cos(azRad);
             double nrz = norm.z;
@@ -545,13 +682,13 @@ void GL3DView::paintSoftware(QPainter &painter) {
 
     // 5. Orientation Indicator HUD (Compass Tripod in bottom-left corner)
     if (m_showOrientationIndicator) {
-        double cx = 52.0;
-        double cy = h - 52.0;
-        double rHud = 40.0;
+        double cx = 58.0;
+        double cy = h - 58.0;
+        double rHud = 44.0;
 
-        painter.setPen(QPen(QColor(203, 213, 225), 1.0));
-        painter.setBrush(QColor(255, 255, 255, 215));
-        painter.drawRoundedRect(QRectF(cx - rHud, cy - rHud, rHud * 2.0, rHud * 2.0), 10.0, 10.0);
+        painter.setPen(QPen(QColor(203, 213, 225), 1.2));
+        painter.setBrush(QColor(255, 255, 255, 225));
+        painter.drawRoundedRect(QRectF(cx - rHud, cy - rHud, rHud * 2.0, rHud * 2.0), 12.0, 12.0);
 
         auto projectAxis = [&](double ax, double ay, double az) {
             double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
@@ -562,7 +699,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
             double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
             double px = rx;
             double py = ry * std::cos(pitchRad) - rz * std::sin(pitchRad);
-            return QPointF(cx + px * 24.0, cy - py * 24.0);
+            return QPointF(cx + px * 26.0, cy - py * 26.0);
         };
 
         QPointF pCenter(cx, cy);
@@ -589,6 +726,43 @@ void GL3DView::paintSoftware(QPainter &painter) {
     painter.restore();
 }
 
+void GL3DView::drawPivotIndicator() {
+    // Draws a subtle visual reticle at m_target during mouse orbit
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glPushMatrix();
+    glTranslatef(m_target.x(), m_target.y(), m_target.z());
+    glRotatef(-m_azimuth, 0.0f, 0.0f, 1.0f);
+    glRotatef(-(m_pitch - 90.0f), 1.0f, 0.0f, 0.0f);
+
+    float effDist = m_distance / std::max(0.01f, m_zoom);
+    float size = effDist * 0.018f;
+
+    glColor4f(0.96f, 0.55f, 0.12f, 0.85f);
+    glLineWidth(2.0f);
+
+    // Reticle circle
+    glBegin(GL_LINE_LOOP);
+    for (int i = 0; i < 24; ++i) {
+        float angle = 2.0f * 3.14159265f * static_cast<float>(i) / 24.0f;
+        glVertex2f(std::cos(angle) * size, std::sin(angle) * size);
+    }
+    glEnd();
+
+    // Crosshairs
+    glBegin(GL_LINES);
+    glVertex2f(-size * 1.5f, 0.0f); glVertex2f(-size * 0.5f, 0.0f);
+    glVertex2f(size * 0.5f, 0.0f);  glVertex2f(size * 1.5f, 0.0f);
+    glVertex2f(0.0f, -size * 1.5f); glVertex2f(0.0f, -size * 0.5f);
+    glVertex2f(0.0f, size * 0.5f);  glVertex2f(0.0f, size * 1.5f);
+    glEnd();
+
+    glPopMatrix();
+    glEnable(GL_LIGHTING);
+}
+
 void GL3DView::drawBoundingBox() {
     glDisable(GL_LIGHTING);
     glColor3f(0.55f, 0.55f, 0.60f);
@@ -599,8 +773,12 @@ void GL3DView::drawBoundingBox() {
     float x1 = static_cast<float>(m.x_max_val());
     float y0 = static_cast<float>(m.y_min_val());
     float y1 = static_cast<float>(m.y_max_val());
-    float z0 = static_cast<float>(m.z_min_val());
-    float z1 = static_cast<float>(m.z_max_val());
+    float z0Raw = static_cast<float>(m.z_min_val());
+    float z1Raw = static_cast<float>(m.z_max_val());
+
+    float zMid = (z0Raw + z1Raw) * 0.5f;
+    float z0 = zMid + (z0Raw - zMid) * m_zScale;
+    float z1 = zMid + (z1Raw - zMid) * m_zScale;
 
     glBegin(GL_LINES);
     // Bottom
@@ -665,12 +843,31 @@ void GL3DView::drawBoundingBox() {
     drawBillboardLabel("EAST",  x1, midY, z1, 0.92f, 0.25f, 0.25f, edgeLabelSize, m_pitch, m_azimuth);
     drawBillboardLabel("WEST",  x0, midY, z1, 0.55f, 0.60f, 0.68f, edgeLabelSize, m_pitch, m_azimuth);
 
+    // Elevation / Depth Ticks on Vertical Corner Post
+    int numTicks = 4;
+    for (int i = 0; i <= numTicks; ++i) {
+        float t = static_cast<float>(i) / static_cast<float>(numTicks);
+        float zReal = z0Raw + t * (z1Raw - z0Raw);
+        float zPos = z0 + t * (z1 - z0);
+
+        glLineWidth(1.5f);
+        glColor3f(0.60f, 0.65f, 0.75f);
+        glBegin(GL_LINES);
+        glVertex3f(x0, y0, zPos);
+        glVertex3f(x0 - axisLen * 0.12f, y0 - axisLen * 0.12f, zPos);
+        glEnd();
+
+        std::string tickStr = std::to_string(static_cast<int>(zReal)) + "m";
+        drawBillboardLabel(tickStr, x0 - axisLen * 0.30f, y0 - axisLen * 0.30f, zPos,
+                           0.45f, 0.50f, 0.60f, edgeLabelSize * 0.70f, m_pitch, m_azimuth);
+    }
+
     glEnable(GL_LIGHTING);
 }
 
 void GL3DView::drawRelief() {
     glDisable(GL_LIGHTING);
-    glColor4f(0.35f, 0.65f, 0.40f, 0.35f);
+    glColor4f(0.35f, 0.65f, 0.40f, 0.40f);
     glLineWidth(1.0f);
 
     const auto &m = m_doc->model();
@@ -680,6 +877,12 @@ void GL3DView::drawRelief() {
     int cMax = cols - 2;
     if (rMax < 1 || cMax < 1) return;
 
+    float zMid = static_cast<float>((m.z_min_val() + m.z_max_val()) * 0.5);
+
+    auto scaleZ = [this, zMid](double zRaw) -> float {
+        return zMid + static_cast<float>(zRaw - zMid) * m_zScale;
+    };
+
     // Wireframe terrain mesh conforming to the actual model surface elevations at index 0
     glBegin(GL_LINES);
     // Grid lines along X (running West-East at each core row)
@@ -688,8 +891,8 @@ void GL3DView::drawRelief() {
         for (int c = 1; c < cMax; ++c) {
             float xA = static_cast<float>(m.xd_val(c));
             float xB = static_cast<float>(m.xd_val(c + 1));
-            float zA = static_cast<float>(m.z(r, c, 0));
-            float zB = static_cast<float>(m.z(r, c + 1, 0));
+            float zA = scaleZ(m.z(r, c, 0));
+            float zB = scaleZ(m.z(r, c + 1, 0));
             glVertex3f(xA, y, zA);
             glVertex3f(xB, y, zB);
         }
@@ -700,8 +903,8 @@ void GL3DView::drawRelief() {
         for (int r = 1; r < rMax; ++r) {
             float yA = static_cast<float>(m.yd_val(r));
             float yB = static_cast<float>(m.yd_val(r + 1));
-            float zA = static_cast<float>(m.z(r, c, 0));
-            float zB = static_cast<float>(m.z(r + 1, c, 0));
+            float zA = scaleZ(m.z(r, c, 0));
+            float zB = scaleZ(m.z(r + 1, c, 0));
             glVertex3f(x, yA, zA);
             glVertex3f(x, yB, zB);
         }
@@ -720,8 +923,13 @@ void GL3DView::drawBodies() {
     if (m_bodyMeshes.empty()) return;
 
     double dBot = m_doc->model().z_min_val();
+    float zMid = static_cast<float>((m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5);
 
-    // 1. Opaque bodies pass
+    auto scaleZ = [this, zMid](double zRaw) -> float {
+        return zMid + static_cast<float>(zRaw - zMid) * m_zScale;
+    };
+
+    // 1. OPAQUE BODIES PASS
     glEnable(GL_LIGHTING);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
@@ -749,10 +957,15 @@ void GL3DView::drawBodies() {
                 fct[2].z <= dBot + 1e-3) {
                 continue;
             }
-            glNormal3d(fct.normal().x, fct.normal().y, fct.normal().z);
-            glVertex3d(fct[0].x, fct[0].y, fct[0].z);
-            glVertex3d(fct[1].x, fct[1].y, fct[1].z);
-            glVertex3d(fct[2].x, fct[2].y, fct[2].z);
+            auto norm = fct.normal();
+            norm.z /= std::max(0.1f, m_zScale);
+            double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
+            if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
+
+            glNormal3d(norm.x, norm.y, norm.z);
+            glVertex3f(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
+            glVertex3f(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
+            glVertex3f(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), scaleZ(fct[2].z));
         }
         glEnd();
     }
@@ -775,15 +988,15 @@ void GL3DView::drawBodies() {
                     if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
                         continue;
                     }
-                    glVertex3d(edge.first.x, edge.first.y, edge.first.z);
-                    glVertex3d(edge.second.x, edge.second.y, edge.second.z);
+                    glVertex3f(static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z));
+                    glVertex3f(static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z));
                 }
                 glEnd();
             }
         }
     }
 
-    // 2. Transparent bodies pass
+    // 2. TRANSPARENT BODIES PASS (Depth-Sorted Back-to-Front)
     bool hasTransparent = false;
     for (const auto &mesh : m_bodyMeshes) {
         if (mesh.isVisible && mesh.isTransparent) {
@@ -793,6 +1006,63 @@ void GL3DView::drawBodies() {
     }
 
     if (hasTransparent) {
+        struct TransFacet {
+            QVector3D p0, p1, p2;
+            QVector3D normal;
+            QColor color;
+            float depth;
+        };
+        std::vector<TransFacet> transFacets;
+
+        // Camera orientation for depth sorting
+        float pRad = (m_pitch - 90.0f) * 3.14159265f / 180.0f;
+        float azRad = m_azimuth * 3.14159265f / 180.0f;
+        float cosAz = std::cos(azRad), sinAz = std::sin(azRad);
+        float cosP = std::cos(pRad), sinP = std::sin(pRad);
+
+        auto eyeDepth = [&](const QVector3D &pt) -> float {
+            float dx = pt.x() - m_target.x();
+            float dy = pt.y() - m_target.y();
+            float dz = pt.z() - m_target.z();
+            float ry = dx * sinAz + dy * cosAz;
+            float rz = dz;
+            return ry * sinP + rz * cosP;
+        };
+
+        for (const auto &mesh : m_bodyMeshes) {
+            if (!mesh.isVisible || !mesh.isTransparent) continue;
+
+            auto bc = mesh.color;
+            int alpha = static_cast<int>(std::clamp(mesh.alpha, 0.15f, 0.85f) * 255.0f);
+            QColor color(bc.r, bc.g, bc.b, alpha);
+
+            for (const auto &fct : mesh.facets) {
+                if (!m_showBottom &&
+                    fct[0].z <= dBot + 1e-3 &&
+                    fct[1].z <= dBot + 1e-3 &&
+                    fct[2].z <= dBot + 1e-3) {
+                    continue;
+                }
+
+                QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
+                QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
+                QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), scaleZ(fct[2].z));
+
+                auto norm = fct.normal();
+                norm.z /= std::max(0.1f, m_zScale);
+                double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
+                if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
+
+                float d = eyeDepth((v0 + v1 + v2) * (1.0f / 3.0f));
+                transFacets.push_back({ v0, v1, v2, QVector3D(norm.x, norm.y, norm.z), color, d });
+            }
+        }
+
+        // Sort back-to-front (smaller eye-space depth is further from camera)
+        std::sort(transFacets.begin(), transFacets.end(), [](const TransFacet &a, const TransFacet &b) {
+            return a.depth < b.depth;
+        });
+
         glEnable(GL_LIGHTING);
         glEnable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
@@ -803,55 +1073,36 @@ void GL3DView::drawBodies() {
             glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         } else {
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-            glEnable(GL_POLYGON_OFFSET_FILL);
-            glPolygonOffset(1.0f, 1.0f);
         }
 
-        for (const auto &mesh : m_bodyMeshes) {
-            if (!mesh.isVisible || !mesh.isTransparent) continue;
-
-            auto bc = mesh.color;
-            float alpha = std::clamp(mesh.alpha, 0.15f, 0.85f);
-            glColor4f(bc.r / 255.0f, bc.g / 255.0f, bc.b / 255.0f, alpha);
-
-            glBegin(GL_TRIANGLES);
-            for (const auto &fct : mesh.facets) {
-                if (!m_showBottom &&
-                    fct[0].z <= dBot + 1e-3 &&
-                    fct[1].z <= dBot + 1e-3 &&
-                    fct[2].z <= dBot + 1e-3) {
-                    continue;
-                }
-                glNormal3d(fct.normal().x, fct.normal().y, fct.normal().z);
-                glVertex3d(fct[0].x, fct[0].y, fct[0].z);
-                glVertex3d(fct[1].x, fct[1].y, fct[1].z);
-                glVertex3d(fct[2].x, fct[2].y, fct[2].z);
-            }
-            glEnd();
+        glBegin(GL_TRIANGLES);
+        for (const auto &tf : transFacets) {
+            glColor4f(tf.color.redF(), tf.color.greenF(), tf.color.blueF(), tf.color.alphaF());
+            glNormal3f(tf.normal.x(), tf.normal.y(), tf.normal.z());
+            glVertex3f(tf.p0.x(), tf.p0.y(), tf.p0.z());
+            glVertex3f(tf.p1.x(), tf.p1.y(), tf.p1.z());
+            glVertex3f(tf.p2.x(), tf.p2.y(), tf.p2.z());
         }
+        glEnd();
 
-        if (!m_wireframe) {
-            glDisable(GL_POLYGON_OFFSET_FILL);
+        if (!m_wireframe && m_showFeatureEdges) {
+            glDisable(GL_LIGHTING);
+            glLineWidth(1.2f);
+            for (const auto &mesh : m_bodyMeshes) {
+                if (!mesh.isVisible || !mesh.isTransparent) continue;
 
-            if (m_showFeatureEdges) {
-                glDisable(GL_LIGHTING);
-                glLineWidth(1.2f);
-                for (const auto &mesh : m_bodyMeshes) {
-                    if (!mesh.isVisible || !mesh.isTransparent) continue;
+                auto bc = mesh.color;
+                glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.65f);
 
-                    auto bc = mesh.color;
-                    glColor4f(bc.r * 0.45f / 255.0f, bc.g * 0.45f / 255.0f, bc.b * 0.45f / 255.0f, 0.65f);
-
-                    glBegin(GL_LINES);
-                    for (const auto &edge : mesh.featureEdges) {
-                        if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
-                            continue;
-                        }
-                        glVertex3d(edge.first.x, edge.first.y, edge.first.z);
-                        glVertex3d(edge.second.x, edge.second.y, edge.second.z);
+                glBegin(GL_LINES);
+                for (const auto &edge : mesh.featureEdges) {
+                    if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
+                        continue;
                     }
-                    glEnd();
+                    glVertex3f(static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z));
+                    glVertex3f(static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z));
                 }
+                glEnd();
             }
         }
 
@@ -881,8 +1132,12 @@ void GL3DView::drawProfilePlane() {
     if (!m_doc) return;
     const auto &m = m_doc->model();
 
-    float z0 = static_cast<float>(m.z_min_val());
-    float z1 = static_cast<float>(m.z_max_val());
+    float z0Raw = static_cast<float>(m.z_min_val());
+    float z1Raw = static_cast<float>(m.z_max_val());
+    float zMid = (z0Raw + z1Raw) * 0.5f;
+    float z0 = zMid + (z0Raw - zMid) * m_zScale;
+    float z1 = zMid + (z1Raw - zMid) * m_zScale;
+
     float x0 = static_cast<float>(m.x_min_val());
     float x1 = static_cast<float>(m.x_max_val());
     float y0 = static_cast<float>(m.y_min_val());
@@ -923,7 +1178,6 @@ void GL3DView::drawProfilePlane() {
     }
 
     if (slices.empty()) {
-        // Fallback for standalone usage / testing
         slices.push_back({ m_doc->profileOrientation(), m_doc->profileIndex(), true });
     }
 
@@ -935,48 +1189,39 @@ void GL3DView::drawProfilePlane() {
     glDepthMask(GL_FALSE);
     glBegin(GL_QUADS);
 
-    // Inactive profile planes (open in inactive profile views)
+    // Inactive profile planes
     for (const auto &sl : slices) {
         if (sl.isActive) continue;
         glColor4f(0.35f, 0.55f, 0.85f, 0.08f);
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0);
-            glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1);
-            glVertex3f(x0, y, z1);
+            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
+            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0);
-            glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1);
-            glVertex3f(x, y0, z1);
+            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
+            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
         }
     }
 
-    // Active profile plane (open in active profile view)
+    // Active profile plane
     for (const auto &sl : slices) {
         if (!sl.isActive) continue;
         glColor4f(0.96f, 0.28f, 0.22f, 0.26f);
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0);
-            glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1);
-            glVertex3f(x0, y, z1);
+            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
+            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0);
-            glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1);
-            glVertex3f(x, y0, z1);
+            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
+            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
         }
     }
     glEnd();
     glDepthMask(GL_TRUE);
 
     // 2. Profile outlines
-    // Inactive profile outlines
     glLineWidth(1.2f);
     glColor4f(0.35f, 0.60f, 0.85f, 0.50f);
     for (const auto &sl : slices) {
@@ -984,16 +1229,12 @@ void GL3DView::drawProfilePlane() {
         glBegin(GL_LINE_LOOP);
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0);
-            glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1);
-            glVertex3f(x0, y, z1);
+            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
+            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0);
-            glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1);
-            glVertex3f(x, y0, z1);
+            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
+            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
         }
         glEnd();
     }
@@ -1006,16 +1247,12 @@ void GL3DView::drawProfilePlane() {
         glBegin(GL_LINE_LOOP);
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0);
-            glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1);
-            glVertex3f(x0, y, z1);
+            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
+            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0);
-            glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1);
-            glVertex3f(x, y0, z1);
+            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
+            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
         }
         glEnd();
 
@@ -1025,18 +1262,65 @@ void GL3DView::drawProfilePlane() {
         glBegin(GL_LINES);
         if (sl.orient == ProfileOrientation::EastWest) {
             float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z1);
-            glVertex3f(x1, y, z1);
+            glVertex3f(x0, y, z1); glVertex3f(x1, y, z1);
         } else {
             float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z1);
-            glVertex3f(x, y1, z1);
+            glVertex3f(x, y0, z1); glVertex3f(x, y1, z1);
         }
         glEnd();
     }
 
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
+}
+
+int GL3DView::hitTestGizmo(const QPoint &pos) {
+    if (!m_showOrientationIndicator) return -1;
+
+    int hudSize = 130;
+    int margin = 16;
+    int x0 = margin;
+    int y0 = height() - margin - hudSize;
+    m_gizmoRect = QRect(x0, y0, hudSize, hudSize);
+
+    if (!m_gizmoRect.contains(pos)) return -1;
+
+    float cx = x0 + hudSize * 0.5f;
+    float cy = y0 + hudSize * 0.5f;
+    float r = hudSize * 0.42f;
+
+    float pRad = (m_pitch - 90.0f) * 3.14159265f / 180.0f;
+    float azRad = m_azimuth * 3.14159265f / 180.0f;
+    float cosAz = std::cos(azRad), sinAz = std::sin(azRad);
+    float cosP = std::cos(pRad), sinP = std::sin(pRad);
+
+    auto projAxis = [&](float ax, float ay, float az) -> QPointF {
+        float rx = ax * cosAz - ay * sinAz;
+        float ry = ax * sinAz + ay * cosAz;
+        float rz = az;
+        float px = rx;
+        float py = ry * cosP - rz * sinP;
+        return QPointF(cx + px * r, cy - py * r);
+    };
+
+    struct AxisInfo { int id; float ax, ay, az; };
+    AxisInfo axes[] = {
+        { 0,  1.0f,  0.0f,  0.0f }, // +X (East)
+        { 1, -1.0f,  0.0f,  0.0f }, // -X (West)
+        { 2,  0.0f,  1.0f,  0.0f }, // +Y (North)
+        { 3,  0.0f, -1.0f,  0.0f }, // -Y (South)
+        { 4,  0.0f,  0.0f,  1.0f }, // +Z (Top)
+        { 5,  0.0f,  0.0f, -1.0f }, // -Z (Bottom)
+    };
+
+    for (const auto &ax : axes) {
+        QPointF p = projAxis(ax.ax, ax.ay, ax.az);
+        if (QLineF(pos, p).length() <= 16.0) {
+            return ax.id;
+        }
+    }
+
+    return -1;
 }
 
 void GL3DView::drawOrientationHud() {
@@ -1048,6 +1332,9 @@ void GL3DView::drawOrientationHud() {
     GLint prevViewport[4];
     glGetIntegerv(GL_VIEWPORT, prevViewport);
 
+    // Use glScissor so clearing depth inside HUD does NOT wipe the main 3D depth buffer
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(margin, margin, physSize, physSize);
     glViewport(margin, margin, physSize, physSize);
 
     glMatrixMode(GL_PROJECTION);
@@ -1059,8 +1346,9 @@ void GL3DView::drawOrientationHud() {
     glPushMatrix();
     glLoadIdentity();
 
-    // Clear depth in HUD viewport so it renders cleanly above scene
     glClear(GL_DEPTH_BUFFER_BIT);
+    glDisable(GL_SCISSOR_TEST);
+
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1085,9 +1373,8 @@ void GL3DView::drawOrientationHud() {
     }
     glEnd();
 
-    // 2. 3D Rotating Compass Coordinate Tripod
+    // 2. 3D Rotating Coordinate Tripod
     glPushMatrix();
-    // Apply camera rotation matching 3D turntable orbit
     glRotatef(m_pitch - 90.0f, 1.0f, 0.0f, 0.0f);
     glRotatef(m_azimuth, 0.0f, 0.0f, 1.0f);
 
@@ -1101,53 +1388,52 @@ void GL3DView::drawOrientationHud() {
     }
     glEnd();
 
-    // Cardinal tick marks on horizontal ring
+    // Cardinal tick marks
     glBegin(GL_LINES);
     for (int i = 0; i < 8; ++i) {
         float angle = static_cast<float>(i) * (3.14159265f / 4.0f);
-        float ca = std::cos(angle);
-        float sa = std::sin(angle);
+        float ca = std::cos(angle), sa = std::sin(angle);
         float r1 = (i % 2 == 0) ? 0.82f : 0.87f;
         glVertex3f(ca * r1, sa * r1, 0.0f);
         glVertex3f(ca * 0.92f, sa * 0.92f, 0.0f);
     }
     glEnd();
 
-    // North (+Y) Axis & Cone - Vibrant Green
-    glColor3f(0.18f, 0.85f, 0.35f);
-    glLineWidth(2.8f);
+    // North (+Y) Axis & Cone - Vibrant Green (Highlight if hovered)
+    if (m_gizmoHoverAxis == 2) glColor3f(0.40f, 1.0f, 0.60f); else glColor3f(0.18f, 0.85f, 0.35f);
+    glLineWidth(m_gizmoHoverAxis == 2 ? 3.8f : 2.8f);
     glBegin(GL_LINES);
     glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.0f, 0.88f, 0.0f);
     glEnd();
     drawArrowCone(0.0f, 0.88f, 0.0f, 0.0f, 1.0f, 0.0f, 0.22f, 0.075f);
 
-    // South (-Y) Axis & Cone - Subtle Slate
-    glColor3f(0.55f, 0.62f, 0.72f);
-    glLineWidth(1.8f);
+    // South (-Y) Axis & Cone
+    if (m_gizmoHoverAxis == 3) glColor3f(0.85f, 0.90f, 1.0f); else glColor3f(0.55f, 0.62f, 0.72f);
+    glLineWidth(m_gizmoHoverAxis == 3 ? 3.0f : 1.8f);
     glBegin(GL_LINES);
     glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.0f, -0.68f, 0.0f);
     glEnd();
     drawArrowCone(0.0f, -0.68f, 0.0f, 0.0f, -1.0f, 0.0f, 0.16f, 0.055f);
 
     // East (+X) Axis & Cone - Vibrant Red
-    glColor3f(0.92f, 0.22f, 0.22f);
-    glLineWidth(2.8f);
+    if (m_gizmoHoverAxis == 0) glColor3f(1.0f, 0.45f, 0.45f); else glColor3f(0.92f, 0.22f, 0.22f);
+    glLineWidth(m_gizmoHoverAxis == 0 ? 3.8f : 2.8f);
     glBegin(GL_LINES);
     glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.88f, 0.0f, 0.0f);
     glEnd();
     drawArrowCone(0.88f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.22f, 0.075f);
 
-    // West (-X) Axis & Cone - Subtle Slate
-    glColor3f(0.55f, 0.62f, 0.72f);
-    glLineWidth(1.8f);
+    // West (-X) Axis & Cone
+    if (m_gizmoHoverAxis == 1) glColor3f(0.85f, 0.90f, 1.0f); else glColor3f(0.55f, 0.62f, 0.72f);
+    glLineWidth(m_gizmoHoverAxis == 1 ? 3.0f : 1.8f);
     glBegin(GL_LINES);
     glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(-0.68f, 0.0f, 0.0f);
     glEnd();
     drawArrowCone(-0.68f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.16f, 0.055f);
 
     // Up (+Z) Axis & Cone - Vibrant Royal Blue
-    glColor3f(0.20f, 0.60f, 1.0f);
-    glLineWidth(2.8f);
+    if (m_gizmoHoverAxis == 4) glColor3f(0.45f, 0.80f, 1.0f); else glColor3f(0.20f, 0.60f, 1.0f);
+    glLineWidth(m_gizmoHoverAxis == 4 ? 3.8f : 2.8f);
     glBegin(GL_LINES);
     glVertex3f(0.0f, 0.0f, 0.0f); glVertex3f(0.0f, 0.0f, 0.88f);
     glEnd();
@@ -1160,7 +1446,7 @@ void GL3DView::drawOrientationHud() {
     glVertex3f(0.0f, 0.0f, 0.0f);
     glEnd();
 
-    // Labels - Billboarded camera-facing text
+    // Labels
     float hudLabelSize = 0.24f;
     drawBillboardLabel("N",  0.0f,  1.18f, 0.0f, 0.20f, 0.95f, 0.40f, hudLabelSize, m_pitch, m_azimuth);
     drawBillboardLabel("S",  0.0f, -0.96f, 0.0f, 0.75f, 0.82f, 0.90f, hudLabelSize * 0.85f, m_pitch, m_azimuth);
@@ -1182,7 +1468,75 @@ void GL3DView::drawOrientationHud() {
     glEnable(GL_LIGHTING);
 }
 
+void GL3DView::animateToCamera(float targetPitch, float targetAzimuth, float targetDist, const QVector3D *targetLookAt, int durationMs) {
+    if (m_camAnim) {
+        m_camAnim->stop();
+        delete m_camAnim;
+        m_camAnim = nullptr;
+    }
+
+    float startPitch = m_pitch;
+    float startAzimuth = m_azimuth;
+    float startDist = m_distance;
+    QVector3D startTarget = m_target;
+
+    float endDist = (targetDist > 0.0f) ? targetDist : m_distance;
+    QVector3D endTarget = (targetLookAt != nullptr) ? *targetLookAt : m_target;
+
+    // Shortest rotational path for azimuth
+    while (targetAzimuth - startAzimuth > 180.0f) startAzimuth += 360.0f;
+    while (targetAzimuth - startAzimuth < -180.0f) startAzimuth -= 360.0f;
+
+    m_camAnim = new QVariantAnimation(this);
+    m_camAnim->setDuration(durationMs);
+    m_camAnim->setStartValue(0.0f);
+    m_camAnim->setEndValue(1.0f);
+    m_camAnim->setEasingCurve(QEasingCurve::InOutCubic);
+
+    connect(m_camAnim, &QVariantAnimation::valueChanged, this, [=, this](const QVariant &v) {
+        float t = v.toFloat();
+        m_pitch = startPitch + (targetPitch - startPitch) * t;
+        m_azimuth = startAzimuth + (targetAzimuth - startAzimuth) * t;
+        m_distance = startDist + (endDist - startDist) * t;
+        m_target = startTarget + (endTarget - startTarget) * t;
+
+        while (m_azimuth > 180.0f) m_azimuth -= 360.0f;
+        while (m_azimuth < -180.0f) m_azimuth += 360.0f;
+
+        emit cameraChanged();
+        update();
+    });
+
+    connect(m_camAnim, &QVariantAnimation::finished, this, [this]() {
+        m_camAnim->deleteLater();
+        m_camAnim = nullptr;
+    });
+
+    m_camAnim->start();
+}
+
 void GL3DView::mousePressEvent(QMouseEvent *event) {
+    int hitAx = hitTestGizmo(event->pos());
+    if (hitAx >= 0) {
+        // Clicked interactive Gizmo axis
+        switch (hitAx) {
+        case 0: animateToCamera(0.0f, 90.0f); break;
+        case 1: animateToCamera(0.0f, -90.0f); break;
+        case 2: animateToCamera(0.0f, 180.0f); break;
+        case 3: animateToCamera(0.0f, 0.0f); break;
+        case 4: animateToCamera(89.9f, 0.0f); break;
+        case 5: animateToCamera(-89.9f, 0.0f); break; // Bottom View
+        }
+        event->accept();
+        return;
+    }
+
+    if (m_gizmoRect.contains(event->pos())) {
+        m_draggingGizmo = true;
+    } else {
+        m_draggingGizmo = false;
+    }
+
     if (event->button() == Qt::LeftButton || event->button() == Qt::RightButton || event->button() == Qt::MiddleButton) {
         m_mouseDragging = true;
         m_dragButton = event->button();
@@ -1193,48 +1547,63 @@ void GL3DView::mousePressEvent(QMouseEvent *event) {
 }
 
 void GL3DView::mouseMoveEvent(QMouseEvent *event) {
+    int prevHover = m_gizmoHoverAxis;
+    m_gizmoHoverAxis = hitTestGizmo(event->pos());
+    if (prevHover != m_gizmoHoverAxis) {
+        update();
+    }
+
     if (m_mouseDragging) {
         int dx = event->pos().x() - m_lastMousePos.x();
         int dy = event->pos().y() - m_lastMousePos.y();
 
-        if (m_dragButton == Qt::RightButton || m_dragButton == Qt::MiddleButton || (event->modifiers() & Qt::ShiftModifier)) {
-            // Tactile 1:1 Pan proportional to model scale, camera distance, and viewport height
-            double maxDim = 10000.0;
-            if (m_doc) {
-                const auto &model = m_doc->model();
-                maxDim = std::max({ model.x_max_val() - model.x_min_val(),
-                                    model.y_max_val() - model.y_min_val(),
-                                    model.z_max_val() - model.z_min_val() });
-            }
-            if (maxDim <= 0.0) maxDim = 10000.0;
-            float dist = static_cast<float>(maxDim * 1.8 / m_zoom);
+        if (m_draggingGizmo) {
+            // Dragging directly within Gizmo orbits the camera
+            float rotSpeed = 0.45f;
+            m_azimuth += dx * rotSpeed;
+            m_pitch -= dy * rotSpeed;
+            if (m_pitch > 89.9f) m_pitch = 89.9f;
+            if (m_pitch < -89.9f) m_pitch = -89.9f;
+            while (m_azimuth > 180.0f) m_azimuth -= 360.0f;
+            while (m_azimuth < -180.0f) m_azimuth += 360.0f;
+            emit cameraChanged();
+        } else if (m_dragButton == Qt::RightButton || m_dragButton == Qt::MiddleButton || (event->modifiers() & Qt::ShiftModifier)) {
+            // Tactile 1:1 Pan shifting m_target across the camera view plane
+            float effDist = m_distance / std::max(0.01f, m_zoom);
             float fov = 45.0f * 3.14159265f / 180.0f;
-            float viewH = 2.0f * dist * std::tan(fov * 0.5f);
+            float viewH = 2.0f * effDist * std::tan(fov * 0.5f);
             float pixelScale = viewH / static_cast<float>(std::max(1, height()));
 
-            m_panX += dx * pixelScale;
-            m_panY -= dy * pixelScale;
+            // Camera right and up vectors in world coordinates
+            float pRad = (m_pitch - 90.0f) * 3.14159265f / 180.0f;
+            float azRad = m_azimuth * 3.14159265f / 180.0f;
+            float cosAz = std::cos(azRad), sinAz = std::sin(azRad);
+            float cosP = std::cos(pRad), sinP = std::sin(pRad);
+
+            QVector3D rightDir(cosAz, -sinAz, 0.0f);
+            QVector3D upDir(-sinP * sinAz, -sinP * cosAz, cosP);
+
+            m_target += -dx * pixelScale * rightDir + dy * pixelScale * upDir;
+            emit cameraChanged();
         } else if (m_dragButton == Qt::LeftButton) {
             if (event->modifiers() & Qt::ControlModifier) {
-                // Smooth interactive zoom with Ctrl+Left drag
+                // Interactive zoom with Ctrl+Left drag
                 float zoomDelta = 1.0f - static_cast<float>(dy) * 0.008f;
                 m_zoom *= zoomDelta;
                 if (m_zoom < 0.01f) m_zoom = 0.01f;
                 if (m_zoom > 100.0f) m_zoom = 100.0f;
             } else {
-                // Standard CAD / DCC Turntable Orbit (Blender, ParaView, SketchUp):
-                // - Horizontal mouse movement orbits azimuth smoothly around global Z axis
-                // - Vertical mouse movement adjusts elevation / pitch clamped to [-89.0°, +89.0°]
-                // Moving mouse UP tilts view up towards top-down; moving mouse DOWN lowers elevation
+                // Standard CAD / DCC Turntable Orbit orbiting around m_target
                 float rotSpeed = 0.40f;
                 m_azimuth += dx * rotSpeed;
                 m_pitch -= dy * rotSpeed;
 
-                if (m_pitch > 89.0f) m_pitch = 89.0f;
-                if (m_pitch < -89.0f) m_pitch = -89.0f;
+                if (m_pitch > 89.9f) m_pitch = 89.9f;
+                if (m_pitch < -89.9f) m_pitch = -89.9f;
 
                 while (m_azimuth > 180.0f) m_azimuth -= 360.0f;
                 while (m_azimuth < -180.0f) m_azimuth += 360.0f;
+                emit cameraChanged();
             }
         }
 
@@ -1247,23 +1616,81 @@ void GL3DView::mouseMoveEvent(QMouseEvent *event) {
 void GL3DView::mouseReleaseEvent(QMouseEvent *event) {
     if (m_mouseDragging) {
         m_mouseDragging = false;
+        m_draggingGizmo = false;
         if (event->button() == Qt::RightButton) {
             int dist = (event->pos() - m_dragStartPos).manhattanLength();
             if (dist <= 3) {
                 showContextMenu(event->globalPosition().toPoint());
             }
         }
+        update();
     }
     QOpenGLWidget::mouseReleaseEvent(event);
+}
+
+void GL3DView::mouseDoubleClickEvent(QMouseEvent *event) {
+    if (event->button() == Qt::LeftButton) {
+        // Double-click centers m_target onto the clicked horizontal coordinate
+        QVector3D worldPt = screenToWorldPlane(event->pos(), m_target.z());
+        animateToCamera(m_pitch, m_azimuth, m_distance, &worldPt, 200);
+        event->accept();
+        return;
+    }
+    QOpenGLWidget::mouseDoubleClickEvent(event);
+}
+
+QVector3D GL3DView::screenToWorldPlane(const QPoint &pos, float planeZ) {
+    float w = static_cast<float>(width());
+    float h = static_cast<float>(height());
+    if (w <= 0.0f || h <= 0.0f) return m_target;
+
+    float ndcX = (2.0f * pos.x()) / w - 1.0f;
+    float ndcY = 1.0f - (2.0f * pos.y()) / h;
+
+    float effDist = m_distance / std::max(0.01f, m_zoom);
+    float fov = 45.0f * 3.14159265f / 180.0f;
+    float halfH = effDist * std::tan(fov * 0.5f);
+    float halfW = halfH * (w / h);
+
+    float pRad = (m_pitch - 90.0f) * 3.14159265f / 180.0f;
+    float azRad = m_azimuth * 3.14159265f / 180.0f;
+    float cosAz = std::cos(azRad), sinAz = std::sin(azRad);
+    float cosP = std::cos(pRad), sinP = std::sin(pRad);
+
+    QVector3D rightDir(cosAz, -sinAz, 0.0f);
+    QVector3D upDir(-sinP * sinAz, -sinP * cosAz, cosP);
+    QVector3D viewDir(-cosP * sinAz, -cosP * cosAz, -sinP);
+
+    QVector3D eye = m_target - effDist * viewDir;
+    QVector3D rayDir = (viewDir * effDist + ndcX * halfW * rightDir + ndcY * halfH * upDir).normalized();
+
+    if (std::abs(rayDir.z()) > 1e-4f) {
+        float t = (planeZ - eye.z()) / rayDir.z();
+        return eye + t * rayDir;
+    }
+    return m_target;
 }
 
 void GL3DView::wheelEvent(QWheelEvent *event) {
     float numDegrees = event->angleDelta().y() / 8.0f;
     float numSteps = numDegrees / 15.0f;
     float factor = std::pow(1.15f, numSteps);
+
+    // Zoom-to-cursor: smooth transition towards ray cast through mouse position
+    QPoint mousePos = event->position().toPoint();
+    QVector3D cursorWorld = screenToWorldPlane(mousePos, m_target.z());
+
     m_zoom *= factor;
     if (m_zoom < 0.01f) m_zoom = 0.01f;
     if (m_zoom > 100.0f) m_zoom = 100.0f;
+
+    // Shift target slightly toward cursor point when zooming in
+    if (factor > 1.0f) {
+        float blend = std::clamp((factor - 1.0f) * 0.35f, 0.0f, 0.30f);
+        m_target = m_target + blend * (cursorWorld - m_target);
+    }
+
+    emit cameraChanged();
     update();
     event->accept();
 }
@@ -1275,6 +1702,21 @@ void GL3DView::keyPressEvent(QKeyEvent *event) {
     case Qt::Key_N: setViewNorth(); break;
     case Qt::Key_S: setViewSouth(); break;
     case Qt::Key_M: setViewTopMap(); break;
+    case Qt::Key_O:
+    case Qt::Key_5:
+        setOrthographic(!m_orthographic);
+        break;
+    case Qt::Key_Home:
+    case Qt::Key_F:
+        fitToView();
+        break;
+    case Qt::Key_Plus:
+    case Qt::Key_Equal:
+        setZScale(m_zScale * 1.25f);
+        break;
+    case Qt::Key_Minus:
+        setZScale(m_zScale / 1.25f);
+        break;
     default:
         QOpenGLWidget::keyPressEvent(event);
         break;
@@ -1289,6 +1731,7 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     QMenu menu(this);
 
     menu.addAction(tr("Reset Camera"), this, &GL3DView::resetCamera);
+    menu.addAction(tr("Fit to View (F)"), this, &GL3DView::fitToView);
 
     auto *viewsMenu = menu.addMenu(tr("Standard Views"));
     viewsMenu->addAction(tr("Top Map View (M)"), this, &GL3DView::setViewTopMap);
@@ -1296,6 +1739,31 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     viewsMenu->addAction(tr("West View (W)"), this, &GL3DView::setViewWest);
     viewsMenu->addAction(tr("North View (N)"), this, &GL3DView::setViewNorth);
     viewsMenu->addAction(tr("South View (S)"), this, &GL3DView::setViewSouth);
+
+    menu.addSeparator();
+
+    auto *actOrtho = menu.addAction(tr("Orthographic Projection (O)"), this, [this](bool checked) {
+        setOrthographic(checked);
+    });
+    actOrtho->setCheckable(true);
+    actOrtho->setChecked(m_orthographic);
+
+    auto *zMenu = menu.addMenu(tr("Vertical Exaggeration (Z-Scale)"));
+    float scales[] = { 1.0f, 2.0f, 3.0f, 5.0f, 10.0f };
+    for (float sc : scales) {
+        QString title = QString("%1x").arg(sc, 0, 'f', (sc == static_cast<int>(sc) ? 0 : 1));
+        auto *act = zMenu->addAction(title, this, [this, sc]() {
+            setZScale(sc);
+        });
+        act->setCheckable(true);
+        act->setChecked(std::abs(m_zScale - sc) < 0.05f);
+    }
+
+    auto *actFog = menu.addAction(tr("Depth Cueing / Atmospheric Haze"), this, [this](bool checked) {
+        setShowDepthFog(checked);
+    });
+    actFog->setCheckable(true);
+    actFog->setChecked(m_showDepthFog);
 
     menu.addSeparator();
 
@@ -1351,51 +1819,103 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
 }
 
 void GL3DView::setViewEast() {
-    m_pitch = 0.0f;
-    m_azimuth = 90.0f;
-    m_panX = 0.0f;
-    m_panY = 0.0f;
-    update();
+    if (m_camAnim) { m_camAnim->stop(); }
+    setCameraAngles(0.0f, 90.0f);
 }
 
 void GL3DView::setViewWest() {
-    m_pitch = 0.0f;
-    m_azimuth = -90.0f;
-    m_panX = 0.0f;
-    m_panY = 0.0f;
-    update();
+    if (m_camAnim) { m_camAnim->stop(); }
+    setCameraAngles(0.0f, -90.0f);
 }
 
 void GL3DView::setViewNorth() {
-    m_pitch = 0.0f;
-    m_azimuth = 180.0f;
-    m_panX = 0.0f;
-    m_panY = 0.0f;
-    update();
+    if (m_camAnim) { m_camAnim->stop(); }
+    setCameraAngles(0.0f, 180.0f);
 }
 
 void GL3DView::setViewSouth() {
-    m_pitch = 0.0f;
-    m_azimuth = 0.0f;
-    m_panX = 0.0f;
-    m_panY = 0.0f;
-    update();
+    if (m_camAnim) { m_camAnim->stop(); }
+    setCameraAngles(0.0f, 0.0f);
 }
 
 void GL3DView::setViewTopMap() {
-    m_pitch = 89.9f;
-    m_azimuth = 0.0f;
-    m_panX = 0.0f;
-    m_panY = 0.0f;
-    update();
+    if (m_camAnim) { m_camAnim->stop(); }
+    setCameraAngles(89.9f, 0.0f);
 }
 
 void GL3DView::resetCamera() {
+    if (m_doc) {
+        const auto &model = m_doc->model();
+        double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
+        double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
+        double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
+        m_target = QVector3D(static_cast<float>(midX), static_cast<float>(midY), static_cast<float>(midZ));
+    }
     m_pitch = 30.0f;
     m_azimuth = -45.0f;
     m_panX = 0.0f;
     m_panY = 0.0f;
     m_zoom = 1.0f;
+    emit cameraChanged();
+    update();
+}
+
+void GL3DView::fitToView() {
+    if (m_doc) {
+        const auto &model = m_doc->model();
+        double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
+        double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
+        double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
+        QVector3D targetPt(static_cast<float>(midX), static_cast<float>(midY), static_cast<float>(midZ));
+
+        double maxDim = std::max({ model.x_max_val() - model.x_min_val(),
+                                   model.y_max_val() - model.y_min_val(),
+                                   (model.z_max_val() - model.z_min_val()) * std::max(1.0f, m_zScale) });
+        float dist = static_cast<float>(maxDim * 1.8);
+        animateToCamera(m_pitch, m_azimuth, dist, &targetPt);
+    }
+}
+
+void GL3DView::setCameraAngles(float pitch, float azimuth) {
+    m_pitch = pitch;
+    m_azimuth = azimuth;
+    emit cameraChanged();
+    update();
+}
+
+void GL3DView::setTarget(const QVector3D &target) {
+    m_target = target;
+    m_targetInitialized = true;
+    emit cameraChanged();
+    update();
+}
+
+void GL3DView::setCameraDistance(float dist) {
+    m_distance = std::max(10.0f, dist);
+    emit cameraChanged();
+    update();
+}
+
+void GL3DView::setZoom(float zoom) {
+    m_zoom = std::clamp(zoom, 0.01f, 100.0f);
+    emit cameraChanged();
+    update();
+}
+
+void GL3DView::setZScale(float zScale) {
+    m_zScale = std::clamp(zScale, 0.1f, 30.0f);
+    emit zScaleChanged(m_zScale);
+    update();
+}
+
+void GL3DView::setOrthographic(bool ortho) {
+    m_orthographic = ortho;
+    emit projectionChanged(m_orthographic);
+    update();
+}
+
+void GL3DView::setShowDepthFog(bool fog) {
+    m_showDepthFog = fog;
     update();
 }
 
