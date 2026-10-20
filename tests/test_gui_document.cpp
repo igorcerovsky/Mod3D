@@ -2244,6 +2244,9 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
 }
 
 TEST_F(GuiDocumentTest, GL3DViewAndSettingsPaneTransparencyToggles) {
+#if defined(_WIN32)
+    GTEST_SKIP() << "Skipped on Windows CI (QOpenGLWidget headless offscreen limitations)";
+#endif
     MainWindow mw;
     mw.resize(1200, 800);
 
