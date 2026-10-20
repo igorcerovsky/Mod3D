@@ -304,9 +304,15 @@ void GL3DView::ensureDefaultTargetAndDistance() {
 void GL3DView::setupMatrices(int w, int h) {
     ensureDefaultTargetAndDistance();
 
-    glViewport(0, 0, w, h);
+    qreal dpr = devicePixelRatioF();
+    int physW = static_cast<int>(std::round(width() * dpr));
+    int physH = static_cast<int>(std::round(height() * dpr));
+    if (physW <= 0) physW = (w > 0 ? w : 1);
+    if (physH <= 0) physH = (h > 0 ? h : 1);
 
-    float aspect = (h > 0) ? (static_cast<float>(w) / h) : 1.0f;
+    glViewport(0, 0, physW, physH);
+
+    float aspect = (physH > 0) ? (static_cast<float>(physW) / static_cast<float>(physH)) : 1.0f;
     float fov = 45.0f;
 
     // Calculate scene bounding radius for tight, optimal depth range
@@ -405,9 +411,10 @@ void GL3DView::paintGL() {
     if (!isValid() || !context()) return;
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    int w = width();
-    int h = height();
-    setupMatrices(w, h);
+    qreal dpr = devicePixelRatioF();
+    int physW = static_cast<int>(std::round(width() * dpr));
+    int physH = static_cast<int>(std::round(height() * dpr));
+    setupMatrices(physW, physH);
 
     if (!m_doc) return;
 
