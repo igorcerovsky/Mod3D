@@ -13,6 +13,7 @@
 #include <QEasingCurve>
 #include <QOpenGLShaderProgram>
 #include <QPainter>
+#include <QApplication>
 #include <cmath>
 #include <algorithm>
 #include <string>
@@ -1646,6 +1647,21 @@ void GL3DView::mouseMoveEvent(QMouseEvent *event) {
     }
 
     if (m_mouseDragging) {
+        // Safety check: ensure the initiating drag button is actually still held down.
+        // If buttons were released during a menu popup, modal dialog, or window focus change,
+        // cancel dragging immediately to prevent unwanted hover panning or orbiting.
+        Qt::MouseButtons btns = event->buttons();
+        if (btns == Qt::NoButton ||
+            (m_dragButton == Qt::LeftButton && !(btns & Qt::LeftButton)) ||
+            (m_dragButton == Qt::RightButton && !(btns & Qt::RightButton)) ||
+            (m_dragButton == Qt::MiddleButton && !(btns & Qt::MiddleButton))) {
+            m_mouseDragging = false;
+            m_draggingGizmo = false;
+            update();
+            QOpenGLWidget::mouseMoveEvent(event);
+            return;
+        }
+
         int dx = event->pos().x() - m_lastMousePos.x();
         int dy = event->pos().y() - m_lastMousePos.y();
 
@@ -1706,17 +1722,9 @@ void GL3DView::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void GL3DView::mouseReleaseEvent(QMouseEvent *event) {
-    if (m_mouseDragging) {
-        m_mouseDragging = false;
-        m_draggingGizmo = false;
-        if (event->button() == Qt::RightButton) {
-            int dist = (event->pos() - m_dragStartPos).manhattanLength();
-            if (dist <= 3) {
-                showContextMenu(event->globalPosition().toPoint());
-            }
-        }
-        update();
-    }
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
+    update();
     QOpenGLWidget::mouseReleaseEvent(event);
 }
 
@@ -1816,10 +1824,34 @@ void GL3DView::keyPressEvent(QKeyEvent *event) {
 }
 
 void GL3DView::contextMenuEvent(QContextMenuEvent *event) {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     showContextMenu(event->globalPos());
+    event->accept();
+}
+
+void GL3DView::leaveEvent(QEvent *event) {
+    if (QApplication::mouseButtons() == Qt::NoButton) {
+        m_mouseDragging = false;
+        m_draggingGizmo = false;
+    }
+    if (m_gizmoHoverAxis != -1) {
+        m_gizmoHoverAxis = -1;
+        update();
+    }
+    QOpenGLWidget::leaveEvent(event);
+}
+
+void GL3DView::focusOutEvent(QFocusEvent *event) {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
+    QOpenGLWidget::focusOutEvent(event);
 }
 
 void GL3DView::showContextMenu(const QPoint &globalPos) {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
+
     QMenu menu(this);
 
     menu.addAction(tr("Reset Camera"), this, &GL3DView::resetCamera);
@@ -1908,34 +1940,50 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     actOuter->setChecked(m_showOuterFacets);
 
     menu.exec(globalPos);
+
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
 }
 
 void GL3DView::setViewEast() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     if (m_camAnim) { m_camAnim->stop(); }
     setCameraAngles(0.0f, 90.0f);
 }
 
 void GL3DView::setViewWest() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     if (m_camAnim) { m_camAnim->stop(); }
     setCameraAngles(0.0f, -90.0f);
 }
 
 void GL3DView::setViewNorth() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     if (m_camAnim) { m_camAnim->stop(); }
     setCameraAngles(0.0f, 180.0f);
 }
 
 void GL3DView::setViewSouth() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     if (m_camAnim) { m_camAnim->stop(); }
     setCameraAngles(0.0f, 0.0f);
 }
 
 void GL3DView::setViewTopMap() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     if (m_camAnim) { m_camAnim->stop(); }
     setCameraAngles(89.9f, 0.0f);
 }
 
 void GL3DView::resetCamera() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
+    if (m_camAnim) { m_camAnim->stop(); }
     if (m_doc) {
         const auto &model = m_doc->model();
         double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
@@ -1953,6 +2001,9 @@ void GL3DView::resetCamera() {
 }
 
 void GL3DView::fitToView() {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
+    if (m_camAnim) { m_camAnim->stop(); }
     if (m_doc) {
         const auto &model = m_doc->model();
         double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
@@ -1969,6 +2020,8 @@ void GL3DView::fitToView() {
 }
 
 void GL3DView::setCameraAngles(float pitch, float azimuth) {
+    m_mouseDragging = false;
+    m_draggingGizmo = false;
     m_pitch = pitch;
     m_azimuth = azimuth;
     emit cameraChanged();

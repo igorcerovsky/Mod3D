@@ -1315,6 +1315,66 @@ TEST_F(GuiDocumentTest, GL3DViewTurntableOrbitAndCameraPresets) {
     EXPECT_FLOAT_EQ(view.zoom(), 1.0f);
 }
 
+TEST_F(GuiDocumentTest, GL3DViewMouseDragStateNotStuckOnMoveWithoutButtonOrReset) {
+    ModelDocument doc;
+    doc.newProject(8, 10, 0.0, 0.0, 50.0, 50.0, -2000.0, 0.0);
+    GL3DView view(&doc);
+    view.resize(600, 400);
+    view.resetCamera();
+
+    QVector3D initialTarget = view.target();
+
+    // 1. Simulate right-click press (initiates potential pan)
+    QMouseEvent pressRight(QEvent::MouseButtonPress, QPointF(100, 100), QPointF(100, 100),
+                           Qt::RightButton, Qt::RightButton, Qt::NoModifier);
+    view.mousePressEvent(&pressRight);
+
+    // 2. Simulate camera reset (as triggered by context menu, button, or shortcut)
+    view.resetCamera();
+    EXPECT_FLOAT_EQ(view.pitch(), 30.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -45.0f);
+
+    // 3. Move mouse without holding any button down (hovering)
+    QMouseEvent moveNoButton(QEvent::MouseMove, QPointF(250, 200), QPointF(250, 200),
+                             Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    view.mouseMoveEvent(&moveNoButton);
+
+    // Target and angles must NOT have panned or orbited
+    EXPECT_FLOAT_EQ(view.target().x(), initialTarget.x());
+    EXPECT_FLOAT_EQ(view.target().y(), initialTarget.y());
+    EXPECT_FLOAT_EQ(view.target().z(), initialTarget.z());
+    EXPECT_FLOAT_EQ(view.pitch(), 30.0f);
+    EXPECT_FLOAT_EQ(view.azimuth(), -45.0f);
+
+    // 4. Also verify that normal right-drag DOES pan when the button is actively held down
+    QMouseEvent moveWithRight(QEvent::MouseMove, QPointF(260, 210), QPointF(260, 210),
+                              Qt::NoButton, Qt::RightButton, Qt::NoModifier);
+    // (Notice: without mousePressEvent first, moveWithRight won't pan)
+    view.mouseMoveEvent(&moveWithRight);
+    EXPECT_FLOAT_EQ(view.target().x(), initialTarget.x());
+
+    // Press right button and then drag with right button held
+    QMouseEvent pressRight2(QEvent::MouseButtonPress, QPointF(260, 210), QPointF(260, 210),
+                            Qt::RightButton, Qt::RightButton, Qt::NoModifier);
+    view.mousePressEvent(&pressRight2);
+    QMouseEvent moveWithRight2(QEvent::MouseMove, QPointF(300, 250), QPointF(300, 250),
+                               Qt::NoButton, Qt::RightButton, Qt::NoModifier);
+    view.mouseMoveEvent(&moveWithRight2);
+    EXPECT_NE(view.target(), initialTarget);
+
+    // Release mouse button -> must stop dragging
+    QMouseEvent releaseRight(QEvent::MouseButtonRelease, QPointF(300, 250), QPointF(300, 250),
+                             Qt::RightButton, Qt::NoButton, Qt::NoModifier);
+    view.mouseReleaseEvent(&releaseRight);
+
+    QVector3D pannedTarget = view.target();
+    QMouseEvent moveHover(QEvent::MouseMove, QPointF(350, 300), QPointF(350, 300),
+                          Qt::NoButton, Qt::NoButton, Qt::NoModifier);
+    view.mouseMoveEvent(&moveHover);
+    EXPECT_FLOAT_EQ(view.target().x(), pannedTarget.x());
+    EXPECT_FLOAT_EQ(view.target().y(), pannedTarget.y());
+}
+
 TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     MainWindow mw;
     mw.resize(1200, 800);
