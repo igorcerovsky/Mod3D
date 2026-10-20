@@ -2240,3 +2240,82 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
 #endif
 }
 
+TEST_F(GuiDocumentTest, GL3DViewAndSettingsPaneTransparencyToggles) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    auto *doc = mw.document();
+    ASSERT_NE(doc, nullptr);
+
+    GL3DView *glv = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = g;
+            sub3D = sub;
+            break;
+        }
+    }
+    ASSERT_NE(glv, nullptr);
+    ASSERT_NE(sub3D, nullptr);
+
+    // 1. Verify default 3D transparency values
+    EXPECT_TRUE(glv->showTransparentBodies());
+    EXPECT_TRUE(glv->showTransparentProfilePlane());
+
+    // 2. Activate 3D subwindow and check SettingsPane synchronization
+    mw.mdiArea()->setActiveSubWindow(sub3D);
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    pane->selectDisplayTab();
+
+    auto *chkTranspBodies = pane->transparentBodiesCheckBox();
+    auto *chkTranspSlices = pane->transparentSlicesCheckBox();
+    ASSERT_NE(chkTranspBodies, nullptr);
+    ASSERT_NE(chkTranspSlices, nullptr);
+
+    EXPECT_TRUE(chkTranspBodies->isChecked());
+    EXPECT_TRUE(chkTranspSlices->isChecked());
+
+    // 3. Toggle via SettingsPane checkboxes and verify GL3DView updates
+    chkTranspBodies->setChecked(false);
+    EXPECT_FALSE(glv->showTransparentBodies());
+
+    chkTranspSlices->setChecked(false);
+    EXPECT_FALSE(glv->showTransparentProfilePlane());
+
+    // Software paint test without crashes when toggled off
+    QPixmap pm(400, 400);
+    QPainter painter(&pm);
+    glv->paintSoftware(painter);
+
+    // Re-enable
+    chkTranspBodies->setChecked(true);
+    chkTranspSlices->setChecked(true);
+    EXPECT_TRUE(glv->showTransparentBodies());
+    EXPECT_TRUE(glv->showTransparentProfilePlane());
+
+    // 4. Per-body transparency toggle in Tab 3 (Body Editor)
+    int bodyId = doc->insertBodyAt(2, -500.0, 200.0);
+    ASSERT_GT(bodyId, 0);
+    auto *b0 = doc->model().body(bodyId);
+    ASSERT_NE(b0, nullptr);
+
+    pane->selectBodyEditorTab();
+    auto *chkBodyTrans = pane->bodyTransparentCheckBox();
+    ASSERT_NE(chkBodyTrans, nullptr);
+
+    // Initial body transparency
+    bool initTrans = b0->is_transparent();
+    EXPECT_EQ(chkBodyTrans->isChecked(), initTrans);
+
+    // Toggle body transparency in editor
+    chkBodyTrans->setChecked(!initTrans);
+    EXPECT_EQ(b0->is_transparent(), !initTrans);
+
+    // Reset back
+    chkBodyTrans->setChecked(initTrans);
+    EXPECT_EQ(b0->is_transparent(), initTrans);
+}
+
+

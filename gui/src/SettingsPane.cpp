@@ -491,6 +491,10 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chk3DOrtho = new QCheckBox(tr("Orthographic Projection"), box3DToggles);
     m_chk3DDepthFog = new QCheckBox(tr("Depth Cueing / Atmospheric Fog"), box3DToggles);
     m_chk3DDepthFog->setChecked(false);
+    m_chk3DTransparentBodies = new QCheckBox(tr("Transparent Bodies"), box3DToggles);
+    m_chk3DTransparentBodies->setChecked(true);
+    m_chk3DTransparentSlices = new QCheckBox(tr("Transparent Profile / Section Slices"), box3DToggles);
+    m_chk3DTransparentSlices->setChecked(true);
 
     toggles3DLayout->addWidget(m_chk3DSlices);
     toggles3DLayout->addWidget(m_chk3DCompass);
@@ -500,6 +504,8 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     toggles3DLayout->addWidget(m_chk3DWireframe);
     toggles3DLayout->addWidget(m_chk3DOrtho);
     toggles3DLayout->addWidget(m_chk3DDepthFog);
+    toggles3DLayout->addWidget(m_chk3DTransparentBodies);
+    toggles3DLayout->addWidget(m_chk3DTransparentSlices);
     v3dLayout->addWidget(box3DToggles);
 
     auto *box3DDepth = new QGroupBox(tr("Depth & Elevation Scaling"), m_pane3DView);
@@ -538,6 +544,12 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     });
     connect(m_chk3DDepthFog, &QCheckBox::toggled, this, [this](bool c) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowDepthFog(c);
+    });
+    connect(m_chk3DTransparentBodies, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowTransparentBodies(c);
+    });
+    connect(m_chk3DTransparentSlices, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowTransparentProfilePlane(c);
     });
     connect(m_spin3DZScale, &QDoubleSpinBox::valueChanged, this, [this](double val) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setZScale(static_cast<float>(val));
@@ -826,8 +838,10 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
     auto *chkRow = new QHBoxLayout();
     m_chkBodyActive = new QCheckBox(tr("Active in Compute"), inner);
     m_chkBodyLocked = new QCheckBox(tr("Locked"), inner);
+    m_chkBodyTransparent = new QCheckBox(tr("Transparent in 3D"), inner);
     chkRow->addWidget(m_chkBodyActive);
     chkRow->addWidget(m_chkBodyLocked);
+    chkRow->addWidget(m_chkBodyTransparent);
     form->addRow(QString(), chkRow);
 
     layout->addLayout(form);
@@ -922,6 +936,7 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
     });
     connect(m_chkBodyActive, &QCheckBox::toggled, this, &SettingsPane::applyBodyData);
     connect(m_chkBodyLocked, &QCheckBox::toggled, this, &SettingsPane::applyBodyData);
+    connect(m_chkBodyTransparent, &QCheckBox::toggled, this, &SettingsPane::applyBodyData);
     connect(m_spinGradX, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double) {
         applyBodyData();
     });
@@ -1332,6 +1347,8 @@ void SettingsPane::updateViewContext() {
         m_chk3DWireframe->setChecked(glv->wireframeMode());
         m_chk3DOrtho->setChecked(glv->isOrthographic());
         m_chk3DDepthFog->setChecked(glv->showDepthFog());
+        m_chk3DTransparentBodies->setChecked(glv->showTransparentBodies());
+        m_chk3DTransparentSlices->setChecked(glv->showTransparentProfilePlane());
         m_spin3DZScale->setValue(glv->zScale());
 
     } else {
@@ -1401,6 +1418,7 @@ void SettingsPane::loadBodyData() {
         .arg(col.blue(), 2, 16, QChar('0')).toUpper());
     m_chkBodyActive->setChecked(b->is_active());
     m_chkBodyLocked->setChecked(b->is_locked());
+    m_chkBodyTransparent->setChecked(b->is_transparent());
 
     m_spinGradX->setValue(b->density_gradient().x_val());
     m_spinGradY->setValue(b->density_gradient().y_val());
@@ -1429,6 +1447,7 @@ void SettingsPane::applyBodyData() {
     b->set_susceptibility(m_spinSusceptibility->value());
     b->set_active(m_chkBodyActive->isChecked());
     b->set_locked(m_chkBodyLocked->isChecked());
+    b->set_transparent(m_chkBodyTransparent->isChecked());
 
     b->set_density_gradient(mod3d::Point3D(m_spinGradX->value(), m_spinGradY->value(), m_spinGradZ->value()));
 

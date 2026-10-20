@@ -56,6 +56,12 @@ public:
     [[nodiscard]] bool showDepthFog() const noexcept { return m_showDepthFog; }
     void setShowDepthFog(bool fog);
 
+    [[nodiscard]] bool showTransparentBodies() const noexcept { return m_transparentBodies; }
+    void setShowTransparentBodies(bool enable);
+
+    [[nodiscard]] bool showTransparentProfilePlane() const noexcept { return m_transparentProfiles; }
+    void setShowTransparentProfilePlane(bool enable);
+
     [[nodiscard]] float zScale() const noexcept { return m_zScale; }
     void setZScale(float zScale);
 
@@ -176,6 +182,8 @@ private:
     bool m_showProfilePlane{true};
     bool m_showBoundingBox{true};
     bool m_showOrientationIndicator{true};
+    bool m_transparentBodies{true};
+    bool m_transparentProfiles{true};
 };
 
 } // namespace mod3d_gui

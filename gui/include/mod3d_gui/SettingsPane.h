@@ -46,6 +46,9 @@ public:
     QDoubleSpinBox *bodyDensitySpinBox() const { return m_spinDensity; }
     QDoubleSpinBox *bodySusceptibilitySpinBox() const { return m_spinSusceptibility; }
     QCheckBox *mapReliefContoursCheckBox() const { return m_chkMapReliefContours; }
+    QCheckBox *transparentBodiesCheckBox() const { return m_chk3DTransparentBodies; }
+    QCheckBox *transparentSlicesCheckBox() const { return m_chk3DTransparentSlices; }
+    QCheckBox *bodyTransparentCheckBox() const { return m_chkBodyTransparent; }
 
 signals:
     void requestBodyPropertiesDialog(int bodyId);
@@ -124,6 +127,8 @@ private:
     QDoubleSpinBox *m_spin3DZScale{nullptr};
     QCheckBox *m_chk3DOrtho{nullptr};
     QCheckBox *m_chk3DDepthFog{nullptr};
+    QCheckBox *m_chk3DTransparentBodies{nullptr};
+    QCheckBox *m_chk3DTransparentSlices{nullptr};
 
     // Tab 2: Profiles Tab Controls
     QPushButton *m_btnProfTabOrientEW{nullptr};
@@ -154,6 +159,7 @@ private:
     QPushButton *m_btnBodyColor{nullptr};
     QCheckBox *m_chkBodyActive{nullptr};
     QCheckBox *m_chkBodyLocked{nullptr};
+    QCheckBox *m_chkBodyTransparent{nullptr};
     QPushButton *m_btnContinuousDrawing{nullptr};
     QDoubleSpinBox *m_spinGradX{nullptr};
     QDoubleSpinBox *m_spinGradY{nullptr};

@@ -846,7 +846,11 @@ void GL3DView::paintSoftware(QPainter &painter) {
                  << project(x, model.y_max_val(), z1).first
                  << project(x, model.y_min_val(), z1).first;
         }
-        painter.setBrush(QColor(245, 158, 11, 45));
+        if (m_transparentProfiles) {
+            painter.setBrush(QColor(245, 158, 11, 45));
+        } else {
+            painter.setBrush(Qt::NoBrush);
+        }
         painter.setPen(QPen(QColor(217, 119, 6, 200), 1.5, Qt::DashLine));
         painter.drawPolygon(poly);
     }
@@ -913,7 +917,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
             int r = std::clamp(static_cast<int>(bc.r * shade), 0, 255);
             int g = std::clamp(static_cast<int>(bc.g * shade), 0, 255);
             int b = std::clamp(static_cast<int>(bc.b * shade), 0, 255);
-            int alpha = mesh.isTransparent ? std::clamp(static_cast<int>(mesh.alpha * 255), 30, 240) : 255;
+            int alpha = (m_transparentBodies && mesh.isTransparent) ? std::clamp(static_cast<int>(mesh.alpha * 255), 30, 240) : 255;
 
             QColor fillColor(r, g, b, alpha);
             if (isSelected) {
@@ -1326,7 +1330,7 @@ void GL3DView::drawBodies() {
     }
 
     for (const auto &mesh : m_bodyMeshes) {
-        if (!mesh.isVisible || mesh.isTransparent) continue;
+        if (!mesh.isVisible || (m_transparentBodies && mesh.isTransparent)) continue;
 
         if (useShader) {
             m_shaderProg->setUniformValue("u_highlight", (mesh.bodyId == m_selectedBodyId));
@@ -1367,7 +1371,7 @@ void GL3DView::drawBodies() {
         if (m_showFeatureEdges) {
             glDisable(GL_LIGHTING);
             for (const auto &mesh : m_bodyMeshes) {
-                if (!mesh.isVisible || mesh.isTransparent) continue;
+                if (!mesh.isVisible || (m_transparentBodies && mesh.isTransparent)) continue;
 
                 bool isSelected = (mesh.bodyId == m_selectedBodyId);
                 if (isSelected) {
@@ -1394,10 +1398,12 @@ void GL3DView::drawBodies() {
 
     // 2. TRANSPARENT BODIES PASS (Depth-Sorted Back-to-Front)
     bool hasTransparent = false;
-    for (const auto &mesh : m_bodyMeshes) {
-        if (mesh.isVisible && mesh.isTransparent) {
-            hasTransparent = true;
-            break;
+    if (m_transparentBodies) {
+        for (const auto &mesh : m_bodyMeshes) {
+            if (mesh.isVisible && mesh.isTransparent) {
+                hasTransparent = true;
+                break;
+            }
         }
     }
 
@@ -1614,40 +1620,42 @@ void GL3DView::drawProfilePlane() {
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     // 1. Semi-transparent slice planes pass
-    glDepthMask(GL_FALSE);
-    glBegin(GL_QUADS);
+    if (m_transparentProfiles) {
+        glDepthMask(GL_FALSE);
+        glBegin(GL_QUADS);
 
-    // Inactive profile planes
-    for (const auto &sl : slices) {
-        if (sl.isActive) continue;
-        glColor4f(0.35f, 0.55f, 0.85f, 0.08f);
-        if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
-        } else {
-            float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+        // Inactive profile planes
+        for (const auto &sl : slices) {
+            if (sl.isActive) continue;
+            glColor4f(0.35f, 0.55f, 0.85f, 0.08f);
+            if (sl.orient == ProfileOrientation::EastWest) {
+                float y = static_cast<float>(m.yd_val(sl.index + 1));
+                glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
+                glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
+            } else {
+                float x = static_cast<float>(m.xd_val(sl.index + 1));
+                glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
+                glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+            }
         }
-    }
 
-    // Active profile plane
-    for (const auto &sl : slices) {
-        if (!sl.isActive) continue;
-        glColor4f(0.96f, 0.28f, 0.22f, 0.26f);
-        if (sl.orient == ProfileOrientation::EastWest) {
-            float y = static_cast<float>(m.yd_val(sl.index + 1));
-            glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
-            glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
-        } else {
-            float x = static_cast<float>(m.xd_val(sl.index + 1));
-            glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
-            glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+        // Active profile plane
+        for (const auto &sl : slices) {
+            if (!sl.isActive) continue;
+            glColor4f(0.96f, 0.28f, 0.22f, 0.26f);
+            if (sl.orient == ProfileOrientation::EastWest) {
+                float y = static_cast<float>(m.yd_val(sl.index + 1));
+                glVertex3f(x0, y, z0); glVertex3f(x1, y, z0);
+                glVertex3f(x1, y, z1); glVertex3f(x0, y, z1);
+            } else {
+                float x = static_cast<float>(m.xd_val(sl.index + 1));
+                glVertex3f(x, y0, z0); glVertex3f(x, y1, z0);
+                glVertex3f(x, y1, z1); glVertex3f(x, y0, z1);
+            }
         }
+        glEnd();
+        glDepthMask(GL_TRUE);
     }
-    glEnd();
-    glDepthMask(GL_TRUE);
 
     // 2. Profile outlines
     glLineWidth(1.2f);
@@ -2257,6 +2265,18 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     actProfile->setCheckable(true);
     actProfile->setChecked(m_showProfilePlane);
 
+    auto *actTranspBodies = menu.addAction(tr("Transparent Bodies"), this, [this](bool checked) {
+        setShowTransparentBodies(checked);
+    });
+    actTranspBodies->setCheckable(true);
+    actTranspBodies->setChecked(m_transparentBodies);
+
+    auto *actTranspProfiles = menu.addAction(tr("Transparent Profile / Section Slices"), this, [this](bool checked) {
+        setShowTransparentProfilePlane(checked);
+    });
+    actTranspProfiles->setCheckable(true);
+    actTranspProfiles->setChecked(m_transparentProfiles);
+
     auto *actBBox = menu.addAction(tr("Show Bounding Box"), this, [this](bool checked) {
         setShowBoundingBox(checked);
     });
@@ -2447,4 +2467,19 @@ void GL3DView::setShowOrientationIndicator(bool show) {
     update();
 }
 
+void GL3DView::setShowTransparentBodies(bool enable) {
+    if (m_transparentBodies != enable) {
+        m_transparentBodies = enable;
+        update();
+    }
+}
+
+void GL3DView::setShowTransparentProfilePlane(bool enable) {
+    if (m_transparentProfiles != enable) {
+        m_transparentProfiles = enable;
+        update();
+    }
+}
+
 } // namespace mod3d_gui
+
