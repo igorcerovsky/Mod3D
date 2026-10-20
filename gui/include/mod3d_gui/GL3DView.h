@@ -205,7 +205,7 @@ private:
     QMatrix4x4 m_mvMatrix;
 
     // Smooth animation
-    QVariantAnimation *m_camAnim{nullptr};
+    QPointer<QVariantAnimation> m_camAnim{nullptr};
 
     // Modern Shaders
     QOpenGLShaderProgram *m_shaderProg{nullptr};

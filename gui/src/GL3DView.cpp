@@ -387,7 +387,8 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
 GL3DView::~GL3DView() {
     if (m_camAnim) {
         m_camAnim->stop();
-        delete m_camAnim;
+        delete m_camAnim.data();
+        m_camAnim = nullptr;
     }
     if (isValid() && context()) {
         makeCurrent();
@@ -976,11 +977,9 @@ void GL3DView::paintEvent(QPaintEvent *event) {
         }
         return;
     }
-    QPainter painter;
-    if (painter.begin(this)) {
-        paintSoftware(painter);
-        painter.end();
-    }
+    // Headless / offscreen environment without OpenGL context:
+    // QOpenGLWidget cannot be painted directly by QPainter on uninitialized context.
+    Q_UNUSED(event);
 }
 
 void GL3DView::paintSoftware(QPainter &painter) {
@@ -2396,7 +2395,7 @@ void GL3DView::drawOrientationHud(QPainter &painter) {
 void GL3DView::animateToCamera(float targetPitch, float targetAzimuth, float targetDist, const QVector3D *targetLookAt, int durationMs) {
     if (m_camAnim) {
         m_camAnim->stop();
-        delete m_camAnim;
+        delete m_camAnim.data();
         m_camAnim = nullptr;
     }
 
@@ -2418,7 +2417,7 @@ void GL3DView::animateToCamera(float targetPitch, float targetAzimuth, float tar
     m_camAnim->setEndValue(1.0f);
     m_camAnim->setEasingCurve(QEasingCurve::InOutCubic);
 
-    connect(m_camAnim, &QVariantAnimation::valueChanged, this, [=, this](const QVariant &v) {
+    connect(m_camAnim.data(), &QVariantAnimation::valueChanged, this, [=, this](const QVariant &v) {
         float t = v.toFloat();
         m_pitch = startPitch + (targetPitch - startPitch) * t;
         m_azimuth = startAzimuth + (targetAzimuth - startAzimuth) * t;
@@ -2432,9 +2431,11 @@ void GL3DView::animateToCamera(float targetPitch, float targetAzimuth, float tar
         update();
     });
 
-    connect(m_camAnim, &QVariantAnimation::finished, this, [this]() {
-        m_camAnim->deleteLater();
-        m_camAnim = nullptr;
+    connect(m_camAnim.data(), &QVariantAnimation::finished, this, [this]() {
+        if (m_camAnim) {
+            m_camAnim->deleteLater();
+            m_camAnim = nullptr;
+        }
     });
 
     m_camAnim->start();

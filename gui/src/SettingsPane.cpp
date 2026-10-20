@@ -86,6 +86,11 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *
     refreshAll();
 }
 
+SettingsPane::~SettingsPane() {
+    m_mainWindow = nullptr;
+    m_activeView = nullptr;
+}
+
 void SettingsPane::selectDisplayTab() {
     if (m_tabs) m_tabs->setCurrentIndex(0);
 }
@@ -1268,10 +1273,11 @@ void SettingsPane::setupComputeCard(QWidget *container) {
 }
 
 void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
+    if (m_mainWindow && m_mainWindow->isDestroying()) return;
     if (auto *oldPv = qobject_cast<ProfileView*>(m_activeView.data())) {
         disconnect(oldPv, &ProfileView::displaySettingsChanged, this, &SettingsPane::updateViewContext);
     }
-    m_activeView = sub ? sub->widget() : nullptr;
+    m_activeView = (sub && sub->widget()) ? sub->widget() : nullptr;
     if (auto *newPv = qobject_cast<ProfileView*>(m_activeView.data())) {
         connect(newPv, &ProfileView::displaySettingsChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
     }
@@ -1279,6 +1285,7 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
 }
 
 void SettingsPane::updateViewContext() {
+    if (m_mainWindow && m_mainWindow->isDestroying()) return;
     m_blockSync = true;
 
     if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) {
@@ -1398,7 +1405,7 @@ void SettingsPane::updateViewContext() {
         ProfileOrientation prfOrient = m_doc->profileOrientation();
         int prfIdx = m_doc->profileIndex();
         int maxPrfIdx = m_doc->maxProfileIndex();
-        if (m_mainWindow && m_mainWindow->activeProfileView()) {
+        if (m_mainWindow && !m_mainWindow->isDestroying() && m_mainWindow->activeProfileView()) {
             prfOrient = m_mainWindow->activeProfileView()->profileOrientation();
             prfIdx = m_mainWindow->activeProfileView()->profileIndex();
             maxPrfIdx = m_mainWindow->activeProfileView()->maxProfileIndex();

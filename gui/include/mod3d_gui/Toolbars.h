@@ -21,6 +21,7 @@ class ToolbarsManager : public QObject {
 
 public:
     explicit ToolbarsManager(ModelDocument *doc, QWidget *parent);
+    ~ToolbarsManager() override;
 
     QToolBar *mainToolBar() const { return m_mainToolBar; }
     QToolBar *profileToolBar() const { return m_profileToolBar; }

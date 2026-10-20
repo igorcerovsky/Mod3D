@@ -1485,9 +1485,6 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
 }
 
 TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
-#if defined(__linux__) || defined(_WIN32)
-    GTEST_SKIP() << "Skipped on Linux/Windows CI (QOpenGLWidget unsupported on headless offscreen)";
-#endif
     MainWindow mw;
     mw.resize(1200, 800);
 
@@ -1695,9 +1692,6 @@ TEST_F(GuiDocumentTest, ViewSpecificCurveDisplayProfileAndSingleBitmapMap) {
 }
 
 TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
-#ifdef _WIN32
-    GTEST_SKIP() << "Skipping on Windows CI due to headless OpenGL context in 3D subwindow";
-#else
     MainWindow mw;
 
     auto *pane = mw.settingsPane();
@@ -1729,13 +1723,9 @@ TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
     // Activate 3D view
     mw.mdiArea()->setActiveSubWindow(sub3D);
     pane->setActiveSubWindow(sub3D);
-#endif
 }
 
 TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
-#if defined(_WIN32)
-    GTEST_SKIP() << "Skipped on Windows CI (SettingsPane offscreen render SEH exception)";
-#endif
     MainWindow mw;
     mw.resize(1400, 900);
 
@@ -1846,9 +1836,6 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
 }
 
 TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
-#if defined(_WIN32)
-    GTEST_SKIP() << "Skipped on Windows CI (Toolbar inspection on headless offscreen)";
-#endif
     MainWindow mw;
     mw.resize(1280, 800);
 
@@ -2016,9 +2003,6 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
 }
 
 TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDialog) {
-#ifdef _WIN32
-    GTEST_SKIP() << "Skipping on Windows CI due to headless OpenGL context";
-#else
     MainWindow mw;
     mw.resize(1400, 900);
 
@@ -2084,13 +2068,9 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     int curIdx = comboBodies->findData(2);
     ASSERT_GE(curIdx, 0);
     EXPECT_TRUE(comboBodies->itemText(curIdx).contains("3550.0 kg/m³"));
-#endif
 }
 
 TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
-#ifdef _WIN32
-    GTEST_SKIP() << "Skipping on Windows CI due to headless OpenGL context";
-#else
     MainWindow mw;
     mw.resize(1400, 900);
 
@@ -2160,13 +2140,9 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     EXPECT_TRUE(mv->showReliefContours());
     pane->setActiveSubWindow(subMap);
     EXPECT_TRUE(chkReliefContours->isChecked());
-#endif
 }
 
 TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
-#ifdef _WIN32
-    GTEST_SKIP() << "Skipping offscreen MainWindow OpenGL capture on Windows CI";
-#else
     MainWindow mw;
     mw.resize(1440, 920);
 
@@ -2246,13 +2222,9 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     pixPane.fill(Qt::white);
     pane->render(&pixPane);
     saveTestScreenshot(pixPane, "mod3d_body_editor.png");
-#endif
 }
 
 TEST_F(GuiDocumentTest, GL3DViewAndSettingsPaneTransparencyToggles) {
-#if defined(_WIN32)
-    GTEST_SKIP() << "Skipped on Windows CI (QOpenGLWidget headless offscreen limitations)";
-#endif
     MainWindow mw;
     mw.resize(1200, 800);
 

@@ -44,20 +44,25 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_settingsPane, &SettingsPane::requestBodyPropertiesDialog, this, &MainWindow::onBodyProperties);
 
     connect(m_mdiArea, &QMdiArea::subWindowActivated, this, [this](QMdiSubWindow *sub) {
-        if (sub) {
+        if (m_isDestroying || !m_mdiArea) return;
+        if (sub && sub->widget()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
                 m_lastActiveProfileView = pv;
-                m_toolbarsMgr->setActiveProfileView(pv);
-                m_doc->setProfileOrientation(pv->profileOrientation());
-                m_doc->setProfileIndex(pv->profileIndex());
+                if (m_toolbarsMgr) m_toolbarsMgr->setActiveProfileView(pv);
+                if (m_doc) {
+                    m_doc->setProfileOrientation(pv->profileOrientation());
+                    m_doc->setProfileIndex(pv->profileIndex());
+                }
             }
         }
         if (m_settingsPane) {
             m_settingsPane->setActiveSubWindow(sub);
         }
         for (auto *s : m_mdiArea->subWindowList()) {
-            if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
-                glv->update();
+            if (s && s->widget()) {
+                if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+                    glv->update();
+                }
             }
         }
     });
@@ -82,6 +87,23 @@ MainWindow::MainWindow(QWidget *parent)
     // Auto-fit subwindows whenever the MDI viewport client area is resized
     m_mdiArea->installEventFilter(this);
     m_mdiArea->viewport()->installEventFilter(this);
+}
+
+MainWindow::~MainWindow() {
+    m_isDestroying = true;
+    if (m_mdiArea) {
+        m_mdiArea->removeEventFilter(this);
+        if (m_mdiArea->viewport()) {
+            m_mdiArea->viewport()->removeEventFilter(this);
+        }
+        m_mdiArea->disconnect(this);
+    }
+    if (m_toolbarsMgr) {
+        m_toolbarsMgr->setActiveProfileView(nullptr);
+    }
+    if (m_settingsPane) {
+        m_settingsPane->setActiveSubWindow(nullptr);
+    }
 }
 
 void MainWindow::updateWindowTitle() {
@@ -356,9 +378,12 @@ void MainWindow::setupMenus() {
 }
 
 ProfileView *MainWindow::activeProfileView() const {
+    if (m_isDestroying || !m_mdiArea) return nullptr;
     if (auto *sub = m_mdiArea->activeSubWindow()) {
-        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
-            return pv;
+        if (sub && sub->widget()) {
+            if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                return pv;
+            }
         }
     }
     return m_lastActiveProfileView.data();
@@ -373,14 +398,18 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
     sub->show();
 
     connect(sub, &QObject::destroyed, this, [this]() {
+        if (m_isDestroying || !m_mdiArea) return;
         for (auto *s : m_mdiArea->subWindowList()) {
-            if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
-                glv->update();
+            if (s && s->widget()) {
+                if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+                    glv->update();
+                }
             }
         }
     });
 
     connect(pv, &ProfileView::cursorStationChanged, this, [this](int r, int c, double x, double y, double z, double) {
+        if (m_isDestroying || !m_statusBarMgr) return;
         m_statusBarMgr->setRow(r);
         m_statusBarMgr->setCol(c);
         m_statusBarMgr->setX(x);
@@ -390,16 +419,21 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
     connect(pv, &ProfileView::requestBodyProperties, this, &MainWindow::onBodyProperties);
     connect(pv, &ProfileView::requestFit1DDialog, this, &MainWindow::onFit1DProperties);
     connect(pv, &ProfileView::requestOpenPerpendicularProfile, this, [this](ProfileOrientation orient, int idx) {
+        if (m_isDestroying) return;
         openProfileView(orient, idx);
     });
 
     connect(pv, &ProfileView::profileSettingsChanged, this, [this, pv](int idx, ProfileOrientation o) {
+        if (m_isDestroying || !m_mdiArea) return;
         m_lastActiveProfileView = pv;
-        m_toolbarsMgr->setActiveProfileView(pv);
-        m_doc->setProfileOrientation(o);
-        m_doc->setProfileIndex(idx);
-        m_toolbarsMgr->updateProfileWidgets();
+        if (m_toolbarsMgr) m_toolbarsMgr->setActiveProfileView(pv);
+        if (m_doc) {
+            m_doc->setProfileOrientation(o);
+            m_doc->setProfileIndex(idx);
+        }
+        if (m_toolbarsMgr) m_toolbarsMgr->updateProfileWidgets();
         for (auto *s : m_mdiArea->subWindowList()) {
+            if (!s || !s->widget()) continue;
             if (auto *otherPv = qobject_cast<ProfileView*>(s->widget())) {
                 if (otherPv != pv) otherPv->update();
             } else if (auto *mv = qobject_cast<MapView*>(s->widget())) {
@@ -410,11 +444,13 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
         }
     });
 
-    m_toolbarsMgr->setActiveProfileView(pv);
+    if (m_toolbarsMgr) m_toolbarsMgr->setActiveProfileView(pv);
 
     for (auto *s : m_mdiArea->subWindowList()) {
-        if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
-            glv->update();
+        if (s && s->widget()) {
+            if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
+                glv->update();
+            }
         }
     }
 
@@ -429,6 +465,7 @@ MapView *MainWindow::openMapView() {
     sub->show();
 
     connect(mv, &MapView::cursorStationChanged, this, [this](int, int, double x, double y, double, double) {
+        if (m_isDestroying || !m_statusBarMgr) return;
         m_statusBarMgr->setX(x);
         m_statusBarMgr->setY(y);
     });
@@ -445,14 +482,15 @@ GL3DView *MainWindow::openGL3DView() {
 
     if (m_settingsPane) {
         connect(glv, &GL3DView::bodySelected, this, [this](int bodyId) {
-            if (m_settingsPane && bodyId >= 0) {
+            if (m_isDestroying || !m_settingsPane) return;
+            if (bodyId >= 0 && m_settingsPane->bodyComboBox()) {
                 int idx = m_settingsPane->bodyComboBox()->findData(bodyId);
                 if (idx >= 0) {
                     m_settingsPane->bodyComboBox()->setCurrentIndex(idx);
                 }
             }
         });
-        if (m_settingsPane->bodyComboBox()->count() > 0) {
+        if (m_settingsPane->bodyComboBox() && m_settingsPane->bodyComboBox()->count() > 0) {
             glv->setSelectedBodyId(m_settingsPane->bodyComboBox()->currentData().toInt());
         }
     }
@@ -480,14 +518,15 @@ void MainWindow::showEvent(QShowEvent *event) {
 }
 
 bool MainWindow::eventFilter(QObject *obj, QEvent *event) {
-    if ((obj == m_mdiArea || obj == m_mdiArea->viewport()) && event->type() == QEvent::Resize) {
+    if (m_isDestroying) return false;
+    if ((obj == m_mdiArea || (m_mdiArea && obj == m_mdiArea->viewport())) && event->type() == QEvent::Resize) {
         resizeSubWindowsToFit();
     }
     return QMainWindow::eventFilter(obj, event);
 }
 
 void MainWindow::resizeSubWindowsToFit() {
-    if (m_inResizeSubWindows) return;
+    if (m_isDestroying || m_inResizeSubWindows || !m_mdiArea) return;
     m_inResizeSubWindows = true;
 
     auto subWindows = m_mdiArea->subWindowList();

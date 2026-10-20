@@ -23,11 +23,12 @@ class MainWindow : public QMainWindow {
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
-    ~MainWindow() override = default;
+    ~MainWindow() override;
 
     ModelDocument *document() const { return m_doc; }
     QMdiArea *mdiArea() const { return m_mdiArea; }
     SettingsPane *settingsPane() const { return m_settingsPane; }
+    bool isDestroying() const { return m_isDestroying; }
 
     ProfileView *openProfileView(ProfileOrientation orient = ProfileOrientation::EastWest, int profileIndex = -1);
     ProfileView *activeProfileView() const;
@@ -45,6 +46,7 @@ protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
 
 private:
+    bool m_isDestroying{false};
     bool m_inResizeSubWindows{false};
     void setupMenus();
     void setupConnections();

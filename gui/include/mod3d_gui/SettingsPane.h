@@ -27,7 +27,7 @@ class SettingsPane : public QDockWidget {
 
 public:
     explicit SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *parent = nullptr);
-    ~SettingsPane() override = default;
+    ~SettingsPane() override;
 
     void setActiveSubWindow(QMdiSubWindow *sub);
     void refreshAll();

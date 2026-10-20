@@ -82,6 +82,13 @@ ToolbarsManager::ToolbarsManager(ModelDocument *doc, QWidget *parent)
     updateProfileWidgets();
 }
 
+ToolbarsManager::~ToolbarsManager() {
+    if (m_activeProfileView) {
+        disconnect(m_activeProfileView.data(), nullptr, this, nullptr);
+        m_activeProfileView = nullptr;
+    }
+}
+
 void ToolbarsManager::setActiveProfileView(ProfileView *pv) {
     if (m_activeProfileView == pv) return;
 
@@ -280,6 +287,7 @@ void ToolbarsManager::setupMapToolBar(QWidget *parent) {
 }
 
 void ToolbarsManager::updateProfileWidgets() {
+    if (!m_doc || !m_spinProfileIndex || !m_lblProfileCoord || !m_actProfEW || !m_actProfSN) return;
     ProfileOrientation orient = m_activeProfileView ? m_activeProfileView->profileOrientation() : m_doc->profileOrientation();
     int prfIdx = m_activeProfileView ? m_activeProfileView->profileIndex() : m_doc->profileIndex();
     int maxIdx = m_activeProfileView ? m_activeProfileView->maxProfileIndex() : m_doc->maxProfileIndex();
