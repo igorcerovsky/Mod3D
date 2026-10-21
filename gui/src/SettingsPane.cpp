@@ -1025,15 +1025,13 @@ void SettingsPane::setupBodyEditorTab(QWidget *container) {
     });
 
     connect(m_btnDeleteBody, &QPushButton::clicked, this, [this]() {
-        int bId = m_comboBodies->currentData().toInt();
+        int bId = (m_comboBodies->count() > 0) ? m_comboBodies->currentData().toInt() : -1;
         if (bId < 0) return;
         auto res = QMessageBox::question(this, tr("Delete Body"),
             tr("Are you sure you want to delete Body %1?").arg(bId),
             QMessageBox::Yes | QMessageBox::No);
         if (res == QMessageBox::Yes) {
-            m_doc->model().delete_body(bId);
-            m_doc->setModified(true);
-            m_doc->computeAll();
+            m_doc->deleteBody(bId);
             updateBodyList();
             loadBodyData();
         }
@@ -1453,7 +1451,7 @@ void SettingsPane::updateBodyList() {
 }
 
 void SettingsPane::loadBodyData() {
-    int bId = m_comboBodies->currentData().toInt();
+    int bId = (m_comboBodies->count() > 0) ? m_comboBodies->currentData().toInt() : -1;
     if (m_mainWindow && m_mainWindow->mdiArea()) {
         for (auto *sub : m_mainWindow->mdiArea()->subWindowList()) {
             if (auto *glv = qobject_cast<GL3DView*>(sub->widget())) {

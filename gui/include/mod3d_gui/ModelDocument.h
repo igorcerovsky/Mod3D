@@ -167,6 +167,7 @@ public:
 
     // Convenience Profile-based Operations (using document default profile)
     mod3d::Body *createNewBody();
+    bool deleteBody(int bodyId);
     int insertBodyAt(int lineIdx, double z, double thickness = -1.0, int bodyId = -1);
     bool removeBodyAt(int lineIdx, int vertexIdx);
     bool removeBodyFromCurrentProfile(int bodyId);

@@ -421,7 +421,20 @@ void GL3DView::setSelectedBodyId(int bodyId) {
 
 int GL3DView::hitTestBody(const QPoint &pos) {
     if (!m_doc) return -1;
-    if (m_meshDirty || m_bodyMeshes.empty()) {
+    if (!m_meshDirty) {
+        const auto &modelBodies = m_doc->model().bodies();
+        if (modelBodies.size() != m_bodyMeshes.size()) {
+            m_meshDirty = true;
+        } else {
+            for (const auto &mesh : m_bodyMeshes) {
+                if (!m_doc->model().body(mesh.bodyId)) {
+                    m_meshDirty = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (m_meshDirty || (!m_doc->model().bodies().empty() && m_bodyMeshes.empty())) {
         m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
         m_meshDirty = false;
     }
@@ -801,9 +814,35 @@ void GL3DView::updateBodyBuffers() {
     if (!m_doc) return;
     initBuffers();
 
-    if (m_meshDirty || m_bodyMeshes.empty()) {
+    if (!m_meshDirty) {
+        const auto &modelBodies = m_doc->model().bodies();
+        if (modelBodies.size() != m_bodyMeshes.size()) {
+            m_meshDirty = true;
+        } else {
+            for (const auto &mesh : m_bodyMeshes) {
+                if (!m_doc->model().body(mesh.bodyId)) {
+                    m_meshDirty = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (m_meshDirty || (!m_doc->model().bodies().empty() && m_bodyMeshes.empty())) {
         m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
         m_meshDirty = false;
+    }
+
+    // Validate selected body ID
+    bool selFound = false;
+    for (const auto &mesh : m_bodyMeshes) {
+        if (mesh.bodyId == m_selectedBodyId) {
+            selFound = true;
+            break;
+        }
+    }
+    if (!selFound) {
+        m_selectedBodyId = -1;
     }
 
     std::vector<Vertex3D> opaqueVerts;
@@ -1198,7 +1237,20 @@ void GL3DView::paintSoftware(QPainter &painter) {
     }
 
     // 4. 3D Polyhedral Bodies (Depth-Sorted Back-to-Front)
-    if (m_meshDirty || m_bodyMeshes.empty()) {
+    if (!m_meshDirty) {
+        const auto &modelBodies = m_doc->model().bodies();
+        if (modelBodies.size() != m_bodyMeshes.size()) {
+            m_meshDirty = true;
+        } else {
+            for (const auto &mesh : m_bodyMeshes) {
+                if (!m_doc->model().body(mesh.bodyId)) {
+                    m_meshDirty = true;
+                    break;
+                }
+            }
+        }
+    }
+    if (m_meshDirty || (!m_doc->model().bodies().empty() && m_bodyMeshes.empty())) {
         m_bodyMeshes = m_doc->model().generate_body_meshes(-1, m_showOuterFacets);
         m_meshDirty = false;
     }
@@ -1781,7 +1833,21 @@ void GL3DView::drawBodies() {
     initShaders();
     initBuffers();
 
-    if (m_meshDirty || m_bodyRanges.empty()) {
+    if (!m_meshDirty && m_doc) {
+        const auto &modelBodies = m_doc->model().bodies();
+        if (modelBodies.size() != m_bodyMeshes.size()) {
+            m_meshDirty = true;
+        } else {
+            for (const auto &mesh : m_bodyMeshes) {
+                if (!m_doc->model().body(mesh.bodyId)) {
+                    m_meshDirty = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (m_meshDirty || (!m_doc->model().bodies().empty() && m_bodyRanges.empty())) {
         updateBodyBuffers();
     }
 

@@ -507,11 +507,14 @@ int Model::remove_body(int index, int row, int col)
 
 int Model::delete_body(int bodyId)
 {
+    bool oldRealTime = compute_real_time_;
+    compute_real_time_ = false;
+
     for (int r = 0; r < rows_; ++r) {
         for (int c = 0; c < cols_; ++c) {
-            int idx = body_index(bodyId, r, c);
-            if (idx != -1) {
-                remove_body(idx, r, c);
+            int idx;
+            while ((idx = body_index(bodyId, r, c)) != -1) {
+                remove_at(r, c, idx, 2);
             }
         }
     }
@@ -519,15 +522,17 @@ int Model::delete_body(int bodyId)
     auto it = std::remove_if(bodies_.begin(), bodies_.end(), [bodyId](const auto &b) {
         return b->id() == bodyId;
     });
+    bool erased = false;
     if (it != bodies_.end()) {
         bodies_.erase(it, bodies_.end());
-        bool oldRealTime = compute_real_time_;
-        compute_real_time_ = false;
-        init_facet_list();
-        compute_real_time_ = oldRealTime;
-        return 1;
+        erased = true;
     }
-    return 0;
+
+    init_facet_list();
+    facets_update_.clear();
+    compute_real_time_ = oldRealTime;
+
+    return erased ? 1 : 0;
 }
 
 int Model::move_vertex(int &index, int row, int col, double zVal, BodyMoveType moveType)
@@ -1053,6 +1058,7 @@ std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId, bool includeOute
 
         // Get watertight facets for this body
         body_facets(bId, mesh.facets, includeOuter);
+        if (mesh.facets.empty()) continue;
 
         // Extract feature crease & boundary edges for crisp CAD rendering
         struct CanonicalEdge {

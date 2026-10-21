@@ -120,6 +120,7 @@ public:
     void animateToCamera(float targetPitch, float targetAzimuth, float targetDist = -1.0f, const QVector3D *targetLookAt = nullptr, int durationMs = 250);
 
     void invalidateMeshes() noexcept { m_meshDirty = true; update(); }
+    [[nodiscard]] const std::vector<mod3d::BodyMesh3D> &bodyMeshes() const noexcept { return m_bodyMeshes; }
 
 signals:
     void cameraChanged();

@@ -314,6 +314,25 @@ void MainWindow::setupMenus() {
     // 6. Body Menu
     auto *menuBody = mb->addMenu(tr("&Body"));
     menuBody->addAction(tr("New Body"), [this]() { m_doc->createNewBody(); });
+    menuBody->addAction(tr("Delete Body..."), [this]() {
+        if (m_doc->model().bodies().empty()) {
+            QMessageBox::information(this, tr("Delete Body"), tr("No bodies exist in the current model."));
+            return;
+        }
+        int bId = -1;
+        if (m_settingsPane && m_settingsPane->bodyComboBox() && m_settingsPane->bodyComboBox()->count() > 0) {
+            bId = m_settingsPane->bodyComboBox()->currentData().toInt();
+        }
+        if (bId < 0) {
+            bId = m_doc->model().bodies().front()->id();
+        }
+        auto res = QMessageBox::question(this, tr("Delete Body"),
+            tr("Are you sure you want to delete Body %1?").arg(bId),
+            QMessageBox::Yes | QMessageBox::No);
+        if (res == QMessageBox::Yes) {
+            m_doc->deleteBody(bId);
+        }
+    });
     menuBody->addAction(tr("Properties..."), [this]() { onBodyProperties(); });
     menuBody->addSeparator();
     menuBody->addAction(tr("Copy to Previous Profile\tCtrl+Shift+P"), [this]() {

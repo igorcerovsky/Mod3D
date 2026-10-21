@@ -5,6 +5,7 @@
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QMouseEvent>
+#include <QMessageBox>
 #include <QPainter>
 #include <QWheelEvent>
 #include <algorithm>
@@ -1975,6 +1976,14 @@ void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,
   });
   menu.addAction(tr("Remove from Profile"), [this, bodyId]() {
     m_doc->removeBodyFromProfile(bodyId, m_profileOrient, m_profileIndex);
+  });
+  menu.addAction(tr("Delete Body"), [this, bodyId]() {
+    auto res = QMessageBox::question(this, tr("Delete Body"),
+        tr("Are you sure you want to delete Body %1 from the entire model?").arg(bodyId),
+        QMessageBox::Yes | QMessageBox::No);
+    if (res == QMessageBox::Yes) {
+      m_doc->deleteBody(bodyId);
+    }
   });
   menu.addSeparator();
   menu.addAction(tr("Invert Density"), [this, bodyId]() {

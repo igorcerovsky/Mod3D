@@ -259,6 +259,20 @@ mod3d::Body *ModelDocument::createNewBody() {
     return b;
 }
 
+bool ModelDocument::deleteBody(int bodyId) {
+    int res = m_project.model().delete_body(bodyId);
+    if (res >= 0) {
+        if (m_activeProfileCursor.bodyId == bodyId) {
+            clearActiveProfileCursor();
+        }
+        setModified(true);
+        computeAll();
+        emit modelGeometryChanged();
+        return true;
+    }
+    return false;
+}
+
 int ModelDocument::insertBodyAtRowCol(int row, int col, double z, double thickness, int bodyId) {
     if (thickness <= 0.0) {
         thickness = m_project.model().default_thickness_val();

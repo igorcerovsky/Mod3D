@@ -2488,4 +2488,86 @@ TEST_F(GuiDocumentTest, GL3DViewRetainsLastlySelectedProfileViewOnFocus) {
     EXPECT_EQ(mw.document()->profileIndex(), 8);
 }
 
+TEST_F(GuiDocumentTest, BodyDeletionRemovesBodyFrom3DView) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    if (!std::filesystem::exists(samplePath)) {
+        samplePath = "Examples/Sample.m3d";
+    }
+    bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
+    ASSERT_TRUE(ok);
+
+    // Find GL3DView
+    GL3DView *glv = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *v = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = v;
+            break;
+        }
+    }
+    ASSERT_NE(glv, nullptr);
+
+    // Render once in software mode to populate initial meshes
+    QPixmap pix(600, 400);
+    pix.fill(Qt::white);
+    QPainter p(&pix);
+    glv->paintSoftware(p);
+
+    const auto &initialMeshes = glv->bodyMeshes();
+    ASSERT_FALSE(initialMeshes.empty());
+    size_t initialBodyCount = mw.document()->model().bodies().size();
+    ASSERT_GE(initialBodyCount, 1u);
+
+    // Body to delete exists in 3D view
+    int bodyIdToDelete = mw.document()->model().bodies().front()->id();
+    bool foundInMeshes = false;
+    for (const auto &m : initialMeshes) {
+        if (m.bodyId == bodyIdToDelete) {
+            foundInMeshes = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundInMeshes);
+
+    glv->setSelectedBodyId(bodyIdToDelete);
+    EXPECT_EQ(glv->selectedBodyId(), bodyIdToDelete);
+
+    // Delete the body via ModelDocument::deleteBody
+    bool delOk = mw.document()->deleteBody(bodyIdToDelete);
+    EXPECT_TRUE(delOk);
+
+    // Verify body is completely removed from model
+    EXPECT_EQ(mw.document()->model().bodies().size(), initialBodyCount - 1);
+    EXPECT_EQ(mw.document()->model().body(bodyIdToDelete), nullptr);
+
+    // Repaint in software mode
+    glv->paintSoftware(p);
+
+    // Verify deleted body is NOT in glv->bodyMeshes()
+    for (const auto &m : glv->bodyMeshes()) {
+        EXPECT_NE(m.bodyId, bodyIdToDelete);
+    }
+
+    // Selected body ID should be cleared from deleted body
+    EXPECT_NE(glv->selectedBodyId(), bodyIdToDelete);
+
+    // Also test defensive mechanism: if another body is added and deleted directly on model
+    auto *newB = mw.document()->createNewBody();
+    ASSERT_NE(newB, nullptr);
+    int newBId = newB->id();
+    glv->paintSoftware(p);
+
+    // Delete directly on model without calling document signal
+    mw.document()->model().delete_body(newBId);
+    EXPECT_EQ(mw.document()->model().body(newBId), nullptr);
+
+    // Paint software should detect the difference in body count and remove it immediately
+    glv->paintSoftware(p);
+    for (const auto &m : glv->bodyMeshes()) {
+        EXPECT_NE(m.bodyId, newBId);
+    }
+}
+
 
