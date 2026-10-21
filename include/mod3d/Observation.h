@@ -252,16 +252,13 @@ public:
     return ref_density_;
   }
 
-  // Physical Field Units Scaling Factors (matches legacy m_dGrvUnits,
-  // m_dMagUnits, m_gvrTens.dUnits)
-  void set_gravity_units(double units) noexcept { grv_units_ = units; }
-  [[nodiscard]] double gravity_units() const noexcept { return grv_units_; }
+  // Gravity Field Unit convention (GravityUnit [g.u., 1e-6 m/s²] vs MilliGal [mGal, 1e-5 m/s²])
+  void set_gravity_field_unit(GravityFieldUnit unit) noexcept { grv_field_unit_ = unit; }
+  [[nodiscard]] constexpr GravityFieldUnit gravity_field_unit() const noexcept { return grv_field_unit_; }
 
-  void set_magnetic_units(double units) noexcept { mag_units_ = units; }
-  [[nodiscard]] double magnetic_units() const noexcept { return mag_units_; }
-
-  void set_tensor_units(double units) noexcept { tensor_units_ = units; }
-  [[nodiscard]] double tensor_units() const noexcept { return tensor_units_; }
+  [[nodiscard]] constexpr double gravity_scale() const noexcept {
+    return gravity_unit_scale(grv_field_unit_);
+  }
 
   // Observation Point Generation
   [[nodiscard]] std::vector<Point3D>
@@ -346,9 +343,7 @@ private:
   units::Degrees declination_{0.0};
   units::NanoTesla mag_intensity_{50000.0};
   units::KgPerM3 ref_density_{2670.0};
-  double grv_units_{1.0e6};
-  double mag_units_{1.0};
-  double tensor_units_{1.0e9};
+  GravityFieldUnit grv_field_unit_{GravityFieldUnit::GravityUnit};
 
   std::map<FieldComponent, Grid> modeled_grids_;
   std::map<FieldComponent, Grid> observed_grids_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mod3d_gui/ModelDocument.h"
+#include "mod3d/Units.h"
 #include <QWidget>
 #include <QPoint>
 #include <QRect>
@@ -20,6 +21,47 @@ public:
 
     QRect mapCanvasRect() const;
     double scalePixelsPerMeter() const;
+
+    // Coordinate Mapping (supports strongly-typed units and raw doubles)
+    template <mod3d::units::UnitType U, typename Rep = double>
+        requires mod3d::units::SameDimension<U, mod3d::units::tag::Meters>
+    [[nodiscard]] int worldToScreenX(const mod3d::units::Quantity<U, Rep>& wx) const {
+        return worldToScreenX(wx.template in<mod3d::units::tag::Meters>());
+    }
+    [[nodiscard]] int worldToScreenX(double wx) const;
+
+    template <mod3d::units::UnitType U, typename Rep = double>
+        requires mod3d::units::SameDimension<U, mod3d::units::tag::Meters>
+    [[nodiscard]] int worldToScreenY(const mod3d::units::Quantity<U, Rep>& wy) const {
+        return worldToScreenY(wy.template in<mod3d::units::tag::Meters>());
+    }
+    [[nodiscard]] int worldToScreenY(double wy) const;
+
+    template <mod3d::units::UnitType Ux, mod3d::units::UnitType Uy, typename Rep = double>
+        requires (mod3d::units::SameDimension<Ux, mod3d::units::tag::Meters> &&
+                  mod3d::units::SameDimension<Uy, mod3d::units::tag::Meters>)
+    [[nodiscard]] QPoint worldToScreen(const mod3d::units::Quantity<Ux, Rep>& wx,
+                                       const mod3d::units::Quantity<Uy, Rep>& wy) const {
+        return QPoint(worldToScreenX(wx), worldToScreenY(wy));
+    }
+    [[nodiscard]] QPoint worldToScreen(double wx, double wy) const {
+        return QPoint(worldToScreenX(wx), worldToScreenY(wy));
+    }
+    [[nodiscard]] QPoint worldToScreen(const mod3d::Point3D &pt) const {
+        return QPoint(worldToScreenX(pt.x), worldToScreenY(pt.y));
+    }
+    [[nodiscard]] QPoint worldToScreen(const mod3d::Position3D &pos) const {
+        return QPoint(worldToScreenX(pos.x), worldToScreenY(pos.y));
+    }
+
+    [[nodiscard]] double screenToWorldX(int sx) const;
+    [[nodiscard]] double screenToWorldY(int sy) const;
+    [[nodiscard]] mod3d::units::Meters screenToWorldX_m(int sx) const {
+        return mod3d::units::Meters(screenToWorldX(sx));
+    }
+    [[nodiscard]] mod3d::units::Meters screenToWorldY_m(int sy) const {
+        return mod3d::units::Meters(screenToWorldY(sy));
+    }
 
     enum class MapRasterMode {
         Modeled = 0,
@@ -60,10 +102,6 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
 
 private:
-    double screenToWorldX(int sx) const;
-    int worldToScreenX(double wx) const;
-    double screenToWorldY(int sy) const;
-    int worldToScreenY(double wy) const;
 
     void drawBackgroundRaster(QPainter &painter);
     void drawReliefContours(QPainter &painter);

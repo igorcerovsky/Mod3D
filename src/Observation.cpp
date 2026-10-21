@@ -47,9 +47,7 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept
     swap(declination_, other.declination_);
     swap(mag_intensity_, other.mag_intensity_);
     swap(ref_density_, other.ref_density_);
-    swap(grv_units_, other.grv_units_);
-    swap(mag_units_, other.mag_units_);
-    swap(tensor_units_, other.tensor_units_);
+    swap(grv_field_unit_, other.grv_field_unit_);
     swap(modeled_grids_, other.modeled_grids_);
     swap(observed_grids_, other.observed_grids_);
     swap(difference_grids_, other.difference_grids_);
@@ -363,14 +361,20 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
                     if (fct.opposite && fct.opposite->is_active() && !fct.opposite->magnetization_vector().is_zero()) {
                         fct.fld_gs(rMag, fct.opposite->magnetization_vector(), fMag, -1.0);
                     }
-                    totalM -= fMag * (fct.dSign * mag_units_);
+                    totalM -= fMag * fct.dSign;
                 }
             }
         }
 
         size_t r = p / cols_;
         size_t c = p % cols_;
-        Point3D scaledG = totalG * grv_units_;
+        Point3D scaledG = (grv_field_unit_ == GravityFieldUnit::MilliGal)
+            ? Point3D(units::SI_Acceleration(totalG.x).as<units::tag::MilliGal>().value(),
+                      units::SI_Acceleration(totalG.y).as<units::tag::MilliGal>().value(),
+                      units::SI_Acceleration(totalG.z).as<units::tag::MilliGal>().value())
+            : Point3D(units::SI_Acceleration(totalG.x).as<units::tag::GravityUnit>().value(),
+                      units::SI_Acceleration(totalG.y).as<units::tag::GravityUnit>().value(),
+                      units::SI_Acceleration(totalG.z).as<units::tag::GravityUnit>().value());
 
         if (zeroFirst) {
             if (validGrv) {
@@ -529,7 +533,9 @@ FitResult ObservationSpace::fit_density(
         }
         size_t r = p / cols_;
         size_t c = p % cols_;
-        grdUnit(r, c) = unitGz * grv_units_;
+        grdUnit(r, c) = (grv_field_unit_ == GravityFieldUnit::MilliGal)
+            ? units::SI_Acceleration(unitGz).as<units::tag::MilliGal>().value()
+            : units::SI_Acceleration(unitGz).as<units::tag::GravityUnit>().value();
     }
 
     // Objective function for differential density x = (dens - ref_density_)

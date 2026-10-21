@@ -1,6 +1,7 @@
 #pragma once
 
 #include "mod3d_gui/ModelDocument.h"
+#include "mod3d/Units.h"
 #include <QWidget>
 #include <QMenu>
 #include <QPoint>
@@ -125,9 +126,29 @@ protected:
 
     // Coordinate Conversion
     double screenToWorldX(int screenX) const;
+
+    template <mod3d::units::UnitType U, typename Rep = double>
+        requires mod3d::units::SameDimension<U, mod3d::units::tag::Meters>
+    [[nodiscard]] int worldToScreenX(const mod3d::units::Quantity<U, Rep>& worldX) const {
+        return worldToScreenX(worldX.template in<mod3d::units::tag::Meters>());
+    }
     int worldToScreenX(double worldX) const;
+
     double screenToWorldZ(int screenZ) const;
+
+    template <mod3d::units::UnitType U, typename Rep = double>
+        requires mod3d::units::SameDimension<U, mod3d::units::tag::Meters>
+    [[nodiscard]] int worldToScreenZ(const mod3d::units::Quantity<U, Rep>& worldZ) const {
+        return worldToScreenZ(worldZ.template in<mod3d::units::tag::Meters>());
+    }
     int worldToScreenZ(double worldZ) const;
+
+    [[nodiscard]] mod3d::units::Meters screenToWorldX_m(int screenX) const {
+        return mod3d::units::Meters(screenToWorldX(screenX));
+    }
+    [[nodiscard]] mod3d::units::Meters screenToWorldZ_m(int screenZ) const {
+        return mod3d::units::Meters(screenToWorldZ(screenZ));
+    }
 
 private:
     // Layout & Geometry

@@ -250,6 +250,22 @@ TEST(Mod3DUnitsSafety, ObservationSpaceParametersWithUnits) {
     obs.set_reference_density(2.67_g_cm3);
     EXPECT_EQ(obs.reference_density(), 2670.0_kg_m3);
     EXPECT_DOUBLE_EQ(obs.reference_density().value(), 2670.0);
+
+    // Gravity field unit convention (defaults to GravityUnit / g.u.)
+    EXPECT_EQ(obs.gravity_field_unit(), GravityFieldUnit::GravityUnit);
+    EXPECT_DOUBLE_EQ(obs.gravity_scale(), 1.0e6);
+    EXPECT_EQ(to_string(obs.gravity_field_unit()), "g.u.");
+
+    obs.set_gravity_field_unit(GravityFieldUnit::MilliGal);
+    EXPECT_EQ(obs.gravity_field_unit(), GravityFieldUnit::MilliGal);
+    EXPECT_DOUBLE_EQ(obs.gravity_scale(), 1.0e5);
+    EXPECT_EQ(to_string(obs.gravity_field_unit()), "mGal");
+
+    // Scale and string conversion helpers
+    EXPECT_EQ(gravity_field_unit_from_scale(1.0e6), GravityFieldUnit::GravityUnit);
+    EXPECT_EQ(gravity_field_unit_from_scale(1.0e5), GravityFieldUnit::MilliGal);
+    EXPECT_EQ(gravity_field_unit_from_string("mGal"), GravityFieldUnit::MilliGal);
+    EXPECT_EQ(gravity_field_unit_from_string("g.u."), GravityFieldUnit::GravityUnit);
 }
 
 // ============================================================================

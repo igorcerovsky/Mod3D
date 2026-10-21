@@ -318,9 +318,10 @@ std::string Project::to_json_string(int indent) const
     };
     jObs["reference_density"] = observation_.reference_density().value();
     jObs["units"] = {
-        {"gravity", observation_.gravity_units()},
-        {"magnetic", observation_.magnetic_units()},
-        {"tensor", observation_.tensor_units()}
+        {"gravity", to_string(observation_.gravity_field_unit())},
+        {"gravity_scale", observation_.gravity_scale()},
+        {"magnetic", "nT"},
+        {"tensor", "E"}
     };
 
     // Modeled Grids
@@ -512,9 +513,13 @@ bool Project::from_json_string(std::string_view jsonStr)
             }
             if (jo.contains("units")) {
                 const auto &ju = jo["units"];
-                observation_.set_gravity_units(ju.value("gravity", 1.0e6));
-                observation_.set_magnetic_units(ju.value("magnetic", 1.0));
-                observation_.set_tensor_units(ju.value("tensor", 1.0e9));
+                if (ju.contains("gravity")) {
+                    if (ju["gravity"].is_string()) {
+                        observation_.set_gravity_field_unit(gravity_field_unit_from_string(ju["gravity"].get<std::string>()));
+                    } else if (ju["gravity"].is_number()) {
+                        observation_.set_gravity_field_unit(gravity_field_unit_from_scale(ju["gravity"].get<double>()));
+                    }
+                }
             }
 
             // Observed Grids
@@ -1058,7 +1063,7 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
     double grvDensRef = reader.read<double>();
     double grvUnits = reader.read<double>();
     if (grvUnits > 0.0) {
-        observation_.set_gravity_units(grvUnits);
+        observation_.set_gravity_field_unit(gravity_field_unit_from_scale(grvUnits));
     }
     Point3D grvDensGrad;
     grvDensGrad.x = reader.read<double>();
@@ -1074,10 +1079,7 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
     double tensFlightElev = reader.read<double>();
     double tensHeight = reader.read<double>();
     double tensUnits = reader.read<double>();
-    (void)tensTag; (void)tensCompute;
-    if (tensUnits > 0.0) {
-        observation_.set_tensor_units(tensUnits);
-    }
+    (void)tensTag; (void)tensCompute; (void)tensUnits;
 
     double grvSens = reader.read<double>();
     double grvElev = reader.read<double>();

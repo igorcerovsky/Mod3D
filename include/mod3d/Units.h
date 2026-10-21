@@ -5,6 +5,7 @@
 #include <concepts>
 #include <cmath>
 #include <numbers>
+#include <string_view>
 
 namespace mod3d {
 
@@ -37,6 +38,54 @@ using Acceleration    = units::SI_Acceleration; // m/s^2
 using GravityField    = units::MilliGal;         // mGal = 1e-5 m/s^2
 using GravityUnit     = units::GravityUnit;      // g.u. = 1e-6 m/s^2
 using MicroGal        = units::MicroGal;
+
+/**
+ * @brief Discrete unit choices for gravity field grids (observed, modeled, difference).
+ * - GravityUnit: g.u. = µm/s² = 1e-6 m/s² (Mod3D default, scale 1e6 from SI)
+ * - MilliGal:    mGal = 1e-5 m/s² (geophysical standard, scale 1e5 from SI)
+ */
+enum class GravityFieldUnit {
+    GravityUnit, // g.u. = 1e-6 m/s²
+    MilliGal     // mGal = 1e-5 m/s²
+};
+
+[[nodiscard]] constexpr double gravity_unit_scale(GravityFieldUnit u) noexcept {
+    switch (u) {
+        case GravityFieldUnit::MilliGal:
+            return units::constants::SI_TO_MGAL;
+        case GravityFieldUnit::GravityUnit:
+        default:
+            return units::constants::SI_TO_GU;
+    }
+}
+
+[[nodiscard]] constexpr std::string_view gravity_unit_symbol(GravityFieldUnit u) noexcept {
+    switch (u) {
+        case GravityFieldUnit::MilliGal:
+            return units::tag::MilliGal::symbol;
+        case GravityFieldUnit::GravityUnit:
+        default:
+            return units::tag::GravityUnit::symbol;
+    }
+}
+
+[[nodiscard]] constexpr GravityFieldUnit gravity_field_unit_from_scale(double scale) noexcept {
+    if (std::abs(scale - units::constants::SI_TO_MGAL) < 1.0) {
+        return GravityFieldUnit::MilliGal;
+    }
+    return GravityFieldUnit::GravityUnit;
+}
+
+[[nodiscard]] constexpr std::string_view to_string(GravityFieldUnit u) noexcept {
+    return gravity_unit_symbol(u);
+}
+
+[[nodiscard]] inline GravityFieldUnit gravity_field_unit_from_string(std::string_view s) noexcept {
+    if (s == "mGal" || s == "mgal" || s == "MilliGal") {
+        return GravityFieldUnit::MilliGal;
+    }
+    return GravityFieldUnit::GravityUnit;
+}
 
 // Gravity Gradient Tensor
 using GradientTensor  = units::Eotvos;           // E = 1e-9 s^-2
