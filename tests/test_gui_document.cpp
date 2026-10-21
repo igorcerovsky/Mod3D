@@ -1811,15 +1811,15 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsIntegration) {
 
     // Inducing field
     doc->observation().set_ambient_field_params(65.0, 12.0, 48500.0);
-    EXPECT_DOUBLE_EQ(doc->observation().magnetic_intensity(), 48500.0);
-    EXPECT_DOUBLE_EQ(doc->observation().inclination_deg(), 65.0);
-    EXPECT_DOUBLE_EQ(doc->observation().declination_deg(), 12.0);
+    EXPECT_DOUBLE_EQ(doc->observation().magnetic_intensity().value(), 48500.0);
+    EXPECT_DOUBLE_EQ(doc->observation().inclination().value(), 65.0);
+    EXPECT_DOUBLE_EQ(doc->observation().declination().value(), 12.0);
 
     // Sensor heights
     doc->observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 150.0);
     doc->observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 120.0);
-    EXPECT_DOUBLE_EQ(doc->observation().gravity_height(), 150.0);
-    EXPECT_DOUBLE_EQ(doc->observation().magnetic_height(), 120.0);
+    EXPECT_DOUBLE_EQ(doc->observation().gravity_height().value(), 150.0);
+    EXPECT_DOUBLE_EQ(doc->observation().magnetic_height().value(), 120.0);
 
     // Model vertical limits
     doc->model().set_z_min(-3500.0);

@@ -124,26 +124,26 @@ TEST(ObservationSpaceTest, ModernAccessorsAndPredicates) {
     ObservationSpace obs1(5, 7, 500.0, 600.0, 50.0, 50.0, 45.0);
     EXPECT_EQ(obs1.rows(), 5u);
     EXPECT_EQ(obs1.cols(), 7u);
-    EXPECT_DOUBLE_EQ(obs1.x0(), 500.0);
-    EXPECT_DOUBLE_EQ(obs1.y0(), 600.0);
-    EXPECT_DOUBLE_EQ(obs1.dx(), 50.0);
-    EXPECT_DOUBLE_EQ(obs1.dy(), 50.0);
-    EXPECT_DOUBLE_EQ(obs1.rotation_deg(), 45.0);
+    EXPECT_DOUBLE_EQ(obs1.x0().value(), 500.0);
+    EXPECT_DOUBLE_EQ(obs1.y0().value(), 600.0);
+    EXPECT_DOUBLE_EQ(obs1.dx().value(), 50.0);
+    EXPECT_DOUBLE_EQ(obs1.dy().value(), 50.0);
+    EXPECT_DOUBLE_EQ(obs1.rotation().value(), 45.0);
 
     obs1.set_reference_density(2750.0);
-    EXPECT_DOUBLE_EQ(obs1.reference_density(), 2750.0);
+    EXPECT_DOUBLE_EQ(obs1.reference_density().value(), 2750.0);
 
     obs1.set_ambient_field_params(65.0, 15.0, 48000.0);
-    EXPECT_DOUBLE_EQ(obs1.inclination_deg(), 65.0);
-    EXPECT_DOUBLE_EQ(obs1.declination_deg(), 15.0);
-    EXPECT_DOUBLE_EQ(obs1.magnetic_intensity(), 48000.0);
+    EXPECT_DOUBLE_EQ(obs1.inclination().value(), 65.0);
+    EXPECT_DOUBLE_EQ(obs1.declination().value(), 15.0);
+    EXPECT_DOUBLE_EQ(obs1.magnetic_intensity().value(), 48000.0);
 
     // Swap test
     ObservationSpace obs2(10, 12, 0.0, 0.0, 100.0, 100.0, 0.0);
     obs1.swap(obs2);
     EXPECT_EQ(obs1.rows(), 10u);
     EXPECT_EQ(obs2.rows(), 5u);
-    EXPECT_DOUBLE_EQ(obs2.reference_density(), 2750.0);
+    EXPECT_DOUBLE_EQ(obs2.reference_density().value(), 2750.0);
     using std::swap;
     swap(obs1, obs2);
     EXPECT_EQ(obs1.rows(), 5u);

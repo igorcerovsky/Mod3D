@@ -75,11 +75,11 @@ nlohmann::json gridToJson(const Grid &grid) {
     j["empty"] = false;
     j["rows"] = grid.rows();
     j["cols"] = grid.cols();
-    j["x0"] = grid.x0();
-    j["y0"] = grid.y0();
-    j["x_size"] = grid.dx();
-    j["y_size"] = grid.dy();
-    j["rotation_deg"] = grid.rotation_deg();
+    j["x0"] = grid.x0().value();
+    j["y0"] = grid.y0().value();
+    j["x_size"] = grid.dx().value();
+    j["y_size"] = grid.dy().value();
+    j["rotation_deg"] = grid.rotation().value();
     j["values"] = grid.data();
     return j;
 }
@@ -284,39 +284,39 @@ std::string Project::to_json_string(int indent) const
     jObs["geometry"] = {
         {"rows", observation_.rows()},
         {"cols", observation_.cols()},
-        {"x0", observation_.x0()},
-        {"y0", observation_.y0()},
-        {"dx", observation_.dx()},
-        {"dy", observation_.dy()},
-        {"rotation_deg", observation_.rotation_deg()}
+        {"x0", observation_.x0().value()},
+        {"y0", observation_.y0().value()},
+        {"dx", observation_.dx().value()},
+        {"dy", observation_.dy().value()},
+        {"rotation_deg", observation_.rotation().value()}
     };
 
     jObs["surface_relief"] = gridToJson(observation_.surface_relief());
 
     jObs["gravity"] = {
         {"mode", observationModeToString(observation_.gravity_mode())},
-        {"height", observation_.gravity_height()},
+        {"height", observation_.gravity_height().value()},
         {"elevation_grid", (observation_.gravity_mode() == ObservationMode::ElevationGrid) ? gridToJson(observation_.gravity_elevation_grid()) : nlohmann::json{{"empty", true}}}
     };
 
     jObs["magnetic"] = {
         {"mode", observationModeToString(observation_.magnetic_mode())},
-        {"height", observation_.magnetic_height()},
+        {"height", observation_.magnetic_height().value()},
         {"elevation_grid", (observation_.magnetic_mode() == ObservationMode::ElevationGrid) ? gridToJson(observation_.magnetic_elevation_grid()) : nlohmann::json{{"empty", true}}}
     };
 
     jObs["tensor"] = {
         {"mode", observationModeToString(observation_.tensor_mode())},
-        {"height", observation_.tensor_height()},
+        {"height", observation_.tensor_height().value()},
         {"elevation_grid", (observation_.tensor_mode() == ObservationMode::ElevationGrid) ? gridToJson(observation_.tensor_elevation_grid()) : nlohmann::json{{"empty", true}}}
     };
 
     jObs["ambient_field"] = {
-        {"inclination_deg", observation_.inclination_deg()},
-        {"declination_deg", observation_.declination_deg()},
-        {"intensity_nt", observation_.magnetic_intensity()}
+        {"inclination_deg", observation_.inclination().value()},
+        {"declination_deg", observation_.declination().value()},
+        {"intensity_nt", observation_.magnetic_intensity().value()}
     };
-    jObs["reference_density"] = observation_.reference_density();
+    jObs["reference_density"] = observation_.reference_density().value();
     jObs["units"] = {
         {"gravity", observation_.gravity_units()},
         {"magnetic", observation_.magnetic_units()},

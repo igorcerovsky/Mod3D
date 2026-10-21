@@ -18,19 +18,19 @@ InducingFieldDialog::InducingFieldDialog(ModelDocument *doc, QWidget *parent)
     m_spinT0 = new QDoubleSpinBox(this);
     m_spinT0->setRange(0.0, 100000.0);
     m_spinT0->setSuffix(" nT");
-    m_spinT0->setValue(m_doc->observation().magnetic_intensity());
+    m_spinT0->setValue(m_doc->observation().magnetic_intensity().value());
     form->addRow(tr("Field Intensity (T0):"), m_spinT0);
 
     m_spinInc = new QDoubleSpinBox(this);
     m_spinInc->setRange(-90.0, 90.0);
     m_spinInc->setSuffix(" °");
-    m_spinInc->setValue(m_doc->observation().inclination_deg());
+    m_spinInc->setValue(m_doc->observation().inclination().value());
     form->addRow(tr("Inclination (I0):"), m_spinInc);
 
     m_spinDec = new QDoubleSpinBox(this);
     m_spinDec->setRange(0.0, 360.0);
     m_spinDec->setSuffix(" °");
-    m_spinDec->setValue(m_doc->observation().declination_deg());
+    m_spinDec->setValue(m_doc->observation().declination().value());
     form->addRow(tr("Declination (D0):"), m_spinDec);
 
     mainLayout->addLayout(form);

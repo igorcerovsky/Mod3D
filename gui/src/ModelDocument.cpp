@@ -566,9 +566,9 @@ bool ModelDocument::translateBodyVertical(int bodyId, double deltaZ) {
 void ModelDocument::computeAll() {
     m_project.model().clear_facets_update();
     m_project.model().compute_body_magnetization_vector(
-        m_project.observation().inclination_deg(),
-        m_project.observation().declination_deg(),
-        m_project.observation().magnetic_intensity());
+        m_project.observation().inclination().value(),
+        m_project.observation().declination().value(),
+        m_project.observation().magnetic_intensity().value());
     std::vector<mod3d::Facet3Pt> facets;
     m_project.model().facets_computation(facets);
     m_project.observation().compute_forward_field(facets, true);
@@ -580,9 +580,9 @@ void ModelDocument::computeAll() {
 void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets) {
     if (!updateFacets.empty()) {
         m_project.model().compute_body_magnetization_vector(
-            m_project.observation().inclination_deg(),
-            m_project.observation().declination_deg(),
-            m_project.observation().magnetic_intensity());
+            m_project.observation().inclination().value(),
+            m_project.observation().declination().value(),
+            m_project.observation().magnetic_intensity().value());
         m_project.observation().update_delta_field(updateFacets);
         m_project.observation().compute_total_fields();
         m_project.observation().compute_difference(m_activeField);

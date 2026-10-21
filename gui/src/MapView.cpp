@@ -369,10 +369,10 @@ void MapView::drawBackgroundRaster(QPainter &painter) {
         }
     }
 
-    double gX0 = grid->x0();
-    double gX1 = grid->x0() + (cols - 1) * grid->x_size();
-    double gY0 = grid->y0();
-    double gY1 = grid->y0() + (rows - 1) * grid->y_size();
+    double gX0 = grid->x0().value();
+    double gX1 = (grid->x0() + (cols - 1) * grid->x_size()).value();
+    double gY0 = grid->y0().value();
+    double gY1 = (grid->y0() + (rows - 1) * grid->y_size()).value();
 
     int left = worldToScreenX(gX0);
     int right = worldToScreenX(gX1);

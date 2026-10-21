@@ -32,7 +32,7 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept
     swap(y0_, other.y0_);
     swap(dx_, other.dx_);
     swap(dy_, other.dy_);
-    swap(rot_deg_, other.rot_deg_);
+    swap(rotation_, other.rotation_);
     swap(relief_grid_, other.relief_grid_);
     swap(grv_mode_, other.grv_mode_);
     swap(grv_height_, other.grv_height_);
@@ -43,8 +43,8 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept
     swap(tensor_mode_, other.tensor_mode_);
     swap(tensor_height_, other.tensor_height_);
     swap(tensor_elev_grid_, other.tensor_elev_grid_);
-    swap(inc_deg_, other.inc_deg_);
-    swap(dec_deg_, other.dec_deg_);
+    swap(inclination_, other.inclination_);
+    swap(declination_, other.declination_);
     swap(mag_intensity_, other.mag_intensity_);
     swap(ref_density_, other.ref_density_);
     swap(grv_units_, other.grv_units_);
@@ -72,7 +72,7 @@ void ObservationSpace::init_geometry(
     y0_ = y0;
     dx_ = dx;
     dy_ = dy;
-    rot_deg_ = rotDeg;
+    rotation_ = rotDeg;
 
     relief_grid_ = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
     grv_elev_grid_ = Grid(rows, cols, x0, y0, dx, dy, rotDeg);
@@ -147,14 +147,15 @@ void ObservationSpace::set_ambient_field_params(units::Degrees inclination,
                                                units::Degrees declination,
                                                units::NanoTesla intensity)
 {
-    inc_deg_ = inclination;
-    dec_deg_ = declination;
+    inclination_ = inclination;
+    declination_ = declination;
     mag_intensity_ = intensity;
 }
 
-Point3D ObservationSpace::ambient_field_vector() const
+MagneticVector ObservationSpace::ambient_field_vector() const
 {
-    return ambient_field(inc_deg_.value(), dec_deg_.value(), mag_intensity_.value());
+    Point3D af = ambient_field(inclination_.value(), declination_.value(), mag_intensity_.value());
+    return MagneticVector(af);
 }
 
 double ObservationSpace::get_elevation_at(
@@ -199,7 +200,7 @@ std::vector<Point3D> ObservationSpace::observation_points(FieldComponent comp) c
     }
 
     const double pi = std::numbers::pi_v<double>;
-    const double rad = rot_deg_.value() * pi / 180.0;
+    const double rad = rotation_.value() * pi / 180.0;
     const double cRot = std::cos(rad);
     const double sRot = std::sin(rad);
 
@@ -219,7 +220,7 @@ void ObservationSpace::ensure_grid_allocated(std::map<FieldComponent, Grid> &gri
 {
     auto it = gridMap.find(comp);
     if (it == gridMap.end()) {
-        gridMap.emplace(comp, Grid(rows_, cols_, x0_, y0_, dx_, dy_, rot_deg_));
+        gridMap.emplace(comp, Grid(rows_, cols_, x0_, y0_, dx_, dy_, rotation_));
     }
 }
 
@@ -517,7 +518,7 @@ FitResult ObservationSpace::fit_density(
 
     // 1. Compute unit response (contrast = 1.0)
     auto obsPoints = observation_points(comp);
-    Grid grdUnit(rows_, cols_, x0_, y0_, dx_, dy_, rot_deg_);
+    Grid grdUnit(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
 
     for (size_t p = 0; p < obsPoints.size(); ++p) {
         double unitGz = 0.0;

@@ -24,7 +24,7 @@ TEST(GridComprehensiveTest, ConstructionAndRotatedCoordinates) {
     EXPECT_EQ(g.cols(), cols);
     EXPECT_EQ(g.size(), rows * cols);
     EXPECT_FALSE(g.empty());
-    EXPECT_DOUBLE_EQ(g.rotation_deg(), rotDeg);
+    EXPECT_DOUBLE_EQ(g.rotation().value(), rotDeg);
 
     // Analytical verification of rotated coordinates:
     // X = x0 + (col*dx)*cos(rad) - (row*dy)*sin(rad)
@@ -39,8 +39,8 @@ TEST(GridComprehensiveTest, ConstructionAndRotatedCoordinates) {
             double expectedX = x0 + (c * dx) * cRot - (r * dy) * sRot;
             double expectedY = y0 + (c * dx) * sRot + (r * dy) * cRot;
 
-            EXPECT_NEAR(g.x(r, c), expectedX, 1e-12);
-            EXPECT_NEAR(g.y(r, c), expectedY, 1e-12);
+            EXPECT_NEAR(g.x(r, c).value(), expectedX, 1e-12);
+            EXPECT_NEAR(g.y(r, c).value(), expectedY, 1e-12);
 
             Point3D pt = g.point(r, c);
             EXPECT_NEAR(pt.x, expectedX, 1e-12);
@@ -138,10 +138,10 @@ TEST(GridComprehensiveTest, Surfer6BinaryRoundtrip) {
 
     EXPECT_EQ(loaded.rows(), original.rows());
     EXPECT_EQ(loaded.cols(), original.cols());
-    EXPECT_DOUBLE_EQ(loaded.x0(), original.x0());
-    EXPECT_DOUBLE_EQ(loaded.y0(), original.y0());
-    EXPECT_DOUBLE_EQ(loaded.dx(), original.dx());
-    EXPECT_DOUBLE_EQ(loaded.dy(), original.dy());
+    EXPECT_DOUBLE_EQ(loaded.x0().value(), original.x0().value());
+    EXPECT_DOUBLE_EQ(loaded.y0().value(), original.y0().value());
+    EXPECT_DOUBLE_EQ(loaded.dx().value(), original.dx().value());
+    EXPECT_DOUBLE_EQ(loaded.dy().value(), original.dy().value());
 
     // Single precision float storage in Surfer 6 binary: expect 1e-4 relative precision
     for (size_t r = 0; r < rows; ++r) {
@@ -187,14 +187,14 @@ TEST(GridModernizedTest, AtAndSpanAndIterators) {
 TEST(GridModernizedTest, BoundingBoxesAndTransform) {
     // Rotated grid: 30 deg counter-clockwise
     Grid g(4, 5, 1000.0, 2000.0, 50.0, 100.0, 30.0);
-    EXPECT_EQ(g.rotation_deg(), 30.0);
-    EXPECT_NEAR(g.rotation_rad(), 30.0 * 3.14159265358979323846 / 180.0, 1e-12);
+    EXPECT_DOUBLE_EQ(g.rotation().value(), 30.0);
+    EXPECT_NEAR(g.rotation_rad().value(), 30.0 * 3.14159265358979323846 / 180.0, 1e-12);
 
     // World to grid and grid to world round-trip
     for (size_t r = 0; r < g.rows(); ++r) {
         for (size_t c = 0; c < g.cols(); ++c) {
-            double wx = g.x(r, c);
-            double wy = g.y(r, c);
+            double wx = g.x(r, c).value();
+            double wy = g.y(r, c).value();
             EXPECT_TRUE(g.contains(wx, wy));
 
             double calcR = 0.0, calcC = 0.0;
@@ -214,14 +214,14 @@ TEST(GridModernizedTest, BoundingBoxesAndTransform) {
     EXPECT_FALSE(g.contains(99999.0, 99999.0));
 
     // Bounding box consistency
-    EXPECT_LE(g.x_min(), g.x_max());
-    EXPECT_LE(g.y_min(), g.y_max());
+    EXPECT_LE(g.x_min().value(), g.x_max().value());
+    EXPECT_LE(g.y_min().value(), g.y_max().value());
     for (size_t r = 0; r < g.rows(); ++r) {
         for (size_t c = 0; c < g.cols(); ++c) {
-            EXPECT_GE(g.x(r, c), g.x_min() - 1e-9);
-            EXPECT_LE(g.x(r, c), g.x_max() + 1e-9);
-            EXPECT_GE(g.y(r, c), g.y_min() - 1e-9);
-            EXPECT_LE(g.y(r, c), g.y_max() + 1e-9);
+            EXPECT_GE(g.x(r, c).value(), g.x_min().value() - 1e-9);
+            EXPECT_LE(g.x(r, c).value(), g.x_max().value() + 1e-9);
+            EXPECT_GE(g.y(r, c).value(), g.y_min().value() - 1e-9);
+            EXPECT_LE(g.y(r, c).value(), g.y_max().value() + 1e-9);
         }
     }
 }
@@ -231,8 +231,8 @@ TEST(GridModernizedTest, BilinearInterpolation) {
     Grid g(3, 3, 0.0, 0.0, 10.0, 10.0, 0.0);
     for (size_t r = 0; r < 3; ++r) {
         for (size_t c = 0; c < 3; ++c) {
-            double x = g.x(r, c);
-            double y = g.y(r, c);
+            double x = g.x(r, c).value();
+            double y = g.y(r, c).value();
             g(r, c) = x + 2.0 * y;
         }
     }

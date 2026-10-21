@@ -113,56 +113,33 @@ public:
     [[nodiscard]] constexpr bool empty() const noexcept { return rows_ == 0 || cols_ == 0; }
     [[nodiscard]] constexpr bool is_empty() const noexcept { return empty(); }
 
-    [[nodiscard]] constexpr double x0() const noexcept { return x0_.value(); }
-    [[nodiscard]] constexpr double y0() const noexcept { return y0_.value(); }
-    [[nodiscard]] constexpr double dx() const noexcept { return x_size_.value(); }
-    [[nodiscard]] constexpr double dy() const noexcept { return y_size_.value(); }
-    [[nodiscard]] constexpr double x_size() const noexcept { return x_size_.value(); }
-    [[nodiscard]] constexpr double y_size() const noexcept { return y_size_.value(); }
-    [[nodiscard]] constexpr double rotation_deg() const noexcept { return rot_deg_.value(); }
-    [[nodiscard]] double rotation_rad() const noexcept { return rot_deg_.value() * std::numbers::pi_v<double> / 180.0; }
-
-    [[nodiscard]] constexpr double x0_val() const noexcept { return x0_.value(); }
-    [[nodiscard]] constexpr double y0_val() const noexcept { return y0_.value(); }
-    [[nodiscard]] constexpr double dx_val() const noexcept { return x_size_.value(); }
-    [[nodiscard]] constexpr double dy_val() const noexcept { return y_size_.value(); }
-    [[nodiscard]] constexpr double x_size_val() const noexcept { return x_size_.value(); }
-    [[nodiscard]] constexpr double y_size_val() const noexcept { return y_size_.value(); }
-    [[nodiscard]] constexpr double rotation_deg_val() const noexcept { return rot_deg_.value(); }
-
-    // Unit-aware dimension queries
-    [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return x0_; }
-    [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return y0_; }
-    [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return x_size_; }
-    [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return y_size_; }
-    [[nodiscard]] constexpr units::Meters x_size_qty() const noexcept { return x_size_; }
-    [[nodiscard]] constexpr units::Meters y_size_qty() const noexcept { return y_size_; }
-    [[nodiscard]] constexpr units::Degrees rotation_deg_qty() const noexcept { return rot_deg_; }
-    [[nodiscard]] units::Radians rotation_rad_qty() const noexcept { return units::Radians(rotation_rad()); }
+    // Dimensions and Geometry (Canonical Unit Accessors)
+    [[nodiscard]] constexpr units::Meters x0() const noexcept { return x0_; }
+    [[nodiscard]] constexpr units::Meters y0() const noexcept { return y0_; }
+    [[nodiscard]] constexpr units::Meters dx() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr units::Meters dy() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr units::Meters x_size() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr units::Meters y_size() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr units::Degrees rotation() const noexcept { return rotation_; }
+    [[nodiscard]] constexpr units::Degrees rotation_deg() const noexcept { return rotation_; }
+    [[nodiscard]] units::Radians rotation_rad() const noexcept {
+        return units::Radians(rotation_.value() * std::numbers::pi_v<double> / 180.0);
+    }
 
     // World coordinate bounding box
-    [[nodiscard]] double x_min() const noexcept;
-    [[nodiscard]] double x_max() const noexcept;
-    [[nodiscard]] double y_min() const noexcept;
-    [[nodiscard]] double y_max() const noexcept;
-    [[nodiscard]] double z_min() const noexcept;
-    [[nodiscard]] double z_max() const noexcept;
-
-    [[nodiscard]] units::Meters x_min_qty() const noexcept { return units::Meters(x_min()); }
-    [[nodiscard]] units::Meters x_max_qty() const noexcept { return units::Meters(x_max()); }
-    [[nodiscard]] units::Meters y_min_qty() const noexcept { return units::Meters(y_min()); }
-    [[nodiscard]] units::Meters y_max_qty() const noexcept { return units::Meters(y_max()); }
-    [[nodiscard]] units::Meters z_min_qty() const noexcept { return units::Meters(z_min()); }
-    [[nodiscard]] units::Meters z_max_qty() const noexcept { return units::Meters(z_max()); }
+    [[nodiscard]] units::Meters x_min() const noexcept;
+    [[nodiscard]] units::Meters x_max() const noexcept;
+    [[nodiscard]] units::Meters y_min() const noexcept;
+    [[nodiscard]] units::Meters y_max() const noexcept;
+    [[nodiscard]] units::Meters z_min() const noexcept;
+    [[nodiscard]] units::Meters z_max() const noexcept;
 
     // Coordinate conversions
-    [[nodiscard]] double x(size_t row, size_t col) const noexcept;
-    [[nodiscard]] double y(size_t row, size_t col) const noexcept;
-    [[nodiscard]] units::Meters x_qty(size_t row, size_t col) const noexcept { return units::Meters(x(row, col)); }
-    [[nodiscard]] units::Meters y_qty(size_t row, size_t col) const noexcept { return units::Meters(y(row, col)); }
+    [[nodiscard]] units::Meters x(size_t row, size_t col) const noexcept;
+    [[nodiscard]] units::Meters y(size_t row, size_t col) const noexcept;
     [[nodiscard]] Point3D point(size_t row, size_t col) const noexcept;
     [[nodiscard]] Position3D position(size_t row, size_t col) const noexcept {
-        return Position3D(x_qty(row, col), y_qty(row, col), units::Meters(operator()(row, col)));
+        return Position3D(x(row, col), y(row, col), units::Meters(operator()(row, col)));
     }
 
     [[nodiscard]] bool world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept;
@@ -314,7 +291,7 @@ private:
     units::Meters y0_{0.0};
     units::Meters x_size_{0.0};
     units::Meters y_size_{0.0};
-    units::Degrees rot_deg_{0.0};
+    units::Degrees rotation_{0.0};
     double cos_rot_{1.0};
     double sin_rot_{0.0};
     std::vector<double> data_;

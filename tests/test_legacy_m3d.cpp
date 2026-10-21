@@ -199,11 +199,11 @@ TEST(LegacyM3DTest, ParseSyntheticBinaryArchive) {
     EXPECT_TRUE(b->is_visible());
 
     // Verify Observation Space
-    EXPECT_DOUBLE_EQ(proj.observation().reference_density(), 2670.0);
+    EXPECT_DOUBLE_EQ(proj.observation().reference_density().value(), 2670.0);
     EXPECT_EQ(proj.observation().gravity_mode(), ObservationMode::SensorHeight);
-    EXPECT_DOUBLE_EQ(proj.observation().gravity_height(), 40.0);
+    EXPECT_DOUBLE_EQ(proj.observation().gravity_height().value(), 40.0);
     EXPECT_EQ(proj.observation().magnetic_mode(), ObservationMode::FlightElevation);
-    EXPECT_DOUBLE_EQ(proj.observation().magnetic_height(), 250.0);
+    EXPECT_DOUBLE_EQ(proj.observation().magnetic_height().value(), 250.0);
 }
 
 TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
@@ -245,10 +245,10 @@ TEST(LegacyM3DTest, LoadAuthenticExample_Test_m3d) {
     // Verify Observation Space
     EXPECT_EQ(proj.observation().rows(), 21u);
     EXPECT_EQ(proj.observation().cols(), 21u);
-    EXPECT_DOUBLE_EQ(proj.observation().x0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.observation().y0(), -100.0);
-    EXPECT_DOUBLE_EQ(proj.observation().dx(), 10.0);
-    EXPECT_DOUBLE_EQ(proj.observation().dy(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.observation().x0().value(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.observation().y0().value(), -100.0);
+    EXPECT_DOUBLE_EQ(proj.observation().dx().value(), 10.0);
+    EXPECT_DOUBLE_EQ(proj.observation().dy().value(), 10.0);
 
     // Verify Observation Relief Grid
     const Grid &relief = proj.observation().surface_relief();
@@ -381,10 +381,10 @@ TEST(LegacyM3DTest, LoadAuthenticGrids_Surfer6Binary) {
     EXPECT_TRUE(relief.load_srf6_binary(reliefPath));
     EXPECT_EQ(relief.rows(), 21u);
     EXPECT_EQ(relief.cols(), 21u);
-    EXPECT_DOUBLE_EQ(relief.x0(), 0.0);
-    EXPECT_DOUBLE_EQ(relief.y0(), 0.0);
-    EXPECT_DOUBLE_EQ(relief.dx(), 400.0);
-    EXPECT_DOUBLE_EQ(relief.dy(), 400.0);
+    EXPECT_DOUBLE_EQ(relief.x0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(relief.y0().value(), 0.0);
+    EXPECT_DOUBLE_EQ(relief.dx().value(), 400.0);
+    EXPECT_DOUBLE_EQ(relief.dy().value(), 400.0);
     EXPECT_NEAR(relief.min(), 131.45, 0.1);
     EXPECT_NEAR(relief.max(), 484.95, 0.1);
 

@@ -160,15 +160,15 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
     // Verify Observation Space
     EXPECT_EQ(loaded.observation().rows(), 3u);
     EXPECT_EQ(loaded.observation().cols(), 3u);
-    EXPECT_DOUBLE_EQ(loaded.observation().rotation_deg(), 15.0);
+    EXPECT_DOUBLE_EQ(loaded.observation().rotation().value(), 15.0);
     EXPECT_EQ(loaded.observation().gravity_mode(), ObservationMode::SensorHeight);
-    EXPECT_DOUBLE_EQ(loaded.observation().gravity_height(), 50.0);
+    EXPECT_DOUBLE_EQ(loaded.observation().gravity_height().value(), 50.0);
     EXPECT_EQ(loaded.observation().magnetic_mode(), ObservationMode::FlightElevation);
-    EXPECT_DOUBLE_EQ(loaded.observation().magnetic_height(), 400.0);
-    EXPECT_DOUBLE_EQ(loaded.observation().inclination_deg(), 62.5);
-    EXPECT_DOUBLE_EQ(loaded.observation().declination_deg(), 3.2);
-    EXPECT_DOUBLE_EQ(loaded.observation().magnetic_intensity(), 49800.0);
-    EXPECT_DOUBLE_EQ(loaded.observation().reference_density(), 2670.0);
+    EXPECT_DOUBLE_EQ(loaded.observation().magnetic_height().value(), 400.0);
+    EXPECT_DOUBLE_EQ(loaded.observation().inclination().value(), 62.5);
+    EXPECT_DOUBLE_EQ(loaded.observation().declination().value(), 3.2);
+    EXPECT_DOUBLE_EQ(loaded.observation().magnetic_intensity().value(), 49800.0);
+    EXPECT_DOUBLE_EQ(loaded.observation().reference_density().value(), 2670.0);
 
     // Verify Relief and Observed Grids
     EXPECT_DOUBLE_EQ(loaded.observation().surface_relief()(1, 1), 250.0);

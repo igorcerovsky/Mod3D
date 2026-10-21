@@ -125,32 +125,17 @@ public:
   // Modern C++20 API (STL snake_case convention, noexcept, [[nodiscard]])
   // ========================================================================
 
-  // Dimensions & Geometry
+  // Dimensions & Geometry (Canonical Unit Accessors)
   [[nodiscard]] size_t rows() const noexcept { return rows_; }
   [[nodiscard]] size_t cols() const noexcept { return cols_; }
-  [[nodiscard]] double x0() const noexcept { return x0_.value(); }
-  [[nodiscard]] double y0() const noexcept { return y0_.value(); }
-  [[nodiscard]] double dx() const noexcept { return dx_.value(); }
-  [[nodiscard]] double dy() const noexcept { return dy_.value(); }
-  [[nodiscard]] double rotation_deg() const noexcept { return rot_deg_.value(); }
-  [[nodiscard]] double rotation_rad() const noexcept {
-    return rot_deg_.value() * std::numbers::pi_v<double> / 180.0;
-  }
-
-  [[nodiscard]] constexpr double x0_val() const noexcept { return x0_.value(); }
-  [[nodiscard]] constexpr double y0_val() const noexcept { return y0_.value(); }
-  [[nodiscard]] constexpr double dx_val() const noexcept { return dx_.value(); }
-  [[nodiscard]] constexpr double dy_val() const noexcept { return dy_.value(); }
-
-  [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return dx_; }
-  [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return dy_; }
-  [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return x0_; }
-  [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return y0_; }
-  [[nodiscard]] constexpr units::Degrees rotation_deg_qty() const noexcept {
-    return rot_deg_;
-  }
-  [[nodiscard]] units::Radians rotation_rad_qty() const noexcept {
-    return units::Radians(rotation_rad());
+  [[nodiscard]] constexpr units::Meters x0() const noexcept { return x0_; }
+  [[nodiscard]] constexpr units::Meters y0() const noexcept { return y0_; }
+  [[nodiscard]] constexpr units::Meters dx() const noexcept { return dx_; }
+  [[nodiscard]] constexpr units::Meters dy() const noexcept { return dy_; }
+  [[nodiscard]] constexpr units::Degrees rotation() const noexcept { return rotation_; }
+  [[nodiscard]] constexpr units::Degrees rotation_deg() const noexcept { return rotation_; }
+  [[nodiscard]] units::Radians rotation_rad() const noexcept {
+    return units::Radians(rotation_.value() * std::numbers::pi_v<double> / 180.0);
   }
 
   // Gravity Observation Settings
@@ -168,10 +153,7 @@ public:
   [[nodiscard]] ObservationMode gravity_mode() const noexcept {
     return grv_mode_;
   }
-  [[nodiscard]] double gravity_height() const noexcept { return grv_height_.value(); }
-  [[nodiscard]] constexpr units::Meters gravity_height_qty() const noexcept {
-    return grv_height_;
-  }
+  [[nodiscard]] constexpr units::Meters gravity_height() const noexcept { return grv_height_; }
   [[nodiscard]] const Grid &gravity_elevation_grid() const noexcept {
     return grv_elev_grid_;
   }
@@ -191,10 +173,7 @@ public:
   [[nodiscard]] ObservationMode magnetic_mode() const noexcept {
     return mag_mode_;
   }
-  [[nodiscard]] double magnetic_height() const noexcept { return mag_height_.value(); }
-  [[nodiscard]] constexpr units::Meters magnetic_height_qty() const noexcept {
-    return mag_height_;
-  }
+  [[nodiscard]] constexpr units::Meters magnetic_height() const noexcept { return mag_height_; }
   [[nodiscard]] const Grid &magnetic_elevation_grid() const noexcept {
     return mag_elev_grid_;
   }
@@ -214,10 +193,7 @@ public:
   [[nodiscard]] ObservationMode tensor_mode() const noexcept {
     return tensor_mode_;
   }
-  [[nodiscard]] double tensor_height() const noexcept { return tensor_height_.value(); }
-  [[nodiscard]] constexpr units::Meters tensor_height_qty() const noexcept {
-    return tensor_height_;
-  }
+  [[nodiscard]] constexpr units::Meters tensor_height() const noexcept { return tensor_height_; }
   [[nodiscard]] const Grid &tensor_elevation_grid() const noexcept {
     return tensor_elev_grid_;
   }
@@ -248,25 +224,13 @@ public:
                              intensity.template as<units::tag::NanoTesla>());
   }
 
-  [[nodiscard]] Point3D ambient_field_vector() const;
-  [[nodiscard]] MagneticVector ambient_field_vector_qty() const {
-    Point3D af = ambient_field_vector();
-    return MagneticVector(af);
-  }
+  [[nodiscard]] MagneticVector ambient_field_vector() const;
 
-  [[nodiscard]] double inclination_deg() const noexcept { return inc_deg_.value(); }
-  [[nodiscard]] double declination_deg() const noexcept { return dec_deg_.value(); }
-  [[nodiscard]] double magnetic_intensity() const noexcept {
-    return mag_intensity_.value();
-  }
-
-  [[nodiscard]] constexpr units::Degrees inclination_qty() const noexcept {
-    return inc_deg_;
-  }
-  [[nodiscard]] constexpr units::Degrees declination_qty() const noexcept {
-    return dec_deg_;
-  }
-  [[nodiscard]] constexpr units::NanoTesla magnetic_intensity_qty() const noexcept {
+  [[nodiscard]] constexpr units::Degrees inclination() const noexcept { return inclination_; }
+  [[nodiscard]] constexpr units::Degrees declination() const noexcept { return declination_; }
+  [[nodiscard]] constexpr units::Degrees inclination_deg() const noexcept { return inclination_; }
+  [[nodiscard]] constexpr units::Degrees declination_deg() const noexcept { return declination_; }
+  [[nodiscard]] constexpr units::NanoTesla magnetic_intensity() const noexcept {
     return mag_intensity_;
   }
 
@@ -284,10 +248,7 @@ public:
     set_reference_density(refDens.template in<units::tag::KgPerM3>());
   }
 
-  [[nodiscard]] double reference_density() const noexcept {
-    return ref_density_.value();
-  }
-  [[nodiscard]] constexpr units::KgPerM3 reference_density_qty() const noexcept {
+  [[nodiscard]] constexpr units::KgPerM3 reference_density() const noexcept {
     return ref_density_;
   }
 
@@ -365,7 +326,7 @@ private:
   units::Meters y0_{0.0};
   units::Meters dx_{100.0};
   units::Meters dy_{100.0};
-  units::Degrees rot_deg_{0.0};
+  units::Degrees rotation_{0.0};
 
   Grid relief_grid_;
 
@@ -381,8 +342,8 @@ private:
   units::Meters tensor_height_{0.0};
   Grid tensor_elev_grid_;
 
-  units::Degrees inc_deg_{60.0};
-  units::Degrees dec_deg_{0.0};
+  units::Degrees inclination_{60.0};
+  units::Degrees declination_{0.0};
   units::NanoTesla mag_intensity_{50000.0};
   units::KgPerM3 ref_density_{2670.0};
   double grv_units_{1.0e6};

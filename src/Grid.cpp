@@ -28,7 +28,7 @@ void Grid::swap(Grid &other) noexcept
     std::swap(y0_, other.y0_);
     std::swap(x_size_, other.x_size_);
     std::swap(y_size_, other.y_size_);
-    std::swap(rot_deg_, other.rot_deg_);
+    std::swap(rotation_, other.rotation_);
     std::swap(cos_rot_, other.cos_rot_);
     std::swap(sin_rot_, other.sin_rot_);
     data_.swap(other.data_);
@@ -47,31 +47,31 @@ void Grid::resize(size_t rows, size_t cols, units::Meters x0, units::Meters y0, 
     y0_ = y0;
     x_size_ = xSize;
     y_size_ = ySize;
-    rot_deg_ = rotDeg;
+    rotation_ = rotDeg;
     data_.assign(rows * cols, 0.0);
     update_precomputed_trig();
 }
 
 void Grid::update_precomputed_trig()
 {
-    const double rad = rot_deg_.value() * std::numbers::pi_v<double> / 180.0;
+    const double rad = rotation_.value() * std::numbers::pi_v<double> / 180.0;
     cos_rot_ = std::cos(rad);
     sin_rot_ = std::sin(rad);
 }
 
-double Grid::x(size_t row, size_t col) const noexcept
+units::Meters Grid::x(size_t row, size_t col) const noexcept
 {
-    return x0_.value() + (col * x_size_.value()) * cos_rot_ - (row * y_size_.value()) * sin_rot_;
+    return units::Meters(x0_.value() + (col * x_size_.value()) * cos_rot_ - (row * y_size_.value()) * sin_rot_);
 }
 
-double Grid::y(size_t row, size_t col) const noexcept
+units::Meters Grid::y(size_t row, size_t col) const noexcept
 {
-    return y0_.value() + (col * x_size_.value()) * sin_rot_ + (row * y_size_.value()) * cos_rot_;
+    return units::Meters(y0_.value() + (col * x_size_.value()) * sin_rot_ + (row * y_size_.value()) * cos_rot_);
 }
 
 Point3D Grid::point(size_t row, size_t col) const noexcept
 {
-    return Point3D(x(row, col), y(row, col), operator()(row, col));
+    return Point3D(x(row, col).value(), y(row, col).value(), operator()(row, col));
 }
 
 double &Grid::at(size_t row, size_t col)
@@ -90,58 +90,58 @@ double Grid::at(size_t row, size_t col) const
     return data_[row * cols_ + col];
 }
 
-double Grid::x_min() const noexcept
+units::Meters Grid::x_min() const noexcept
 {
-    if (empty()) return x0_.value();
-    if (rot_deg_.value() == 0.0) return x0_.value();
-    const double x00 = x(0, 0);
-    const double x01 = x(0, cols_ - 1);
-    const double x10 = x(rows_ - 1, 0);
-    const double x11 = x(rows_ - 1, cols_ - 1);
-    return std::min({x00, x01, x10, x11});
+    if (empty()) return x0_;
+    if (rotation_.value() == 0.0) return x0_;
+    const double x00 = x(0, 0).value();
+    const double x01 = x(0, cols_ - 1).value();
+    const double x10 = x(rows_ - 1, 0).value();
+    const double x11 = x(rows_ - 1, cols_ - 1).value();
+    return units::Meters(std::min({x00, x01, x10, x11}));
 }
 
-double Grid::x_max() const noexcept
+units::Meters Grid::x_max() const noexcept
 {
-    if (empty()) return x0_.value();
-    if (rot_deg_.value() == 0.0) return x0_.value() + (cols_ > 0 ? (cols_ - 1) * x_size_.value() : 0.0);
-    const double x00 = x(0, 0);
-    const double x01 = x(0, cols_ - 1);
-    const double x10 = x(rows_ - 1, 0);
-    const double x11 = x(rows_ - 1, cols_ - 1);
-    return std::max({x00, x01, x10, x11});
+    if (empty()) return x0_;
+    if (rotation_.value() == 0.0) return x0_ + (cols_ > 0 ? (cols_ - 1) * x_size_ : units::Meters(0.0));
+    const double x00 = x(0, 0).value();
+    const double x01 = x(0, cols_ - 1).value();
+    const double x10 = x(rows_ - 1, 0).value();
+    const double x11 = x(rows_ - 1, cols_ - 1).value();
+    return units::Meters(std::max({x00, x01, x10, x11}));
 }
 
-double Grid::y_min() const noexcept
+units::Meters Grid::y_min() const noexcept
 {
-    if (empty()) return y0_.value();
-    if (rot_deg_.value() == 0.0) return y0_.value();
-    const double y00 = y(0, 0);
-    const double y01 = y(0, cols_ - 1);
-    const double y10 = y(rows_ - 1, 0);
-    const double y11 = y(rows_ - 1, cols_ - 1);
-    return std::min({y00, y01, y10, y11});
+    if (empty()) return y0_;
+    if (rotation_.value() == 0.0) return y0_;
+    const double y00 = y(0, 0).value();
+    const double y01 = y(0, cols_ - 1).value();
+    const double y10 = y(rows_ - 1, 0).value();
+    const double y11 = y(rows_ - 1, cols_ - 1).value();
+    return units::Meters(std::min({y00, y01, y10, y11}));
 }
 
-double Grid::y_max() const noexcept
+units::Meters Grid::y_max() const noexcept
 {
-    if (empty()) return y0_.value();
-    if (rot_deg_.value() == 0.0) return y0_.value() + (rows_ > 0 ? (rows_ - 1) * y_size_.value() : 0.0);
-    const double y00 = y(0, 0);
-    const double y01 = y(0, cols_ - 1);
-    const double y10 = y(rows_ - 1, 0);
-    const double y11 = y(rows_ - 1, cols_ - 1);
-    return std::max({y00, y01, y10, y11});
+    if (empty()) return y0_;
+    if (rotation_.value() == 0.0) return y0_ + (rows_ > 0 ? (rows_ - 1) * y_size_ : units::Meters(0.0));
+    const double y00 = y(0, 0).value();
+    const double y01 = y(0, cols_ - 1).value();
+    const double y10 = y(rows_ - 1, 0).value();
+    const double y11 = y(rows_ - 1, cols_ - 1).value();
+    return units::Meters(std::max({y00, y01, y10, y11}));
 }
 
-double Grid::z_min() const noexcept
+units::Meters Grid::z_min() const noexcept
 {
-    return min();
+    return units::Meters(min());
 }
 
-double Grid::z_max() const noexcept
+units::Meters Grid::z_max() const noexcept
 {
-    return max();
+    return units::Meters(max());
 }
 
 bool Grid::world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept
@@ -403,7 +403,7 @@ bool Grid::operator==(const Grid &other) const noexcept
     if (rows_ != other.rows_ || cols_ != other.cols_ ||
         x0_ != other.x0_ || y0_ != other.y0_ ||
         x_size_ != other.x_size_ || y_size_ != other.y_size_ ||
-        rot_deg_ != other.rot_deg_) {
+        rotation_ != other.rotation_) {
         return false;
     }
     return data_ == other.data_;
@@ -764,7 +764,7 @@ std::ostream &operator<<(std::ostream &os, const Grid &grid)
     os << "Grid(rows=" << grid.rows_ << ", cols=" << grid.cols_
        << ", x0=" << grid.x0_.value() << ", y0=" << grid.y0_.value()
        << ", dx=" << grid.x_size_.value() << ", dy=" << grid.y_size_.value()
-       << ", rot=" << grid.rot_deg_.value() << " deg)";
+       << ", rot=" << grid.rotation_.value() << " deg)";
     return os;
 }
 

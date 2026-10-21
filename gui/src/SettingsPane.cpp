@@ -1541,13 +1541,13 @@ void SettingsPane::loadPhysicsData() {
     m_blockSync = true;
 
     // Inducing Field
-    m_spinIndT0->setValue(m_doc->observation().magnetic_intensity());
-    m_spinIndInc->setValue(m_doc->observation().inclination_deg());
-    m_spinIndDec->setValue(m_doc->observation().declination_deg());
+    m_spinIndT0->setValue(m_doc->observation().magnetic_intensity().value());
+    m_spinIndInc->setValue(m_doc->observation().inclination().value());
+    m_spinIndDec->setValue(m_doc->observation().declination().value());
 
     // Sensor Heights
-    m_spinSensorGrvHeight->setValue(m_doc->observation().gravity_height());
-    m_spinSensorMagHeight->setValue(m_doc->observation().magnetic_height());
+    m_spinSensorGrvHeight->setValue(m_doc->observation().gravity_height().value());
+    m_spinSensorMagHeight->setValue(m_doc->observation().magnetic_height().value());
     m_spinRefDensity->setValue(2670.0);
 
     // Model Boundaries

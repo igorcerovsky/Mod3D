@@ -18,7 +18,7 @@ ComputePropertiesDialog::ComputePropertiesDialog(ModelDocument *doc, QWidget *pa
     m_spinGrvHeight = new QDoubleSpinBox(this);
     m_spinGrvHeight->setRange(0.0, 50000.0);
     m_spinGrvHeight->setSuffix(" m");
-    m_spinGrvHeight->setValue(m_doc->observation().gravity_height());
+    m_spinGrvHeight->setValue(m_doc->observation().gravity_height().value());
     form->addRow(tr("Gravity Sensor Height:"), m_spinGrvHeight);
 
     m_spinRefDensity = new QDoubleSpinBox(this);
@@ -26,13 +26,13 @@ ComputePropertiesDialog::ComputePropertiesDialog(ModelDocument *doc, QWidget *pa
     m_spinRefDensity->setSingleStep(50.0);
     m_spinRefDensity->setDecimals(1);
     m_spinRefDensity->setSuffix(" kg/m³");
-    m_spinRefDensity->setValue(m_doc->observation().reference_density());
+    m_spinRefDensity->setValue(m_doc->observation().reference_density().value());
     form->addRow(tr("Reference Reduction Density:"), m_spinRefDensity);
 
     m_spinMagHeight = new QDoubleSpinBox(this);
     m_spinMagHeight->setRange(0.0, 50000.0);
     m_spinMagHeight->setSuffix(" m");
-    m_spinMagHeight->setValue(m_doc->observation().magnetic_height());
+    m_spinMagHeight->setValue(m_doc->observation().magnetic_height().value());
     form->addRow(tr("Magnetics Sensor Height:"), m_spinMagHeight);
 
     m_chkRealTime = new QCheckBox(tr("Real-Time Computation during Vertex Drag"), this);
