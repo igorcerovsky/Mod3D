@@ -441,6 +441,7 @@ bool Project::from_json_string(std::string_view jsonStr)
 
             // Regenerate facets
             model_.init_facet_list();
+            model_.clear_facets_update();
             model_.set_compute_real_time(settings_.compute_real_time);
         }
 
@@ -1398,6 +1399,8 @@ bool Project::load_legacy_m3d(const std::filesystem::path &filePath)
 
     // Regenerate 3D polyhedral facets
     model_.init_facet_list();
+    model_.clear_facets_update();
+    model_.set_compute_real_time(settings_.compute_real_time);
     model_.compute_body_magnetization_vector(
         observation_.inclination_deg(),
         observation_.declination_deg(),

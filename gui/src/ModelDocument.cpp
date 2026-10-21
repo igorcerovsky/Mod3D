@@ -564,6 +564,7 @@ bool ModelDocument::translateBodyVertical(int bodyId, double deltaZ) {
 }
 
 void ModelDocument::computeAll() {
+    m_project.model().clear_facets_update();
     m_project.model().compute_body_magnetization_vector(
         m_project.observation().inclination_deg(),
         m_project.observation().declination_deg(),
@@ -593,6 +594,7 @@ void ModelDocument::setRealTimeCompute(bool enabled) {
     if (m_realTimeCompute != enabled) {
         m_realTimeCompute = enabled;
         m_project.model().set_compute_real_time(enabled);
+        m_project.model().clear_facets_update();
         emit statusMessage(enabled ? tr("Real-time computation enabled.") : tr("Real-time computation disabled."));
     }
 }

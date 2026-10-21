@@ -2551,4 +2551,57 @@ TEST_F(GuiDocumentTest, BodyDeletionRemovesBodyFrom3DView) {
     }
 }
 
+TEST_F(GuiDocumentTest, FirstVertexMoveAfterOpeningModelDoesNotBlowUpRealTimeField) {
+    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    if (!std::filesystem::exists(samplePath)) {
+        samplePath = "Examples/Sample.m3d";
+    }
+    ASSERT_TRUE(std::filesystem::exists(samplePath));
+
+    ModelDocument doc;
+    EXPECT_TRUE(doc.isRealTimeCompute());
+    ASSERT_TRUE(doc.openFile(QString::fromStdString(samplePath)));
+
+    // Immediately after loading, facets_update must be empty (not queuing the entire model)
+    EXPECT_TRUE(doc.model().facets_update().empty());
+
+    const auto *modGrid = doc.activeModeledGrid();
+    ASSERT_NE(modGrid, nullptr);
+    size_t midR = doc.observation().rows() / 2;
+    size_t midC = doc.observation().cols() / 2;
+    double initialVal = (*modGrid)(midR, midC);
+
+    // Pick an existing body vertex in the model to move slightly
+    int r = 0, c = 0;
+    int vIdx = -1;
+    for (int row = 1; row < doc.model().rows() - 1 && vIdx < 0; ++row) {
+        for (int col = 1; col < doc.model().cols() - 1 && vIdx < 0; ++col) {
+            if (doc.model().count(row, col) > 2) {
+                r = row;
+                c = col;
+                vIdx = 1;
+            }
+        }
+    }
+    ASSERT_GE(vIdx, 0);
+
+    double oldZ = doc.model().z(r, c, vIdx);
+    double newZ = oldZ + 10.0;
+
+    bool moved = doc.moveVertexAtRowCol(r, c, vIdx, newZ, mod3d::BodyMoveType::Normal);
+    EXPECT_TRUE(moved);
+
+    double realtimeVal = (*doc.activeModeledGrid())(midR, midC);
+
+    // Now recompute all (as happens on mouse release in ProfileView)
+    doc.computeAll();
+    double recomputedVal = (*doc.activeModeledGrid())(midR, midC);
+
+    // The real-time delta computed value must closely match the full recomputed field
+    // and NOT be inflated / doubled due to entire model facets being erroneously queued in facets_update_!
+    EXPECT_NEAR(realtimeVal, recomputedVal, 1e-3);
+    // Also verify change was slight, not massive doubling
+    EXPECT_NEAR(realtimeVal, initialVal, std::abs(initialVal) * 0.2 + 1.0);
+}
+
 

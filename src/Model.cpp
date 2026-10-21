@@ -111,6 +111,7 @@ bool Model::init(int nRows, int nCols, units::Meters x0, units::Meters y0, units
         }
     }
 
+    facets_update_.clear();
     initialized_ = true;
     return true;
 }
@@ -157,6 +158,7 @@ bool Model::init(const Grid &reliefGrid, units::Meters zMin, units::Meters zMax)
         }
     }
 
+    facets_update_.clear();
     initialized_ = true;
     return true;
 }
@@ -578,10 +580,6 @@ int Model::move_vertex(int &index, int row, int col, double zVal, BodyMoveType m
         }
         if (zVal == zR) {
             index = 1;
-            return 0;
-        }
-        if (zVal == z_min_.value()) {
-            return 0;
         }
     } else if (moveType == BodyMoveType::Split) {
         if (zVal > zC) {
@@ -966,17 +964,23 @@ void Model::update_facet_list(int row, int col)
 
 void Model::init_facet_list()
 {
+    bool oldRealTime = compute_real_time_;
+    compute_real_time_ = false;
+
     for (int r = 0; r < rows_ - 1; ++r) {
         for (int c = 0; c < cols_ - 1; ++c) {
             update_facet_column(r, c);
             std::vector<Facet3Pt> *lst = facet_list(r, c);
             if (lst) {
                 for (auto &fct : *lst) {
-                    fct.set_sign(-1.0);
+                    fct.set_sign(1.0);
                 }
             }
         }
     }
+
+    facets_update_.clear();
+    compute_real_time_ = oldRealTime;
 }
 
 int Model::facets_computation(std::vector<Facet3Pt> &outList) const
