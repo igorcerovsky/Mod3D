@@ -498,6 +498,8 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_combo3DReliefMode = new QComboBox(box3DToggles);
     m_combo3DReliefMode->addItem(tr("Surface"), static_cast<int>(GL3DView::ReliefMode::Surface));
     m_combo3DReliefMode->addItem(tr("Wireframe"), static_cast<int>(GL3DView::ReliefMode::Wireframe));
+    int defaultWireIdx = m_combo3DReliefMode->findData(static_cast<int>(GL3DView::ReliefMode::Wireframe));
+    if (defaultWireIdx >= 0) m_combo3DReliefMode->setCurrentIndex(defaultWireIdx);
     reliefLayout->addWidget(m_chk3DRelief);
     reliefLayout->addWidget(m_combo3DReliefMode);
 

@@ -2315,25 +2315,25 @@ TEST_F(GuiDocumentTest, GL3DViewReliefColormapAndSurfaceWireframeModes) {
     ASSERT_NE(glv, nullptr);
     ASSERT_NE(sub3D, nullptr);
 
-    // 1. Verify default 3D relief settings
+    // 1. Verify default 3D relief settings (wireframe by default)
     EXPECT_TRUE(glv->showRelief());
-    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Surface);
+    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Wireframe);
 
     // 2. Direct setter and signal emission
     int signalCount = 0;
-    GL3DView::ReliefMode emittedMode = GL3DView::ReliefMode::Surface;
+    GL3DView::ReliefMode emittedMode = GL3DView::ReliefMode::Wireframe;
     QObject::connect(glv, &GL3DView::reliefModeChanged, [&](GL3DView::ReliefMode m) {
         emittedMode = m;
         ++signalCount;
     });
 
-    glv->setReliefMode(GL3DView::ReliefMode::Wireframe);
-    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Wireframe);
+    glv->setReliefMode(GL3DView::ReliefMode::Surface);
+    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Surface);
     EXPECT_EQ(signalCount, 1);
-    EXPECT_EQ(emittedMode, GL3DView::ReliefMode::Wireframe);
+    EXPECT_EQ(emittedMode, GL3DView::ReliefMode::Surface);
 
     // Setting same mode should not re-emit
-    glv->setReliefMode(GL3DView::ReliefMode::Wireframe);
+    glv->setReliefMode(GL3DView::ReliefMode::Surface);
     EXPECT_EQ(signalCount, 1);
 
     // 3. SettingsPane synchronization and controls
@@ -2349,13 +2349,13 @@ TEST_F(GuiDocumentTest, GL3DViewReliefColormapAndSurfaceWireframeModes) {
 
     EXPECT_TRUE(chkRelief->isChecked());
     EXPECT_TRUE(comboMode->isEnabled());
-    EXPECT_EQ(comboMode->currentData().toInt(), static_cast<int>(GL3DView::ReliefMode::Wireframe));
+    EXPECT_EQ(comboMode->currentData().toInt(), static_cast<int>(GL3DView::ReliefMode::Surface));
 
-    // Change combo to Surface via UI
-    int surfIdx = comboMode->findData(static_cast<int>(GL3DView::ReliefMode::Surface));
-    ASSERT_GE(surfIdx, 0);
-    comboMode->setCurrentIndex(surfIdx);
-    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Surface);
+    // Change combo to Wireframe via UI
+    int wireIdx = comboMode->findData(static_cast<int>(GL3DView::ReliefMode::Wireframe));
+    ASSERT_GE(wireIdx, 0);
+    comboMode->setCurrentIndex(wireIdx);
+    EXPECT_EQ(glv->reliefMode(), GL3DView::ReliefMode::Wireframe);
     EXPECT_EQ(signalCount, 2);
 
     // Toggle relief off via checkbox

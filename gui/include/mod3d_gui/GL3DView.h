@@ -234,7 +234,7 @@ private:
     bool m_showBottom{false};
     bool m_showOuterFacets{false};
     bool m_showRelief{true};
-    ReliefMode m_reliefMode{ReliefMode::Surface};
+    ReliefMode m_reliefMode{ReliefMode::Wireframe};
     bool m_showProfilePlane{true};
     bool m_showBoundingBox{true};
     bool m_showOrientationIndicator{true};
