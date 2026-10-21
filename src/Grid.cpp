@@ -104,7 +104,7 @@ units::Meters Grid::x_min() const noexcept
 units::Meters Grid::x_max() const noexcept
 {
     if (empty()) return x0_;
-    if (rotation_.value() == 0.0) return x0_ + (cols_ > 0 ? (cols_ - 1) * x_size_ : units::Meters(0.0));
+    if (rotation_.value() == 0.0) return x0_ + (cols_ > 0 ? static_cast<double>(cols_ - 1) * x_size_ : units::Meters(0.0));
     const double x00 = x(0, 0).value();
     const double x01 = x(0, cols_ - 1).value();
     const double x10 = x(rows_ - 1, 0).value();
@@ -126,7 +126,7 @@ units::Meters Grid::y_min() const noexcept
 units::Meters Grid::y_max() const noexcept
 {
     if (empty()) return y0_;
-    if (rotation_.value() == 0.0) return y0_ + (rows_ > 0 ? (rows_ - 1) * y_size_ : units::Meters(0.0));
+    if (rotation_.value() == 0.0) return y0_ + (rows_ > 0 ? static_cast<double>(rows_ - 1) * y_size_ : units::Meters(0.0));
     const double y00 = y(0, 0).value();
     const double y01 = y(0, cols_ - 1).value();
     const double y10 = y(rows_ - 1, 0).value();

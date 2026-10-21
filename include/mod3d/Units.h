@@ -70,7 +70,8 @@ enum class GravityFieldUnit {
 }
 
 [[nodiscard]] constexpr GravityFieldUnit gravity_field_unit_from_scale(double scale) noexcept {
-    if (std::abs(scale - units::constants::SI_TO_MGAL) < 1.0) {
+    const double diff = scale - units::constants::SI_TO_MGAL;
+    if ((diff < 0.0 ? -diff : diff) < 1.0) {
         return GravityFieldUnit::MilliGal;
     }
     return GravityFieldUnit::GravityUnit;

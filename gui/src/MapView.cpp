@@ -370,8 +370,8 @@ void MapView::drawBackgroundRaster(QPainter &painter) {
     }
 
     int left = worldToScreenX(grid->x0());
-    int right = worldToScreenX(grid->x0() + (cols - 1) * grid->x_size());
-    int top = worldToScreenY(grid->y0() + (rows - 1) * grid->y_size());
+    int right = worldToScreenX(grid->x0() + static_cast<double>(cols - 1) * grid->x_size());
+    int top = worldToScreenY(grid->y0() + static_cast<double>(rows - 1) * grid->y_size());
     int bottom = worldToScreenY(grid->y0());
 
     QRect targetRect(left, top, right - left, bottom - top);
