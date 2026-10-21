@@ -277,4 +277,81 @@ TEST(Mod3DUnitsSafety, GridUnitsSafetyAndInterpolation) {
     // Equivalent call in kilometers
     double val_km = g.interpolate(0.15_km, 0.15_km);
     EXPECT_NEAR(val_km, expected, 1e-9);
+
+    // Dimension _val() and _qty() accessors
+    EXPECT_DOUBLE_EQ(g.x0_val(), 0.0);
+    EXPECT_DOUBLE_EQ(g.y0_val(), 0.0);
+    EXPECT_DOUBLE_EQ(g.dx_val(), 100.0);
+    EXPECT_DOUBLE_EQ(g.dy_val(), 100.0);
+    EXPECT_DOUBLE_EQ(g.x_size_val(), 100.0);
+    EXPECT_DOUBLE_EQ(g.y_size_val(), 100.0);
+    EXPECT_DOUBLE_EQ(g.rotation_deg_val(), 0.0);
+
+    EXPECT_EQ(g.x0_qty(), 0.0_m);
+    EXPECT_EQ(g.y0_qty(), 0.0_m);
+    EXPECT_EQ(g.dx_qty(), 100.0_m);
+    EXPECT_EQ(g.dy_qty(), 100.0_m);
+    EXPECT_EQ(g.rotation_deg_qty(), 0.0_deg);
+
+    // Position3D structured query
+    Position3D pos = g.position(1, 2);
+    EXPECT_DOUBLE_EQ(pos.x_val(), 200.0);
+    EXPECT_DOUBLE_EQ(pos.y_val(), 100.0);
+    EXPECT_NEAR(pos.z_val(), 0.5 * 200.0 + 0.25 * 100.0, 1e-9);
+
+    // grid_to_world with unit output
+    units::Meters gwX{0.0}, gwY{0.0};
+    EXPECT_TRUE(g.grid_to_world(1.0, 2.0, gwX, gwY));
+    EXPECT_DOUBLE_EQ(gwX.value(), 200.0);
+    EXPECT_DOUBLE_EQ(gwY.value(), 100.0);
+
+    // Resize with unit quantities
+    g.resize(5, 5, 50.0_m, 150.0_m, 25.0_m, 25.0_m, 45.0_deg);
+    EXPECT_EQ(g.rows(), 5);
+    EXPECT_EQ(g.cols(), 5);
+    EXPECT_DOUBLE_EQ(g.x0_val(), 50.0);
+    EXPECT_DOUBLE_EQ(g.y0_val(), 150.0);
+    EXPECT_DOUBLE_EQ(g.dx_val(), 25.0);
+    EXPECT_DOUBLE_EQ(g.dy_val(), 25.0);
+    EXPECT_DOUBLE_EQ(g.rotation_deg_val(), 45.0);
+}
+
+// ============================================================================
+// 8. ObservationSpace Unit Construction & Geometry
+// ============================================================================
+
+TEST(Mod3DUnitsSafety, ObservationSpaceUnitConstructionAndGeometry) {
+    ObservationSpace obs(10, 12, 100.0_m, 200.0_m, 25.0_m, 30.0_m, 30.0_deg);
+
+    EXPECT_EQ(obs.rows(), 10);
+    EXPECT_EQ(obs.cols(), 12);
+    EXPECT_DOUBLE_EQ(obs.x0(), 100.0);
+    EXPECT_DOUBLE_EQ(obs.y0(), 200.0);
+    EXPECT_DOUBLE_EQ(obs.dx(), 25.0);
+    EXPECT_DOUBLE_EQ(obs.dy(), 30.0);
+    EXPECT_DOUBLE_EQ(obs.rotation_deg(), 30.0);
+
+    EXPECT_DOUBLE_EQ(obs.x0_val(), 100.0);
+    EXPECT_DOUBLE_EQ(obs.y0_val(), 200.0);
+    EXPECT_DOUBLE_EQ(obs.dx_val(), 25.0);
+    EXPECT_DOUBLE_EQ(obs.dy_val(), 30.0);
+
+    EXPECT_EQ(obs.x0_qty(), 100.0_m);
+    EXPECT_EQ(obs.y0_qty(), 200.0_m);
+    EXPECT_EQ(obs.dx_qty(), 25.0_m);
+    EXPECT_EQ(obs.dy_qty(), 30.0_m);
+    EXPECT_EQ(obs.rotation_deg_qty(), 30.0_deg);
+
+    // Re-init geometry with unit quantities
+    obs.init_geometry(8, 8, 0.0_m, 0.0_m, 50.0_m, 50.0_m, 0.0_deg);
+    EXPECT_EQ(obs.rows(), 8);
+    EXPECT_EQ(obs.cols(), 8);
+    EXPECT_DOUBLE_EQ(obs.dx_val(), 50.0);
+
+    auto pts = obs.observation_points(FieldComponent::GZ);
+    EXPECT_EQ(pts.size(), 64);
+    EXPECT_DOUBLE_EQ(pts[0].x, 0.0);
+    EXPECT_DOUBLE_EQ(pts[0].y, 0.0);
+    EXPECT_DOUBLE_EQ(pts[63].x, 350.0);
+    EXPECT_DOUBLE_EQ(pts[63].y, 350.0);
 }

@@ -61,6 +61,7 @@ public:
     // ========================================================================
     Grid() = default;
     Grid(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg = 0.0);
+    Grid(size_t rows, size_t cols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Degrees rotDeg = units::Degrees(0.0));
 
     template <units::UnitType U0, units::UnitType Us, units::UnitType RotU = units::tag::Degrees>
         requires (units::SameDimension<U0, units::tag::Meters> &&
@@ -71,9 +72,9 @@ public:
          const units::Quantity<Us>& xSzVal, const units::Quantity<Us>& ySzVal,
          const units::Quantity<RotU>& rotVal = units::Degrees(0.0))
         : Grid(rows, cols,
-               x0Val.template in<units::tag::Meters>(), y0Val.template in<units::tag::Meters>(),
-               xSzVal.template in<units::tag::Meters>(), ySzVal.template in<units::tag::Meters>(),
-               rotVal.template in<units::tag::Degrees>()) {}
+               x0Val.template as<units::tag::Meters>(), y0Val.template as<units::tag::Meters>(),
+               xSzVal.template as<units::tag::Meters>(), ySzVal.template as<units::tag::Meters>(),
+               rotVal.template as<units::tag::Degrees>()) {}
 
     Grid(const Grid &) = default;
     Grid &operator=(const Grid &) = default;
@@ -85,6 +86,21 @@ public:
     friend void swap(Grid &a, Grid &b) noexcept { a.swap(b); }
 
     void resize(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg = 0.0);
+    void resize(size_t rows, size_t cols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Degrees rotDeg = units::Degrees(0.0));
+
+    template <units::UnitType U0, units::UnitType Us, units::UnitType RotU = units::tag::Degrees>
+        requires (units::SameDimension<U0, units::tag::Meters> &&
+                  units::SameDimension<Us, units::tag::Meters> &&
+                  units::SameDimension<RotU, units::tag::Degrees>)
+    void resize(size_t rows, size_t cols,
+                const units::Quantity<U0>& x0Val, const units::Quantity<U0>& y0Val,
+                const units::Quantity<Us>& xSzVal, const units::Quantity<Us>& ySzVal,
+                const units::Quantity<RotU>& rotVal = units::Degrees(0.0)) {
+        resize(rows, cols,
+               x0Val.template as<units::tag::Meters>(), y0Val.template as<units::tag::Meters>(),
+               xSzVal.template as<units::tag::Meters>(), ySzVal.template as<units::tag::Meters>(),
+               rotVal.template as<units::tag::Degrees>());
+    }
 
     // ========================================================================
     // Modern C++20 API (STL snake_case convention, noexcept, [[nodiscard]])
@@ -97,23 +113,31 @@ public:
     [[nodiscard]] constexpr bool empty() const noexcept { return rows_ == 0 || cols_ == 0; }
     [[nodiscard]] constexpr bool is_empty() const noexcept { return empty(); }
 
-    [[nodiscard]] constexpr double x0() const noexcept { return x0_; }
-    [[nodiscard]] constexpr double y0() const noexcept { return y0_; }
-    [[nodiscard]] constexpr double dx() const noexcept { return x_size_; }
-    [[nodiscard]] constexpr double dy() const noexcept { return y_size_; }
-    [[nodiscard]] constexpr double x_size() const noexcept { return x_size_; }
-    [[nodiscard]] constexpr double y_size() const noexcept { return y_size_; }
-    [[nodiscard]] constexpr double rotation_deg() const noexcept { return rot_deg_; }
-    [[nodiscard]] double rotation_rad() const noexcept { return rot_deg_ * std::numbers::pi_v<double> / 180.0; }
+    [[nodiscard]] constexpr double x0() const noexcept { return x0_.value(); }
+    [[nodiscard]] constexpr double y0() const noexcept { return y0_.value(); }
+    [[nodiscard]] constexpr double dx() const noexcept { return x_size_.value(); }
+    [[nodiscard]] constexpr double dy() const noexcept { return y_size_.value(); }
+    [[nodiscard]] constexpr double x_size() const noexcept { return x_size_.value(); }
+    [[nodiscard]] constexpr double y_size() const noexcept { return y_size_.value(); }
+    [[nodiscard]] constexpr double rotation_deg() const noexcept { return rot_deg_.value(); }
+    [[nodiscard]] double rotation_rad() const noexcept { return rot_deg_.value() * std::numbers::pi_v<double> / 180.0; }
+
+    [[nodiscard]] constexpr double x0_val() const noexcept { return x0_.value(); }
+    [[nodiscard]] constexpr double y0_val() const noexcept { return y0_.value(); }
+    [[nodiscard]] constexpr double dx_val() const noexcept { return x_size_.value(); }
+    [[nodiscard]] constexpr double dy_val() const noexcept { return y_size_.value(); }
+    [[nodiscard]] constexpr double x_size_val() const noexcept { return x_size_.value(); }
+    [[nodiscard]] constexpr double y_size_val() const noexcept { return y_size_.value(); }
+    [[nodiscard]] constexpr double rotation_deg_val() const noexcept { return rot_deg_.value(); }
 
     // Unit-aware dimension queries
-    [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return units::Meters(x0_); }
-    [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return units::Meters(y0_); }
-    [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return units::Meters(x_size_); }
-    [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return units::Meters(y_size_); }
-    [[nodiscard]] constexpr units::Meters x_size_qty() const noexcept { return units::Meters(x_size_); }
-    [[nodiscard]] constexpr units::Meters y_size_qty() const noexcept { return units::Meters(y_size_); }
-    [[nodiscard]] constexpr units::Degrees rotation_deg_qty() const noexcept { return units::Degrees(rot_deg_); }
+    [[nodiscard]] constexpr units::Meters x0_qty() const noexcept { return x0_; }
+    [[nodiscard]] constexpr units::Meters y0_qty() const noexcept { return y0_; }
+    [[nodiscard]] constexpr units::Meters dx_qty() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr units::Meters dy_qty() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr units::Meters x_size_qty() const noexcept { return x_size_; }
+    [[nodiscard]] constexpr units::Meters y_size_qty() const noexcept { return y_size_; }
+    [[nodiscard]] constexpr units::Degrees rotation_deg_qty() const noexcept { return rot_deg_; }
     [[nodiscard]] units::Radians rotation_rad_qty() const noexcept { return units::Radians(rotation_rad()); }
 
     // World coordinate bounding box
@@ -137,9 +161,13 @@ public:
     [[nodiscard]] units::Meters x_qty(size_t row, size_t col) const noexcept { return units::Meters(x(row, col)); }
     [[nodiscard]] units::Meters y_qty(size_t row, size_t col) const noexcept { return units::Meters(y(row, col)); }
     [[nodiscard]] Point3D point(size_t row, size_t col) const noexcept;
+    [[nodiscard]] Position3D position(size_t row, size_t col) const noexcept {
+        return Position3D(x_qty(row, col), y_qty(row, col), units::Meters(operator()(row, col)));
+    }
 
     [[nodiscard]] bool world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept;
     [[nodiscard]] bool grid_to_world(double row, double col, double &xVal, double &yVal) const noexcept;
+    [[nodiscard]] bool grid_to_world(double row, double col, units::Meters &xVal, units::Meters &yVal) const noexcept;
     [[nodiscard]] bool contains(double xVal, double yVal) const noexcept;
 
     template <units::UnitType Ux, units::UnitType Uy>
@@ -282,11 +310,11 @@ private:
 
     size_t rows_{0};
     size_t cols_{0};
-    double x0_{0.0};
-    double y0_{0.0};
-    double x_size_{0.0};
-    double y_size_{0.0};
-    double rot_deg_{0.0};
+    units::Meters x0_{0.0};
+    units::Meters y0_{0.0};
+    units::Meters x_size_{0.0};
+    units::Meters y_size_{0.0};
+    units::Degrees rot_deg_{0.0};
     double cos_rot_{1.0};
     double sin_rot_{0.0};
     std::vector<double> data_;

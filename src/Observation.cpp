@@ -12,7 +12,15 @@ ObservationSpace::ObservationSpace() = default;
 ObservationSpace::ObservationSpace(
     size_t rows, size_t cols, double x0, double y0, double dx, double dy, double rotDeg)
 {
-    init_geometry(rows, cols, x0, y0, dx, dy, rotDeg);
+    init_geometry(rows, cols, units::Meters(x0), units::Meters(y0),
+                  units::Meters(dx), units::Meters(dy), units::Degrees(rotDeg));
+}
+
+ObservationSpace::ObservationSpace(
+    size_t rows, size_t cols, units::Meters x0, units::Meters y0,
+    units::Meters dx, units::Meters dy, units::Degrees rot)
+{
+    init_geometry(rows, cols, x0, y0, dx, dy, rot);
 }
 
 void ObservationSpace::swap(ObservationSpace &other) noexcept
@@ -50,6 +58,14 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept
 void ObservationSpace::init_geometry(
     size_t rows, size_t cols, double x0, double y0, double dx, double dy, double rotDeg)
 {
+    init_geometry(rows, cols, units::Meters(x0), units::Meters(y0),
+                  units::Meters(dx), units::Meters(dy), units::Degrees(rotDeg));
+}
+
+void ObservationSpace::init_geometry(
+    size_t rows, size_t cols, units::Meters x0, units::Meters y0,
+    units::Meters dx, units::Meters dy, units::Degrees rotDeg)
+{
     rows_ = rows;
     cols_ = cols;
     x0_ = x0;
@@ -66,6 +82,11 @@ void ObservationSpace::init_geometry(
 
 void ObservationSpace::set_gravity_observation(ObservationMode mode, double heightVal)
 {
+    set_gravity_observation(mode, units::Meters(heightVal));
+}
+
+void ObservationSpace::set_gravity_observation(ObservationMode mode, units::Meters heightVal)
+{
     grv_mode_ = mode;
     grv_height_ = heightVal;
 }
@@ -78,6 +99,11 @@ void ObservationSpace::set_gravity_observation_grid(const Grid &grid)
 
 void ObservationSpace::set_magnetic_observation(ObservationMode mode, double heightVal)
 {
+    set_magnetic_observation(mode, units::Meters(heightVal));
+}
+
+void ObservationSpace::set_magnetic_observation(ObservationMode mode, units::Meters heightVal)
+{
     mag_mode_ = mode;
     mag_height_ = heightVal;
 }
@@ -89,6 +115,11 @@ void ObservationSpace::set_magnetic_observation_grid(const Grid &grid)
 }
 
 void ObservationSpace::set_tensor_observation(ObservationMode mode, double heightVal)
+{
+    set_tensor_observation(mode, units::Meters(heightVal));
+}
+
+void ObservationSpace::set_tensor_observation(ObservationMode mode, units::Meters heightVal)
 {
     tensor_mode_ = mode;
     tensor_height_ = heightVal;
@@ -107,14 +138,23 @@ void ObservationSpace::set_surface_relief(const Grid &relief)
 
 void ObservationSpace::set_ambient_field_params(double inclinationDeg, double declinationDeg, double intensityNT)
 {
-    inc_deg_ = inclinationDeg;
-    dec_deg_ = declinationDeg;
-    mag_intensity_ = intensityNT;
+    set_ambient_field_params(units::Degrees(inclinationDeg),
+                             units::Degrees(declinationDeg),
+                             units::NanoTesla(intensityNT));
+}
+
+void ObservationSpace::set_ambient_field_params(units::Degrees inclination,
+                                               units::Degrees declination,
+                                               units::NanoTesla intensity)
+{
+    inc_deg_ = inclination;
+    dec_deg_ = declination;
+    mag_intensity_ = intensity;
 }
 
 Point3D ObservationSpace::ambient_field_vector() const
 {
-    return ambient_field(inc_deg_, dec_deg_, mag_intensity_);
+    return ambient_field(inc_deg_.value(), dec_deg_.value(), mag_intensity_.value());
 }
 
 double ObservationSpace::get_elevation_at(
@@ -145,28 +185,28 @@ std::vector<Point3D> ObservationSpace::observation_points(FieldComponent comp) c
     points.reserve(rows_ * cols_);
 
     ObservationMode mode = grv_mode_;
-    double heightVal = grv_height_;
+    double heightVal = grv_height_.value();
     const Grid *elevGrid = &grv_elev_grid_;
 
     if (is_magnetic_component(comp)) {
         mode = mag_mode_;
-        heightVal = mag_height_;
+        heightVal = mag_height_.value();
         elevGrid = &mag_elev_grid_;
     } else if (is_tensor_component(comp)) {
         mode = tensor_mode_;
-        heightVal = tensor_height_;
+        heightVal = tensor_height_.value();
         elevGrid = &tensor_elev_grid_;
     }
 
     const double pi = std::numbers::pi_v<double>;
-    const double rad = rot_deg_ * pi / 180.0;
+    const double rad = rot_deg_.value() * pi / 180.0;
     const double cRot = std::cos(rad);
     const double sRot = std::sin(rad);
 
     for (size_t r = 0; r < rows_; ++r) {
         for (size_t c = 0; c < cols_; ++c) {
-            double x = x0_ + (c * dx_) * cRot - (r * dy_) * sRot;
-            double y = y0_ + (c * dx_) * sRot + (r * dy_) * cRot;
+            double x = x0_.value() + (c * dx_.value()) * cRot - (r * dy_.value()) * sRot;
+            double y = y0_.value() + (c * dx_.value()) * sRot + (r * dy_.value()) * cRot;
             double z = get_elevation_at(mode, heightVal, *elevGrid, r, c);
             points.emplace_back(x, y, z);
         }
@@ -305,7 +345,7 @@ void ObservationSpace::compute_forward_field(const std::vector<Facet3Pt> &facets
                     double densContrast = 0.0;
                     if (fct.primary) {
                         double bDens = fct.primary->density().value();
-                        double oposDens = fct.opposite ? fct.opposite->density().value() : ref_density_;
+                        double oposDens = fct.opposite ? fct.opposite->density().value() : ref_density_.value();
                         densContrast = bDens - oposDens;
                     }
 
@@ -411,7 +451,7 @@ void ObservationSpace::compute_total_fields()
                 if (pMx->is_dummy(r, c) || pMy->is_dummy(r, c) || pMz->is_dummy(r, c)) {
                     (*pDT)(r, c) = GRID_DUMMY;
                 } else {
-                    (*pDT)(r, c) = -mag_delta_t(mx, my, mz, af.x, af.y, af.z, mag_intensity_);
+                    (*pDT)(r, c) = -mag_delta_t(mx, my, mz, af.x, af.y, af.z, mag_intensity_.value());
                 }
             }
         }
@@ -509,7 +549,7 @@ FitResult ObservationSpace::fit_density(
         return count > 0 ? std::sqrt(sumSq / count) : 0.0;
     };
 
-    double dens0 = initialDensity - ref_density_;
+    double dens0 = initialDensity - ref_density_.value();
     double startA = dens0;
     double startB = dens0 + 10.0;
 
@@ -517,7 +557,7 @@ FitResult ObservationSpace::fit_density(
         startA, startB, objFunc, method, tol, 100, "Density inversion");
 
     double optimalDiffDensity = res.optimal_parameter;
-    double optimalDensity = optimalDiffDensity + ref_density_;
+    double optimalDensity = optimalDiffDensity + ref_density_.value();
     pBody->set_density(optimalDensity);
     res.optimal_parameter = optimalDensity;
 

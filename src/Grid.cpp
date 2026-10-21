@@ -12,6 +12,11 @@ namespace mod3d {
 
 Grid::Grid(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg)
 {
+    resize(rows, cols, units::Meters(x0), units::Meters(y0), units::Meters(xSize), units::Meters(ySize), units::Degrees(rotDeg));
+}
+
+Grid::Grid(size_t rows, size_t cols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Degrees rotDeg)
+{
     resize(rows, cols, x0, y0, xSize, ySize, rotDeg);
 }
 
@@ -31,6 +36,11 @@ void Grid::swap(Grid &other) noexcept
 
 void Grid::resize(size_t rows, size_t cols, double x0, double y0, double xSize, double ySize, double rotDeg)
 {
+    resize(rows, cols, units::Meters(x0), units::Meters(y0), units::Meters(xSize), units::Meters(ySize), units::Degrees(rotDeg));
+}
+
+void Grid::resize(size_t rows, size_t cols, units::Meters x0, units::Meters y0, units::Meters xSize, units::Meters ySize, units::Degrees rotDeg)
+{
     rows_ = rows;
     cols_ = cols;
     x0_ = x0;
@@ -44,19 +54,19 @@ void Grid::resize(size_t rows, size_t cols, double x0, double y0, double xSize, 
 
 void Grid::update_precomputed_trig()
 {
-    const double rad = rot_deg_ * std::numbers::pi_v<double> / 180.0;
+    const double rad = rot_deg_.value() * std::numbers::pi_v<double> / 180.0;
     cos_rot_ = std::cos(rad);
     sin_rot_ = std::sin(rad);
 }
 
 double Grid::x(size_t row, size_t col) const noexcept
 {
-    return x0_ + (col * x_size_) * cos_rot_ - (row * y_size_) * sin_rot_;
+    return x0_.value() + (col * x_size_.value()) * cos_rot_ - (row * y_size_.value()) * sin_rot_;
 }
 
 double Grid::y(size_t row, size_t col) const noexcept
 {
-    return y0_ + (col * x_size_) * sin_rot_ + (row * y_size_) * cos_rot_;
+    return y0_.value() + (col * x_size_.value()) * sin_rot_ + (row * y_size_.value()) * cos_rot_;
 }
 
 Point3D Grid::point(size_t row, size_t col) const noexcept
@@ -82,8 +92,8 @@ double Grid::at(size_t row, size_t col) const
 
 double Grid::x_min() const noexcept
 {
-    if (empty()) return x0_;
-    if (rot_deg_ == 0.0) return x0_;
+    if (empty()) return x0_.value();
+    if (rot_deg_.value() == 0.0) return x0_.value();
     const double x00 = x(0, 0);
     const double x01 = x(0, cols_ - 1);
     const double x10 = x(rows_ - 1, 0);
@@ -93,8 +103,8 @@ double Grid::x_min() const noexcept
 
 double Grid::x_max() const noexcept
 {
-    if (empty()) return x0_;
-    if (rot_deg_ == 0.0) return x0_ + (cols_ > 0 ? (cols_ - 1) * x_size_ : 0.0);
+    if (empty()) return x0_.value();
+    if (rot_deg_.value() == 0.0) return x0_.value() + (cols_ > 0 ? (cols_ - 1) * x_size_.value() : 0.0);
     const double x00 = x(0, 0);
     const double x01 = x(0, cols_ - 1);
     const double x10 = x(rows_ - 1, 0);
@@ -104,8 +114,8 @@ double Grid::x_max() const noexcept
 
 double Grid::y_min() const noexcept
 {
-    if (empty()) return y0_;
-    if (rot_deg_ == 0.0) return y0_;
+    if (empty()) return y0_.value();
+    if (rot_deg_.value() == 0.0) return y0_.value();
     const double y00 = y(0, 0);
     const double y01 = y(0, cols_ - 1);
     const double y10 = y(rows_ - 1, 0);
@@ -115,8 +125,8 @@ double Grid::y_min() const noexcept
 
 double Grid::y_max() const noexcept
 {
-    if (empty()) return y0_;
-    if (rot_deg_ == 0.0) return y0_ + (rows_ > 0 ? (rows_ - 1) * y_size_ : 0.0);
+    if (empty()) return y0_.value();
+    if (rot_deg_.value() == 0.0) return y0_.value() + (rows_ > 0 ? (rows_ - 1) * y_size_.value() : 0.0);
     const double y00 = y(0, 0);
     const double y01 = y(0, cols_ - 1);
     const double y10 = y(rows_ - 1, 0);
@@ -136,10 +146,10 @@ double Grid::z_max() const noexcept
 
 bool Grid::world_to_grid(double xVal, double yVal, double &row, double &col) const noexcept
 {
-    if (x_size_ <= 0.0 || y_size_ <= 0.0) return false;
+    if (x_size_.value() <= 0.0 || y_size_.value() <= 0.0) return false;
 
-    const double dxVal = xVal - x0_;
-    const double dyVal = yVal - y0_;
+    const double dxVal = xVal - x0_.value();
+    const double dyVal = yVal - y0_.value();
 
     // Inverse 2D rotation matrix:
     // col * dx =  dxVal * cos(rot) + dyVal * sin(rot)
@@ -147,16 +157,25 @@ bool Grid::world_to_grid(double xVal, double yVal, double &row, double &col) con
     const double u =  dxVal * cos_rot_ + dyVal * sin_rot_;
     const double v = -dxVal * sin_rot_ + dyVal * cos_rot_;
 
-    col = u / x_size_;
-    row = v / y_size_;
+    col = u / x_size_.value();
+    row = v / y_size_.value();
     return true;
 }
 
 bool Grid::grid_to_world(double row, double col, double &xVal, double &yVal) const noexcept
 {
-    xVal = x0_ + (col * x_size_) * cos_rot_ - (row * y_size_) * sin_rot_;
-    yVal = y0_ + (col * x_size_) * sin_rot_ + (row * y_size_) * cos_rot_;
+    xVal = x0_.value() + (col * x_size_.value()) * cos_rot_ - (row * y_size_.value()) * sin_rot_;
+    yVal = y0_.value() + (col * x_size_.value()) * sin_rot_ + (row * y_size_.value()) * cos_rot_;
     return true;
+}
+
+bool Grid::grid_to_world(double row, double col, units::Meters &xVal, units::Meters &yVal) const noexcept
+{
+    double xRaw = 0.0, yRaw = 0.0;
+    bool res = grid_to_world(row, col, xRaw, yRaw);
+    xVal = units::Meters(xRaw);
+    yVal = units::Meters(yRaw);
+    return res;
 }
 
 bool Grid::contains(double xVal, double yVal) const noexcept
@@ -171,7 +190,7 @@ bool Grid::contains(double xVal, double yVal) const noexcept
 
 double Grid::interpolate(double xVal, double yVal) const
 {
-    if (empty() || x_size_ <= 0.0 || y_size_ <= 0.0) {
+    if (empty() || x_size_.value() <= 0.0 || y_size_.value() <= 0.0) {
         return GRID_DUMMY;
     }
 
@@ -497,10 +516,10 @@ bool Grid::save_srf6_binary(const std::filesystem::path &filePath) const
     file.write(reinterpret_cast<const char *>(&nx), 2);
     file.write(reinterpret_cast<const char *>(&ny), 2);
 
-    const double xlo = x0_;
-    const double xhi = x0_ + (cols_ - 1) * x_size_;
-    const double ylo = y0_;
-    const double yhi = y0_ + (rows_ - 1) * y_size_;
+    const double xlo = x0_.value();
+    const double xhi = x0_.value() + (cols_ - 1) * x_size_.value();
+    const double ylo = y0_.value();
+    const double yhi = y0_.value() + (rows_ - 1) * y_size_.value();
     const double zlo = min();
     const double zhi = max();
 
@@ -562,8 +581,8 @@ bool Grid::save_srf6_ascii(const std::filesystem::path &filePath) const
 
     file << "DSAA\n";
     file << cols_ << " " << rows_ << "\n";
-    file << std::setprecision(12) << x0_ << " " << (x0_ + (cols_ - 1) * x_size_) << "\n";
-    file << std::setprecision(12) << y0_ << " " << (y0_ + (rows_ - 1) * y_size_) << "\n";
+    file << std::setprecision(12) << x0_.value() << " " << (x0_.value() + (cols_ - 1) * x_size_.value()) << "\n";
+    file << std::setprecision(12) << y0_.value() << " " << (y0_.value() + (rows_ - 1) * y_size_.value()) << "\n";
     file << std::setprecision(12) << min() << " " << max() << "\n";
 
     for (size_t r = 0; r < rows_; ++r) {
@@ -743,9 +762,9 @@ bool Grid::load_file(const std::filesystem::path &filePath)
 std::ostream &operator<<(std::ostream &os, const Grid &grid)
 {
     os << "Grid(rows=" << grid.rows_ << ", cols=" << grid.cols_
-       << ", x0=" << grid.x0_ << ", y0=" << grid.y0_
-       << ", dx=" << grid.x_size_ << ", dy=" << grid.y_size_
-       << ", rot=" << grid.rot_deg_ << " deg)";
+       << ", x0=" << grid.x0_.value() << ", y0=" << grid.y0_.value()
+       << ", dx=" << grid.x_size_.value() << ", dy=" << grid.y_size_.value()
+       << ", rot=" << grid.rot_deg_.value() << " deg)";
     return os;
 }
 
