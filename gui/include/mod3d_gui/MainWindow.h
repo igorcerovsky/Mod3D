@@ -2,7 +2,6 @@
 
 #include "mod3d_gui/ModelDocument.h"
 #include "mod3d_gui/StatusBarManager.h"
-#include "mod3d_gui/Toolbars.h"
 #include "mod3d_gui/ProfileView.h"
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/GL3DView.h"
@@ -74,7 +73,6 @@ private:
     ModelDocument *m_doc;
     QMdiArea *m_mdiArea;
     StatusBarManager *m_statusBarMgr;
-    ToolbarsManager *m_toolbarsMgr;
     SettingsPane *m_settingsPane{nullptr};
     QPointer<ProfileView> m_lastActiveProfileView{nullptr};
 };

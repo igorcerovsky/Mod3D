@@ -15,8 +15,70 @@
 #include <QCloseEvent>
 #include <QApplication>
 #include <QTimer>
+#include <QIcon>
+#include <QPainter>
+#include <QPixmap>
+#include <QRadialGradient>
+#include <cmath>
 
 namespace mod3d_gui {
+
+namespace {
+QIcon createZoomIcon(bool zoomIn) {
+    QIcon icon;
+    for (int size : {16, 20, 24, 32, 48}) {
+        QPixmap pix(size, size);
+        pix.fill(Qt::transparent);
+        QPainter p(&pix);
+        p.setRenderHint(QPainter::Antialiasing, true);
+
+        qreal scale = size / 24.0;
+        qreal cx = 9.5 * scale;
+        qreal cy = 9.5 * scale;
+        qreal r = 5.8 * scale;
+        qreal strokeWidth = std::max(1.5, 2.0 * scale);
+
+        // Glass background gradient
+        QRadialGradient glassGrad(QPointF(cx - r * 0.3, cy - r * 0.3), r);
+        glassGrad.setColorAt(0.0, QColor(240, 249, 255, 230));
+        glassGrad.setColorAt(1.0, QColor(186, 230, 253, 170));
+        p.setBrush(glassGrad);
+
+        // Lens rim
+        QPen rimPen(QColor(30, 41, 59), strokeWidth);
+        rimPen.setJoinStyle(Qt::RoundJoin);
+        rimPen.setCapStyle(Qt::RoundCap);
+        p.setPen(rimPen);
+        p.drawEllipse(QPointF(cx, cy), r, r);
+
+        // Handle
+        qreal hx1 = cx + r * 0.7071;
+        qreal hy1 = cy + r * 0.7071;
+        qreal hx2 = size - 2.5 * scale;
+        qreal hy2 = size - 2.5 * scale;
+        QPen handlePen(QColor(30, 41, 59), strokeWidth * 1.3);
+        handlePen.setCapStyle(Qt::RoundCap);
+        p.setPen(handlePen);
+        p.drawLine(QPointF(hx1, hy1), QPointF(hx2, hy2));
+
+        // Sign (+ or -)
+        QPen signPen(QColor(15, 23, 42), std::max(1.5, 1.8 * scale));
+        signPen.setCapStyle(Qt::RoundCap);
+        p.setPen(signPen);
+
+        qreal signR = 3.2 * scale;
+        p.drawLine(QPointF(cx - signR, cy), QPointF(cx + signR, cy));
+        if (zoomIn) {
+            p.drawLine(QPointF(cx, cy - signR), QPointF(cx, cy + signR));
+        }
+
+        p.end();
+        icon.addPixmap(pix);
+    }
+
+    return QIcon::fromTheme(zoomIn ? "zoom-in" : "zoom-out", icon);
+}
+} // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -28,11 +90,6 @@ MainWindow::MainWindow(QWidget *parent)
     m_mdiArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
     m_statusBarMgr = new StatusBarManager(statusBar(), this);
-    m_toolbarsMgr = new ToolbarsManager(m_doc, this);
-
-    addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->mainToolBar());
-    addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->profileToolBar());
-    addToolBar(Qt::TopToolBarArea, m_toolbarsMgr->mapToolBar());
 
     m_settingsPane = new SettingsPane(m_doc, this, this);
     addDockWidget(Qt::RightDockWidgetArea, m_settingsPane);
@@ -48,7 +105,6 @@ MainWindow::MainWindow(QWidget *parent)
         if (sub && sub->widget()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
                 m_lastActiveProfileView = pv;
-                if (m_toolbarsMgr) m_toolbarsMgr->setActiveProfileView(pv);
                 if (m_doc) {
                     m_doc->setProfileOrientation(pv->profileOrientation());
                     m_doc->setProfileIndex(pv->profileIndex());
@@ -98,9 +154,6 @@ MainWindow::~MainWindow() {
         }
         m_mdiArea->disconnect(this);
     }
-    if (m_toolbarsMgr) {
-        m_toolbarsMgr->setActiveProfileView(nullptr);
-    }
     if (m_settingsPane) {
         m_settingsPane->setActiveSubWindow(nullptr);
     }
@@ -116,68 +169,6 @@ void MainWindow::setupConnections() {
     });
     connect(m_doc, &ModelDocument::statusMessage, this, [this](const QString &msg) {
         m_statusBarMgr->setMessage(msg);
-    });
-
-    connect(m_toolbarsMgr, &ToolbarsManager::actionTriggered, this, [this](const QString &act) {
-        if (act == "FileOpen") onFileOpen();
-        else if (act == "FileSave") onFileSave();
-        else if (act == "TileVertically") m_mdiArea->tileSubWindows();
-        else if (act == "TileHorizontally") m_mdiArea->tileSubWindows();
-        else if (act == "Cascade") m_mdiArea->cascadeSubWindows();
-        else if (act == "ZoomIn") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *pv = qobject_cast<ProfileView*>(active->widget())) pv->zoomIn();
-                else if (auto *mv = qobject_cast<MapView*>(active->widget())) mv->zoomIn();
-            }
-        } else if (act == "ZoomOut") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *pv = qobject_cast<ProfileView*>(active->widget())) pv->zoomOut();
-                else if (auto *mv = qobject_cast<MapView*>(active->widget())) mv->zoomOut();
-            }
-        } else if (act == "FitPage") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *pv = qobject_cast<ProfileView*>(active->widget())) pv->fitToWindow();
-                else if (auto *mv = qobject_cast<MapView*>(active->widget())) mv->fitToWindow();
-            }
-        } else if (act == "ToggleObsPoints") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
-                    mv->setShowStationPoints(!mv->showStationPoints());
-                }
-            }
-        } else if (act == "ToggleProfiles") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
-                    mv->setShowProfiles(!mv->showProfiles());
-                }
-            }
-        } else if (act == "ToggleReliefContours") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
-                    mv->setShowReliefContours(!mv->showReliefContours());
-                }
-            }
-        } else if (act == "ToggleReliefImage") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
-                    mv->setRasterMode(mv->rasterMode() == MapView::MapRasterMode::Relief ? MapView::MapRasterMode::Modeled : MapView::MapRasterMode::Relief);
-                }
-            }
-        } else if (act == "ToggleBodyFootprints") {
-            auto *active = m_mdiArea->activeSubWindow();
-            if (active) {
-                if (auto *mv = qobject_cast<MapView*>(active->widget())) {
-                    mv->setShowBodyFootprints(!mv->showBodyFootprints());
-                }
-            }
-        }
     });
 }
 
@@ -445,12 +436,10 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
     connect(pv, &ProfileView::profileSettingsChanged, this, [this, pv](int idx, ProfileOrientation o) {
         if (m_isDestroying || !m_mdiArea) return;
         m_lastActiveProfileView = pv;
-        if (m_toolbarsMgr) m_toolbarsMgr->setActiveProfileView(pv);
         if (m_doc) {
             m_doc->setProfileOrientation(o);
             m_doc->setProfileIndex(idx);
         }
-        if (m_toolbarsMgr) m_toolbarsMgr->updateProfileWidgets();
         for (auto *s : m_mdiArea->subWindowList()) {
             if (!s || !s->widget()) continue;
             if (auto *otherPv = qobject_cast<ProfileView*>(s->widget())) {
@@ -462,8 +451,6 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
             }
         }
     });
-
-    if (m_toolbarsMgr) m_toolbarsMgr->setActiveProfileView(pv);
 
     for (auto *s : m_mdiArea->subWindowList()) {
         if (s && s->widget()) {
@@ -692,7 +679,6 @@ void MainWindow::arrangeDefaultTiles() {
             if (pv->profileOrientation() == ProfileOrientation::EastWest) {
                 m_mdiArea->setActiveSubWindow(sub);
                 m_lastActiveProfileView = pv;
-                m_toolbarsMgr->setActiveProfileView(pv);
                 m_doc->setProfileOrientation(pv->profileOrientation());
                 m_doc->setProfileIndex(pv->profileIndex());
                 break;

@@ -14,7 +14,6 @@ set(GUI_HEADERS
     include/mod3d_gui/MapView.h
     include/mod3d_gui/GL3DView.h
     include/mod3d_gui/SpreadsheetView.h
-    include/mod3d_gui/Toolbars.h
     include/mod3d_gui/StatusBarManager.h
     include/mod3d_gui/dialogs/BodyPropertiesDialog.h
     include/mod3d_gui/dialogs/ModelPropertiesDialog.h
@@ -34,7 +33,6 @@ set(GUI_SOURCES
     src/MapView.cpp
     src/GL3DView.cpp
     src/SpreadsheetView.cpp
-    src/Toolbars.cpp
     src/StatusBarManager.cpp
     src/SettingsPane.cpp
     src/dialogs/BodyPropertiesDialog.cpp

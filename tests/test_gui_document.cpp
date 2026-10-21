@@ -6,6 +6,7 @@
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QWheelEvent>
+#include <QToolBar>
 
 #include "mod3d_gui/ModelDocument.h"
 #include "mod3d_gui/ProfileView.h"
@@ -1737,7 +1738,7 @@ TEST_F(GuiDocumentTest, SettingsPaneSyncsWithActiveViewContext) {
     pane->setActiveSubWindow(sub3D);
 }
 
-TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
+TEST_F(GuiDocumentTest, SettingsPaneFourTabsIntegration) {
     MainWindow mw;
     mw.resize(1400, 900);
 
@@ -1847,39 +1848,23 @@ TEST_F(GuiDocumentTest, SettingsPaneFourTabsAndProfilesToolbarIntegration) {
     }
 }
 
-TEST_F(GuiDocumentTest, NoOverlappingMeasuredToolbarOnMainWindow) {
+TEST_F(GuiDocumentTest, NoToolbarsOnMainWindow) {
     MainWindow mw;
     mw.resize(1280, 800);
 
-    // Verify all toolbars belonging to MainWindow
+    // Verify all toolbars belonging to MainWindow have been completely removed
     auto toolbars = mw.findChildren<QToolBar*>();
-    // Exactly 3 toolbars: MainToolBar, ProfileToolBar, MapToolBar
-    EXPECT_EQ(toolbars.size(), 3);
-    for (auto *tb : toolbars) {
-        EXPECT_TRUE(tb->objectName() == "MainToolBar" ||
-                    tb->objectName() == "ProfileToolBar" ||
-                    tb->objectName() == "MapToolBar");
-        // Verify no toolbar has an action named "Measured"
-        for (auto *act : tb->actions()) {
-            EXPECT_FALSE(act->text().contains("Measured", Qt::CaseInsensitive));
-        }
-    }
-
-    // Verify that the first actions of MainToolBar are New, Open, Save
-    auto *mainTb = mw.findChild<QToolBar*>("MainToolBar");
-    ASSERT_NE(mainTb, nullptr);
-    auto acts = mainTb->actions();
-    ASSERT_GE(acts.size(), 3);
-    EXPECT_TRUE(acts[0]->text().contains("New"));
-    EXPECT_TRUE(acts[1]->text().contains("Open"));
-    EXPECT_TRUE(acts[2]->text().contains("Save"));
+    EXPECT_EQ(toolbars.size(), 0);
+    EXPECT_EQ(mw.findChild<QToolBar*>("MainToolBar"), nullptr);
+    EXPECT_EQ(mw.findChild<QToolBar*>("ProfileToolBar"), nullptr);
+    EXPECT_EQ(mw.findChild<QToolBar*>("MapToolBar"), nullptr);
 
 #ifndef _WIN32
-    // Capture screenshot to visually verify toolbar area
+    // Capture screenshot to visually verify toolbar-free clean area
     QPixmap pix(1280, 800);
     pix.fill(Qt::white);
     mw.render(&pix);
-    saveTestScreenshot(pix, "toolbar_clean_no_measured_overlap.png");
+    saveTestScreenshot(pix, "mainwindow_clean_no_toolbars.png");
 #endif
 }
 
