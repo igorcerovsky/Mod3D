@@ -72,9 +72,6 @@ public:
     [[nodiscard]] bool showFeatureEdges() const noexcept { return m_showFeatureEdges; }
     void setShowFeatureEdges(bool show);
 
-    [[nodiscard]] bool showBottom() const noexcept { return m_showBottom; }
-    void setShowBottom(bool show);
-
     [[nodiscard]] bool showOuterFacets() const noexcept { return m_showOuterFacets; }
     void setShowOuterFacets(bool show);
 
@@ -231,7 +228,6 @@ private:
     // Render toggles
     bool m_wireframe{false};
     bool m_showFeatureEdges{true};
-    bool m_showBottom{false};
     bool m_showOuterFacets{false};
     bool m_showRelief{true};
     ReliefMode m_reliefMode{ReliefMode::Wireframe};

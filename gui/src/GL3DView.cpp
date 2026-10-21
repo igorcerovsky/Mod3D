@@ -464,7 +464,6 @@ int GL3DView::hitTestBody(const QPoint &pos) {
         return static_cast<float>(zMid + (zRaw - zMid) * m_zScale);
     };
 
-    double dBot = m_doc->model().z_min_val();
     int bestBodyId = -1;
     float minT = std::numeric_limits<float>::max();
 
@@ -498,13 +497,6 @@ int GL3DView::hitTestBody(const QPoint &pos) {
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible) continue;
         for (const auto &fct : mesh.facets) {
-            if (!m_showBottom &&
-                fct[0].z <= dBot + 1e-3 &&
-                fct[1].z <= dBot + 1e-3 &&
-                fct[2].z <= dBot + 1e-3) {
-                continue;
-            }
-
             QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
             QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
             QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), scaleZ(fct[2].z));
@@ -848,8 +840,6 @@ void GL3DView::updateBodyBuffers() {
     std::vector<Vertex3D> opaqueVerts;
     m_bodyRanges.clear();
 
-    double dBot = m_doc->model().z_min_val();
-
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible) continue;
 
@@ -865,13 +855,6 @@ void GL3DView::updateBodyBuffers() {
             float a = 1.0f;
 
             for (const auto &fct : mesh.facets) {
-                if (!m_showBottom &&
-                    fct[0].z <= dBot + 1e-3 &&
-                    fct[1].z <= dBot + 1e-3 &&
-                    fct[2].z <= dBot + 1e-3) {
-                    continue;
-                }
-
                 auto norm = fct.normal();
                 double nLen = std::sqrt(norm.x*norm.x + norm.y*norm.y + norm.z*norm.z);
                 if (nLen > 1e-6) { norm.x /= nLen; norm.y /= nLen; norm.z /= nLen; }
@@ -1264,7 +1247,6 @@ void GL3DView::paintSoftware(QPainter &painter) {
     };
     std::vector<SortFacet> facetsToDraw;
 
-    double dBot = model.z_min_val();
     double azRad = m_azimuth * 3.14159265358979323846 / 180.0;
     double pitchRad = (m_pitch - 90.0) * 3.14159265358979323846 / 180.0;
 
@@ -1278,13 +1260,6 @@ void GL3DView::paintSoftware(QPainter &painter) {
         bool isSelected = (mesh.bodyId == m_selectedBodyId);
 
         for (const auto &fct : mesh.facets) {
-            if (!m_showBottom &&
-                fct[0].z <= dBot + 1e-3 &&
-                fct[1].z <= dBot + 1e-3 &&
-                fct[2].z <= dBot + 1e-3) {
-                continue;
-            }
-
             auto pt0 = project(fct[0].x, fct[0].y, fct[0].z);
             auto pt1 = project(fct[1].x, fct[1].y, fct[1].z);
             auto pt2 = project(fct[2].x, fct[2].y, fct[2].z);
@@ -1853,7 +1828,6 @@ void GL3DView::drawBodies() {
 
     if (m_bodyMeshes.empty()) return;
 
-    double dBot = m_doc->model().z_min_val();
     float zMid = static_cast<float>((m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5);
 
     auto scaleZ = [this, zMid](double zRaw) -> float {
@@ -1928,9 +1902,6 @@ void GL3DView::drawBodies() {
                 }
 
                 for (const auto &edge : mesh.featureEdges) {
-                    if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
-                        continue;
-                    }
                     targetList.push_back({ static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z), r, g, b, a });
                     targetList.push_back({ static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z), r, g, b, a });
                 }
@@ -1987,13 +1958,6 @@ void GL3DView::drawBodies() {
             float bVal = bc.b / 255.0f;
 
             for (const auto &fct : mesh.facets) {
-                if (!m_showBottom &&
-                    fct[0].z <= dBot + 1e-3 &&
-                    fct[1].z <= dBot + 1e-3 &&
-                    fct[2].z <= dBot + 1e-3) {
-                    continue;
-                }
-
                 QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), static_cast<float>(fct[0].z));
                 QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), static_cast<float>(fct[1].z));
                 QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y), static_cast<float>(fct[2].z));
@@ -2089,9 +2053,6 @@ void GL3DView::drawBodies() {
                 }
 
                 for (const auto &edge : mesh.featureEdges) {
-                    if (!m_showBottom && edge.first.z <= dBot + 1e-3 && edge.second.z <= dBot + 1e-3) {
-                        continue;
-                    }
                     targetList.push_back({ static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z), r, g, b, a });
                     targetList.push_back({ static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z), r, g, b, a });
                 }
@@ -2858,12 +2819,6 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     actCompass->setCheckable(true);
     actCompass->setChecked(m_showOrientationIndicator);
 
-    auto *actBottom = menu.addAction(tr("Show Bottom Base Slab"), this, [this](bool checked) {
-        setShowBottom(checked);
-    });
-    actBottom->setCheckable(true);
-    actBottom->setChecked(m_showBottom);
-
     auto *actOuter = menu.addAction(tr("Show Outer Buffer Facets"), this, [this](bool checked) {
         setShowOuterFacets(checked);
     });
@@ -3021,14 +2976,6 @@ void GL3DView::setShowProfilePlane(bool show) {
 void GL3DView::setShowFeatureEdges(bool show) {
     m_showFeatureEdges = show;
     update();
-}
-
-void GL3DView::setShowBottom(bool show) {
-    if (m_showBottom != show) {
-        m_showBottom = show;
-        m_meshDirty = true;
-        update();
-    }
 }
 
 void GL3DView::setShowOuterFacets(bool show) {

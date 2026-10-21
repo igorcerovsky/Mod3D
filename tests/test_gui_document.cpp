@@ -1182,10 +1182,6 @@ TEST_F(GuiDocumentTest, GL3DViewFacetedBodiesAndCameraControls) {
     view.setWireframeMode(true);
     EXPECT_TRUE(view.wireframeMode());
 
-    EXPECT_FALSE(view.showBottom());
-    view.setShowBottom(true);
-    EXPECT_TRUE(view.showBottom());
-
     EXPECT_FALSE(view.showOuterFacets());
     view.setShowOuterFacets(true);
     EXPECT_TRUE(view.showOuterFacets());
