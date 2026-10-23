@@ -1,6 +1,7 @@
 # Build outputs
 build/
 .cache/
+.tmp/
 compile_commands.json
 bin/
 lib/

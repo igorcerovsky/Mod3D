@@ -12,7 +12,7 @@ TEST(ProjectIOTest, MetadataAndSettingsRoundtrip) {
     proj.metadata().description = "3D gravity and magnetic inversion over porphyry complex";
     proj.metadata().created_at = "2026-10-02T10:00:00Z";
     proj.metadata().modified_at = "2026-10-02T11:00:00Z";
-    proj.metadata().version = "2.4.3";
+    proj.metadata().version = "2.4.4";
 
     proj.settings().compute_real_time = true;
     proj.settings().gravity_formula = 1;
@@ -30,7 +30,7 @@ TEST(ProjectIOTest, MetadataAndSettingsRoundtrip) {
     EXPECT_EQ(loaded.metadata().description, "3D gravity and magnetic inversion over porphyry complex");
     EXPECT_EQ(loaded.metadata().created_at, "2026-10-02T10:00:00Z");
     EXPECT_EQ(loaded.metadata().modified_at, "2026-10-02T11:00:00Z");
-    EXPECT_EQ(loaded.metadata().version, "2.4.3");
+    EXPECT_EQ(loaded.metadata().version, "2.4.4");
 
     EXPECT_TRUE(loaded.settings().compute_real_time);
     EXPECT_EQ(loaded.settings().gravity_formula, 1);
