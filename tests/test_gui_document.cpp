@@ -16,6 +16,8 @@
 #include "mod3d_gui/MainWindow.h"
 #include "mod3d_gui/SettingsPane.h"
 #include "mod3d_gui/dialogs/BodyPropertiesDialog.h"
+#include "mod3d_gui/dialogs/DefineObservationDialog.h"
+#include "mod3d_gui/dialogs/VerticalRangeDialog.h"
 
 using namespace mod3d_gui;
 
@@ -2782,6 +2784,142 @@ TEST_F(GuiDocumentTest, GL3DViewQuadrantCutAndSettingsSync) {
     }
     EXPECT_FALSE(pmCutWire.isNull());
 }
+
+TEST_F(GuiDocumentTest, DefineObservationDialogNewModelWorkflow) {
+    ModelDocument doc;
+
+    // 1. Custom dimensions mode (Min/Max/Increment synchronization)
+    {
+        DefineObservationDialog dlg(&doc);
+        EXPECT_EQ(dlg.creationMode(), DefineObservationDialog::CreationMode::DefineObservation);
+        EXPECT_FALSE(dlg.isFromGridFile());
+        EXPECT_EQ(dlg.rowsSpinBox()->value(), 21);
+        EXPECT_EQ(dlg.colsSpinBox()->value(), 21);
+
+        dlg.minXSpinBox()->setValue(1000.0);
+        dlg.dxSpinBox()->setValue(250.0);
+        dlg.maxXSpinBox()->setValue(3500.0); // (3500 - 1000) / 250 + 1 = 11 cols
+        EXPECT_EQ(dlg.colsSpinBox()->value(), 11);
+
+        dlg.minYSpinBox()->setValue(2000.0);
+        dlg.dySpinBox()->setValue(500.0);
+        dlg.maxYSpinBox()->setValue(6000.0); // (6000 - 2000) / 500 + 1 = 9 rows
+        EXPECT_EQ(dlg.rowsSpinBox()->value(), 9);
+
+        dlg.minZSpinBox()->setValue(-3000.0);
+        dlg.maxZSpinBox()->setValue(500.0);
+
+        EXPECT_TRUE(dlg.applyToDocument());
+        EXPECT_EQ(doc.observation().rows(), 9u);
+        EXPECT_EQ(doc.observation().cols(), 11u);
+        EXPECT_EQ(doc.model().rows(), 11); // 9 + 2 padding rows
+        EXPECT_EQ(doc.model().cols(), 13); // 11 + 2 padding cols
+        EXPECT_DOUBLE_EQ(doc.model().x0_val(), 1000.0);
+        EXPECT_DOUBLE_EQ(doc.model().y0_val(), 2000.0);
+        EXPECT_DOUBLE_EQ(doc.model().dx_val(), 250.0);
+        EXPECT_DOUBLE_EQ(doc.model().dy_val(), 500.0);
+        EXPECT_DOUBLE_EQ(doc.model().z_min_val(), -3000.0);
+        EXPECT_DOUBLE_EQ(doc.model().z_max_val(), 500.0);
+    }
+
+    // 2. Create a temporary Surfer .grd file to test "Get From Grid File" and "Import observation area relief grid"
+    mod3d::Grid testGrid(6, 8, 500.0, 1500.0, 100.0, 200.0);
+    for (size_t r = 0; r < testGrid.rows(); ++r) {
+        for (size_t c = 0; c < testGrid.cols(); ++c) {
+            testGrid(r, c) = 120.0 + static_cast<double>(r * 10 + c * 5);
+        }
+    }
+    const std::string tmpGrdPath = "test_define_obs_relief.grd";
+    ASSERT_TRUE(testGrid.save_srf6_ascii(tmpGrdPath));
+
+    // 2a. DefineObservation mode + Get From Grid File (geometry only, flat top at ZMax)
+    {
+        DefineObservationDialog dlg(&doc);
+        ASSERT_TRUE(dlg.loadFromGridFile(QString::fromStdString(tmpGrdPath)));
+        EXPECT_TRUE(dlg.isFromGridFile());
+        EXPECT_FALSE(dlg.minXSpinBox()->isEnabled());
+        EXPECT_EQ(dlg.rowsSpinBox()->value(), 6);
+        EXPECT_EQ(dlg.colsSpinBox()->value(), 8);
+        EXPECT_DOUBLE_EQ(dlg.minXSpinBox()->value(), 500.0);
+        EXPECT_DOUBLE_EQ(dlg.maxXSpinBox()->value(), 1200.0);
+        EXPECT_DOUBLE_EQ(dlg.minYSpinBox()->value(), 1500.0);
+        EXPECT_DOUBLE_EQ(dlg.maxYSpinBox()->value(), 2500.0);
+
+        dlg.minZSpinBox()->setValue(-2500.0);
+        dlg.maxZSpinBox()->setValue(800.0);
+        EXPECT_TRUE(dlg.applyToDocument());
+        EXPECT_EQ(doc.observation().rows(), 6u);
+        EXPECT_EQ(doc.observation().cols(), 8u);
+        EXPECT_DOUBLE_EQ(doc.model().z(1, 1, 0), 800.0);
+    }
+
+    // 2b. ImportReliefGrid mode (model surface topography + observation relief initialized from grid)
+    {
+        DefineObservationDialog dlg(&doc);
+        dlg.setCreationMode(DefineObservationDialog::CreationMode::ImportReliefGrid);
+        dlg.minZSpinBox()->setValue(-2000.0);
+        dlg.maxZSpinBox()->setValue(100.0); // Below grid max (205.0), should auto-raise to ceil(grid.max_value())
+        ASSERT_TRUE(dlg.loadFromGridFile(QString::fromStdString(tmpGrdPath)));
+        EXPECT_GE(dlg.maxZSpinBox()->value(), 205.0);
+
+        EXPECT_TRUE(dlg.applyToDocument());
+        EXPECT_EQ(doc.observation().rows(), 6u);
+        EXPECT_EQ(doc.observation().cols(), 8u);
+        // Surface relief should match testGrid(0, 0) = 120.0 at interior model node (1, 1)
+        EXPECT_NEAR(doc.model().z(1, 1, 0), 120.0, 1e-4);
+        EXPECT_NEAR(doc.observation().surface_relief()(0, 0), 120.0, 1e-4);
+    }
+
+    std::error_code ec;
+    std::filesystem::remove(tmpGrdPath, ec);
+}
+
+TEST_F(GuiDocumentTest, VerticalRangeDialogUpdatesProfileAnd3DViewsAndResetsCamera) {
+    ModelDocument doc;
+    doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -2000.0, 500.0);
+
+    ProfileView pv(&doc, ProfileOrientation::EastWest);
+    GL3DView glv(&doc);
+    glv.resetCamera();
+
+    EXPECT_DOUBLE_EQ(pv.worldZMin(), -2000.0);
+    EXPECT_DOUBLE_EQ(pv.worldZMax(), 500.0);
+    EXPECT_NEAR(glv.target().z(), -750.0f, 1e-3f);
+    // Initial maxDim = max(1000, 1000, 2500) = 2500 -> distance = 2500 * 1.8 = 4500
+    EXPECT_NEAR(glv.cameraDistance(), 4500.0f, 1.0f);
+
+    // Zoom/pan the views away from defaults
+    pv.zoomIn();
+    glv.setZoom(2.5f);
+    glv.setTarget(QVector3D(100.0f, 200.0f, 300.0f));
+
+    // Change vertical limits via VerticalRangeDialog
+    VerticalRangeDialog vDlg(&doc);
+    EXPECT_DOUBLE_EQ(vDlg.minZSpinBox()->value(), -2000.0);
+    EXPECT_DOUBLE_EQ(vDlg.maxZSpinBox()->value(), 500.0);
+
+    vDlg.minZSpinBox()->setValue(-8000.0);
+    vDlg.maxZSpinBox()->setValue(2000.0);
+    EXPECT_TRUE(vDlg.applyToDocument());
+
+    // Model vertical range and bottom boundary updated
+    EXPECT_DOUBLE_EQ(doc.model().z_min_val(), -8000.0);
+    EXPECT_DOUBLE_EQ(doc.model().z_max_val(), 2000.0);
+    int nBot = doc.model().upper_bound(1, 1);
+    EXPECT_DOUBLE_EQ(doc.model().z(1, 1, nBot), -8000.0);
+
+    // ProfileView extent automatically reset to new vertical range
+    EXPECT_DOUBLE_EQ(pv.worldZMin(), -8000.0);
+    EXPECT_DOUBLE_EQ(pv.worldZMax(), 2000.0);
+
+    // GL3DView camera extent (target Z, distance, zoom) automatically reset
+    // New midZ = (-8000 + 2000) / 2 = -3000; new maxDim = max(1000, 1000, 10000) = 10000 -> distance = 18000
+    EXPECT_NEAR(glv.target().z(), -3000.0f, 1e-3f);
+    EXPECT_NEAR(glv.cameraDistance(), 18000.0f, 1.0f);
+    EXPECT_NEAR(glv.zoom(), 1.0f, 1e-4f);
+}
+
+
 
 
 

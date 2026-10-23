@@ -61,6 +61,11 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
     emit displaySettingsChanged();
     update();
   });
+  connect(m_doc, &ModelDocument::verticalRangeChanged, this,
+          [this](double, double) {
+            fitToWindow();
+            update();
+          });
   connect(m_doc, &ModelDocument::fieldDisplayToggled, this, [this]() {
     if (hasMeasuredField()) {
       m_showMeasuredCurve = m_doc->showMeasuredField();

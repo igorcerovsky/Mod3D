@@ -694,7 +694,9 @@ void MainWindow::onFileNew() {
         if (res == QMessageBox::Yes) onFileSave();
         else if (res == QMessageBox::Cancel) return;
     }
-    m_doc->createDefaultProject();
+    DefineObservationDialog dlg(m_doc, this);
+    dlg.setWindowTitle(tr("New Model - Define Observation Area"));
+    dlg.exec();
 }
 
 void MainWindow::onFileOpen() {

@@ -13,6 +13,11 @@ public:
     explicit VerticalRangeDialog(ModelDocument *doc, QWidget *parent = nullptr);
     ~VerticalRangeDialog() override = default;
 
+    bool applyToDocument();
+
+    QDoubleSpinBox *minZSpinBox() const noexcept { return m_spinZMin; }
+    QDoubleSpinBox *maxZSpinBox() const noexcept { return m_spinZMax; }
+
 private:
     ModelDocument *m_doc;
     QDoubleSpinBox *m_spinZMin;

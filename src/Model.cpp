@@ -281,6 +281,39 @@ void Model::set_z(int row, int col, int index, double z_val)
     }
 }
 
+void Model::set_vertical_range(units::Meters zMin, units::Meters zMax)
+{
+    const double oldZMax = z_max_.value();
+    bool flatTopAtOldZMax = (rows_ > 0 && cols_ > 0);
+    for (int r = 0; r < rows_ && flatTopAtOldZMax; ++r) {
+        for (int c = 0; c < cols_; ++c) {
+            const ColumnPoint *ptTop = at(r, c, 0);
+            if (!ptTop || std::abs(ptTop->z().value() - oldZMax) > 1e-5) {
+                flatTopAtOldZMax = false;
+                break;
+            }
+        }
+    }
+
+    z_min_ = zMin;
+    z_max_ = zMax;
+    for (int r = 0; r < rows_; ++r) {
+        for (int c = 0; c < cols_; ++c) {
+            if (flatTopAtOldZMax) {
+                if (ColumnPoint *ptTop = at(r, c, 0)) {
+                    set_column_point_coords(*ptTop, r, c, z_max_);
+                }
+            }
+            int nBot = upper_bound(r, c);
+            if (nBot >= 1) {
+                if (ColumnPoint *pt = at(r, c, nBot)) {
+                    set_column_point_coords(*pt, r, c, z_min_);
+                }
+            }
+        }
+    }
+}
+
 double Model::thickness(int row, int col, int index) const
 {
     if (index <= 0 || (index % 2) == 0) return 0.0;

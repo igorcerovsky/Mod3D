@@ -42,6 +42,11 @@ public:
     void fitToWindow();
     void setEqualScale(bool equal);
 
+    [[nodiscard]] double worldXMin() const noexcept { return m_worldXMin; }
+    [[nodiscard]] double worldXMax() const noexcept { return m_worldXMax; }
+    [[nodiscard]] double worldZMin() const noexcept { return m_worldZMin; }
+    [[nodiscard]] double worldZMax() const noexcept { return m_worldZMax; }
+
     // Profile State & Navigation (Independent per View)
     ProfileOrientation profileOrientation() const noexcept { return m_profileOrient; }
     void setProfileOrientation(ProfileOrientation orient);

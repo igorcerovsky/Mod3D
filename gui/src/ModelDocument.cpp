@@ -55,6 +55,63 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
     return okModel;
 }
 
+bool ModelDocument::newProjectFromReliefGrid(const mod3d::Grid &reliefGrid, double zMin, double zMax) {
+    if (reliefGrid.empty() || reliefGrid.rows() < 2 || reliefGrid.cols() < 2) {
+        return false;
+    }
+    m_project.clear();
+    m_undoStack.clear();
+
+    bool okModel = m_project.model().init(reliefGrid, zMin, zMax);
+    m_project.model().set_compute_real_time(m_realTimeCompute);
+    m_project.observation().init_geometry(
+        reliefGrid.rows(), reliefGrid.cols(),
+        reliefGrid.x0(), reliefGrid.y0(),
+        reliefGrid.dx(), reliefGrid.dy(),
+        reliefGrid.rotation());
+    m_project.observation().set_surface_relief(reliefGrid);
+    m_project.observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 0.0);
+    m_project.observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 0.0);
+
+    m_profileOrient = ProfileOrientation::EastWest;
+    m_profileIndex = static_cast<int>(reliefGrid.rows()) / 2;
+    m_filePath.clear();
+    m_modified = false;
+    m_showMeasured = false;
+    m_showDiff = false;
+
+    computeAll();
+
+    emit documentReset();
+    emit profileChanged(m_profileIndex, m_profileOrient);
+    emit documentModifiedChanged(false);
+    emit statusMessage(tr("New model created from relief grid (%1x%2 nodes).")
+                           .arg(reliefGrid.rows())
+                           .arg(reliefGrid.cols()));
+    return okModel;
+}
+
+bool ModelDocument::newProjectFromReliefGrid(const QString &filePath, double zMin, double zMax) {
+    mod3d::Grid g;
+    if (!g.load_file(filePath.toStdString())) {
+        return false;
+    }
+    return newProjectFromReliefGrid(g, zMin, zMax);
+}
+
+bool ModelDocument::setVerticalRange(double zMin, double zMax) {
+    if (zMin >= zMax) {
+        return false;
+    }
+    m_project.model().set_vertical_range(zMin, zMax);
+    m_project.model().init_facet_list();
+    setModified(true);
+    emit verticalRangeChanged(zMin, zMax);
+    emit modelGeometryChanged();
+    emit statusMessage(tr("Updated vertical range to [%1, %2] m.").arg(zMin).arg(zMax));
+    return true;
+}
+
 bool ModelDocument::openFile(const QString &path) {
     bool ok = false;
     if (path.endsWith(".m3d", Qt::CaseInsensitive)) {

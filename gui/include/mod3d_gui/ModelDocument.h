@@ -134,6 +134,9 @@ public:
     // Project Lifecycle
     void createDefaultProject();
     bool newProject(int rows, int cols, double x0, double y0, double dx, double dy, double zMin, double zMax);
+    bool newProjectFromReliefGrid(const mod3d::Grid &reliefGrid, double zMin, double zMax);
+    bool newProjectFromReliefGrid(const QString &filePath, double zMin, double zMax);
+    bool setVerticalRange(double zMin, double zMax);
     bool openFile(const QString &path);
     bool saveFile(const QString &path = QString());
     bool loadMeasuredGrid(const QString &filePath, std::optional<mod3d::FieldComponent> comp = std::nullopt);
@@ -236,6 +239,7 @@ public:
 signals:
     void documentModifiedChanged(bool modified);
     void documentReset();
+    void verticalRangeChanged(double zMin, double zMax);
     void modelGeometryChanged();
     void profileChanged(int index, ProfileOrientation orient);
     void activeFieldChanged(mod3d::FieldComponent comp);

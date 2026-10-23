@@ -382,6 +382,12 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
         resetCamera();
         update();
     });
+    connect(m_doc, &ModelDocument::verticalRangeChanged, this, [this](double, double) {
+        m_meshDirty = true;
+        m_targetInitialized = false;
+        resetCamera();
+        update();
+    });
 }
 
 GL3DView::~GL3DView() {
@@ -3152,18 +3158,25 @@ void GL3DView::resetCamera() {
     m_mouseDragging = false;
     m_draggingGizmo = false;
     if (m_camAnim) { m_camAnim->stop(); }
+    m_pitch = 30.0f;
+    m_azimuth = -45.0f;
+    m_panX = 0.0f;
+    m_panY = 0.0f;
+    m_zoom = 1.0f;
     if (m_doc) {
         const auto &model = m_doc->model();
         double midX = (model.x_min_val() + model.x_max_val()) * 0.5;
         double midY = (model.y_min_val() + model.y_max_val()) * 0.5;
         double midZ = (model.z_min_val() + model.z_max_val()) * 0.5;
         m_target = QVector3D(static_cast<float>(midX), static_cast<float>(midY), static_cast<float>(midZ));
+
+        double maxDim = std::max({ model.x_max_val() - model.x_min_val(),
+                                   model.y_max_val() - model.y_min_val(),
+                                   (model.z_max_val() - model.z_min_val()) * std::max(1.0f, m_zScale) });
+        if (maxDim <= 0.0) maxDim = 10000.0;
+        m_distance = static_cast<float>(maxDim * 1.8);
+        m_targetInitialized = true;
     }
-    m_pitch = 30.0f;
-    m_azimuth = -45.0f;
-    m_panX = 0.0f;
-    m_panY = 0.0f;
-    m_zoom = 1.0f;
     emit cameraChanged();
     update();
 }

@@ -2,6 +2,7 @@
 #include <QVBoxLayout>
 #include <QFormLayout>
 #include <QDialogButtonBox>
+#include <QMessageBox>
 
 namespace mod3d_gui {
 
@@ -31,13 +32,25 @@ VerticalRangeDialog::VerticalRangeDialog(ModelDocument *doc, QWidget *parent)
 
     auto *btnBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(btnBox, &QDialogButtonBox::accepted, this, [this]() {
-        // Update model and observation vertical range
-        m_doc->setModified(true);
-        accept();
+        if (applyToDocument()) {
+            accept();
+        }
     });
     connect(btnBox, &QDialogButtonBox::rejected, this, &QDialog::reject);
 
     mainLayout->addWidget(btnBox);
+}
+
+bool VerticalRangeDialog::applyToDocument() {
+    if (!m_doc) return false;
+    const double zMin = m_spinZMin->value();
+    const double zMax = m_spinZMax->value();
+    if (zMin >= zMax) {
+        QMessageBox::warning(this, tr("Invalid Vertical Range"),
+                             tr("Minimum Z must be strictly less than Maximum Z."));
+        return false;
+    }
+    return m_doc->setVerticalRange(zMin, zMax);
 }
 
 } // namespace mod3d_gui

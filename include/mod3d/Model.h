@@ -142,6 +142,10 @@ public:
     void set_z_min(double zMin) noexcept { z_min_ = units::Meters(zMin); }
     void set_z_max(units::Meters zMax) noexcept { z_max_ = zMax; }
     void set_z_max(double zMax) noexcept { z_max_ = units::Meters(zMax); }
+    void set_vertical_range(units::Meters zMin, units::Meters zMax);
+    void set_vertical_range(double zMin, double zMax) {
+        set_vertical_range(units::Meters(zMin), units::Meters(zMax));
+    }
     [[nodiscard]] constexpr units::Meters x_min() const noexcept { return x_min_; }
     [[nodiscard]] constexpr units::Meters x_max() const noexcept { return x_max_; }
     [[nodiscard]] constexpr units::Meters y_min() const noexcept { return y_min_; }
