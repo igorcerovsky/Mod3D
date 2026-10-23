@@ -90,6 +90,85 @@ public:
     [[nodiscard]] bool showTransparentProfilePlane() const noexcept { return m_transparentProfiles; }
     void setShowTransparentProfilePlane(bool enable);
 
+    [[nodiscard]] bool quadrantCut() const noexcept { return m_quadrantCut; }
+    void setQuadrantCut(bool enable);
+
+    struct QuadrantCutState {
+        bool active{false};
+        bool hasEW{false};
+        int ewRow{1};
+        double ewY{0.0};
+        bool cutPosY{false};
+
+        bool hasSN{false};
+        int snCol{1};
+        double snX{0.0};
+        bool cutPosX{true};
+
+        bool operator==(const QuadrantCutState &o) const noexcept {
+            return active == o.active &&
+                   hasEW == o.hasEW && ewRow == o.ewRow && cutPosY == o.cutPosY &&
+                   hasSN == o.hasSN && snCol == o.snCol && cutPosX == o.cutPosX;
+        }
+        bool operator!=(const QuadrantCutState &o) const noexcept {
+            return !(*this == o);
+        }
+
+        [[nodiscard]] bool inCutX(double x, double eps = 1e-3) const noexcept {
+            if (!hasSN) return true;
+            return cutPosX ? (x > snX + eps) : (x < snX - eps);
+        }
+
+        [[nodiscard]] bool inCutY(double y, double eps = 1e-3) const noexcept {
+            if (!hasEW) return true;
+            return cutPosY ? (y > ewY + eps) : (y < ewY - eps);
+        }
+
+        [[nodiscard]] bool isPointCut(double x, double y, double eps = 1e-3) const noexcept {
+            if (!active) return false;
+            return inCutX(x, eps) && inCutY(y, eps);
+        }
+
+        [[nodiscard]] bool isFacetOnCutWall(const mod3d::Facet3Pt &fct, double eps = 1e-3) const noexcept {
+            if (!active) return false;
+            double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
+            double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
+            if (hasEW &&
+                std::abs(fct[0].y - ewY) <= eps &&
+                std::abs(fct[1].y - ewY) <= eps &&
+                std::abs(fct[2].y - ewY) <= eps &&
+                inCutX(xm, eps)) {
+                return true;
+            }
+            if (hasSN &&
+                std::abs(fct[0].x - snX) <= eps &&
+                std::abs(fct[1].x - snX) <= eps &&
+                std::abs(fct[2].x - snX) <= eps &&
+                inCutY(ym, eps)) {
+                return true;
+            }
+            return false;
+        }
+
+        [[nodiscard]] bool isSegmentOnCutWall(const mod3d::Point3D &p0, const mod3d::Point3D &p1, double eps = 1e-3) const noexcept {
+            if (!active) return false;
+            double xm = 0.5 * (p0.x + p1.x);
+            double ym = 0.5 * (p0.y + p1.y);
+            if (hasEW && std::abs(p0.y - ewY) <= eps && std::abs(p1.y - ewY) <= eps && inCutX(xm, -eps)) {
+                return true;
+            }
+            if (hasSN && std::abs(p0.x - snX) <= eps && std::abs(p1.x - snX) <= eps && inCutY(ym, -eps)) {
+                return true;
+            }
+            return false;
+        }
+    };
+
+    [[nodiscard]] QuadrantCutState computeQuadrantCutState() const;
+    void generateBodyCutCaps(int bodyId, const QuadrantCutState &cut,
+                             std::vector<mod3d::Facet3Pt> &outCapFacets,
+                             std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> &outCapEdges) const;
+
     [[nodiscard]] float zScale() const noexcept { return m_zScale; }
     void setZScale(float zScale);
 
@@ -125,6 +204,7 @@ signals:
     void projectionChanged(bool isOrtho);
     void bodySelected(int bodyId);
     void reliefModeChanged(ReliefMode mode);
+    void quadrantCutChanged(bool enabled);
 
 protected:
     void initializeGL() override;
@@ -236,6 +316,8 @@ private:
     bool m_showOrientationIndicator{true};
     bool m_transparentBodies{false};
     bool m_transparentProfiles{true};
+    bool m_quadrantCut{false};
+    QuadrantCutState m_cachedCutState{};
     QPointer<ProfileView> m_lastActiveProfileView{nullptr};
 };
 

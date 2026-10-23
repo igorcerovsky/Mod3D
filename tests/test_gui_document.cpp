@@ -2604,4 +2604,184 @@ TEST_F(GuiDocumentTest, FirstVertexMoveAfterOpeningModelDoesNotBlowUpRealTimeFie
     EXPECT_NEAR(realtimeVal, initialVal, std::abs(initialVal) * 0.2 + 1.0);
 }
 
+TEST_F(GuiDocumentTest, GL3DViewQuadrantCutAndSettingsSync) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    if (!std::filesystem::exists(samplePath)) {
+        samplePath = "Examples/Sample.m3d";
+    }
+    ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
+
+    ProfileView *pvEW1 = nullptr;
+    ProfileView *pvSN1 = nullptr;
+    GL3DView *glv = nullptr;
+    QMdiSubWindow *sub3D = nullptr;
+
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest) pvEW1 = pv;
+            else if (pv->profileOrientation() == ProfileOrientation::SouthNorth) pvSN1 = pv;
+        } else if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = g;
+            sub3D = sub;
+        }
+    }
+    ASSERT_NE(pvEW1, nullptr);
+    ASSERT_NE(pvSN1, nullptr);
+    ASSERT_NE(glv, nullptr);
+    ASSERT_NE(sub3D, nullptr);
+
+    // 1. Default state is disabled
+    EXPECT_FALSE(glv->quadrantCut());
+    EXPECT_FALSE(glv->computeQuadrantCutState().active);
+
+    // 2. Activate 3D subwindow and check SettingsPane synchronization
+    mw.mdiArea()->setActiveSubWindow(sub3D);
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    pane->selectDisplayTab();
+
+    auto *chkQuadCut = pane->quadrantCutCheckBox3D();
+    ASSERT_NE(chkQuadCut, nullptr);
+    EXPECT_FALSE(chkQuadCut->isChecked());
+
+    int sigCount = 0;
+    bool lastSigVal = false;
+    QObject::connect(glv, &GL3DView::quadrantCutChanged, [&](bool enabled) {
+        ++sigCount;
+        lastSigVal = enabled;
+    });
+
+    // Toggle via SettingsPane checkbox
+    chkQuadCut->setChecked(true);
+    EXPECT_TRUE(glv->quadrantCut());
+    EXPECT_EQ(sigCount, 1);
+    EXPECT_TRUE(lastSigVal);
+
+    // Toggle via 'C' keyboard shortcut on GL3DView and verify SettingsPane checkbox updates
+    QKeyEvent pressC(QEvent::KeyPress, Qt::Key_C, Qt::NoModifier, "c");
+    QCoreApplication::sendEvent(glv, &pressC);
+    EXPECT_FALSE(glv->quadrantCut());
+    EXPECT_FALSE(chkQuadCut->isChecked());
+    EXPECT_EQ(sigCount, 2);
+    EXPECT_FALSE(lastSigVal);
+
+    // Re-enable quadrant cut
+    glv->setQuadrantCut(true);
+    EXPECT_TRUE(glv->quadrantCut());
+    EXPECT_TRUE(chkQuadCut->isChecked());
+
+    // 3. Open a second E-W and second S-N profile to verify front-most selection across camera quadrants
+    pvEW1->setProfileIndex(2); // row = 3
+    pvSN1->setProfileIndex(2); // col = 3
+
+    auto *pvEW2 = new ProfileView(mw.document(), ProfileOrientation::EastWest, 5, &mw);
+    mw.mdiArea()->addSubWindow(pvEW2);
+
+    auto *pvSN2 = new ProfileView(mw.document(), ProfileOrientation::SouthNorth, 6, &mw);
+    mw.mdiArea()->addSubWindow(pvSN2);
+
+    // Camera at default South-East quadrant (azimuth = -45 deg -> +X East, -Y South)
+    // Front-most E-W profile is minimum Y (row = 3), front-most S-N profile is maximum X (col = 7)
+    glv->setCameraAngles(30.0f, -45.0f);
+    auto cutSE = glv->computeQuadrantCutState();
+    EXPECT_TRUE(cutSE.active);
+    EXPECT_TRUE(cutSE.hasEW);
+    EXPECT_TRUE(cutSE.hasSN);
+    EXPECT_TRUE(cutSE.cutPosX);
+    EXPECT_FALSE(cutSE.cutPosY);
+    EXPECT_EQ(cutSE.ewRow, 3);
+    EXPECT_EQ(cutSE.snCol, 7);
+
+    // Camera at North-West quadrant (azimuth = +135 deg -> -X West, +Y North)
+    // Front-most E-W profile is maximum Y (row = 6), front-most S-N profile is minimum X (col = 3)
+    glv->setCameraAngles(30.0f, 135.0f);
+    auto cutNW = glv->computeQuadrantCutState();
+    EXPECT_TRUE(cutNW.active);
+    EXPECT_FALSE(cutNW.cutPosX);
+    EXPECT_TRUE(cutNW.cutPosY);
+    EXPECT_EQ(cutNW.ewRow, 6);
+    EXPECT_EQ(cutNW.snCol, 3);
+
+    // Camera at South-West quadrant (azimuth = +45 deg -> -X West, -Y South)
+    glv->setCameraAngles(30.0f, 45.0f);
+    auto cutSW = glv->computeQuadrantCutState();
+    EXPECT_TRUE(cutSW.active);
+    EXPECT_FALSE(cutSW.cutPosX);
+    EXPECT_FALSE(cutSW.cutPosY);
+    EXPECT_EQ(cutSW.ewRow, 3);
+    EXPECT_EQ(cutSW.snCol, 3);
+
+    // Camera at North-East quadrant (azimuth = -135 deg -> +X East, +Y North)
+    glv->setCameraAngles(30.0f, -135.0f);
+    auto cutNE = glv->computeQuadrantCutState();
+    EXPECT_TRUE(cutNE.active);
+    EXPECT_TRUE(cutNE.cutPosX);
+    EXPECT_TRUE(cutNE.cutPosY);
+    EXPECT_EQ(cutNE.ewRow, 6);
+    EXPECT_EQ(cutNE.snCol, 7);
+
+    // 4. Verify cross-section cap generation for bodies intersecting the cut walls
+    // Position both profiles through an interior cell where a body has 3D volume
+    int bodyRow = mw.document()->model().rows() / 2;
+    int bodyCol = mw.document()->model().cols() / 2;
+    for (int r = 2; r < mw.document()->model().rows() - 3; ++r) {
+        for (int c = 2; c < mw.document()->model().cols() - 3; ++c) {
+            if (mw.document()->model().count(r, c) > 2 &&
+                mw.document()->model().count(r + 1, c) > 2 &&
+                mw.document()->model().count(r, c + 1) > 2) {
+                bodyRow = r;
+                bodyCol = c;
+                break;
+            }
+        }
+    }
+    pvEW1->setProfileIndex(bodyRow - 1);
+    pvEW2->setProfileIndex(bodyRow - 1);
+    pvSN1->setProfileIndex(bodyCol - 1);
+    pvSN2->setProfileIndex(bodyCol - 1);
+
+    glv->setCameraAngles(30.0f, -45.0f);
+    auto cutBodySE = glv->computeQuadrantCutState();
+    ASSERT_TRUE(cutBodySE.active);
+    EXPECT_EQ(cutBodySE.ewRow, bodyRow);
+    EXPECT_EQ(cutBodySE.snCol, bodyCol);
+
+    size_t totalCapFacets = 0;
+    size_t totalCapEdges = 0;
+    for (const auto &b : mw.document()->model().bodies()) {
+        std::vector<mod3d::Facet3Pt> capFacets;
+        std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> capEdges;
+        glv->generateBodyCutCaps(b->id(), cutBodySE, capFacets, capEdges);
+        totalCapFacets += capFacets.size();
+        totalCapEdges += capEdges.size();
+    }
+    // Cut bodies are hollow: zero facets on the cut plane, while cut rim edges are generated
+    EXPECT_EQ(totalCapFacets, 0u);
+    EXPECT_GT(totalCapEdges, 0u);
+
+    // 5. Render in software mode with both Surface and Wireframe relief and quadrant cut active
+    QPixmap pmCutSurf(600, 500);
+    pmCutSurf.fill(Qt::white);
+    {
+        QPainter painter(&pmCutSurf);
+        glv->setShowRelief(true);
+        glv->setReliefMode(GL3DView::ReliefMode::Surface);
+        glv->paintSoftware(painter);
+    }
+    EXPECT_FALSE(pmCutSurf.isNull());
+
+    QPixmap pmCutWire(600, 500);
+    pmCutWire.fill(Qt::white);
+    {
+        QPainter painter(&pmCutWire);
+        glv->setReliefMode(GL3DView::ReliefMode::Wireframe);
+        glv->paintSoftware(painter);
+    }
+    EXPECT_FALSE(pmCutWire.isNull());
+}
+
+
 

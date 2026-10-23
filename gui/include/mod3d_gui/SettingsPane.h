@@ -51,6 +51,7 @@ public:
     QCheckBox *bodyTransparentCheckBox() const { return m_chkBodyTransparent; }
     QCheckBox *reliefCheckBox3D() const { return m_chk3DRelief; }
     QComboBox *reliefModeComboBox3D() const { return m_combo3DReliefMode; }
+    QCheckBox *quadrantCutCheckBox3D() const { return m_chk3DQuadrantCut; }
 
 signals:
     void requestBodyPropertiesDialog(int bodyId);
@@ -132,6 +133,7 @@ private:
     QCheckBox *m_chk3DDepthFog{nullptr};
     QCheckBox *m_chk3DTransparentBodies{nullptr};
     QCheckBox *m_chk3DTransparentSlices{nullptr};
+    QCheckBox *m_chk3DQuadrantCut{nullptr};
 
     // Tab 2: Profiles Tab Controls
     QPushButton *m_btnProfTabOrientEW{nullptr};
