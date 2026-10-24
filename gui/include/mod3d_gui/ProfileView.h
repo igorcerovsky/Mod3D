@@ -6,6 +6,7 @@
 #include <QMenu>
 #include <QPoint>
 #include <QRect>
+#include <memory>
 #include <vector>
 
 namespace mod3d_gui {
@@ -54,10 +55,15 @@ public:
     int profileIndex() const noexcept { return m_profileIndex; }
     void setProfileIndex(int index);
     void moveProfile(int delta);
+    void moveToPerpendicularProfile(int lineIdx);
     int maxProfileIndex() const noexcept;
     double currentProfileCoordinate() const noexcept;
     int profileColumnLineCount() const noexcept;
     double columnCoordinate(int colIdx) const noexcept;
+    int hoverLineIndex() const noexcept { return m_hoverLineIdx; }
+    void setHoverLineIndex(int idx) noexcept { m_hoverLineIdx = idx; }
+    ProfileView *findPerpendicularProfileView() const;
+    std::unique_ptr<QMenu> createGridLineContextMenu(int lineIdx, double targetZ = 0.0);
     void getRowCol(int lineIdx, int &row, int &col) const;
 
     void jumpToExtreme();

@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <QApplication>
+#include <QAction>
 #include <QPixmap>
 #include <QPainter>
 #include <filesystem>
@@ -2886,8 +2887,88 @@ TEST_F(GuiDocumentTest, DefineObservationDialogNewModelWorkflow) {
         EXPECT_NEAR(doc.observation().surface_relief()(0, 0), 120.0, 1e-4);
     }
 
+    // 2c. Import mode with ONLY measured field:
+    // Uses grid dimensions for observation area definition, and topography min/max Z statistics are grayed out
+    const std::string tmpFieldPath = "test_define_obs_field.grd";
+    {
+        mod3d::Grid fieldGrid(5, 7, 200.0, 400.0, 50.0, 80.0);
+        for (size_t r = 0; r < fieldGrid.rows(); ++r) {
+            for (size_t c = 0; c < fieldGrid.cols(); ++c) {
+                fieldGrid(r, c) = 15.0 + static_cast<double>(r * 2 + c * 3);
+            }
+        }
+        ASSERT_TRUE(fieldGrid.save_srf6_ascii(tmpFieldPath));
+
+        DefineObservationDialog dlg(&doc);
+        dlg.setCreationMode(DefineObservationDialog::CreationMode::ImportReliefGrid);
+        EXPECT_EQ(dlg.getTopoGridButton()->text(), "Get Topography From Grid...");
+        EXPECT_EQ(dlg.getFieldGridButton()->text(), "Get Field From Grid...");
+
+        ASSERT_TRUE(dlg.loadFromFieldGridFile(QString::fromStdString(tmpFieldPath)));
+        EXPECT_TRUE(dlg.hasFieldGrid());
+        EXPECT_FALSE(dlg.hasTopoGrid());
+
+        // Uses field grid dimensions for observation area definition
+        EXPECT_EQ(dlg.rowsSpinBox()->value(), 5);
+        EXPECT_EQ(dlg.colsSpinBox()->value(), 7);
+        EXPECT_DOUBLE_EQ(dlg.minXSpinBox()->value(), 200.0);
+        EXPECT_DOUBLE_EQ(dlg.minYSpinBox()->value(), 400.0);
+        EXPECT_DOUBLE_EQ(dlg.dxSpinBox()->value(), 50.0);
+        EXPECT_DOUBLE_EQ(dlg.dySpinBox()->value(), 80.0);
+        EXPECT_DOUBLE_EQ(dlg.lengthX(), 300.0); // (7 - 1) * 50 = 300
+        EXPECT_DOUBLE_EQ(dlg.lengthY(), 320.0); // (5 - 1) * 80 = 320
+
+        // Topography min/max Z statistics must be grayed out
+        EXPECT_FALSE(dlg.gridMinZLabel()->isEnabled());
+        EXPECT_FALSE(dlg.gridMaxZLabel()->isEnabled());
+        EXPECT_TRUE(dlg.gridMinZLabel()->text().contains("N/A"));
+        EXPECT_TRUE(dlg.gridMaxZLabel()->text().contains("N/A"));
+
+        dlg.minZSpinBox()->setValue(-1500.0);
+        dlg.maxZSpinBox()->setValue(250.0);
+        EXPECT_TRUE(dlg.applyToDocument());
+
+        EXPECT_EQ(doc.observation().rows(), 5u);
+        EXPECT_EQ(doc.observation().cols(), 7u);
+        EXPECT_DOUBLE_EQ(doc.model().z(1, 1, 0), 250.0); // Flat top at zMax because no topography was imported
+        EXPECT_TRUE(doc.hasObservedGrid(mod3d::FieldComponent::GZ));
+        EXPECT_TRUE(doc.showMeasuredField());
+        EXPECT_NEAR((*doc.observedGrid(mod3d::FieldComponent::GZ))(0, 0), 15.0, 1e-4);
+    }
+
+    // 2d. Import mode with BOTH topography and measured field:
+    // Topography min/max Z statistics are enabled, and both topography and field are applied
+    {
+        DefineObservationDialog dlg(&doc);
+        dlg.setCreationMode(DefineObservationDialog::CreationMode::ImportReliefGrid);
+        ASSERT_TRUE(dlg.loadFromTopoGridFile(QString::fromStdString(tmpGrdPath)));
+        ASSERT_TRUE(dlg.loadFromFieldGridFile(QString::fromStdString(tmpFieldPath)));
+        EXPECT_TRUE(dlg.hasTopoGrid());
+        EXPECT_TRUE(dlg.hasFieldGrid());
+
+        // Topography statistics enabled
+        EXPECT_TRUE(dlg.gridMinZLabel()->isEnabled());
+        EXPECT_TRUE(dlg.gridMaxZLabel()->isEnabled());
+        EXPECT_TRUE(dlg.gridMinZLabel()->text().contains("120.00"));
+        EXPECT_TRUE(dlg.gridMaxZLabel()->text().contains("205.00"));
+
+        dlg.minZSpinBox()->setValue(-3000.0);
+        dlg.maxZSpinBox()->setValue(500.0);
+        EXPECT_TRUE(dlg.applyToDocument());
+
+        EXPECT_EQ(doc.observation().rows(), 6u);
+        EXPECT_EQ(doc.observation().cols(), 8u);
+        // Surface relief from topography
+        EXPECT_NEAR(doc.model().z(1, 1, 0), 120.0, 1e-4);
+        EXPECT_NEAR(doc.observation().surface_relief()(0, 0), 120.0, 1e-4);
+        // Measured field from field grid
+        EXPECT_TRUE(doc.hasObservedGrid(mod3d::FieldComponent::GZ));
+        EXPECT_TRUE(doc.showMeasuredField());
+    }
+
     std::error_code ec;
     std::filesystem::remove(tmpGrdPath, ec);
+    std::filesystem::remove(tmpFieldPath, ec);
 }
 
 TEST_F(GuiDocumentTest, VerticalRangeDialogUpdatesProfileAnd3DViewsAndResetsCamera) {
@@ -2935,7 +3016,197 @@ TEST_F(GuiDocumentTest, VerticalRangeDialogUpdatesProfileAnd3DViewsAndResetsCame
     EXPECT_NEAR(glv.zoom(), 1.0f, 1e-4f);
 }
 
+TEST_F(GuiDocumentTest, ProfileMoveToPerpendicularProfile) {
+    ModelDocument doc;
+    doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -2000.0, 500.0);
 
+    ProfileView pv(&doc, ProfileOrientation::EastWest, 2);
+    EXPECT_EQ(pv.profileOrientation(), ProfileOrientation::EastWest);
+    EXPECT_EQ(pv.profileIndex(), 2);
+    EXPECT_TRUE(pv.windowTitle().contains("Profile 3 [E-W]"));
 
+    // Move to perpendicular profile at line 4 (South-North, line 4)
+    pv.moveToPerpendicularProfile(4);
+    EXPECT_EQ(pv.profileOrientation(), ProfileOrientation::SouthNorth);
+    EXPECT_EQ(pv.profileIndex(), 4);
+    EXPECT_EQ(pv.hoverLineIndex(), 2);
+    EXPECT_TRUE(pv.windowTitle().contains("Profile 5 [S-N]"));
 
+    // Move back to perpendicular profile at line 1 (East-West, line 1)
+    pv.moveToPerpendicularProfile(1);
+    EXPECT_EQ(pv.profileOrientation(), ProfileOrientation::EastWest);
+    EXPECT_EQ(pv.profileIndex(), 1);
+    EXPECT_EQ(pv.hoverLineIndex(), 4);
+    EXPECT_TRUE(pv.windowTitle().contains("Profile 2 [E-W]"));
+}
+
+TEST_F(GuiDocumentTest, ProfilePerpendicularProfileMenuAndNavigation) {
+    // 1. Standalone ProfileView with no perpendicular profile window
+    ModelDocument doc;
+    doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -2000.0, 500.0);
+
+    ProfileView standalonePv(&doc, ProfileOrientation::EastWest, 2);
+    EXPECT_EQ(standalonePv.findPerpendicularProfileView(), nullptr);
+
+    auto menuStandalone = standalonePv.createGridLineContextMenu(3, -500.0);
+    ASSERT_NE(menuStandalone, nullptr);
+
+    QAction *actPerpStandalone = nullptr;
+    for (auto *act : menuStandalone->actions()) {
+        if (act->text().contains("Perpendicular Profile")) {
+            actPerpStandalone = act;
+            break;
+        }
+    }
+    ASSERT_NE(actPerpStandalone, nullptr);
+    // Menu item must be disabled when perpendicular profile doesn't exist
+    EXPECT_FALSE(actPerpStandalone->isEnabled());
+
+    // 2. Full MainWindow workspace with both E-W and S-N profiles
+    MainWindow mw;
+    mw.resize(1000, 700);
+
+    ProfileView *pvEW = nullptr;
+    ProfileView *pvNS = nullptr;
+    QMdiSubWindow *subNS = nullptr;
+
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (!sub) continue;
+        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest && !pvEW) {
+                pvEW = pv;
+            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth && !pvNS) {
+                pvNS = pv;
+                subNS = sub;
+            }
+        }
+    }
+
+    ASSERT_NE(pvEW, nullptr);
+    ASSERT_NE(pvNS, nullptr);
+    ASSERT_NE(subNS, nullptr);
+
+    // Verify perpendicular cross-referencing
+    EXPECT_EQ(pvEW->findPerpendicularProfileView(), pvNS);
+    EXPECT_EQ(pvNS->findPerpendicularProfileView(), pvEW);
+
+    int initialEWIndex = pvEW->profileIndex();
+    pvNS->setProfileIndex(1); // Set to 1 initially
+
+    // Right-click context menu on pvEW at line index 4
+    auto menuEW = pvEW->createGridLineContextMenu(4, -500.0);
+    ASSERT_NE(menuEW, nullptr);
+
+    QAction *actPerpEW = nullptr;
+    for (auto *act : menuEW->actions()) {
+        if (act->text().contains("Perpendicular Profile")) {
+            actPerpEW = act;
+            break;
+        }
+    }
+    ASSERT_NE(actPerpEW, nullptr);
+    // Menu item must be enabled because perpendicular profile exists
+    EXPECT_TRUE(actPerpEW->isEnabled());
+
+    // Trigger action: must NOT reuse/modify current profile, but navigate the perpendicular profile
+    actPerpEW->trigger();
+
+    // Current profile pvEW orientation and index must remain unchanged
+    EXPECT_EQ(pvEW->profileOrientation(), ProfileOrientation::EastWest);
+    EXPECT_EQ(pvEW->profileIndex(), initialEWIndex);
+
+    // Perpendicular profile pvNS must be updated to target position line 4
+    EXPECT_EQ(pvNS->profileOrientation(), ProfileOrientation::SouthNorth);
+    EXPECT_EQ(pvNS->profileIndex(), 4);
+    EXPECT_EQ(pvNS->hoverLineIndex(), initialEWIndex);
+
+    // 3. If perpendicular profile window is closed, menu becomes disabled
+    subNS->close();
+    EXPECT_EQ(pvEW->findPerpendicularProfileView(), nullptr);
+
+    auto menuAfterClose = pvEW->createGridLineContextMenu(4, -500.0);
+    QAction *actAfterClose = nullptr;
+    for (auto *act : menuAfterClose->actions()) {
+        if (act->text().contains("Perpendicular Profile")) {
+            actAfterClose = act;
+            break;
+        }
+    }
+    ASSERT_NE(actAfterClose, nullptr);
+    EXPECT_FALSE(actAfterClose->isEnabled());
+}
+
+TEST_F(GuiDocumentTest, GL3DViewProfileReliefIntersectionSoftwareRender) {
+    ModelDocument doc;
+    doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -2000.0, 500.0);
+
+    GL3DView glv(&doc);
+    glv.resize(600, 450);
+
+    // Render with software renderer (exercises profile plane & relief intersection lines)
+    QPixmap pix(600, 450);
+    pix.fill(Qt::black);
+    QPainter painter(&pix);
+    glv.paintSoftware(painter);
+    painter.end();
+
+    // Verify non-empty rendering
+    QImage img = pix.toImage();
+    bool hasNonBlack = false;
+    for (int y = 0; y < img.height() && !hasNonBlack; ++y) {
+        for (int x = 0; x < img.width() && !hasNonBlack; ++x) {
+            if (img.pixelColor(x, y) != QColor(Qt::black)) {
+                hasNonBlack = true;
+            }
+        }
+    }
+    EXPECT_TRUE(hasNonBlack);
+}
+
+TEST_F(GuiDocumentTest, ImportTopographyDemUpdatesModelProfileAnd3DView) {
+    ModelDocument doc;
+    doc.newProject(7, 9, 0.0, 0.0, 100.0, 100.0, -2000.0, 300.0);
+
+    ProfileView pv(&doc, ProfileOrientation::EastWest, 2);
+    GL3DView glv(&doc);
+
+    // Initial flat surface at 300.0 m
+    EXPECT_DOUBLE_EQ(doc.model().z(1, 1, 0), 300.0);
+    EXPECT_DOUBLE_EQ(pv.worldZMax(), 300.0);
+
+    // Create a topography DEM grid matching model core dimensions (5x7)
+    // with mountain topography ranging from 350.0 m to 820.0 m
+    mod3d::Grid topoGrid(5, 7, 0.0, 0.0, 100.0, 100.0);
+    for (size_t r = 0; r < topoGrid.rows(); ++r) {
+        for (size_t c = 0; c < topoGrid.cols(); ++c) {
+            topoGrid(r, c) = 350.0 + static_cast<double>(r * 40 + c * 70);
+        }
+    }
+    const std::string tmpTopoPath = "test_import_topography.grd";
+    ASSERT_TRUE(topoGrid.save_srf6_ascii(tmpTopoPath));
+
+    // Import topography DEM via loadReliefGrid
+    ASSERT_TRUE(doc.loadReliefGrid(QString::fromStdString(tmpTopoPath)));
+
+    // 1. Model surface topography z(r, c, 0) updated with imported DEM
+    EXPECT_NEAR(doc.model().z(1, 1, 0), topoGrid(0, 0), 1e-4);
+    EXPECT_NEAR(doc.model().z(3, 4, 0), topoGrid(2, 3), 1e-4);
+    EXPECT_NEAR(doc.observation().surface_relief()(0, 0), topoGrid(0, 0), 1e-4);
+
+    // 2. Model vertical range ceiling raised to accommodate peak topography
+    EXPECT_GE(doc.model().z_max_val(), 820.0);
+
+    // 3. ProfileView automatically adjusted vertical extent to show new topography
+    EXPECT_GE(pv.worldZMax(), 820.0);
+
+    // 4. GL3DView rendered without errors and reflects new topography
+    QPixmap pix(400, 300);
+    pix.fill(Qt::black);
+    QPainter painter(&pix);
+    glv.paintSoftware(painter);
+    painter.end();
+
+    std::error_code ec;
+    std::filesystem::remove(tmpTopoPath, ec);
+}
 

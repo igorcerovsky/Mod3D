@@ -1392,6 +1392,10 @@ void GL3DView::paintSoftware(QPainter &painter) {
         double z1 = model.z_max_val();
 
         // Inactive slices (subtle blue)
+        int rMaxSw = model.rows() - 2;
+        int cMaxSw = model.cols() - 2;
+        QuadrantCutState cutSw = computeQuadrantCutState();
+
         for (const auto &sl : swSlices) {
             if (sl.isActive) continue;
             QPolygonF poly;
@@ -1411,9 +1415,35 @@ void GL3DView::paintSoftware(QPainter &painter) {
             painter.setBrush(m_transparentProfiles ? QColor(59, 130, 246, 20) : Qt::NoBrush);
             painter.setPen(QPen(QColor(59, 130, 246, 120), 1.0, Qt::DashLine));
             painter.drawPolygon(poly);
+
+            // Relief intersection curve highlighted with inactive profile plane color
+            painter.setPen(QPen(QColor(59, 130, 246), 2.2, Qt::SolidLine));
+            if (sl.orient == ProfileOrientation::EastWest) {
+                int rowIdx = std::clamp(sl.index + 1, 1, rMaxSw);
+                double y = model.yd_val(rowIdx);
+                for (int c = 1; c < cMaxSw; ++c) {
+                    double xA = model.xd_val(c);
+                    double xB = model.xd_val(c + 1);
+                    if (cutSw.active && cutSw.isPointCut(0.5 * (xA + xB), y)) continue;
+                    double zA = model.z(rowIdx, c, 0);
+                    double zB = model.z(rowIdx, c + 1, 0);
+                    painter.drawLine(project(xA, y, zA).first, project(xB, y, zB).first);
+                }
+            } else {
+                int colIdx = std::clamp(sl.index + 1, 1, cMaxSw);
+                double x = model.xd_val(colIdx);
+                for (int rIdx = 1; rIdx < rMaxSw; ++rIdx) {
+                    double yA = model.yd_val(rIdx);
+                    double yB = model.yd_val(rIdx + 1);
+                    if (cutSw.active && cutSw.isPointCut(x, 0.5 * (yA + yB))) continue;
+                    double zA = model.z(rIdx, colIdx, 0);
+                    double zB = model.z(rIdx + 1, colIdx, 0);
+                    painter.drawLine(project(x, yA, zA).first, project(x, yB, zB).first);
+                }
+            }
         }
 
-        // Active slice (prominent amber)
+        // Active slice (prominent amber / red)
         for (const auto &sl : swSlices) {
             if (!sl.isActive) continue;
             QPolygonF poly;
@@ -1433,6 +1463,32 @@ void GL3DView::paintSoftware(QPainter &painter) {
             painter.setBrush(m_transparentProfiles ? QColor(245, 158, 11, 45) : Qt::NoBrush);
             painter.setPen(QPen(QColor(217, 119, 6, 220), 1.8, Qt::DashLine));
             painter.drawPolygon(poly);
+
+            // Relief intersection curve highlighted with active profile plane color
+            painter.setPen(QPen(QColor(230, 50, 35), 3.2, Qt::SolidLine));
+            if (sl.orient == ProfileOrientation::EastWest) {
+                int rowIdx = std::clamp(sl.index + 1, 1, rMaxSw);
+                double y = model.yd_val(rowIdx);
+                for (int c = 1; c < cMaxSw; ++c) {
+                    double xA = model.xd_val(c);
+                    double xB = model.xd_val(c + 1);
+                    if (cutSw.active && cutSw.isPointCut(0.5 * (xA + xB), y)) continue;
+                    double zA = model.z(rowIdx, c, 0);
+                    double zB = model.z(rowIdx, c + 1, 0);
+                    painter.drawLine(project(xA, y, zA).first, project(xB, y, zB).first);
+                }
+            } else {
+                int colIdx = std::clamp(sl.index + 1, 1, cMaxSw);
+                double x = model.xd_val(colIdx);
+                for (int rIdx = 1; rIdx < rMaxSw; ++rIdx) {
+                    double yA = model.yd_val(rIdx);
+                    double yB = model.yd_val(rIdx + 1);
+                    if (cutSw.active && cutSw.isPointCut(x, 0.5 * (yA + yB))) continue;
+                    double zA = model.z(rIdx, colIdx, 0);
+                    double zB = model.z(rIdx + 1, colIdx, 0);
+                    painter.drawLine(project(x, yA, zA).first, project(x, yB, zB).first);
+                }
+            }
         }
     }
 
@@ -2531,9 +2587,62 @@ void GL3DView::drawProfilePlane() {
         }
     }
 
+    // 3. Highlighted profile plane intersection with relief
+    std::vector<FlatVertex3D> inactiveReliefLines;
+    std::vector<FlatVertex3D> activeReliefLines;
+
+    auto scaleZ = [zMid, this](double zRaw) -> float {
+        return zMid + static_cast<float>(zRaw - zMid) * m_zScale;
+    };
+    float zEps = std::max(0.20f, (z1 - z0) * 0.0012f);
+    QuadrantCutState cut = computeQuadrantCutState();
+    int rMax = m.rows() - 2;
+    int cMax = m.cols() - 2;
+
+    for (const auto &sl : slices) {
+        auto &targetLines = sl.isActive ? activeReliefLines : inactiveReliefLines;
+        // Highlighting color of the profile plane
+        float r = sl.isActive ? 0.98f : 0.32f;
+        float g = sl.isActive ? 0.22f : 0.65f;
+        float b = sl.isActive ? 0.16f : 0.96f;
+        float a = sl.isActive ? 1.0f  : 0.90f;
+
+        if (sl.orient == ProfileOrientation::EastWest) {
+            int rowIdx = std::clamp(sl.index + 1, 1, rMax);
+            float y = static_cast<float>(m.yd_val(rowIdx));
+            for (int c = 1; c < cMax; ++c) {
+                float xA = static_cast<float>(m.xd_val(c));
+                float xB = static_cast<float>(m.xd_val(c + 1));
+                if (cut.active && cut.isPointCut(0.5 * (xA + xB), y)) continue;
+
+                float zA = scaleZ(m.z(rowIdx, c, 0)) + zEps;
+                float zB = scaleZ(m.z(rowIdx, c + 1, 0)) + zEps;
+
+                targetLines.push_back({ xA, y, zA, r, g, b, a });
+                targetLines.push_back({ xB, y, zB, r, g, b, a });
+            }
+        } else {
+            int colIdx = std::clamp(sl.index + 1, 1, cMax);
+            float x = static_cast<float>(m.xd_val(colIdx));
+            for (int rIdx = 1; rIdx < rMax; ++rIdx) {
+                float yA = static_cast<float>(m.yd_val(rIdx));
+                float yB = static_cast<float>(m.yd_val(rIdx + 1));
+                if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB))) continue;
+
+                float zA = scaleZ(m.z(rIdx, colIdx, 0)) + zEps;
+                float zB = scaleZ(m.z(rIdx + 1, colIdx, 0)) + zEps;
+
+                targetLines.push_back({ x, yA, zA, r, g, b, a });
+                targetLines.push_back({ x, yB, zB, r, g, b, a });
+            }
+        }
+    }
+
     renderLines(inactiveLines, 1.2f);
     renderLines(activeLines, 2.8f);
     renderLines(ridgeLines, 3.0f);
+    renderLines(inactiveReliefLines, 2.6f);
+    renderLines(activeReliefLines, 4.0f);
 }
 
 int GL3DView::hitTestGizmo(const QPoint &pos) {

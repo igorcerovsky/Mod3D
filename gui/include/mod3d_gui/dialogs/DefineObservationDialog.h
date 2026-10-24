@@ -8,6 +8,7 @@
 #include <QRadioButton>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QComboBox>
 #include <QLabel>
 
 namespace mod3d_gui {
@@ -18,7 +19,7 @@ class DefineObservationDialog : public QDialog {
 public:
     enum class CreationMode {
         DefineObservation = 0, // Legacy CDlgStart option 0: Custom dimensions or geometry from grid file
-        ImportReliefGrid = 1   // Legacy CDlgStart option 1: Import observation / surface relief grid (.grd)
+        ImportReliefGrid = 1   // Legacy CDlgStart option 1: Import observation area grid (topography and/or field)
     };
 
     explicit DefineObservationDialog(ModelDocument *doc, QWidget *parent = nullptr);
@@ -27,9 +28,24 @@ public:
     CreationMode creationMode() const noexcept { return m_mode; }
     void setCreationMode(CreationMode mode);
 
-    bool loadFromGridFile(const QString &filePath);
+    // Topography Grid operations
+    bool loadFromTopoGridFile(const QString &filePath);
+    void clearTopoGrid();
+    bool hasTopoGrid() const noexcept { return m_fromTopoGrid; }
+    QString topoGridFilePath() const;
+
+    // Measured Field Grid operations
+    bool loadFromFieldGridFile(const QString &filePath);
+    void clearFieldGrid();
+    bool hasFieldGrid() const noexcept { return m_fromFieldGrid; }
+    QString fieldGridFilePath() const;
+    mod3d::FieldComponent fieldComponent() const noexcept;
+    void setFieldComponent(mod3d::FieldComponent comp);
+
+    // Backward-compatibility wrappers
+    bool loadFromGridFile(const QString &filePath) { return loadFromTopoGridFile(filePath); }
     void clearGridFile();
-    bool isFromGridFile() const noexcept { return m_fromGrid; }
+    bool isFromGridFile() const noexcept { return m_fromTopoGrid || m_fromFieldGrid; }
     QString gridFilePath() const;
 
     bool applyToDocument();
@@ -43,6 +59,12 @@ public:
     // Widget accessors for testing
     QRadioButton *defineObsRadioButton() const noexcept { return m_radioDefineObs; }
     QRadioButton *importReliefRadioButton() const noexcept { return m_radioImportRelief; }
+    QPushButton *getTopoGridButton() const noexcept { return m_btnGetTopoGrid; }
+    QPushButton *getFieldGridButton() const noexcept { return m_btnGetFieldGrid; }
+    QPushButton *clearTopoGridButton() const noexcept { return m_btnClearTopoGrid; }
+    QPushButton *clearFieldGridButton() const noexcept { return m_btnClearFieldGrid; }
+    QComboBox *fieldComponentComboBox() const noexcept { return m_comboFieldComp; }
+
     QDoubleSpinBox *minXSpinBox() const noexcept { return m_spinX0; }
     QDoubleSpinBox *maxXSpinBox() const noexcept { return m_spinXMax; }
     QDoubleSpinBox *dxSpinBox() const noexcept { return m_spinDX; }
@@ -63,25 +85,38 @@ private:
     void syncXMaxFromCols();
     void syncRowsFromYBounds();
     void syncYMaxFromRows();
+    void syncDimensionsFromGrid(const mod3d::Grid &g);
     void updateControlStates();
     void updateStatisticsDisplay();
-    void onBrowseGridFile();
+    void onBrowseTopoGridFile();
+    void onBrowseFieldGridFile();
 
     ModelDocument *m_doc;
     CreationMode m_mode{CreationMode::DefineObservation};
-    bool m_fromGrid{false};
-    mod3d::Grid m_loadedGrid;
+
+    bool m_fromTopoGrid{false};
+    mod3d::Grid m_loadedTopoGrid;
+
+    bool m_fromFieldGrid{false};
+    mod3d::Grid m_loadedFieldGrid;
 
     QRadioButton *m_radioDefineObs{nullptr};
     QRadioButton *m_radioImportRelief{nullptr};
 
-    QPushButton *m_btnGetFromGrid{nullptr};
-    QPushButton *m_btnClearGrid{nullptr};
-    QLineEdit *m_editGridFile{nullptr};
+    QPushButton *m_btnGetTopoGrid{nullptr};
+    QLineEdit *m_editTopoGridFile{nullptr};
+    QPushButton *m_btnClearTopoGrid{nullptr};
+
+    QPushButton *m_btnGetFieldGrid{nullptr};
+    QLineEdit *m_editFieldGridFile{nullptr};
+    QComboBox *m_comboFieldComp{nullptr};
+    QPushButton *m_btnClearFieldGrid{nullptr};
 
     QLabel *m_lblLengthX{nullptr};
     QLabel *m_lblLengthY{nullptr};
+    QLabel *m_lblGridMinZTitle{nullptr};
     QLabel *m_lblGridMinZ{nullptr};
+    QLabel *m_lblGridMaxZTitle{nullptr};
     QLabel *m_lblGridMaxZ{nullptr};
 
     QDoubleSpinBox *m_spinX0{nullptr};

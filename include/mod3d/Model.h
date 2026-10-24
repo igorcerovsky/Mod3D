@@ -146,6 +146,7 @@ public:
     void set_vertical_range(double zMin, double zMax) {
         set_vertical_range(units::Meters(zMin), units::Meters(zMax));
     }
+    bool set_surface_relief(const Grid &reliefGrid);
     [[nodiscard]] constexpr units::Meters x_min() const noexcept { return x_min_; }
     [[nodiscard]] constexpr units::Meters x_max() const noexcept { return x_max_; }
     [[nodiscard]] constexpr units::Meters y_min() const noexcept { return y_min_; }

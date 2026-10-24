@@ -136,6 +136,10 @@ public:
     bool newProject(int rows, int cols, double x0, double y0, double dx, double dy, double zMin, double zMax);
     bool newProjectFromReliefGrid(const mod3d::Grid &reliefGrid, double zMin, double zMax);
     bool newProjectFromReliefGrid(const QString &filePath, double zMin, double zMax);
+    bool newProjectFromImportedGrids(const mod3d::Grid *topoGrid,
+                                     const mod3d::Grid *fieldGrid,
+                                     mod3d::FieldComponent fieldComp,
+                                     double zMin, double zMax);
     bool setVerticalRange(double zMin, double zMax);
     bool openFile(const QString &path);
     bool saveFile(const QString &path = QString());

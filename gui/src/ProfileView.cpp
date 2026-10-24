@@ -182,6 +182,19 @@ void ProfileView::moveProfile(int delta) {
   setProfileIndex(m_profileIndex + delta);
 }
 
+void ProfileView::moveToPerpendicularProfile(int lineIdx) {
+  int oldProfileIndex = m_profileIndex;
+  ProfileOrientation perpOrient =
+      (m_profileOrient == ProfileOrientation::EastWest)
+          ? ProfileOrientation::SouthNorth
+          : ProfileOrientation::EastWest;
+  m_hoverLineIdx = oldProfileIndex;
+  setProfileOrientation(perpOrient);
+  setProfileIndex(lineIdx);
+  m_hoverLineIdx = oldProfileIndex;
+  updateStationPointOnProfileChange();
+}
+
 int ProfileView::maxProfileIndex() const noexcept {
   if (!m_doc) return 0;
   if (m_profileOrient == ProfileOrientation::EastWest) {
@@ -1892,12 +1905,64 @@ void ProfileView::showBackgroundContextMenu(const QPoint &globalPos) {
   menu.exec(globalPos);
 }
 
-void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
-                                          double targetZ) {
-  QPoint localPos = mapFromGlobal(globalPos);
-  if (m_rectSectionPane.contains(localPos)) {
-    targetZ = screenToWorldZ(localPos.y());
+ProfileView *ProfileView::findPerpendicularProfileView() const {
+  ProfileOrientation perpOrient =
+      (m_profileOrient == ProfileOrientation::EastWest)
+          ? ProfileOrientation::SouthNorth
+          : ProfileOrientation::EastWest;
+
+  // 1. Search via QMdiArea if inside an MDI workspace
+  QMdiArea *mdi = nullptr;
+  if (auto *sub = qobject_cast<QMdiSubWindow *>(parentWidget())) {
+    mdi = sub->mdiArea();
   }
+  if (!mdi) {
+    QWidget *w = parentWidget();
+    while (w) {
+      if (auto *area = qobject_cast<QMdiArea *>(w)) {
+        mdi = area;
+        break;
+      }
+      w = w->parentWidget();
+    }
+  }
+
+  if (mdi) {
+    if (auto *activeSub = mdi->activeSubWindow()) {
+      if (!activeSub->isHidden()) {
+        if (auto *pv = qobject_cast<ProfileView *>(activeSub->widget())) {
+          if (pv != this && !pv->isHidden() && pv->profileOrientation() == perpOrient) {
+            return pv;
+          }
+        }
+      }
+    }
+    for (auto *sub : mdi->subWindowList()) {
+      if (!sub || sub->isHidden()) continue;
+      if (auto *pv = qobject_cast<ProfileView *>(sub->widget())) {
+        if (pv != this && !pv->isHidden() && pv->profileOrientation() == perpOrient) {
+          return pv;
+        }
+      }
+    }
+    return nullptr;
+  }
+
+  // 2. Search via top-level window
+  QWidget *top = window();
+  if (top) {
+    for (auto *pv : top->findChildren<ProfileView *>()) {
+      if (pv != this && !pv->isHidden() && pv->profileOrientation() == perpOrient) {
+        return pv;
+      }
+    }
+  }
+
+  return nullptr;
+}
+
+std::unique_ptr<QMenu> ProfileView::createGridLineContextMenu(int lineIdx,
+                                                              double targetZ) {
   int row = 0, col = 0;
   getRowCol(lineIdx, row, col);
   double zMin = m_doc->model().z_min_val();
@@ -1909,13 +1974,13 @@ void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
   }
   targetZ = std::clamp(targetZ, zMin + halfT, zSurface - halfT);
 
-  QMenu menu(this);
-  menu.addAction(tr("Insert New Body"), [this, row, col, targetZ]() {
+  auto menu = std::make_unique<QMenu>(this);
+  menu->addAction(tr("Insert New Body"), [this, row, col, targetZ]() {
     m_doc->insertBodyAtRowCol(row, col, targetZ);
   });
 
   if (!m_doc->model().bodies().empty()) {
-    auto *menuExist = menu.addMenu(tr("Insert Existing Body"));
+    auto *menuExist = menu->addMenu(tr("Insert Existing Body"));
     for (const auto &b : m_doc->model().bodies()) {
       int bId = b->id();
       QString bName = QString::fromStdString(b->name());
@@ -1927,23 +1992,54 @@ void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
     }
   }
 
-  menu.addSeparator();
+  menu->addSeparator();
   ProfileOrientation perpOrient =
       (m_profileOrient == ProfileOrientation::EastWest)
           ? ProfileOrientation::SouthNorth
           : ProfileOrientation::EastWest;
   QString perpStr =
       (perpOrient == ProfileOrientation::EastWest) ? "E-W" : "S-N";
-  menu.addAction(tr("View on Perpendicular Profile (%1) at Line %2")
-                     .arg(perpStr)
-                     .arg(lineIdx + 1),
-                 [this, perpOrient, lineIdx]() {
-                   emit requestOpenPerpendicularProfile(perpOrient, lineIdx);
-                 });
 
-  menu.addSeparator();
-  menu.addAction(tr("Body Creation Properties..."), []() {});
-  menu.exec(globalPos);
+  ProfileView *perpView = findPerpendicularProfileView();
+  auto *actPerp = menu->addAction(
+      tr("View on Perpendicular Profile (%1) at Line %2")
+          .arg(perpStr)
+          .arg(lineIdx + 1),
+      [this, perpView, lineIdx]() {
+        if (!perpView) return;
+        perpView->setHoverLineIndex(m_profileIndex);
+        perpView->setProfileIndex(lineIdx);
+        perpView->setHoverLineIndex(m_profileIndex);
+        perpView->updateStationPointOnProfileChange();
+        perpView->update();
+        if (auto *sub = qobject_cast<QMdiSubWindow *>(perpView->parentWidget())) {
+          if (auto *mdi = sub->mdiArea()) {
+            mdi->setActiveSubWindow(sub);
+          }
+          sub->raise();
+          sub->setFocus();
+        } else {
+          perpView->raise();
+          perpView->setFocus();
+        }
+      });
+  actPerp->setEnabled(perpView != nullptr);
+
+  menu->addSeparator();
+  menu->addAction(tr("Body Creation Properties..."), []() {});
+  return menu;
+}
+
+void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
+                                          double targetZ) {
+  QPoint localPos = mapFromGlobal(globalPos);
+  if (m_rectSectionPane.contains(localPos)) {
+    targetZ = screenToWorldZ(localPos.y());
+  }
+  auto menu = createGridLineContextMenu(lineIdx, targetZ);
+  if (menu) {
+    menu->exec(globalPos);
+  }
 }
 
 void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,

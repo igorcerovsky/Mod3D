@@ -131,7 +131,33 @@ void ObservationSpace::set_tensor_observation_grid(const Grid &grid)
 
 void ObservationSpace::set_surface_relief(const Grid &relief)
 {
-    relief_grid_ = relief;
+    if (relief.empty() || (rows_ == 0 || cols_ == 0) || (relief.rows() == rows_ && relief.cols() == cols_)) {
+        relief_grid_ = relief;
+    } else {
+        Grid resampled(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
+        const double pi = std::numbers::pi_v<double>;
+        const double rad = rotation_.value() * pi / 180.0;
+        const double cRot = std::cos(rad);
+        const double sRot = std::sin(rad);
+
+        for (size_t r = 0; r < rows_; ++r) {
+            for (size_t c = 0; c < cols_; ++c) {
+                double x = x0_.value() + (c * dx_.value()) * cRot - (r * dy_.value()) * sRot;
+                double y = y0_.value() + (c * dx_.value()) * sRot + (r * dy_.value()) * cRot;
+                double v = relief.interpolate(x, y);
+                if (v == GRID_DUMMY) {
+                    double cx = std::clamp(x, relief.x_min().value(), relief.x_max().value());
+                    double cy = std::clamp(y, relief.y_min().value(), relief.y_max().value());
+                    v = relief.interpolate(cx, cy);
+                    if (v == GRID_DUMMY) {
+                        v = 0.5 * (relief.z_min().value() + relief.z_max().value());
+                    }
+                }
+                resampled(r, c) = v;
+            }
+        }
+        relief_grid_ = resampled;
+    }
 }
 
 void ObservationSpace::set_ambient_field_params(double inclinationDeg, double declinationDeg, double intensityNT)

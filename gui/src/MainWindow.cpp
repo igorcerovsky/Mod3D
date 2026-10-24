@@ -750,6 +750,11 @@ void MainWindow::onImportDem() {
     if (!fn.isEmpty()) {
         bool ok = m_doc->loadReliefGrid(fn);
         if (ok) {
+            for (auto *sub : m_mdiArea->subWindowList()) {
+                if (sub && sub->widget()) {
+                    sub->widget()->update();
+                }
+            }
             statusBar()->showMessage(tr("Imported topography DEM from %1").arg(QFileInfo(fn).fileName()), 3000);
         } else {
             QMessageBox::warning(this, tr("Import Failed"), tr("Failed to load grid file:\n%1").arg(fn));

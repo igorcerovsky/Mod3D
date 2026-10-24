@@ -314,6 +314,89 @@ void Model::set_vertical_range(units::Meters zMin, units::Meters zMax)
     }
 }
 
+bool Model::set_surface_relief(const Grid &reliefGrid)
+{
+    if (reliefGrid.empty()) {
+        return false;
+    }
+
+    const int coreRows = rows_ - 2;
+    const int coreCols = cols_ - 2;
+    if (coreRows < 1 || coreCols < 1) {
+        return false;
+    }
+
+    const int nRows = static_cast<int>(reliefGrid.rows());
+    const int nCols = static_cast<int>(reliefGrid.cols());
+
+    double maxReliefZ = -std::numeric_limits<double>::max();
+    double minReliefZ = std::numeric_limits<double>::max();
+
+    bool exactMatch = (nRows == coreRows && nCols == coreCols);
+
+    for (int r = 0; r < rows_; ++r) {
+        for (int c = 0; c < cols_; ++c) {
+            double v = 0.0;
+            if (exactMatch) {
+                int ii = std::clamp(r - 1, 0, nRows - 1);
+                int jj = std::clamp(c - 1, 0, nCols - 1);
+                v = reliefGrid(ii, jj);
+            } else {
+                double x = xd_val(c);
+                double y = yd_val(r);
+                v = reliefGrid.interpolate(x, y);
+                if (v == GRID_DUMMY) {
+                    double cx = std::clamp(x, reliefGrid.x_min().value(), reliefGrid.x_max().value());
+                    double cy = std::clamp(y, reliefGrid.y_min().value(), reliefGrid.y_max().value());
+                    v = reliefGrid.interpolate(cx, cy);
+                    if (v == GRID_DUMMY) {
+                        v = 0.5 * (reliefGrid.z_min().value() + reliefGrid.z_max().value());
+                    }
+                }
+            }
+
+            if (r >= 1 && r <= coreRows && c >= 1 && c <= coreCols) {
+                if (v > maxReliefZ) maxReliefZ = v;
+                if (v < minReliefZ) minReliefZ = v;
+            }
+
+            auto &colVec = data_[r * cols_ + c];
+            if (!colVec.empty()) {
+                ColumnPoint &pTop = colVec.front();
+                set_column_point_coords(pTop, r, c, v);
+                pTop.set_z(v);
+
+                for (size_t k = 1; k + 1 < colVec.size(); ++k) {
+                    if (colVec[k].z().value() > v) {
+                        colVec[k].set_z(v);
+                        set_column_point_coords(colVec[k], r, c, v);
+                    }
+                }
+            }
+        }
+    }
+
+    if (maxReliefZ > z_max_.value()) {
+        z_max_ = units::Meters(std::ceil(maxReliefZ));
+    }
+    if (minReliefZ < z_min_.value()) {
+        z_min_ = units::Meters(std::floor(minReliefZ) - 100.0);
+        for (int r = 0; r < rows_; ++r) {
+            for (int c = 0; c < cols_; ++c) {
+                auto &colVec = data_[r * cols_ + c];
+                if (colVec.size() >= 2) {
+                    ColumnPoint &pBot = colVec.back();
+                    pBot.set_z(z_min_);
+                    set_column_point_coords(pBot, r, c, z_min_);
+                }
+            }
+        }
+    }
+
+    init_facet_list();
+    return true;
+}
+
 double Model::thickness(int row, int col, int index) const
 {
     if (index <= 0 || (index % 2) == 0) return 0.0;

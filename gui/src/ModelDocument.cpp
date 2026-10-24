@@ -99,6 +99,49 @@ bool ModelDocument::newProjectFromReliefGrid(const QString &filePath, double zMi
     return newProjectFromReliefGrid(g, zMin, zMax);
 }
 
+bool ModelDocument::newProjectFromImportedGrids(const mod3d::Grid *topoGrid,
+                                                const mod3d::Grid *fieldGrid,
+                                                mod3d::FieldComponent fieldComp,
+                                                double zMin, double zMax)
+{
+    if (!topoGrid && !fieldGrid) {
+        return false;
+    }
+
+    const mod3d::Grid &primaryGrid = topoGrid ? *topoGrid : *fieldGrid;
+    int obsRows = static_cast<int>(primaryGrid.rows());
+    int obsCols = static_cast<int>(primaryGrid.cols());
+    double x0 = primaryGrid.x0().value();
+    double y0 = primaryGrid.y0().value();
+    double dx = primaryGrid.dx().value();
+    double dy = primaryGrid.dy().value();
+
+    if (topoGrid) {
+        if (!newProjectFromReliefGrid(*topoGrid, zMin, zMax)) {
+            return false;
+        }
+    } else {
+        if (!newProject(obsRows, obsCols, x0, y0, dx, dy, zMin, zMax)) {
+            return false;
+        }
+    }
+
+    if (fieldGrid) {
+        m_project.observation().set_observed_grid(fieldComp, *fieldGrid);
+        m_project.observation().compute_difference(fieldComp);
+        m_activeField = fieldComp;
+        m_showMeasured = true;
+        m_showDiff = true;
+        emit activeFieldChanged(fieldComp);
+        emit fieldDisplayToggled();
+    }
+
+    computeAll();
+    emit modelGeometryChanged();
+    setModified(false);
+    return true;
+}
+
 bool ModelDocument::setVerticalRange(double zMin, double zMax) {
     if (zMin >= zMax) {
         return false;
@@ -770,7 +813,10 @@ bool ModelDocument::loadReliefGrid(const QString &filePath) {
     }
 
     m_project.observation().set_surface_relief(g);
+    m_project.model().set_surface_relief(g);
     setModified(true);
+    computeAll();
+    emit verticalRangeChanged(m_project.model().z_min_val(), m_project.model().z_max_val());
     emit modelGeometryChanged();
     emit statusMessage(tr("Imported topography DEM (%1x%2 nodes) from %3")
                            .arg(g.rows())
