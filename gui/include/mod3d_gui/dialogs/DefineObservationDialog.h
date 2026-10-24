@@ -8,6 +8,7 @@
 #include <QRadioButton>
 #include <QLineEdit>
 #include <QPushButton>
+#include <QLabel>
 
 namespace mod3d_gui {
 
@@ -33,6 +34,12 @@ public:
 
     bool applyToDocument();
 
+    // Computed statistics accessors
+    [[nodiscard]] double lengthX() const noexcept;
+    [[nodiscard]] double lengthY() const noexcept;
+    [[nodiscard]] double gridMinZ() const noexcept;
+    [[nodiscard]] double gridMaxZ() const noexcept;
+
     // Widget accessors for testing
     QRadioButton *defineObsRadioButton() const noexcept { return m_radioDefineObs; }
     QRadioButton *importReliefRadioButton() const noexcept { return m_radioImportRelief; }
@@ -46,6 +53,10 @@ public:
     QSpinBox *rowsSpinBox() const noexcept { return m_spinRows; }
     QDoubleSpinBox *minZSpinBox() const noexcept { return m_spinZMin; }
     QDoubleSpinBox *maxZSpinBox() const noexcept { return m_spinZMax; }
+    QLabel *lengthXLabel() const noexcept { return m_lblLengthX; }
+    QLabel *lengthYLabel() const noexcept { return m_lblLengthY; }
+    QLabel *gridMinZLabel() const noexcept { return m_lblGridMinZ; }
+    QLabel *gridMaxZLabel() const noexcept { return m_lblGridMaxZ; }
 
 private:
     void syncColsFromXBounds();
@@ -53,6 +64,7 @@ private:
     void syncRowsFromYBounds();
     void syncYMaxFromRows();
     void updateControlStates();
+    void updateStatisticsDisplay();
     void onBrowseGridFile();
 
     ModelDocument *m_doc;
@@ -66,6 +78,11 @@ private:
     QPushButton *m_btnGetFromGrid{nullptr};
     QPushButton *m_btnClearGrid{nullptr};
     QLineEdit *m_editGridFile{nullptr};
+
+    QLabel *m_lblLengthX{nullptr};
+    QLabel *m_lblLengthY{nullptr};
+    QLabel *m_lblGridMinZ{nullptr};
+    QLabel *m_lblGridMaxZ{nullptr};
 
     QDoubleSpinBox *m_spinX0{nullptr};
     QDoubleSpinBox *m_spinXMax{nullptr};

@@ -120,6 +120,27 @@ DefineObservationDialog::DefineObservationDialog(ModelDocument *doc, QWidget *pa
     gridFileLayout->addWidget(m_btnClearGrid);
     mainLayout->addLayout(gridFileLayout);
 
+    // 4. Grid & Observation Area Statistics Group
+    auto *statsGroup = new QGroupBox(tr("Grid && Area Statistics"), this);
+    auto *statsGrid = new QGridLayout(statsGroup);
+
+    m_lblLengthX = new QLabel(statsGroup);
+    m_lblLengthY = new QLabel(statsGroup);
+    m_lblGridMinZ = new QLabel(statsGroup);
+    m_lblGridMaxZ = new QLabel(statsGroup);
+
+    statsGrid->addWidget(new QLabel(tr("<b>Length X:</b>"), statsGroup), 0, 0);
+    statsGrid->addWidget(m_lblLengthX, 0, 1);
+    statsGrid->addWidget(new QLabel(tr("<b>Length Y:</b>"), statsGroup), 0, 2);
+    statsGrid->addWidget(m_lblLengthY, 0, 3);
+
+    statsGrid->addWidget(new QLabel(tr("<b>Grid Min Z:</b>"), statsGroup), 1, 0);
+    statsGrid->addWidget(m_lblGridMinZ, 1, 1);
+    statsGrid->addWidget(new QLabel(tr("<b>Grid Max Z:</b>"), statsGroup), 1, 2);
+    statsGrid->addWidget(m_lblGridMaxZ, 1, 3);
+
+    mainLayout->addWidget(statsGroup);
+
     // Connections for synchronized Min / Max / Increment / Nodes
     connect(m_spinX0, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { syncColsFromXBounds(); });
     connect(m_spinXMax, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { syncColsFromXBounds(); });
@@ -141,7 +162,7 @@ DefineObservationDialog::DefineObservationDialog(ModelDocument *doc, QWidget *pa
     connect(m_btnGetFromGrid, &QPushButton::clicked, this, &DefineObservationDialog::onBrowseGridFile);
     connect(m_btnClearGrid, &QPushButton::clicked, this, &DefineObservationDialog::clearGridFile);
 
-    // 4. Dialog Buttons
+    // 5. Dialog Buttons
     auto *btnBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     connect(btnBox, &QDialogButtonBox::accepted, this, [this]() {
         if (applyToDocument()) {
@@ -152,6 +173,7 @@ DefineObservationDialog::DefineObservationDialog(ModelDocument *doc, QWidget *pa
 
     mainLayout->addWidget(btnBox);
     updateControlStates();
+    updateStatisticsDisplay();
 }
 
 void DefineObservationDialog::setCreationMode(CreationMode mode) {
@@ -169,6 +191,7 @@ void DefineObservationDialog::setCreationMode(CreationMode mode) {
         }
     }
     updateControlStates();
+    updateStatisticsDisplay();
 }
 
 void DefineObservationDialog::syncColsFromXBounds() {
@@ -180,11 +203,13 @@ void DefineObservationDialog::syncColsFromXBounds() {
         QSignalBlocker blocker(m_spinCols);
         m_spinCols->setValue(cols);
     }
+    updateStatisticsDisplay();
 }
 
 void DefineObservationDialog::syncXMaxFromCols() {
     QSignalBlocker blocker(m_spinXMax);
     m_spinXMax->setValue(m_spinX0->value() + (m_spinCols->value() - 1) * m_spinDX->value());
+    updateStatisticsDisplay();
 }
 
 void DefineObservationDialog::syncRowsFromYBounds() {
@@ -196,11 +221,13 @@ void DefineObservationDialog::syncRowsFromYBounds() {
         QSignalBlocker blocker(m_spinRows);
         m_spinRows->setValue(rows);
     }
+    updateStatisticsDisplay();
 }
 
 void DefineObservationDialog::syncYMaxFromRows() {
     QSignalBlocker blocker(m_spinYMax);
     m_spinYMax->setValue(m_spinY0->value() + (m_spinRows->value() - 1) * m_spinDY->value());
+    updateStatisticsDisplay();
 }
 
 void DefineObservationDialog::updateControlStates() {
@@ -216,6 +243,54 @@ void DefineObservationDialog::updateControlStates() {
     m_spinRows->setEnabled(xyEditable);
 
     m_btnClearGrid->setEnabled(m_fromGrid);
+}
+
+double DefineObservationDialog::lengthX() const noexcept {
+    if (!m_spinX0 || !m_spinXMax) return 0.0;
+    return std::max(0.0, m_spinXMax->value() - m_spinX0->value());
+}
+
+double DefineObservationDialog::lengthY() const noexcept {
+    if (!m_spinY0 || !m_spinYMax) return 0.0;
+    return std::max(0.0, m_spinYMax->value() - m_spinY0->value());
+}
+
+double DefineObservationDialog::gridMinZ() const noexcept {
+    if (!m_fromGrid || m_loadedGrid.empty()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return m_loadedGrid.min();
+}
+
+double DefineObservationDialog::gridMaxZ() const noexcept {
+    if (!m_fromGrid || m_loadedGrid.empty()) {
+        return std::numeric_limits<double>::quiet_NaN();
+    }
+    return m_loadedGrid.max();
+}
+
+void DefineObservationDialog::updateStatisticsDisplay() {
+    if (m_lblLengthX) {
+        m_lblLengthX->setText(QString("%1 m").arg(lengthX(), 0, 'f', 2));
+    }
+    if (m_lblLengthY) {
+        m_lblLengthY->setText(QString("%1 m").arg(lengthY(), 0, 'f', 2));
+    }
+    if (m_fromGrid && !m_loadedGrid.empty()) {
+        if (m_lblGridMinZ) {
+            m_lblGridMinZ->setText(QString("%1 m").arg(m_loadedGrid.min(), 0, 'f', 2));
+        }
+        if (m_lblGridMaxZ) {
+            m_lblGridMaxZ->setText(QString("%1 m").arg(m_loadedGrid.max(), 0, 'f', 2));
+        }
+    } else {
+        if (m_lblGridMinZ) {
+            m_lblGridMinZ->setText(tr("N/A (no grid loaded)"));
+        }
+        if (m_lblGridMaxZ) {
+            m_lblGridMaxZ->setText(tr("N/A (no grid loaded)"));
+        }
+    }
 }
 
 void DefineObservationDialog::onBrowseGridFile() {
@@ -272,6 +347,7 @@ bool DefineObservationDialog::loadFromGridFile(const QString &filePath) {
     }
 
     updateControlStates();
+    updateStatisticsDisplay();
     return true;
 }
 
@@ -280,6 +356,7 @@ void DefineObservationDialog::clearGridFile() {
     m_loadedGrid = mod3d::Grid();
     m_editGridFile->clear();
     updateControlStates();
+    updateStatisticsDisplay();
 }
 
 QString DefineObservationDialog::gridFilePath() const {

@@ -1,8 +1,8 @@
 #include "mod3d_gui/MainWindow.h"
 #include <QApplication>
 #include <QIcon>
-
 #include <QSurfaceFormat>
+#include <QTimer>
 
 int main(int argc, char *argv[]) {
     // Modern 3D graphics defaults: 24-bit depth buffer, 8-bit stencil, 4x MSAA, OpenGL 4.1 Core Profile
@@ -24,8 +24,19 @@ int main(int argc, char *argv[]) {
     mod3d_gui::MainWindow window;
     window.show();
 
-    if (argc > 1) {
-        window.document()->openFile(QString::fromLocal8Bit(argv[1]));
+    QString modelArg;
+    const QStringList args = app.arguments();
+    for (int i = 1; i < args.size(); ++i) {
+        if (!args[i].startsWith('-')) {
+            modelArg = args[i];
+            break;
+        }
+    }
+
+    if (!modelArg.isEmpty()) {
+        window.document()->openFile(modelArg);
+    } else {
+        QTimer::singleShot(0, &window, &mod3d_gui::MainWindow::onFileNew);
     }
 
     return app.exec();

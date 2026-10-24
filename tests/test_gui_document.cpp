@@ -2806,6 +2806,11 @@ TEST_F(GuiDocumentTest, DefineObservationDialogNewModelWorkflow) {
         dlg.maxYSpinBox()->setValue(6000.0); // (6000 - 2000) / 500 + 1 = 9 rows
         EXPECT_EQ(dlg.rowsSpinBox()->value(), 9);
 
+        EXPECT_DOUBLE_EQ(dlg.lengthX(), 2500.0);
+        EXPECT_DOUBLE_EQ(dlg.lengthY(), 4000.0);
+        EXPECT_TRUE(std::isnan(dlg.gridMinZ()));
+        EXPECT_TRUE(std::isnan(dlg.gridMaxZ()));
+
         dlg.minZSpinBox()->setValue(-3000.0);
         dlg.maxZSpinBox()->setValue(500.0);
 
@@ -2844,6 +2849,17 @@ TEST_F(GuiDocumentTest, DefineObservationDialogNewModelWorkflow) {
         EXPECT_DOUBLE_EQ(dlg.maxXSpinBox()->value(), 1200.0);
         EXPECT_DOUBLE_EQ(dlg.minYSpinBox()->value(), 1500.0);
         EXPECT_DOUBLE_EQ(dlg.maxYSpinBox()->value(), 2500.0);
+        EXPECT_DOUBLE_EQ(dlg.lengthX(), 700.0);
+        EXPECT_DOUBLE_EQ(dlg.lengthY(), 1000.0);
+        EXPECT_NEAR(dlg.gridMinZ(), 120.0, 1e-4);
+        EXPECT_NEAR(dlg.gridMaxZ(), 205.0, 1e-4);
+        ASSERT_NE(dlg.lengthXLabel(), nullptr);
+        ASSERT_NE(dlg.gridMinZLabel(), nullptr);
+        ASSERT_NE(dlg.gridMaxZLabel(), nullptr);
+        EXPECT_TRUE(dlg.lengthXLabel()->text().contains("700.00"));
+        EXPECT_TRUE(dlg.lengthYLabel()->text().contains("1000.00"));
+        EXPECT_TRUE(dlg.gridMinZLabel()->text().contains("120.00"));
+        EXPECT_TRUE(dlg.gridMaxZLabel()->text().contains("205.00"));
 
         dlg.minZSpinBox()->setValue(-2500.0);
         dlg.maxZSpinBox()->setValue(800.0);

@@ -38,6 +38,9 @@ public:
     void arrangeDefaultTiles();
     void resizeSubWindowsToFit();
 
+    void onFileNew();
+    void onDefineObservation();
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
     void showEvent(QShowEvent *event) override;
@@ -52,7 +55,6 @@ private:
     void updateWindowTitle();
 
     // File Actions
-    void onFileNew();
     void onFileOpen();
     bool onFileSave();
     bool onFileSaveAs();
@@ -61,7 +63,6 @@ private:
 
     // Dialogs
     void onModelProperties();
-    void onDefineObservation();
     void onChangeVerticalRange();
     void onInducingField();
     void onComputeProperties();
