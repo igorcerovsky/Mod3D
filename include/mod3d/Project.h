@@ -21,6 +21,7 @@ struct ProjectMetadata {
 
 struct ProjectSettings {
     bool compute_real_time{false};
+    bool remove_observed_mean{false};
     int gravity_formula{0};
     int magnetic_formula{0};
     std::vector<std::string> active_components;

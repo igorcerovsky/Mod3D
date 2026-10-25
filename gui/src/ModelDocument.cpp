@@ -142,6 +142,22 @@ bool ModelDocument::newProjectFromImportedGrids(const mod3d::Grid *topoGrid,
     return true;
 }
 
+void ModelDocument::suggestVerticalRange(const mod3d::Grid &topo, double &zMin, double &zMax) {
+    const double xLen = static_cast<double>(topo.cols() > 0 ? topo.cols() - 1 : 0) * std::abs(topo.dx().value());
+    const double yLen = static_cast<double>(topo.rows() > 0 ? topo.rows() - 1 : 0) * std::abs(topo.dy().value());
+    const double len = std::max(xLen, yLen);
+
+    double step = 10.0;
+    if (len >= 100000.0) {
+        step = 1000.0;
+    } else if (len >= 10000.0) {
+        step = 100.0;
+    }
+
+    zMin = std::floor((topo.min() - len * 0.4) / step) * step;
+    zMax = std::ceil((topo.max() + len * 0.1) / step) * step;
+}
+
 bool ModelDocument::setVerticalRange(double zMin, double zMax) {
     if (zMin >= zMax) {
         return false;
@@ -165,6 +181,7 @@ bool ModelDocument::openFile(const QString &path) {
 
     if (ok) {
         m_project.model().set_compute_real_time(m_realTimeCompute);
+        m_project.observation().set_remove_observed_mean(m_project.settings().remove_observed_mean);
         m_filePath = path;
         m_modified = false;
         m_undoStack.clear();
@@ -699,6 +716,21 @@ void ModelDocument::setRealTimeCompute(bool enabled) {
     }
 }
 
+void ModelDocument::setRemoveObservedMean(bool enabled) {
+    if (m_project.observation().remove_observed_mean() == enabled &&
+        m_project.settings().remove_observed_mean == enabled) {
+        return;
+    }
+    m_project.settings().remove_observed_mean = enabled;
+    m_project.observation().set_remove_observed_mean(enabled);
+    m_project.observation().compute_difference(m_activeField);
+    setModified(true);
+    emit computationFinished();
+    emit fieldDisplayToggled();
+    emit statusMessage(enabled ? tr("Measured field mean removed (virtual anomaly).")
+                               : tr("Measured field mean restored."));
+}
+
 void ModelDocument::setActiveField(mod3d::FieldComponent comp) {
     bool changed = (m_activeField != comp);
     m_activeField = comp;
@@ -814,6 +846,14 @@ bool ModelDocument::loadReliefGrid(const QString &filePath) {
 
     m_project.observation().set_surface_relief(g);
     m_project.model().set_surface_relief(g);
+
+    // Set vertical range from topography and footprint
+    double zMin = 0.0, zMax = 0.0;
+    suggestVerticalRange(g, zMin, zMax);
+    if (std::isfinite(zMin) && std::isfinite(zMax) && zMin < zMax) {
+        m_project.model().set_vertical_range(zMin, zMax);
+        m_project.model().init_facet_list();
+    }
     setModified(true);
     computeAll();
     emit verticalRangeChanged(m_project.model().z_min_val(), m_project.model().z_max_val());

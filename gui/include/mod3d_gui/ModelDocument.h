@@ -38,6 +38,7 @@ public:
 
     const mod3d::Grid *modeledGrid(mod3d::FieldComponent comp) const { return m_project.observation().modeled_grid(comp); }
     const mod3d::Grid *observedGrid(mod3d::FieldComponent comp) const { return m_project.observation().observed_grid(comp); }
+    const mod3d::Grid *rawObservedGrid(mod3d::FieldComponent comp) const { return m_project.observation().raw_observed_grid(comp); }
     const mod3d::Grid *differenceGrid(mod3d::FieldComponent comp) const { return m_project.observation().difference_grid(comp); }
 
     const mod3d::Grid *activeModeledGrid() const { return modeledGrid(m_activeField); }
@@ -141,6 +142,12 @@ public:
                                      mod3d::FieldComponent fieldComp,
                                      double zMin, double zMax);
     bool setVerticalRange(double zMin, double zMax);
+
+    /// Suggests a model vertical range for a topography grid.
+    /// bottom = z_min - 0.4 * L, top = z_max + 0.1 * L, where L = max(x_len, y_len).
+    /// Rounding step depends on footprint L: < 10 km -> 10 m, < 100 km -> 100 m, else 1000 m.
+    /// Bottom is rounded down, top is rounded up.
+    static void suggestVerticalRange(const mod3d::Grid &topo, double &zMin, double &zMax);
     bool openFile(const QString &path);
     bool saveFile(const QString &path = QString());
     bool loadMeasuredGrid(const QString &filePath, std::optional<mod3d::FieldComponent> comp = std::nullopt);
@@ -192,6 +199,11 @@ public:
     void computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets);
     bool isRealTimeCompute() const noexcept { return m_realTimeCompute; }
     void setRealTimeCompute(bool enabled);
+
+    /// Virtual removal of the mean of the measured (observed) field (raw field is kept, mean is stored).
+    bool removeObservedMean() const noexcept { return m_project.observation().remove_observed_mean(); }
+    void setRemoveObservedMean(bool enabled);
+    double observedMean(mod3d::FieldComponent comp) const { return m_project.observation().observed_mean(comp); }
 
     // Active Field Display
     mod3d::FieldComponent activeField() const noexcept { return m_activeField; }

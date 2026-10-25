@@ -3210,3 +3210,62 @@ TEST_F(GuiDocumentTest, ImportTopographyDemUpdatesModelProfileAnd3DView) {
     std::filesystem::remove(tmpTopoPath, ec);
 }
 
+TEST_F(GuiDocumentTest, SettingsPanePhysicsTabRemoveObservedMean) {
+    MainWindow mw;
+    mw.resize(1280, 800);
+
+    auto *doc = mw.document();
+    ASSERT_NE(doc, nullptr);
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    pane->selectPhysicsTab();
+
+    auto *chk = pane->removeObservedMeanCheckBox();
+    ASSERT_NE(chk, nullptr);
+    auto *lbl = pane->observedMeanLabel();
+    ASSERT_NE(lbl, nullptr);
+
+    EXPECT_FALSE(chk->isChecked());
+    EXPECT_FALSE(doc->removeObservedMean());
+
+    // Provide observed grid with non-zero mean
+    mod3d::Grid obsGrd(21, 21, 0.0, 0.0, 500.0, 500.0);
+    for (size_t r = 0; r < 21; ++r) {
+        for (size_t c = 0; c < 21; ++c) {
+            obsGrd(r, c) = 25.0 + static_cast<double>(r * 3 + c * 2);
+        }
+    }
+    const double rawMean = obsGrd.mean();
+    ASSERT_NE(rawMean, 0.0);
+    doc->observation().set_observed_grid(mod3d::FieldComponent::GZ, obsGrd);
+    doc->setShowMeasuredField(true);
+    doc->setShowDifferenceField(true);
+
+    // Refresh pane data
+    pane->selectPhysicsTab();
+    EXPECT_TRUE(lbl->text().contains(QString::number(rawMean, 'f', 2)));
+
+    // Check "Remove mean from measured field"
+    chk->setChecked(true);
+    EXPECT_TRUE(doc->removeObservedMean());
+    EXPECT_NEAR(doc->observedMean(mod3d::FieldComponent::GZ), rawMean, 1e-12);
+
+    // Raw observed grid retains values
+    const auto *rawGrd = doc->rawObservedGrid(mod3d::FieldComponent::GZ);
+    ASSERT_NE(rawGrd, nullptr);
+    EXPECT_NEAR(rawGrd->mean(), rawMean, 1e-12);
+
+    // Effective observed grid has zero mean
+    const auto *effectiveGrd = doc->observedGrid(mod3d::FieldComponent::GZ);
+    ASSERT_NE(effectiveGrd, nullptr);
+    EXPECT_NEAR(effectiveGrd->mean(), 0.0, 1e-9);
+
+    // Uncheck and verify restoration
+    chk->setChecked(false);
+    EXPECT_FALSE(doc->removeObservedMean());
+    EXPECT_EQ(doc->observedGrid(mod3d::FieldComponent::GZ), rawGrd);
+    EXPECT_NEAR(doc->observedGrid(mod3d::FieldComponent::GZ)->mean(), rawMean, 1e-12);
+}
+
+

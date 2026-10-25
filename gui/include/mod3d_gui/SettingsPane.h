@@ -52,6 +52,8 @@ public:
     QCheckBox *reliefCheckBox3D() const { return m_chk3DRelief; }
     QComboBox *reliefModeComboBox3D() const { return m_combo3DReliefMode; }
     QCheckBox *quadrantCutCheckBox3D() const { return m_chk3DQuadrantCut; }
+    QCheckBox *removeObservedMeanCheckBox() const { return m_chkRemoveObservedMean; }
+    QLabel *observedMeanLabel() const { return m_lblObservedMean; }
 
 signals:
     void requestBodyPropertiesDialog(int bodyId);
@@ -69,6 +71,7 @@ private:
     void applyBodyData();
     void loadPhysicsData();
     void applyPhysicsData();
+    void updateObservedMeanLabel();
 
     ModelDocument *m_doc{nullptr};
     MainWindow *m_mainWindow{nullptr};
@@ -187,6 +190,8 @@ private:
     QDoubleSpinBox *m_spinModelZMax{nullptr};
     QDoubleSpinBox *m_spinModelZMin{nullptr};
     QLabel *m_lblModelDimensions{nullptr};
+    QCheckBox *m_chkRemoveObservedMean{nullptr};
+    QLabel *m_lblObservedMean{nullptr};
     QRadioButton *m_rbOptBrent{nullptr};
     QRadioButton *m_rbOptGolden{nullptr};
     QRadioButton *m_rbTargetRms{nullptr};

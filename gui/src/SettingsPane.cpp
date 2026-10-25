@@ -59,12 +59,15 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *
             .arg(m_doc->currentRms(), 0, 'f', 2)
             .arg(m_doc->activeFieldUnit())
             .arg(m_doc->currentDerivative(), 0, 'f', 2));
+        updateObservedMeanLabel();
     });
     connect(m_doc, &ModelDocument::activeFieldChanged, this, [this](mod3d::FieldComponent) {
         updateViewContext();
+        updateObservedMeanLabel();
     });
     connect(m_doc, &ModelDocument::fieldDisplayToggled, this, [this]() {
         updateViewContext();
+        updateObservedMeanLabel();
     });
     connect(m_doc, &ModelDocument::profileChanged, this, [this](int idx, ProfileOrientation orient) {
         if (!m_blockSync) {
@@ -100,11 +103,18 @@ void SettingsPane::selectProfilesTab() {
 }
 
 void SettingsPane::selectBodyEditorTab() {
-    if (m_tabs) m_tabs->setCurrentIndex(2);
+    if (m_tabs) {
+        m_tabs->setCurrentIndex(2);
+        updateBodyList();
+        loadBodyData();
+    }
 }
 
 void SettingsPane::selectPhysicsTab() {
-    if (m_tabs) m_tabs->setCurrentIndex(3);
+    if (m_tabs) {
+        m_tabs->setCurrentIndex(3);
+        loadPhysicsData();
+    }
 }
 
 void SettingsPane::setupUi() {
@@ -157,6 +167,15 @@ void SettingsPane::setupUi() {
     m_tabs->addTab(m_tabProfiles, tr("📏 Profiles"));
     m_tabs->addTab(m_tabBodies, tr("🪨 Bodies"));
     m_tabs->addTab(m_tabPhysics, tr("⚙ Physics"));
+
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int idx) {
+        if (idx == 2) {
+            updateBodyList();
+            loadBodyData();
+        } else if (idx == 3) {
+            loadPhysicsData();
+        }
+    });
 
     mainLayout->addWidget(m_tabs, 1);
 
@@ -1124,20 +1143,43 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
 
     layout->addWidget(boxSens);
 
+    // 2b. Measured Field Options
+    auto *boxMeasured = new QGroupBox(tr("Measured Field"), inner);
+    auto *measuredLayout = new QVBoxLayout(boxMeasured);
+    measuredLayout->setContentsMargins(8, 8, 8, 8);
+    measuredLayout->setSpacing(4);
+
+    m_chkRemoveObservedMean = new QCheckBox(tr("Remove mean from measured field"), boxMeasured);
+    m_chkRemoveObservedMean->setToolTip(tr("Virtually removes the mean of the measured field. The raw measured field and its mean are kept; "
+                                          "the displayed and fitted measured field is the anomaly (measured - mean)."));
+    measuredLayout->addWidget(m_chkRemoveObservedMean);
+
+    m_lblObservedMean = new QLabel(boxMeasured);
+    m_lblObservedMean->setStyleSheet("color: #475569; font-size: 11px;");
+    measuredLayout->addWidget(m_lblObservedMean);
+
+    layout->addWidget(boxMeasured);
+
+    connect(m_chkRemoveObservedMean, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_blockSync) return;
+        m_doc->setRemoveObservedMean(checked);
+        updateObservedMeanLabel();
+    });
+
     // 3. Model Vertical Range & Dimensions
-    auto *boxModel = new QGroupBox(tr("Model Vertical Limits (Hell && Heaven)"), inner);
+    auto *boxModel = new QGroupBox(tr("Model Vertical Limits"), inner);
     auto *formModel = new QFormLayout(boxModel);
     formModel->setContentsMargins(8, 8, 8, 8);
 
     m_spinModelZMax = new QDoubleSpinBox(boxModel);
     m_spinModelZMax->setRange(-1e6, 1e6);
     m_spinModelZMax->setSuffix(tr(" m"));
-    formModel->addRow(tr("Top (Heaven / Z max):"), m_spinModelZMax);
+    formModel->addRow(tr("Top (Z max):"), m_spinModelZMax);
 
     m_spinModelZMin = new QDoubleSpinBox(boxModel);
     m_spinModelZMin->setRange(-1e6, 1e6);
     m_spinModelZMin->setSuffix(tr(" m"));
-    formModel->addRow(tr("Bottom (Hell / Z min):"), m_spinModelZMin);
+    formModel->addRow(tr("Bottom (Z min):"), m_spinModelZMin);
 
     m_lblModelDimensions = new QLabel(boxModel);
     m_lblModelDimensions->setStyleSheet("color: #475569; font-size: 11px; background: #f8fafc; padding: 4px; border: 1px solid #e2e8f0; border-radius: 4px;");
@@ -1575,7 +1617,25 @@ void SettingsPane::loadPhysicsData() {
         .arg(m.x_min_val(), 0, 'f', 1).arg(m.x_max_val(), 0, 'f', 1)
         .arg(m.y_min_val(), 0, 'f', 1).arg(m.y_max_val(), 0, 'f', 1));
 
+    m_chkRemoveObservedMean->setChecked(m_doc->removeObservedMean());
+    updateObservedMeanLabel();
+
     m_blockSync = false;
+}
+
+void SettingsPane::updateObservedMeanLabel() {
+    if (!m_lblObservedMean) return;
+    const bool hasObs = m_doc->hasObservedGrid(m_doc->activeField());
+    if (!hasObs) {
+        m_lblObservedMean->setText(tr("No measured data for %1").arg(m_doc->activeFieldComponentName()));
+        return;
+    }
+    const double meanVal = m_doc->observedMean(m_doc->activeField());
+    m_lblObservedMean->setText(tr("Stored mean (%1): %2 %3%4")
+        .arg(m_doc->activeFieldComponentName())
+        .arg(meanVal, 0, 'f', 3)
+        .arg(m_doc->activeFieldUnit())
+        .arg(m_doc->removeObservedMean() ? tr(" - removed") : QString()));
 }
 
 void SettingsPane::applyPhysicsData() {

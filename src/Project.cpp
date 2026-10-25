@@ -208,6 +208,7 @@ std::string Project::to_json_string(int indent) const
     // Settings
     root["settings"] = {
         {"compute_real_time", settings_.compute_real_time},
+        {"remove_observed_mean", settings_.remove_observed_mean},
         {"gravity_formula", settings_.gravity_formula},
         {"magnetic_formula", settings_.magnetic_formula},
         {"active_components", settings_.active_components}
@@ -380,6 +381,7 @@ bool Project::from_json_string(std::string_view jsonStr)
         if (root.contains("settings")) {
             const auto &js = root["settings"];
             settings_.compute_real_time = js.value("compute_real_time", false);
+            settings_.remove_observed_mean = js.value("remove_observed_mean", false);
             settings_.gravity_formula = js.value("gravity_formula", 0);
             settings_.magnetic_formula = js.value("magnetic_formula", 0);
             if (js.contains("active_components") && js["active_components"].is_array()) {

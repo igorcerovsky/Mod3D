@@ -51,6 +51,9 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept
     swap(modeled_grids_, other.modeled_grids_);
     swap(observed_grids_, other.observed_grids_);
     swap(difference_grids_, other.difference_grids_);
+    swap(remove_observed_mean_, other.remove_observed_mean_);
+    swap(observed_means_, other.observed_means_);
+    swap(observed_anomaly_grids_, other.observed_anomaly_grids_);
 }
 
 void ObservationSpace::init_geometry(
@@ -270,9 +273,46 @@ Grid *ObservationSpace::observed_grid(FieldComponent comp)
 
 const Grid *ObservationSpace::observed_grid(FieldComponent comp) const
 {
+    if (remove_observed_mean_) {
+        auto ait = observed_anomaly_grids_.find(comp);
+        if (ait != observed_anomaly_grids_.end()) return &ait->second;
+    }
+    return raw_observed_grid(comp);
+}
+
+const Grid *ObservationSpace::raw_observed_grid(FieldComponent comp) const
+{
     auto it = observed_grids_.find(comp);
     if (it != observed_grids_.end()) return &it->second;
     return nullptr;
+}
+
+double ObservationSpace::observed_mean(FieldComponent comp) const
+{
+    auto it = observed_means_.find(comp);
+    return it != observed_means_.end() ? it->second : 0.0;
+}
+
+void ObservationSpace::set_remove_observed_mean(bool enable)
+{
+    remove_observed_mean_ = enable;
+    update_virtual_observed_anomalies();
+}
+
+void ObservationSpace::update_virtual_observed_anomalies()
+{
+    observed_means_.clear();
+    observed_anomaly_grids_.clear();
+    for (const auto &[comp, grd] : observed_grids_) {
+        if (grd.empty()) continue;
+        const double meanVal = grd.mean();
+        observed_means_[comp] = meanVal;
+        if (remove_observed_mean_) {
+            Grid anomaly = grd;
+            anomaly -= meanVal;
+            observed_anomaly_grids_.emplace(comp, std::move(anomaly));
+        }
+    }
 }
 
 void ObservationSpace::set_modeled_grid(FieldComponent comp, const Grid &grid)
@@ -283,6 +323,7 @@ void ObservationSpace::set_modeled_grid(FieldComponent comp, const Grid &grid)
 void ObservationSpace::set_observed_grid(FieldComponent comp, const Grid &grid)
 {
     observed_grids_[comp] = grid;
+    update_virtual_observed_anomalies();
 }
 
 Grid *ObservationSpace::difference_grid(FieldComponent comp)
@@ -492,15 +533,15 @@ void ObservationSpace::compute_total_fields()
 void ObservationSpace::compute_difference(FieldComponent comp, bool removeMean)
 {
     Grid *pMod = modeled_grid(comp);
-    Grid *pObs = observed_grid(comp);
+    const Grid *pObs = std::as_const(*this).observed_grid(comp);
     if ((!pObs || pObs->empty()) && comp == FieldComponent::GZ) {
-        pObs = observed_grid(FieldComponent::G_TOT);
+        pObs = std::as_const(*this).observed_grid(FieldComponent::G_TOT);
     } else if ((!pObs || pObs->empty()) && comp == FieldComponent::G_TOT) {
-        pObs = observed_grid(FieldComponent::GZ);
+        pObs = std::as_const(*this).observed_grid(FieldComponent::GZ);
     } else if ((!pObs || pObs->empty()) && comp == FieldComponent::DELTA_T) {
-        pObs = observed_grid(FieldComponent::MZ);
+        pObs = std::as_const(*this).observed_grid(FieldComponent::MZ);
     } else if ((!pObs || pObs->empty()) && comp == FieldComponent::MZ) {
-        pObs = observed_grid(FieldComponent::DELTA_T);
+        pObs = std::as_const(*this).observed_grid(FieldComponent::DELTA_T);
     }
     Grid *pDif = difference_grid(comp);
 
@@ -541,7 +582,7 @@ FitResult ObservationSpace::fit_density(
         return FitResult{};
     }
 
-    Grid *pObs = observed_grid(comp);
+    const Grid *pObs = std::as_const(*this).observed_grid(comp);
     if (!pObs || pObs->empty()) {
         return FitResult{};
     }
@@ -604,7 +645,7 @@ FitResult ObservationSpace::fit_vertex(
     double tol,
     FitMethod method)
 {
-    Grid *pObs = observed_grid(comp);
+    const Grid *pObs = std::as_const(*this).observed_grid(comp);
     if (!pObs || pObs->empty()) {
         return FitResult{};
     }

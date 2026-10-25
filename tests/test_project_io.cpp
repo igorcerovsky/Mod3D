@@ -15,6 +15,7 @@ TEST(ProjectIOTest, MetadataAndSettingsRoundtrip) {
     proj.metadata().version = "2.4.5";
 
     proj.settings().compute_real_time = true;
+    proj.settings().remove_observed_mean = true;
     proj.settings().gravity_formula = 1;
     proj.settings().magnetic_formula = 2;
     proj.settings().active_components = {"gz", "delta_t", "gzz"};
@@ -33,6 +34,7 @@ TEST(ProjectIOTest, MetadataAndSettingsRoundtrip) {
     EXPECT_EQ(loaded.metadata().version, "2.4.5");
 
     EXPECT_TRUE(loaded.settings().compute_real_time);
+    EXPECT_TRUE(loaded.settings().remove_observed_mean);
     EXPECT_EQ(loaded.settings().gravity_formula, 1);
     EXPECT_EQ(loaded.settings().magnetic_formula, 2);
     ASSERT_EQ(loaded.settings().active_components.size(), 3u);

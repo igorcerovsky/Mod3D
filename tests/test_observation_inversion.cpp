@@ -323,3 +323,63 @@ TEST(Gate3InversionTest, VertexDepthRecoveryMatchesFitLogVrtx) {
     // 2. Minimum RMS drops to near zero (< 1e-4 mGal)
     EXPECT_LT(fitRes.minimum_objective, 1e-4);
 }
+
+// ============================================================================
+// 6. Virtual removal of the mean from the measured (observed) field
+// ============================================================================
+
+TEST(ObservationSpaceTest, VirtualObservedMeanRemoval) {
+    ObservationSpace obs(5, 5, 0.0, 0.0, 200.0, 200.0);
+    obs.set_gravity_observation(ObservationMode::FlightElevation, 100.0);
+
+    Grid rawObs(5, 5, 0.0, 0.0, 200.0, 200.0);
+    for (size_t r = 0; r < 5; ++r) {
+        for (size_t c = 0; c < 5; ++c) {
+            rawObs(r, c) = 15.0 + static_cast<double>(r * 2 + c);
+        }
+    }
+    obs.set_observed_grid(FieldComponent::GZ, rawObs);
+
+    const ObservationSpace &cobs = obs;
+    const double rawMean = rawObs.mean();
+    ASSERT_NE(rawMean, 0.0);
+
+    // Disabled: effective grid is the raw grid, mean is stored
+    EXPECT_FALSE(obs.remove_observed_mean());
+    EXPECT_EQ(cobs.observed_grid(FieldComponent::GZ), cobs.raw_observed_grid(FieldComponent::GZ));
+    EXPECT_NEAR(obs.observed_mean(FieldComponent::GZ), rawMean, 1e-12);
+
+    // Enabled: virtual anomaly has zero mean, raw grid is untouched, mean stored
+    obs.set_remove_observed_mean(true);
+    const Grid *anomaly = cobs.observed_grid(FieldComponent::GZ);
+    ASSERT_NE(anomaly, nullptr);
+    EXPECT_NE(anomaly, cobs.raw_observed_grid(FieldComponent::GZ));
+    EXPECT_NEAR(anomaly->mean(), 0.0, 1e-9);
+    EXPECT_NEAR(obs.observed_mean(FieldComponent::GZ), rawMean, 1e-12);
+    for (size_t r = 0; r < 5; ++r) {
+        for (size_t c = 0; c < 5; ++c) {
+            EXPECT_DOUBLE_EQ((*cobs.raw_observed_grid(FieldComponent::GZ))(r, c), rawObs(r, c));
+            EXPECT_NEAR((*anomaly)(r, c), rawObs(r, c) - rawMean, 1e-12);
+        }
+    }
+
+    // Difference grid is computed using the virtual anomaly: modeled - observed
+    // Set modeled field equal to the virtual anomaly -> difference should be 0
+    Grid modeled = *anomaly;
+    obs.set_modeled_grid(FieldComponent::GZ, modeled);
+    obs.compute_difference(FieldComponent::GZ);
+    EXPECT_NEAR(obs.difference_grid(FieldComponent::GZ)->rms(), 0.0, 1e-9);
+
+    // Updating observed grid recalculates the mean and virtual anomaly
+    Grid newRaw = rawObs;
+    newRaw += 10.0;
+    obs.set_observed_grid(FieldComponent::GZ, newRaw);
+    EXPECT_NEAR(obs.observed_mean(FieldComponent::GZ), rawMean + 10.0, 1e-12);
+    EXPECT_NEAR(cobs.observed_grid(FieldComponent::GZ)->mean(), 0.0, 1e-9);
+
+    // Disabled again: raw field is shown, stored mean stays available
+    obs.set_remove_observed_mean(false);
+    EXPECT_EQ(cobs.observed_grid(FieldComponent::GZ), cobs.raw_observed_grid(FieldComponent::GZ));
+    EXPECT_NEAR(obs.observed_mean(FieldComponent::GZ), rawMean + 10.0, 1e-12);
+}
+

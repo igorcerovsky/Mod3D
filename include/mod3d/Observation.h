@@ -297,6 +297,18 @@ public:
   void compute_total_fields();
   void compute_difference(FieldComponent comp, bool removeMean = false);
 
+  // Virtual mean removal of the measured (observed) field.
+  // Raw observed grids are never modified; the mean of every observed
+  // component is stored, and while enabled the const observed_grid()
+  // accessor, the difference grids and the inversions work with the virtual
+  // anomaly (observed - stored mean).
+  void set_remove_observed_mean(bool enable);
+  [[nodiscard]] bool remove_observed_mean() const noexcept {
+    return remove_observed_mean_;
+  }
+  [[nodiscard]] double observed_mean(FieldComponent comp) const;
+  [[nodiscard]] const Grid *raw_observed_grid(FieldComponent comp) const;
+
   // Automated 1D Inversion
   FitResult fit_density(Body *pBody, const std::vector<Facet3Pt> &bodyFacets,
                         FieldComponent comp = FieldComponent::GZ,
@@ -310,6 +322,7 @@ public:
 private:
   void ensure_grid_allocated(std::map<FieldComponent, Grid> &gridMap,
                              FieldComponent comp);
+  void update_virtual_observed_anomalies();
   double get_elevation_at(ObservationMode mode, double heightVal,
                           const Grid &elevGrid, size_t r, size_t c) const;
   double get_elevation_at(ObservationMode mode, units::Meters heightVal,
@@ -348,6 +361,10 @@ private:
   std::map<FieldComponent, Grid> modeled_grids_;
   std::map<FieldComponent, Grid> observed_grids_;
   std::map<FieldComponent, Grid> difference_grids_;
+
+  bool remove_observed_mean_{false};
+  std::map<FieldComponent, double> observed_means_;
+  std::map<FieldComponent, Grid> observed_anomaly_grids_;
 };
 
 } // namespace mod3d
