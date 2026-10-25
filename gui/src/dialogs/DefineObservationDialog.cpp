@@ -397,10 +397,12 @@ bool DefineObservationDialog::loadFromTopoGridFile(const QString &filePath) {
     // Sync dimensions from topography grid
     syncDimensionsFromGrid(g);
 
-    // Ensure ZMax >= ceil(grid.max())
-    double gridMaxZ = std::ceil(g.max());
-    if (std::isfinite(gridMaxZ) && gridMaxZ > m_spinZMax->value()) {
-        m_spinZMax->setValue(gridMaxZ);
+    // Vertical range from topography: bottom = zmin - 0.4*L, top = zmax + 0.1*L (rounded to 10/100/1000 m)
+    double sugZMin = 0.0, sugZMax = 0.0;
+    ModelDocument::suggestVerticalRange(g, sugZMin, sugZMax);
+    if (std::isfinite(sugZMin) && std::isfinite(sugZMax) && sugZMin < sugZMax) {
+        m_spinZMin->setValue(sugZMin);
+        m_spinZMax->setValue(sugZMax);
     }
 
     updateControlStates();
