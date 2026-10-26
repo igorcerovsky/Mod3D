@@ -1,10 +1,12 @@
 #include "mod3d_gui/HorizontalSliceView.h"
+#include "mod3d_gui/ProfileView.h"
 #include <QPainter>
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
+#include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QApplication>
 #include <algorithm>
@@ -18,6 +20,8 @@ HorizontalSliceView::HorizontalSliceView(ModelDocument *doc, double initialZ, QW
 {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
+    setAttribute(Qt::WA_NoSystemBackground, true);
 
     if (m_doc) {
         if (!std::isnan(initialZ)) {
@@ -415,6 +419,93 @@ void HorizontalSliceView::setShowCellBorders(bool show) {
     }
 }
 
+QMdiArea *HorizontalSliceView::findMdiArea() const {
+    QWidget *p = parentWidget();
+    while (p) {
+        if (auto *m = qobject_cast<QMdiArea*>(p)) {
+            return m;
+        }
+        p = p->parentWidget();
+    }
+    return nullptr;
+}
+
+std::vector<HorizontalSliceView::OpenProfileInfo> HorizontalSliceView::collectOpenProfiles() const {
+    if (!m_customProfiles.empty()) {
+        return m_customProfiles;
+    }
+    std::vector<OpenProfileInfo> list;
+    if (auto *mdi = findMdiArea()) {
+        ProfileView *activePv = nullptr;
+        if (auto *activeSub = mdi->activeSubWindow()) {
+            activePv = qobject_cast<ProfileView*>(activeSub->widget());
+        }
+        for (auto *sub : mdi->subWindowList()) {
+            if (!sub || !sub->widget()) continue;
+            if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                bool isActive = (pv == activePv) || (activePv == nullptr && m_doc &&
+                                                     pv->profileIndex() == m_doc->profileIndex() &&
+                                                     pv->profileOrientation() == m_doc->profileOrientation());
+                list.push_back({
+                    .orientation = pv->profileOrientation(),
+                    .index = pv->profileIndex(),
+                    .coordinate = pv->currentProfileCoordinate(),
+                    .isActive = isActive
+                });
+            }
+        }
+    }
+    if (list.empty() && m_doc) {
+        list.push_back({
+            .orientation = m_doc->profileOrientation(),
+            .index = m_doc->profileIndex(),
+            .coordinate = m_doc->currentProfileCoordinate(),
+            .isActive = true
+        });
+    }
+    return list;
+}
+
+std::vector<HorizontalSliceView::PlaneIntersection> HorizontalSliceView::planeIntersections() const {
+    std::vector<PlaneIntersection> result;
+    auto profiles = collectOpenProfiles();
+    std::vector<OpenProfileInfo> ewProfiles;
+    std::vector<OpenProfileInfo> snProfiles;
+
+    for (const auto &p : profiles) {
+        if (p.orientation == ProfileOrientation::EastWest) {
+            ewProfiles.push_back(p);
+        } else {
+            snProfiles.push_back(p);
+        }
+    }
+
+    for (const auto &ew : ewProfiles) {
+        for (const auto &sn : snProfiles) {
+            result.push_back({
+                .x = sn.coordinate,
+                .y = ew.coordinate,
+                .z = m_sliceZ,
+                .ewIndex = ew.index,
+                .snIndex = sn.index,
+                .isActive = (ew.isActive || sn.isActive)
+            });
+        }
+    }
+
+    return result;
+}
+
+void HorizontalSliceView::setCustomOpenProfiles(const std::vector<OpenProfileInfo> &profiles) {
+    m_customProfiles = profiles;
+    update();
+}
+
+void HorizontalSliceView::clearCustomOpenProfiles() {
+    m_customProfiles.clear();
+    update();
+}
+
 std::vector<HorizontalSliceView::BoundaryEdge> HorizontalSliceView::activeBoundaryEdges() const {
     std::vector<BoundaryEdge> edges;
     if (!m_doc) return edges;
@@ -705,30 +796,131 @@ void HorizontalSliceView::drawProfilesAndMarkers(QPainter &painter, const QRect 
     painter.save();
     painter.setClipRect(canvas);
 
-    // 1. Draw Active Profile Lines
     if (m_showProfiles) {
-        int prfIdx = m_doc->profileIndex();
-        ProfileOrientation orient = m_doc->profileOrientation();
-        const auto &model = m_doc->model();
+        auto profiles = collectOpenProfiles();
+        std::vector<OpenProfileInfo> ewProfiles;
+        std::vector<OpenProfileInfo> snProfiles;
+        for (const auto &p : profiles) {
+            if (p.orientation == ProfileOrientation::EastWest) {
+                ewProfiles.push_back(p);
+            } else {
+                snProfiles.push_back(p);
+            }
+        }
 
-        if (orient == ProfileOrientation::EastWest && prfIdx >= 0 && prfIdx < model.rows() - 2) {
-            double yr = model.yd_val(prfIdx + 1);
-            int sy = worldToScreenY(yr);
+        // 1. Draw East-West profile planes (horizontal lines at Y = ew.coordinate)
+        for (const auto &ew : ewProfiles) {
+            int sy = worldToScreenY(ew.coordinate);
             int sx1 = worldToScreenX(m_worldXMin);
             int sx2 = worldToScreenX(m_worldXMax);
-            painter.setPen(QPen(QColor(0, 140, 230, 200), 1.8, Qt::DashLine));
-            painter.drawLine(sx1, sy, sx2, sy);
-        } else if (orient == ProfileOrientation::SouthNorth && prfIdx >= 0 && prfIdx < model.cols() - 2) {
-            double xc = model.xd_val(prfIdx + 1);
-            int sx = worldToScreenX(xc);
+
+            if (ew.isActive) {
+                painter.setPen(QPen(QColor(0, 122, 237, 240), 2.2, Qt::SolidLine, Qt::RoundCap));
+                painter.drawLine(sx1, sy, sx2, sy);
+                // Direction arrow pointing East
+                painter.drawLine(sx2 - 9, sy - 4, sx2, sy);
+                painter.drawLine(sx2 - 9, sy + 4, sx2, sy);
+
+                // Badge / label
+                painter.setPen(QColor(0, 75, 160));
+                painter.setFont(QFont("Arial", 8, QFont::Bold));
+                painter.drawText(sx1 + 8, sy - 5, QString("Profile %1 [E-W] (Y = %2 m)").arg(ew.index + 1).arg(ew.coordinate, 0, 'f', 0));
+            } else {
+                painter.setPen(QPen(QColor(0, 145, 235, 180), 1.6, Qt::DashLine, Qt::RoundCap));
+                painter.drawLine(sx1, sy, sx2, sy);
+                painter.setPen(QColor(30, 110, 190));
+                painter.setFont(QFont("Arial", 8));
+                painter.drawText(sx1 + 8, sy - 4, QString("Prf %1 [E-W]").arg(ew.index + 1));
+            }
+        }
+
+        // 2. Draw South-North profile planes (vertical lines at X = sn.coordinate)
+        for (const auto &sn : snProfiles) {
+            int sx = worldToScreenX(sn.coordinate);
             int sy1 = worldToScreenY(m_worldYMin);
             int sy2 = worldToScreenY(m_worldYMax);
-            painter.setPen(QPen(QColor(230, 110, 0, 200), 1.8, Qt::DashLine));
-            painter.drawLine(sx, sy1, sx, sy2);
+
+            if (sn.isActive) {
+                painter.setPen(QPen(QColor(235, 110, 0, 240), 2.2, Qt::SolidLine, Qt::RoundCap));
+                painter.drawLine(sx, sy1, sx, sy2);
+                // Direction arrow pointing North
+                painter.drawLine(sx - 4, sy2 + 9, sx, sy2);
+                painter.drawLine(sx + 4, sy2 + 9, sx, sy2);
+
+                // Badge / label
+                painter.setPen(QColor(180, 70, 0));
+                painter.setFont(QFont("Arial", 8, QFont::Bold));
+                painter.drawText(sx + 6, sy1 - 8, QString("Profile %1 [S-N] (X = %2 m)").arg(sn.index + 1).arg(sn.coordinate, 0, 'f', 0));
+            } else {
+                painter.setPen(QPen(QColor(220, 120, 20, 180), 1.6, Qt::DashLine, Qt::RoundCap));
+                painter.drawLine(sx, sy1, sx, sy2);
+                painter.setPen(QColor(170, 80, 10));
+                painter.setFont(QFont("Arial", 8));
+                painter.drawText(sx + 5, sy1 - 6, QString("Prf %1 [S-N]").arg(sn.index + 1));
+            }
+        }
+
+        // 3. Draw Plane Intersections
+        auto intersections = planeIntersections();
+        for (size_t i = 0; i < intersections.size(); ++i) {
+            const auto &pt = intersections[i];
+            int ix = worldToScreenX(pt.x);
+            int iy = worldToScreenY(pt.y);
+
+            if (!canvas.adjusted(-20, -20, 20, 20).contains(ix, iy)) continue;
+
+            bool isHovered = (static_cast<int>(i) == m_hoverIntersectionIdx);
+
+            // Halo / glow ring
+            painter.setPen(QPen(pt.isActive ? QColor(220, 30, 30, 80) : QColor(140, 60, 200, 70), isHovered ? 4.0 : 2.0));
+            painter.setBrush(Qt::NoBrush);
+            painter.drawEllipse(QPoint(ix, iy), isHovered ? 13 : 10, isHovered ? 13 : 10);
+
+            // Middle target ring
+            painter.setPen(QPen(pt.isActive ? QColor(220, 20, 20) : QColor(130, 40, 170), isHovered ? 2.5 : 2.0));
+            painter.setBrush(QColor(255, 255, 255, 230));
+            painter.drawEllipse(QPoint(ix, iy), 6, 6);
+
+            // Crosshair tick marks
+            painter.drawLine(ix - 11, iy, ix - 6, iy);
+            painter.drawLine(ix + 6, iy, ix + 11, iy);
+            painter.drawLine(ix, iy - 11, ix, iy - 6);
+            painter.drawLine(ix, iy + 6, ix, iy + 11);
+
+            // Center bullseye
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(pt.isActive ? QColor(220, 20, 20) : QColor(130, 40, 170));
+            painter.drawEllipse(QPoint(ix, iy), 3, 3);
+
+            // Plane intersection pill badge
+            QString badgeText = QString("EW #%1 ∩ SN #%2").arg(pt.ewIndex + 1).arg(pt.snIndex + 1);
+            QFont badgeFont("Arial", 8, QFont::Bold);
+            QFontMetrics bfm(badgeFont);
+            int textW = bfm.horizontalAdvance(badgeText);
+            int badgeW = textW + 12;
+            int badgeH = 18;
+
+            int badgeX = ix + 10;
+            int badgeY = iy - 22;
+            if (badgeX + badgeW > canvas.right() - 4) {
+                badgeX = ix - 10 - badgeW;
+            }
+            if (badgeY < canvas.top() + 4) {
+                badgeY = iy + 10;
+            }
+
+            QRect badgeRect(badgeX, badgeY, badgeW, badgeH);
+            painter.setPen(QPen(pt.isActive ? QColor(180, 20, 20) : QColor(100, 30, 140), 1.0));
+            painter.setBrush(pt.isActive ? QColor(250, 235, 240, 235) : QColor(245, 240, 252, 235));
+            painter.drawRoundedRect(badgeRect, 4, 4);
+
+            painter.setPen(pt.isActive ? QColor(160, 10, 10) : QColor(90, 20, 130));
+            painter.setFont(badgeFont);
+            painter.drawText(badgeRect, Qt::AlignCenter, badgeText);
         }
     }
 
-    // 2. Draw Active Cursor Point Marker
+    // 4. Draw Active Cursor Point Marker
     const auto &pt = m_doc->activeProfileCursor();
     if (pt.active && pt.row >= 1 && pt.col >= 1) {
         int sx = worldToScreenX(pt.x);
@@ -1085,6 +1277,50 @@ void HorizontalSliceView::mouseMoveEvent(QMouseEvent *event) {
         return;
     }
 
+    // Check Plane Intersection Hover
+    int hoverInterIdx = -1;
+    if (m_showProfiles) {
+        auto intersections = planeIntersections();
+        for (size_t i = 0; i < intersections.size(); ++i) {
+            int ix = worldToScreenX(intersections[i].x);
+            int iy = worldToScreenY(intersections[i].y);
+            if (std::hypot(event->pos().x() - ix, event->pos().y() - iy) <= 9.0) {
+                hoverInterIdx = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+    if (hoverInterIdx != m_hoverIntersectionIdx) {
+        m_hoverIntersectionIdx = hoverInterIdx;
+        update();
+    }
+    if (m_hoverIntersectionIdx >= 0) {
+        if (m_isHoveringEdge || m_isHoveringCenter) {
+            m_isHoveringEdge = false;
+            m_isHoveringCenter = false;
+            update();
+        }
+        auto intersections = planeIntersections();
+        if (m_hoverIntersectionIdx < static_cast<int>(intersections.size())) {
+            const auto &pt = intersections[m_hoverIntersectionIdx];
+            QString tip = tr("Plane Intersection:\nE-W Profile %1 (Y = %2 m)\nS-N Profile %3 (X = %4 m)\nSlice Z = %5 m")
+                              .arg(pt.ewIndex + 1).arg(pt.y, 0, 'f', 1)
+                              .arg(pt.snIndex + 1).arg(pt.x, 0, 'f', 1)
+                              .arg(pt.z, 0, 'f', 1);
+            if (toolTip() != tip) {
+                setToolTip(tip);
+            }
+            emit cursorStationChanged(-1, -1, pt.x, pt.y, pt.z, 0.0);
+        }
+        setCursor(Qt::CrossCursor);
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
+
+    if (!toolTip().isEmpty()) {
+        setToolTip(QString());
+    }
+
     // Normal Hover detection
     BoundaryEdge hitEdge;
     int hitRow = -1, hitCol = -1, hitBodyId = -1;
@@ -1241,10 +1477,14 @@ void HorizontalSliceView::resizeEvent(QResizeEvent *event) {
 }
 
 void HorizontalSliceView::leaveEvent(QEvent *event) {
-    if (m_isHoveringEdge || m_isHoveringCenter) {
+    if (m_isHoveringEdge || m_isHoveringCenter || m_hoverIntersectionIdx >= 0) {
         m_isHoveringEdge = false;
         m_isHoveringCenter = false;
+        m_hoverIntersectionIdx = -1;
         update();
+    }
+    if (!toolTip().isEmpty()) {
+        setToolTip(QString());
     }
     QWidget::leaveEvent(event);
 }

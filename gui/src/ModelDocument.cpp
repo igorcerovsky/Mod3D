@@ -869,6 +869,16 @@ bool ModelDocument::loadReliefGrid(const QString &filePath) {
 }
 
 void ModelDocument::setActiveProfileCursor(const ProfileCursorPoint &pt) {
+    if (m_activeProfileCursor.active == pt.active &&
+        m_activeProfileCursor.row == pt.row &&
+        m_activeProfileCursor.col == pt.col &&
+        m_activeProfileCursor.bodyId == pt.bodyId &&
+        m_activeProfileCursor.isDragging == pt.isDragging &&
+        std::abs(m_activeProfileCursor.x - pt.x) < 0.1 &&
+        std::abs(m_activeProfileCursor.y - pt.y) < 0.1 &&
+        std::abs(m_activeProfileCursor.z - pt.z) < 0.5) {
+        return;
+    }
     m_activeProfileCursor = pt;
     emit activeProfileCursorChanged(m_activeProfileCursor);
 }

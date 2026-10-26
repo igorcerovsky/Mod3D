@@ -3502,5 +3502,145 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewCellCenterDrawingMode) {
     EXPECT_FALSE(pm.isNull());
 }
 
+TEST_F(GuiDocumentTest, HorizontalSliceViewMultiProfileAndPlaneIntersection) {
+    ModelDocument doc;
+    doc.newProject(10, 10, 0.0, 0.0, 1000.0, 1000.0, -3000.0, 0.0);
+
+    TestHorizontalSliceView sliceView(&doc, -1000.0);
+    sliceView.resize(600, 500);
+
+    // Set custom open profiles: 2 East-West profiles and 1 South-North profile
+    std::vector<HorizontalSliceView::OpenProfileInfo> customProfiles = {
+        { ProfileOrientation::EastWest, 1, 2000.0, true },
+        { ProfileOrientation::EastWest, 4, 5000.0, false },
+        { ProfileOrientation::SouthNorth, 2, 3000.0, true }
+    };
+    sliceView.setCustomOpenProfiles(customProfiles);
+
+    auto openList = sliceView.collectOpenProfiles();
+    ASSERT_EQ(openList.size(), 3u);
+
+    // Intersections of EW planes with SN planes: 2 EW x 1 SN = 2 intersections
+    auto intersections = sliceView.planeIntersections();
+    ASSERT_EQ(intersections.size(), 2u);
+
+    // Intersection 0: (SN=3000, EW=2000, Z=-1000)
+    EXPECT_DOUBLE_EQ(intersections[0].x, 3000.0);
+    EXPECT_DOUBLE_EQ(intersections[0].y, 2000.0);
+    EXPECT_DOUBLE_EQ(intersections[0].z, -1000.0);
+    EXPECT_EQ(intersections[0].ewIndex, 1);
+    EXPECT_EQ(intersections[0].snIndex, 2);
+    EXPECT_TRUE(intersections[0].isActive);
+
+    // Intersection 1: (SN=3000, EW=5000, Z=-1000)
+    EXPECT_DOUBLE_EQ(intersections[1].x, 3000.0);
+    EXPECT_DOUBLE_EQ(intersections[1].y, 5000.0);
+    EXPECT_DOUBLE_EQ(intersections[1].z, -1000.0);
+    EXPECT_EQ(intersections[1].ewIndex, 4);
+    EXPECT_EQ(intersections[1].snIndex, 2);
+    EXPECT_TRUE(intersections[1].isActive);
+
+    // Test hovering over Intersection 0
+    int sx0 = sliceView.worldToScreenX(intersections[0].x);
+    int sy0 = sliceView.worldToScreenY(intersections[0].y);
+    sliceView.sendMouseMove(QPoint(sx0, sy0));
+
+    EXPECT_FALSE(sliceView.toolTip().isEmpty());
+    EXPECT_TRUE(sliceView.toolTip().contains("Plane Intersection"));
+    EXPECT_TRUE(sliceView.toolTip().contains("E-W Profile 2"));
+    EXPECT_TRUE(sliceView.toolTip().contains("S-N Profile 3"));
+    EXPECT_EQ(sliceView.cursor().shape(), Qt::CrossCursor);
+
+    // Move mouse away: tooltip is cleared
+    sliceView.sendMouseMove(QPoint(sx0 + 50, sy0 + 50));
+    EXPECT_TRUE(sliceView.toolTip().isEmpty());
+
+    // Render check: draws all profile cut lines, intersection reticles, and badges without crashing
+    QPixmap pm(sliceView.size());
+    pm.fill(Qt::white);
+    sliceView.render(&pm);
+    EXPECT_FALSE(pm.isNull());
+}
+
+TEST_F(GuiDocumentTest, MainWindowHorizontalSliceViewDiscoversMdiProfilesAndIntersects) {
+    MainWindow mw;
+    mw.resize(1200, 800);
+
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
+    ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
+
+    // Open Horizontal Slice View in MDI area
+    auto *hv = mw.openHorizontalSliceView(-500.0);
+    ASSERT_NE(hv, nullptr);
+
+    // The MDI area contains both the default EW and SN ProfileViews
+    auto openList = hv->collectOpenProfiles();
+    EXPECT_GE(openList.size(), 2u);
+
+    bool hasEW = false;
+    bool hasSN = false;
+    for (const auto &p : openList) {
+        if (p.orientation == ProfileOrientation::EastWest) hasEW = true;
+        if (p.orientation == ProfileOrientation::SouthNorth) hasSN = true;
+    }
+    EXPECT_TRUE(hasEW);
+    EXPECT_TRUE(hasSN);
+
+    // Verify plane intersection is computed from open MDI profile subwindows
+    auto intersections = hv->planeIntersections();
+    EXPECT_GE(intersections.size(), 1u);
+
+    // Render check
+    QPixmap pm(hv->size());
+    pm.fill(Qt::white);
+    hv->render(&pm);
+    EXPECT_FALSE(pm.isNull());
+}
+
+TEST_F(GuiDocumentTest, AntiFlickerOpaquePaintAndBackgroundSuppression) {
+    MainWindow mw;
+    mw.resize(1000, 700);
+
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
+    ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
+
+    ProfileView *pv = nullptr;
+    MapView *mv = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *p = qobject_cast<ProfileView*>(sub->widget())) pv = p;
+        else if (auto *m = qobject_cast<MapView*>(sub->widget())) mv = m;
+    }
+    ASSERT_NE(pv, nullptr);
+    ASSERT_NE(mv, nullptr);
+
+    // Verify anti-flicker widget attributes are enabled
+    EXPECT_TRUE(pv->testAttribute(Qt::WA_OpaquePaintEvent));
+    EXPECT_TRUE(pv->testAttribute(Qt::WA_NoSystemBackground));
+
+    EXPECT_TRUE(mv->testAttribute(Qt::WA_OpaquePaintEvent));
+    EXPECT_TRUE(mv->testAttribute(Qt::WA_NoSystemBackground));
+
+    auto *hv = mw.openHorizontalSliceView(-500.0);
+    ASSERT_NE(hv, nullptr);
+    EXPECT_TRUE(hv->testAttribute(Qt::WA_OpaquePaintEvent));
+    EXPECT_TRUE(hv->testAttribute(Qt::WA_NoSystemBackground));
+
+    // Verify cursor movement equality guard prevents redundant signals
+    auto *doc = mw.document();
+    int cursorSignalCount = 0;
+    QObject::connect(doc, &ModelDocument::activeProfileCursorChanged, [&cursorSignalCount](const ModelDocument::ProfileCursorPoint &) {
+        cursorSignalCount++;
+    });
+
+    ModelDocument::ProfileCursorPoint pt1{true, 2, 3, 1000.0, 1500.0, -500.0, 1, "body1", false};
+    doc->setActiveProfileCursor(pt1);
+    EXPECT_EQ(cursorSignalCount, 1);
+
+    // Setting exact same or negligible sub-pixel coordinate difference must NOT trigger redundant signal
+    ModelDocument::ProfileCursorPoint pt2{true, 2, 3, 1000.05, 1500.05, -500.1, 1, "body1", false};
+    doc->setActiveProfileCursor(pt2);
+    EXPECT_EQ(cursorSignalCount, 1);
+}
+
 
 

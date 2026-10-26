@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QRect>
 #include <QComboBox>
+#include <QMdiArea>
 #include <vector>
 #include <set>
 #include <limits>
@@ -91,6 +92,27 @@ public:
     [[nodiscard]] std::vector<BoundaryEdge> activeBoundaryEdges() const;
     void updateTitle();
 
+    struct OpenProfileInfo {
+        ProfileOrientation orientation{ProfileOrientation::EastWest};
+        int index{0};
+        double coordinate{0.0};
+        bool isActive{false};
+    };
+
+    struct PlaneIntersection {
+        double x{0.0};
+        double y{0.0};
+        double z{0.0};
+        int ewIndex{0};
+        int snIndex{0};
+        bool isActive{false};
+    };
+
+    [[nodiscard]] std::vector<OpenProfileInfo> collectOpenProfiles() const;
+    [[nodiscard]] std::vector<PlaneIntersection> planeIntersections() const;
+    void setCustomOpenProfiles(const std::vector<OpenProfileInfo> &profiles);
+    void clearCustomOpenProfiles();
+
 signals:
     void sliceElevationChanged(double z);
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
@@ -173,6 +195,11 @@ private:
     // Pan state
     QPoint m_lastPanPos;
     int m_wheelDeltaAccumulator{0};
+
+    // Open Profile Views & Plane Intersections
+    QMdiArea *findMdiArea() const;
+    std::vector<OpenProfileInfo> m_customProfiles;
+    int m_hoverIntersectionIdx{-1};
 };
 
 } // namespace mod3d_gui

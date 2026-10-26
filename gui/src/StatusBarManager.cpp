@@ -77,23 +77,38 @@ void StatusBarManager::setProgress(int percentage) {
 }
 
 void StatusBarManager::setRow(int row) {
-    m_lblRow->setText(QString("row: %1").arg(row));
+    const QString txt = QString("row: %1").arg(row);
+    if (m_lblRow->text() != txt) {
+        m_lblRow->setText(txt);
+    }
 }
 
 void StatusBarManager::setCol(int col) {
-    m_lblCol->setText(QString("col: %1").arg(col));
+    const QString txt = QString("col: %1").arg(col);
+    if (m_lblCol->text() != txt) {
+        m_lblCol->setText(txt);
+    }
 }
 
 void StatusBarManager::setX(double x) {
-    m_lblX->setText(QString("x: %1 m").arg(x, 0, 'f', 1));
+    const QString txt = QString("x: %1 m").arg(x, 0, 'f', 1);
+    if (m_lblX->text() != txt) {
+        m_lblX->setText(txt);
+    }
 }
 
 void StatusBarManager::setY(double y) {
-    m_lblY->setText(QString("y: %1 m").arg(y, 0, 'f', 1));
+    const QString txt = QString("y: %1 m").arg(y, 0, 'f', 1);
+    if (m_lblY->text() != txt) {
+        m_lblY->setText(txt);
+    }
 }
 
 void StatusBarManager::setZ(double z) {
-    m_lblZ->setText(QString("z: %1 m").arg(z, 0, 'f', 1));
+    const QString txt = QString("z: %1 m").arg(z, 0, 'f', 1);
+    if (m_lblZ->text() != txt) {
+        m_lblZ->setText(txt);
+    }
 }
 
 void StatusBarManager::setFieldValue(const QString &fieldCompName, double value, const QString &unit) {

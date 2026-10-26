@@ -17,14 +17,31 @@ MapView::MapView(ModelDocument *doc, QWidget *parent)
     , m_doc(doc)
 {
     setMouseTracking(true);
+    setAttribute(Qt::WA_OpaquePaintEvent, true);
+    setAttribute(Qt::WA_NoSystemBackground, true);
 
-    connect(m_doc, &ModelDocument::modelGeometryChanged, this, QOverload<>::of(&QWidget::update));
-    connect(m_doc, &ModelDocument::computationFinished, this, QOverload<>::of(&QWidget::update));
-    connect(m_doc, &ModelDocument::activeFieldChanged, this, [this](mod3d::FieldComponent) { update(); });
-    connect(m_doc, &ModelDocument::fieldDisplayToggled, this, QOverload<>::of(&QWidget::update));
+    connect(m_doc, &ModelDocument::modelGeometryChanged, this, [this]() {
+        m_rasterDirty = true;
+        m_reliefContoursDirty = true;
+        update();
+    });
+    connect(m_doc, &ModelDocument::computationFinished, this, [this]() {
+        m_rasterDirty = true;
+        update();
+    });
+    connect(m_doc, &ModelDocument::activeFieldChanged, this, [this](mod3d::FieldComponent) {
+        m_rasterDirty = true;
+        update();
+    });
+    connect(m_doc, &ModelDocument::fieldDisplayToggled, this, [this]() {
+        m_rasterDirty = true;
+        update();
+    });
     connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) { update(); });
     connect(m_doc, &ModelDocument::activeProfileCursorChanged, this, [this](const ModelDocument::ProfileCursorPoint &) { update(); });
     connect(m_doc, &ModelDocument::documentReset, this, [this]() {
+        m_rasterDirty = true;
+        m_reliefContoursDirty = true;
         fitToWindow();
         update();
     });
@@ -47,6 +64,7 @@ void MapView::setRasterMode(MapRasterMode mode) {
     }
     if (m_rasterMode != mode) {
         m_rasterMode = mode;
+        m_rasterDirty = true;
         update();
     }
 }
@@ -57,6 +75,7 @@ void MapView::setFieldComponent(mod3d::FieldComponent comp) {
         if ((m_rasterMode == MapRasterMode::Observed || m_rasterMode == MapRasterMode::Difference) && !hasMeasuredField()) {
             m_rasterMode = MapRasterMode::Modeled;
         }
+        m_rasterDirty = true;
         update();
     }
 }
@@ -324,59 +343,81 @@ void MapView::paintEvent(QPaintEvent *) {
 void MapView::drawBackgroundRaster(QPainter &painter) {
     if (m_rasterMode == MapRasterMode::None) return;
 
-    const mod3d::Grid *grid = nullptr;
-    bool isMag = mod3d::is_magnetic_component(m_fieldComponent);
-    MapPaletteType palType = isMag ? MapPaletteType::Magnetics : MapPaletteType::Gravity;
+    if (m_rasterDirty) {
+        const mod3d::Grid *grid = nullptr;
+        bool isMag = mod3d::is_magnetic_component(m_fieldComponent);
+        MapPaletteType palType = isMag ? MapPaletteType::Magnetics : MapPaletteType::Gravity;
 
-    if (m_rasterMode == MapRasterMode::Difference) {
-        grid = m_doc->differenceGrid(m_fieldComponent);
-        if (!isMag) {
-            palType = MapPaletteType::Difference;
-        }
-    } else if (m_rasterMode == MapRasterMode::Observed) {
-        grid = m_doc->observedGrid(m_fieldComponent);
-        if ((!grid || grid->empty()) && m_fieldComponent == mod3d::FieldComponent::GZ) {
-            grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
-        }
-    } else if (m_rasterMode == MapRasterMode::Relief) {
-        grid = &m_doc->observation().surface_relief();
-        palType = MapPaletteType::Relief;
-    } else { // Modeled
-        grid = m_doc->modeledGrid(m_fieldComponent);
-        if (!grid || grid->empty()) {
+        if (m_rasterMode == MapRasterMode::Difference) {
+            grid = m_doc->differenceGrid(m_fieldComponent);
+            if (!isMag) {
+                palType = MapPaletteType::Difference;
+            }
+        } else if (m_rasterMode == MapRasterMode::Observed) {
             grid = m_doc->observedGrid(m_fieldComponent);
+            if ((!grid || grid->empty()) && m_fieldComponent == mod3d::FieldComponent::GZ) {
+                grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
+            }
+        } else if (m_rasterMode == MapRasterMode::Relief) {
+            grid = &m_doc->observation().surface_relief();
+            palType = MapPaletteType::Relief;
+        } else { // Modeled
+            grid = m_doc->modeledGrid(m_fieldComponent);
+            if (!grid || grid->empty()) {
+                grid = m_doc->observedGrid(m_fieldComponent);
+            }
         }
-    }
-    if (!grid || grid->empty()) return;
-    size_t rows = grid->rows();
-    size_t cols = grid->cols();
-    if (rows < 2 || cols < 2) return;
-
-    double minV = grid->min();
-    double maxV = grid->max();
-    if (minV >= maxV) return;
-
-    QImage img(static_cast<int>(cols), static_cast<int>(rows), QImage::Format_RGB32);
-
-    for (size_t r = 0; r < rows; ++r) {
-        for (size_t c = 0; c < cols; ++c) {
-            double v = (*grid)(r, c);
-            double t = (maxV > minV) ? std::clamp((v - minV) / (maxV - minV), 0.0, 1.0) : 0.5;
-            QColor col = getPaletteColor(t, palType);
-
-            // Invert row for screen Y (Northing is up)
-            img.setPixel(static_cast<int>(c), static_cast<int>(rows - 1 - r), col.rgb());
+        if (!grid || grid->empty()) {
+            m_cachedRasterImage = QImage();
+            m_rasterDirty = false;
+            return;
         }
+        size_t rows = grid->rows();
+        size_t cols = grid->cols();
+        if (rows < 2 || cols < 2) {
+            m_cachedRasterImage = QImage();
+            m_rasterDirty = false;
+            return;
+        }
+
+        double minV = grid->min();
+        double maxV = grid->max();
+        if (minV >= maxV) {
+            m_cachedRasterImage = QImage();
+            m_rasterDirty = false;
+            return;
+        }
+
+        m_cachedRasterImage = QImage(static_cast<int>(cols), static_cast<int>(rows), QImage::Format_RGB32);
+
+        for (size_t r = 0; r < rows; ++r) {
+            for (size_t c = 0; c < cols; ++c) {
+                double v = (*grid)(r, c);
+                double t = (maxV > minV) ? std::clamp((v - minV) / (maxV - minV), 0.0, 1.0) : 0.5;
+                QColor col = getPaletteColor(t, palType);
+
+                // Invert row for screen Y (Northing is up)
+                m_cachedRasterImage.setPixel(static_cast<int>(c), static_cast<int>(rows - 1 - r), col.rgb());
+            }
+        }
+
+        m_cachedRasterX0 = grid->x0().value();
+        m_cachedRasterY0 = grid->y0().value();
+        m_cachedRasterXMax = (grid->x0() + static_cast<double>(cols - 1) * grid->x_size()).value();
+        m_cachedRasterYMax = (grid->y0() + static_cast<double>(rows - 1) * grid->y_size()).value();
+        m_rasterDirty = false;
     }
 
-    int left = worldToScreenX(grid->x0());
-    int right = worldToScreenX(grid->x0() + static_cast<double>(cols - 1) * grid->x_size());
-    int top = worldToScreenY(grid->y0() + static_cast<double>(rows - 1) * grid->y_size());
-    int bottom = worldToScreenY(grid->y0());
+    if (m_cachedRasterImage.isNull()) return;
+
+    int left = worldToScreenX(m_cachedRasterX0);
+    int right = worldToScreenX(m_cachedRasterXMax);
+    int top = worldToScreenY(m_cachedRasterYMax);
+    int bottom = worldToScreenY(m_cachedRasterY0);
 
     QRect targetRect(left, top, right - left, bottom - top);
     painter.setOpacity(0.65);
-    painter.drawImage(targetRect, img);
+    painter.drawImage(targetRect, m_cachedRasterImage);
     painter.setOpacity(1.0);
 }
 
@@ -387,10 +428,19 @@ void MapView::drawReliefContours(QPainter &painter) {
     if (relief.empty() || relief.rows() < 2 || relief.cols() < 2) return;
     if (relief.min() >= relief.max()) return;
 
-    auto levels = relief.default_contour_levels(10);
-    if (levels.empty()) return;
-    auto segments = relief.generate_contours(levels);
-    if (segments.empty()) return;
+    if (m_reliefContoursDirty) {
+        m_cachedReliefLevels = relief.default_contour_levels(10);
+        if (!m_cachedReliefLevels.empty()) {
+            m_cachedReliefContours = relief.generate_contours(m_cachedReliefLevels);
+        } else {
+            m_cachedReliefContours.clear();
+        }
+        m_reliefContoursDirty = false;
+    }
+
+    const auto &levels = m_cachedReliefLevels;
+    const auto &segments = m_cachedReliefContours;
+    if (levels.empty() || segments.empty()) return;
 
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, true);

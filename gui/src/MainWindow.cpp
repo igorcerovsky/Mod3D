@@ -118,6 +118,10 @@ MainWindow::MainWindow(QWidget *parent)
             if (s && s->widget()) {
                 if (auto *glv = qobject_cast<GL3DView*>(s->widget())) {
                     glv->update();
+                } else if (auto *mv = qobject_cast<MapView*>(s->widget())) {
+                    mv->update();
+                } else if (auto *hv = qobject_cast<HorizontalSliceView*>(s->widget())) {
+                    hv->update();
                 }
             }
         }

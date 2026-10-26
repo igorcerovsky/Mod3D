@@ -25,6 +25,8 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
       m_profileIndex(profileIndex) {
   setFocusPolicy(Qt::StrongFocus);
   setMouseTracking(true);
+  setAttribute(Qt::WA_OpaquePaintEvent, true);
+  setAttribute(Qt::WA_NoSystemBackground, true);
 
   if (m_profileIndex < 0) {
     m_profileIndex = maxProfileIndex() / 2;
@@ -1667,12 +1669,11 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
         (vIdx > 1 && m_doc->model().z(r, c, vIdx - 1) == curZ) ||
         (vIdx < static_cast<int>(m_doc->model().count(r, c)) - 1 &&
          m_doc->model().z(r, c, vIdx + 1) == curZ);
-    if (isSnapped) {
-      setToolTip(tr("Snapped Contact (Hold Ctrl+drag to unsnap / split)"));
-    } else {
-      setToolTip(QString());
+    QString tip = isSnapped ? tr("Snapped Contact (Hold Ctrl+drag to unsnap / split)") : QString();
+    if (toolTip() != tip) {
+      setToolTip(tip);
     }
-  } else {
+  } else if (!toolTip().isEmpty()) {
     setToolTip(QString());
   }
 

@@ -134,6 +134,18 @@ private:
     bool m_panning{false};
     QPoint m_lastPanPos;
     int m_wheelDeltaAccumulator{0};
+
+    // Performance Caching for Anti-Flicker & Smooth Cursor Tracking
+    QImage m_cachedRasterImage;
+    double m_cachedRasterX0{0.0};
+    double m_cachedRasterY0{0.0};
+    double m_cachedRasterXMax{0.0};
+    double m_cachedRasterYMax{0.0};
+    bool m_rasterDirty{true};
+
+    std::vector<mod3d::Grid::ContourSegment> m_cachedReliefContours;
+    std::vector<double> m_cachedReliefLevels;
+    bool m_reliefContoursDirty{true};
 };
 
 } // namespace mod3d_gui
