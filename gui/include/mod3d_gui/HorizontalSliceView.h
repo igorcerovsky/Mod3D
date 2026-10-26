@@ -89,6 +89,9 @@ public:
     [[nodiscard]] bool showCellBorders() const noexcept { return m_showCellBorders; }
     void setShowCellBorders(bool show);
 
+    [[nodiscard]] bool showBodyOutlines() const noexcept { return m_showBodyOutlines; }
+    void setShowBodyOutlines(bool show);
+
     [[nodiscard]] std::vector<BoundaryEdge> activeBoundaryEdges() const;
     void updateTitle();
 
@@ -137,6 +140,7 @@ private:
 
     // Drawing helpers
     void drawGridAndCells(QPainter &painter, const QRect &canvas);
+    void drawBodyOutlines(QPainter &painter, const QRect &canvas);
     void drawBoundaryEdges(QPainter &painter, const QRect &canvas);
     void drawProfilesAndMarkers(QPainter &painter, const QRect &canvas);
     void drawAxes(QPainter &painter, const QRect &canvas);
@@ -158,6 +162,7 @@ private:
     bool m_showStationPoints{true};
     bool m_showProfiles{true};
     bool m_showCellBorders{true};
+    bool m_showBodyOutlines{true};
 
     // UI Header controls
     QWidget *m_headerWidget{nullptr};

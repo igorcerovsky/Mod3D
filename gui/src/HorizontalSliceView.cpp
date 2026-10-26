@@ -423,6 +423,13 @@ void HorizontalSliceView::setShowCellBorders(bool show) {
     }
 }
 
+void HorizontalSliceView::setShowBodyOutlines(bool show) {
+    if (m_showBodyOutlines != show) {
+        m_showBodyOutlines = show;
+        update();
+    }
+}
+
 QMdiArea *HorizontalSliceView::findMdiArea() const {
     QWidget *p = parentWidget();
     while (p) {
@@ -610,9 +617,19 @@ HorizontalSliceView::HitType HorizontalSliceView::performHitTest(
             }
         }
 
-        // Check if directly on the middle point of the cell (<= 8 px)
+        // Check if directly on the middle point of the cell / station (<= 8 px)
         if (distCenter <= 8.0) {
             return HitType::CellCenterPoint;
+        }
+
+        if (col < model.cols() - 1 && row < model.rows() - 1) {
+            double mx = (model.xd_val(col) + model.xd_val(col + 1)) * 0.5;
+            double my = (model.yd_val(row) + model.yd_val(row + 1)) * 0.5;
+            int smx = worldToScreenX(mx);
+            int smy = worldToScreenY(my);
+            if (std::hypot(pos.x() - smx, pos.y() - smy) <= 8.0) {
+                return HitType::CellCenterPoint;
+            }
         }
     }
 
@@ -665,6 +682,7 @@ void HorizontalSliceView::paintEvent(QPaintEvent *) {
 
     // Draw main components
     drawGridAndCells(painter, canvas);
+    drawBodyOutlines(painter, canvas);
     drawProfilesAndMarkers(painter, canvas);
     drawBoundaryEdges(painter, canvas);
     drawAxes(painter, canvas);
@@ -675,41 +693,63 @@ void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canva
     const auto &model = m_doc->model();
     int nRows = model.rows();
     int nCols = model.cols();
-    double dx = model.dx_val();
-    double dy = model.dy_val();
 
     painter.save();
     painter.setClipRect(canvas);
     painter.fillRect(canvas, Qt::white);
 
-    // 1. Draw each cell
+    auto intersectsAt = [&](int checkR, int checkC, int bId) {
+        if (checkR < 1 || checkR >= nRows || checkC < 1 || checkC >= nCols) return false;
+        int bIdx = model.body_index(bId, checkR, checkC);
+        if (bIdx < 0) return false;
+        double tz = model.z(checkR, checkC, bIdx);
+        double bz = model.z(checkR, checkC, bIdx + 1);
+        return (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz);
+    };
+
+    int actId = activeBodyId();
+    const auto *actBody = (actId >= 0) ? model.body(actId) : nullptr;
+
+    // 1. Draw cell fills and borders matching the real grid geometry [xd(c)..xd(c+1)] x [yd(r)..yd(r+1)]
     for (int r = 1; r < nRows - 1; ++r) {
         for (int c = 1; c < nCols - 1; ++c) {
-            double xc = model.xd_val(c);
-            double yr = model.yd_val(r);
+            double x0 = model.xd_val(c);
+            double x1 = model.xd_val(c + 1);
+            double y0 = model.yd_val(r);
+            double y1 = model.yd_val(r + 1);
 
-            int sx1 = worldToScreenX(xc - dx * 0.5);
-            int sx2 = worldToScreenX(xc + dx * 0.5);
-            int sy1 = worldToScreenY(yr + dy * 0.5);
-            int sy2 = worldToScreenY(yr - dy * 0.5);
+            int sx1 = worldToScreenX(x0);
+            int sx2 = worldToScreenX(x1);
+            int sy1 = worldToScreenY(y1); // top in screen
+            int sy2 = worldToScreenY(y0); // bottom in screen
 
             QRect cellRect(sx1, sy1, sx2 - sx1, sy2 - sy1);
 
-            // Check intersecting bodies
-            int hitBodyId = -1;
-            for (const auto &bPtr : model.bodies()) {
-                int bIdx = model.body_index(bPtr->id(), r, c);
-                if (bIdx >= 0) {
-                    double tz = model.z(r, c, bIdx);
-                    double bz = model.z(r, c, bIdx + 1);
-                    if (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz) {
-                        hitBodyId = bPtr->id();
-                        auto bc = bPtr->color();
-                        QColor fillCol(bc.r, bc.g, bc.b, 175);
-                        painter.fillRect(cellRect, fillCol);
+            auto checkBodyInCell = [&](const mod3d::Body *b) -> bool {
+                if (!b) return false;
+                int bId = b->id();
+                return (intersectsAt(r, c, bId) ||
+                        intersectsAt(r, c + 1, bId) ||
+                        intersectsAt(r + 1, c + 1, bId) ||
+                        intersectsAt(r + 1, c, bId));
+            };
+
+            const mod3d::Body *fillBody = nullptr;
+            if (actBody && checkBodyInCell(actBody)) {
+                fillBody = actBody;
+            } else {
+                for (const auto &bPtr : model.bodies()) {
+                    if (checkBodyInCell(bPtr.get())) {
+                        fillBody = bPtr.get();
                         break;
                     }
                 }
+            }
+
+            if (fillBody) {
+                auto bc = fillBody->color();
+                QColor fillCol(bc.r, bc.g, bc.b, 160);
+                painter.fillRect(cellRect, fillCol);
             }
 
             // Cell border
@@ -717,17 +757,42 @@ void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canva
                 painter.setPen(QColor(230, 232, 236));
                 painter.drawRect(cellRect);
             }
+        }
+    }
 
-            // Station node marker
+    // 2. Station node markers and drawing handles
+    for (int r = 1; r < nRows - 1; ++r) {
+        for (int c = 1; c < nCols - 1; ++c) {
+            double xc = model.xd_val(c);
+            double yr = model.yd_val(r);
             int scx = worldToScreenX(xc);
             int scy = worldToScreenY(yr);
+
+            // Check intersecting body at this station
+            int stationBodyId = -1;
+            for (const auto &bPtr : model.bodies()) {
+                if (intersectsAt(r, c, bPtr->id())) {
+                    stationBodyId = bPtr->id();
+                    break;
+                }
+            }
+
             if (m_showStationPoints) {
                 painter.setPen(Qt::NoPen);
-                painter.setBrush(hitBodyId >= 0 ? QColor(40, 40, 50, 180) : QColor(160, 165, 175, 160));
+                if (stationBodyId >= 0) {
+                    if (auto *b = model.body(stationBodyId)) {
+                        auto bc = b->color();
+                        painter.setBrush(QColor(bc.r, bc.g, bc.b, 220));
+                    } else {
+                        painter.setBrush(QColor(160, 165, 175, 160));
+                    }
+                } else {
+                    painter.setBrush(QColor(160, 165, 175, 160));
+                }
                 painter.drawEllipse(QPoint(scx, scy), 2, 2);
             }
 
-            // Cell center drawing handle (hovered or currently drawing)
+            // Cell center / station drawing handle (hovered or currently drawing)
             bool isCenterHovered = (m_isHoveringCenter && m_hoverCenterRow == r && m_hoverCenterCol == c);
             bool isDrawingHere = (m_dragOp == DragOperation::DrawBody && m_drawLastRow == r && m_drawLastCol == c);
             if (isCenterHovered || isDrawingHere) {
@@ -741,6 +806,30 @@ void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canva
         }
     }
 
+    painter.restore();
+}
+
+void HorizontalSliceView::drawBodyOutlines(QPainter &painter, const QRect &canvas) {
+    if (!m_showBodyOutlines || !m_doc) return;
+    const auto &model = m_doc->model();
+    auto boundaries = model.all_body_boundaries();
+    if (boundaries.empty()) return;
+
+    painter.save();
+    painter.setClipRect(canvas);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+
+    for (const auto &seg : boundaries) {
+        const auto *body = model.body(seg.bodyId);
+        if (body && !body->is_visible()) continue;
+        QColor col = body ? QColor(body->color().r, body->color().g, body->color().b) : QColor(0, 0, 180);
+        painter.setPen(QPen(col, 2.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        int sx0 = worldToScreenX(seg.pt0.x);
+        int sy0 = worldToScreenY(seg.pt0.y);
+        int sx1 = worldToScreenX(seg.pt1.x);
+        int sy1 = worldToScreenY(seg.pt1.y);
+        painter.drawLine(sx0, sy0, sx1, sy1);
+    }
     painter.restore();
 }
 
@@ -780,15 +869,6 @@ void HorizontalSliceView::drawBoundaryEdges(QPainter &painter, const QRect &canv
             painter.setBrush(QColor(255, 150, 0));
             painter.setPen(QPen(Qt::white, 1.5));
             painter.drawEllipse(QPoint(mx, my), 5, 5);
-        } else {
-            // Standard boundary stroke
-            QColor strokeColor(50, 50, 60, 220);
-            if (auto *b = m_doc->model().body(e.bodyId)) {
-                auto bc = b->color();
-                strokeColor = QColor(std::max(0, bc.r - 40), std::max(0, bc.g - 40), std::max(0, bc.b - 40), 240);
-            }
-            painter.setPen(QPen(strokeColor, 2.0, Qt::SolidLine, Qt::SquareCap));
-            painter.drawLine(sx1, sy1, sx2, sy2);
         }
     }
 
