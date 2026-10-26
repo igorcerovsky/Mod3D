@@ -33,6 +33,7 @@ HorizontalSliceView::HorizontalSliceView(ModelDocument *doc, double initialZ, QW
     setupUi();
 
     if (m_doc) {
+        connect(m_doc, &ModelDocument::modelGeometryChanged, this, &HorizontalSliceView::refreshBodyList);
         connect(m_doc, &ModelDocument::modelGeometryChanged, this, QOverload<>::of(&QWidget::update));
         connect(m_doc, &ModelDocument::computationFinished, this, QOverload<>::of(&QWidget::update));
         connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) { update(); });
@@ -42,6 +43,7 @@ HorizontalSliceView::HorizontalSliceView(ModelDocument *doc, double initialZ, QW
             if (m_doc) {
                 m_sliceZ = m_doc->activeSliceElevation();
                 updateHeaderUi();
+                refreshBodyList();
             }
             update();
         });
@@ -60,6 +62,7 @@ HorizontalSliceView::HorizontalSliceView(ModelDocument *doc, double initialZ, QW
         });
     }
 
+    refreshBodyList();
     fitToWindow();
     updateHeaderUi();
     updateTitle();
@@ -123,6 +126,24 @@ void HorizontalSliceView::setupUi() {
     m_labelDepth = new QLabel(m_headerWidget);
     m_labelDepth->setStyleSheet("color: #60626a; font-weight: normal;");
     headerLayout->addWidget(m_labelDepth);
+
+    headerLayout->addSpacing(8);
+    auto *lblBody = new QLabel(tr("Draw Body:"), m_headerWidget);
+    headerLayout->addWidget(lblBody);
+
+    m_comboActiveBody = new QComboBox(m_headerWidget);
+    m_comboActiveBody->setMinimumWidth(110);
+    m_comboActiveBody->setToolTip(tr("Select active body for click-drag drawing mode"));
+    m_comboActiveBody->setStyleSheet(
+        "QComboBox {"
+        "  background: #ffffff;"
+        "  border: 1px solid #c0c2c8;"
+        "  border-radius: 4px;"
+        "  padding: 2px 6px;"
+        "  font-size: 11px;"
+        "}"
+    );
+    headerLayout->addWidget(m_comboActiveBody);
 
     headerLayout->addStretch(1);
 
@@ -188,6 +209,49 @@ void HorizontalSliceView::updateHeaderUi() {
         m_labelDepth->setText(tr("Avg Depth: ~%1 m").arg(std::round(depth)));
     } else {
         m_labelDepth->clear();
+    }
+}
+
+void HorizontalSliceView::refreshBodyList() {
+    if (!m_comboActiveBody || !m_doc) return;
+    int currentId = activeBodyId();
+    m_comboActiveBody->blockSignals(true);
+    m_comboActiveBody->clear();
+
+    const auto &bodies = m_doc->model().bodies();
+    int selectIdx = 0;
+    for (size_t i = 0; i < bodies.size(); ++i) {
+        const auto &b = bodies[i];
+        QString name = QString::fromStdString(b->name());
+        if (name.isEmpty()) name = tr("Body %1").arg(b->id());
+        m_comboActiveBody->addItem(name, b->id());
+        if (b->id() == currentId) {
+            selectIdx = static_cast<int>(i);
+        }
+    }
+    if (m_comboActiveBody->count() > 0) {
+        m_comboActiveBody->setCurrentIndex(selectIdx);
+    }
+    m_comboActiveBody->blockSignals(false);
+}
+
+int HorizontalSliceView::activeBodyId() const {
+    if (m_comboActiveBody && m_comboActiveBody->currentIndex() >= 0) {
+        return m_comboActiveBody->currentData().toInt();
+    }
+    if (m_doc && !m_doc->model().bodies().empty()) {
+        return m_doc->model().bodies().front()->id();
+    }
+    return -1;
+}
+
+void HorizontalSliceView::setActiveBodyId(int bodyId) {
+    if (!m_comboActiveBody) return;
+    int idx = m_comboActiveBody->findData(bodyId);
+    if (idx >= 0 && idx != m_comboActiveBody->currentIndex()) {
+        m_comboActiveBody->blockSignals(true);
+        m_comboActiveBody->setCurrentIndex(idx);
+        m_comboActiveBody->blockSignals(false);
     }
 }
 
@@ -416,7 +480,48 @@ HorizontalSliceView::HitType HorizontalSliceView::performHitTest(
     outCol = -1;
     outBodyId = -1;
 
-    // 1. Check boundary edges first (distance <= 6 px)
+    if (!m_doc) return HitType::None;
+    const auto &model = m_doc->model();
+    double wx = screenToWorldX(pos.x());
+    double wy = screenToWorldY(pos.y());
+    double x0 = model.x0_val();
+    double y0 = model.y0_val();
+    double dx = model.dx_val();
+    double dy = model.dy_val();
+    if (dx <= 0.0 || dy <= 0.0) return HitType::None;
+
+    int col = static_cast<int>(std::round((wx - x0) / dx)) + 1;
+    int row = static_cast<int>(std::round((wy - y0) / dy)) + 1;
+
+    double distCenter = 999999.0;
+    if (row >= 1 && row < model.rows() - 1 && col >= 1 && col < model.cols() - 1) {
+        outRow = row;
+        outCol = col;
+        double xc = model.xd_val(col);
+        double yr = model.yd_val(row);
+        int scx = worldToScreenX(xc);
+        int scy = worldToScreenY(yr);
+        distCenter = std::hypot(pos.x() - scx, pos.y() - scy);
+
+        for (const auto &bPtr : model.bodies()) {
+            int bIdx = model.body_index(bPtr->id(), row, col);
+            if (bIdx >= 0) {
+                double tz = model.z(row, col, bIdx);
+                double bz = model.z(row, col, bIdx + 1);
+                if (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz) {
+                    outBodyId = bPtr->id();
+                    break;
+                }
+            }
+        }
+
+        // Check if directly on the middle point of the cell (<= 8 px)
+        if (distCenter <= 8.0) {
+            return HitType::CellCenterPoint;
+        }
+    }
+
+    // Check boundary edges (distance <= 6 px)
     auto edges = activeBoundaryEdges();
     for (const auto &e : edges) {
         int sx1 = worldToScreenX(e.x1);
@@ -443,33 +548,10 @@ HorizontalSliceView::HitType HorizontalSliceView::performHitTest(
         }
     }
 
-    // 2. Check if inside a grid cell
-    if (!m_doc) return HitType::None;
-    const auto &model = m_doc->model();
-    double wx = screenToWorldX(pos.x());
-    double wy = screenToWorldY(pos.y());
-    double x0 = model.x0_val();
-    double y0 = model.y0_val();
-    double dx = model.dx_val();
-    double dy = model.dy_val();
-    if (dx <= 0.0 || dy <= 0.0) return HitType::None;
-
-    int col = static_cast<int>(std::round((wx - x0) / dx)) + 1;
-    int row = static_cast<int>(std::round((wy - y0) / dy)) + 1;
-
-    if (row >= 1 && row < model.rows() - 1 && col >= 1 && col < model.cols() - 1) {
-        outRow = row;
-        outCol = col;
-        for (const auto &bPtr : model.bodies()) {
-            int bIdx = model.body_index(bPtr->id(), row, col);
-            if (bIdx >= 0) {
-                double tz = model.z(row, col, bIdx);
-                double bz = model.z(row, col, bIdx + 1);
-                if (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz) {
-                    outBodyId = bPtr->id();
-                    return HitType::BodyCell;
-                }
-            }
+    // Inside cell bounds
+    if (outRow >= 1 && outCol >= 1) {
+        if (outBodyId >= 0) {
+            return HitType::BodyCell;
         }
         return HitType::EmptyCell;
     }
@@ -542,11 +624,23 @@ void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canva
             }
 
             // Station node marker
+            int scx = worldToScreenX(xc);
+            int scy = worldToScreenY(yr);
             if (m_showStationPoints) {
-                int scx = worldToScreenX(xc);
-                int scy = worldToScreenY(yr);
                 painter.setPen(Qt::NoPen);
                 painter.setBrush(hitBodyId >= 0 ? QColor(40, 40, 50, 180) : QColor(160, 165, 175, 160));
+                painter.drawEllipse(QPoint(scx, scy), 2, 2);
+            }
+
+            // Cell center drawing handle (hovered or currently drawing)
+            bool isCenterHovered = (m_isHoveringCenter && m_hoverCenterRow == r && m_hoverCenterCol == c);
+            bool isDrawingHere = (m_dragOp == DragOperation::DrawBody && m_drawLastRow == r && m_drawLastCol == c);
+            if (isCenterHovered || isDrawingHere) {
+                painter.setPen(QPen(QColor(0, 160, 255), 2.0));
+                painter.setBrush(QColor(255, 255, 255, 220));
+                painter.drawEllipse(QPoint(scx, scy), 5, 5);
+                painter.setBrush(QColor(0, 160, 255));
+                painter.setPen(Qt::NoPen);
                 painter.drawEllipse(QPoint(scx, scy), 2, 2);
             }
         }
@@ -695,7 +789,56 @@ void HorizontalSliceView::mousePressEvent(QMouseEvent *event) {
         int hitRow = -1, hitCol = -1, hitBodyId = -1;
         HitType ht = performHitTest(event->pos(), hitEdge, hitRow, hitCol, hitBodyId);
 
-        if (ht == HitType::BoundaryEdge) {
+        if (ht == HitType::CellCenterPoint) {
+            // Drawing Mode initiated from cell center point!
+            m_dragOp = DragOperation::DrawBody;
+            m_dragStartPos = event->pos();
+            m_drawLastRow = hitRow;
+            m_drawLastCol = hitCol;
+            m_drawVisitedCells.clear();
+            m_drawVisitedCells.insert({hitRow, hitCol});
+
+            // Determine body to draw
+            if (hitBodyId >= 0) {
+                m_drawBodyId = hitBodyId;
+                setActiveBodyId(hitBodyId);
+            } else {
+                int actId = activeBodyId();
+                if (actId >= 0) {
+                    m_drawBodyId = actId;
+                } else if (m_doc) {
+                    m_drawBodyId = m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5, -1);
+                    refreshBodyList();
+                    setActiveBodyId(m_drawBodyId);
+                }
+                // If cell is empty, insert m_drawBodyId into this cell
+                if (m_doc && m_drawBodyId >= 0 && m_doc->model().body_index(m_drawBodyId, hitRow, hitCol) < 0) {
+                    m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5, m_drawBodyId);
+                }
+            }
+
+            setCursor(Qt::PointingHandCursor);
+            if (m_doc && hitRow >= 1 && hitCol >= 1) {
+                double wx = m_doc->model().xd_val(hitCol);
+                double wy = m_doc->model().yd_val(hitRow);
+                std::string bName;
+                if (auto *b = m_doc->model().body(m_drawBodyId)) bName = b->name();
+                m_doc->setActiveProfileCursor({
+                    true,
+                    hitRow,
+                    hitCol,
+                    wx,
+                    wy,
+                    m_sliceZ,
+                    m_drawBodyId,
+                    bName,
+                    true
+                });
+                emit cursorStationChanged(hitRow, hitCol, wx, wy, m_sliceZ, 0.0);
+            }
+            update();
+            return;
+        } else if (ht == HitType::BoundaryEdge) {
             m_dragOp = DragOperation::ExtendOrCollapseEdge;
             m_dragStartPos = event->pos();
             m_activeDragEdge = hitEdge;
@@ -747,6 +890,78 @@ void HorizontalSliceView::mouseMoveEvent(QMouseEvent *event) {
             m_worldXMax += dwx;
             m_worldYMin += dwy;
             m_worldYMax += dwy;
+            update();
+        }
+        return;
+    }
+
+    if (m_dragOp == DragOperation::DrawBody && m_doc && m_drawBodyId >= 0) {
+        const auto &model = m_doc->model();
+        double wx = screenToWorldX(event->pos().x());
+        double wy = screenToWorldY(event->pos().y());
+        double x0 = model.x0_val();
+        double y0 = model.y0_val();
+        double dx = model.dx_val();
+        double dy = model.dy_val();
+        if (dx > 0.0 && dy > 0.0) {
+            int currC = std::clamp(static_cast<int>(std::round((wx - x0) / dx)) + 1, 1, model.cols() - 2);
+            int currR = std::clamp(static_cast<int>(std::round((wy - y0) / dy)) + 1, 1, model.rows() - 2);
+
+            int r0 = m_drawLastRow;
+            int c0 = m_drawLastCol;
+            int r1 = currR;
+            int c1 = currC;
+
+            int dr = std::abs(r1 - r0);
+            int dc = std::abs(c1 - c0);
+            int steps = std::max(dr, dc);
+
+            for (int s = 1; s <= steps; ++s) {
+                int r = r0 + static_cast<int>(std::round(static_cast<double>(r1 - r0) * s / steps));
+                int c = c0 + static_cast<int>(std::round(static_cast<double>(c1 - c0) * s / steps));
+
+                if (r < 1 || r >= model.rows() - 1 || c < 1 || c >= model.cols() - 1) continue;
+
+                if (!m_drawVisitedCells.count({r, c})) {
+                    m_drawVisitedCells.insert({r, c});
+
+                    if (model.body_index(m_drawBodyId, r, c) < 0) {
+                        // Cell does not have this body yet: insert it!
+                        double halfT = model.default_thickness_val() * 0.25;
+                        double midZ = m_sliceZ;
+                        int lastBIdx = model.body_index(m_drawBodyId, m_drawLastRow, m_drawLastCol);
+                        if (lastBIdx >= 0) {
+                            double topZ = model.z(m_drawLastRow, m_drawLastCol, lastBIdx);
+                            double botZ = model.z(m_drawLastRow, m_drawLastCol, lastBIdx + 1);
+                            halfT = std::abs(topZ - botZ) / 2.0;
+                            midZ = (topZ + botZ) / 2.0;
+                        }
+                        int res = m_doc->insertBodyAtRowCol(r, c, midZ, halfT * 2.0, m_drawBodyId);
+                        if (res < 0 && std::abs(midZ - m_sliceZ) > 1e-3) {
+                            m_doc->insertBodyAtRowCol(r, c, m_sliceZ, halfT * 2.0, m_drawBodyId);
+                        }
+                    }
+                    m_drawLastRow = r;
+                    m_drawLastCol = c;
+                }
+            }
+
+            double wxCoord = model.xd_val(currC);
+            double wyCoord = model.yd_val(currR);
+            std::string bName;
+            if (auto *b = model.body(m_drawBodyId)) bName = b->name();
+            m_doc->setActiveProfileCursor({
+                true,
+                currR,
+                currC,
+                wxCoord,
+                wyCoord,
+                m_sliceZ,
+                m_drawBodyId,
+                bName,
+                true
+            });
+            emit cursorStationChanged(currR, currC, wxCoord, wyCoord, m_sliceZ, 0.0);
             update();
         }
         return;
@@ -875,7 +1090,20 @@ void HorizontalSliceView::mouseMoveEvent(QMouseEvent *event) {
     int hitRow = -1, hitCol = -1, hitBodyId = -1;
     HitType ht = performHitTest(event->pos(), hitEdge, hitRow, hitCol, hitBodyId);
 
-    if (ht == HitType::BoundaryEdge) {
+    if (ht == HitType::CellCenterPoint) {
+        if (!m_isHoveringCenter || m_hoverCenterRow != hitRow || m_hoverCenterCol != hitCol) {
+            m_isHoveringCenter = true;
+            m_hoverCenterRow = hitRow;
+            m_hoverCenterCol = hitCol;
+            m_isHoveringEdge = false;
+            update();
+        }
+        setCursor(Qt::PointingHandCursor);
+    } else if (ht == HitType::BoundaryEdge) {
+        if (m_isHoveringCenter) {
+            m_isHoveringCenter = false;
+            update();
+        }
         if (!m_isHoveringEdge || m_hoverEdge.bodyId != hitEdge.bodyId ||
             m_hoverEdge.srcRow != hitEdge.srcRow || m_hoverEdge.srcCol != hitEdge.srcCol ||
             m_hoverEdge.dir != hitEdge.dir) {
@@ -891,8 +1119,9 @@ void HorizontalSliceView::mouseMoveEvent(QMouseEvent *event) {
             setCursor(Qt::SizeVerCursor);
         }
     } else {
-        if (m_isHoveringEdge) {
+        if (m_isHoveringEdge || m_isHoveringCenter) {
             m_isHoveringEdge = false;
+            m_isHoveringCenter = false;
             update();
         }
         if (ht == HitType::BodyCell) {
@@ -925,6 +1154,18 @@ void HorizontalSliceView::mouseReleaseEvent(QMouseEvent *event) {
             m_doc->setActiveProfileCursor(pt);
         }
         update();
+    } else if (m_dragOp == DragOperation::DrawBody) {
+        m_dragOp = DragOperation::None;
+        m_drawVisitedCells.clear();
+        if (m_doc) {
+            auto pt = m_doc->activeProfileCursor();
+            pt.isDragging = false;
+            m_doc->setActiveProfileCursor(pt);
+            m_doc->computeAll();
+            m_doc->emitModelGeometryChanged();
+        }
+        setCursor(Qt::ArrowCursor);
+        update();
     }
     QWidget::mouseReleaseEvent(event);
 }
@@ -934,10 +1175,10 @@ void HorizontalSliceView::mouseDoubleClickEvent(QMouseEvent *event) {
         BoundaryEdge hitEdge;
         int hitRow = -1, hitCol = -1, hitBodyId = -1;
         HitType ht = performHitTest(event->pos(), hitEdge, hitRow, hitCol, hitBodyId);
-        if (ht == HitType::BodyCell && hitBodyId >= 0) {
+        if ((ht == HitType::BodyCell || (ht == HitType::CellCenterPoint && hitBodyId >= 0)) && hitBodyId >= 0) {
             emit requestBodyProperties(hitBodyId);
             return;
-        } else if (ht == HitType::EmptyCell && m_doc && hitRow >= 1 && hitCol >= 1) {
+        } else if ((ht == HitType::EmptyCell || (ht == HitType::CellCenterPoint && hitBodyId < 0)) && m_doc && hitRow >= 1 && hitCol >= 1) {
             // Double click on empty cell inserts a new body at this slice depth
             int newBodyId = m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5);
             if (newBodyId >= 0) {
@@ -1000,8 +1241,9 @@ void HorizontalSliceView::resizeEvent(QResizeEvent *event) {
 }
 
 void HorizontalSliceView::leaveEvent(QEvent *event) {
-    if (m_isHoveringEdge) {
+    if (m_isHoveringEdge || m_isHoveringCenter) {
         m_isHoveringEdge = false;
+        m_isHoveringCenter = false;
         update();
     }
     QWidget::leaveEvent(event);

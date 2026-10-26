@@ -3383,5 +3383,124 @@ TEST_F(GuiDocumentTest, MainWindowHorizontalSliceViewWindowOpening) {
     EXPECT_FALSE(pix.isNull());
 }
 
+class TestHorizontalSliceView : public HorizontalSliceView {
+public:
+    using HorizontalSliceView::HorizontalSliceView;
+    void sendMousePress(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseButtonPress, QPointF(pos), QPointF(pos), btn, btn, mods);
+        mousePressEvent(&ev);
+    }
+    void sendMouseMove(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseMove, QPointF(pos), QPointF(pos), btn, btn, mods);
+        mouseMoveEvent(&ev);
+    }
+    void sendMouseRelease(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(pos), btn, Qt::NoButton, mods);
+        mouseReleaseEvent(&ev);
+    }
+    HitType testHit(const QPoint &pos, BoundaryEdge &outEdge, int &outRow, int &outCol, int &outBodyId) const {
+        return performHitTest(pos, outEdge, outRow, outCol, outBodyId);
+    }
+};
+
+TEST_F(GuiDocumentTest, HorizontalSliceViewCellCenterDrawingMode) {
+    ModelDocument doc;
+    // 8 rows, 8 cols, dx=100, dy=100
+    doc.newProject(8, 8, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert an initial body at row 2, col 2 at Z = -500
+    int bodyId = doc.insertBodyAtRowCol(2, 2, -500.0, 150.0);
+    ASSERT_GT(bodyId, 0);
+
+    TestHorizontalSliceView sliceView(&doc, -500.0);
+    sliceView.resize(800, 600);
+    sliceView.fitToWindow();
+
+    // 1. Test Hit Testing on Cell Center Point
+    double xc2 = doc.model().xd_val(2);
+    double yr2 = doc.model().yd_val(2);
+    int sx2 = sliceView.worldToScreenX(xc2);
+    int sy2 = sliceView.worldToScreenY(yr2);
+
+    HorizontalSliceView::BoundaryEdge outEdge;
+    int hitRow = -1, hitCol = -1, hitBodyId = -1;
+    auto hitType = sliceView.testHit(QPoint(sx2, sy2), outEdge, hitRow, hitCol, hitBodyId);
+    EXPECT_EQ(hitType, HorizontalSliceView::HitType::CellCenterPoint);
+    EXPECT_EQ(hitRow, 2);
+    EXPECT_EQ(hitCol, 2);
+    EXPECT_EQ(hitBodyId, bodyId);
+
+    // Offset by 20 pixels (within cell of ~70px, but away from center): should be BodyCell
+    hitType = sliceView.testHit(QPoint(sx2 + 20, sy2), outEdge, hitRow, hitCol, hitBodyId);
+    EXPECT_EQ(hitType, HorizontalSliceView::HitType::BodyCell);
+
+    // Empty cell center at (2, 3)
+    double xc3 = doc.model().xd_val(3);
+    double yr3 = doc.model().yd_val(2);
+    int sx3 = sliceView.worldToScreenX(xc3);
+    int sy3 = sliceView.worldToScreenY(yr3);
+    hitType = sliceView.testHit(QPoint(sx3, sy3), outEdge, hitRow, hitCol, hitBodyId);
+    EXPECT_EQ(hitType, HorizontalSliceView::HitType::CellCenterPoint);
+    EXPECT_EQ(hitRow, 2);
+    EXPECT_EQ(hitCol, 3);
+    EXPECT_EQ(hitBodyId, -1);
+
+    // 2. Perform Drawing Mode by dragging from center of (2, 2) across to (2, 3) and (2, 4)
+    EXPECT_LT(doc.model().body_index(bodyId, 2, 3), 0);
+    EXPECT_LT(doc.model().body_index(bodyId, 2, 4), 0);
+
+    // Press on middle point of cell (2, 2)
+    sliceView.sendMousePress(QPoint(sx2, sy2));
+
+    // Move to (2, 3)
+    sliceView.sendMouseMove(QPoint(sx3, sy3));
+    EXPECT_GE(doc.model().body_index(bodyId, 2, 3), 0);
+
+    // Move to (2, 4)
+    double xc4 = doc.model().xd_val(4);
+    int sx4 = sliceView.worldToScreenX(xc4);
+    sliceView.sendMouseMove(QPoint(sx4, sy3));
+    EXPECT_GE(doc.model().body_index(bodyId, 2, 4), 0);
+
+    // Release mouse
+    sliceView.sendMouseRelease(QPoint(sx4, sy3));
+
+    // Verify drawing persisted and document marked modified
+    EXPECT_TRUE(doc.isModified());
+    EXPECT_GE(doc.model().body_index(bodyId, 2, 2), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 2, 3), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 2, 4), 0);
+
+    // 3. Test Drawing Mode starting from an EMPTY cell center with active body selected
+    // Start drawing at (4, 4) and drag to (4, 5)
+    sliceView.setActiveBodyId(bodyId);
+    double xc4_4 = doc.model().xd_val(4);
+    double yr4_4 = doc.model().yd_val(4);
+    int sx4_4 = sliceView.worldToScreenX(xc4_4);
+    int sy4_4 = sliceView.worldToScreenY(yr4_4);
+
+    EXPECT_LT(doc.model().body_index(bodyId, 4, 4), 0);
+    EXPECT_LT(doc.model().body_index(bodyId, 4, 5), 0);
+
+    sliceView.sendMousePress(QPoint(sx4_4, sy4_4));
+    // Starting on empty cell immediately inserts active body into start cell
+    EXPECT_GE(doc.model().body_index(bodyId, 4, 4), 0);
+
+    double xc4_5 = doc.model().xd_val(5);
+    int sx4_5 = sliceView.worldToScreenX(xc4_5);
+    sliceView.sendMouseMove(QPoint(sx4_5, sy4_4));
+    EXPECT_GE(doc.model().body_index(bodyId, 4, 5), 0);
+
+    sliceView.sendMouseRelease(QPoint(sx4_5, sy4_4));
+    EXPECT_GE(doc.model().body_index(bodyId, 4, 4), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 4, 5), 0);
+
+    // 4. Render check: draws cleanly with drawing mode highlights
+    QPixmap pm(sliceView.size());
+    pm.fill(Qt::white);
+    sliceView.render(&pm);
+    EXPECT_FALSE(pm.isNull());
+}
+
 
 

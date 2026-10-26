@@ -7,8 +7,9 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QRect>
-#include <QPoint>
+#include <QComboBox>
 #include <vector>
+#include <set>
 #include <limits>
 
 namespace mod3d_gui {
@@ -39,6 +40,7 @@ public:
     enum class HitType {
         None,
         BoundaryEdge,
+        CellCenterPoint,
         BodyCell,
         EmptyCell
     };
@@ -46,7 +48,8 @@ public:
     enum class DragOperation {
         None,
         Pan,
-        ExtendOrCollapseEdge
+        ExtendOrCollapseEdge,
+        DrawBody
     };
 
     explicit HorizontalSliceView(ModelDocument *doc, double initialZ = std::numeric_limits<double>::quiet_NaN(), QWidget *parent = nullptr);
@@ -55,6 +58,11 @@ public:
     [[nodiscard]] double sliceElevation() const noexcept { return m_sliceZ; }
     void setSliceElevation(double z);
     void stepElevation(int numSteps);
+
+    // Active Body for Drawing Mode
+    [[nodiscard]] int activeBodyId() const;
+    void setActiveBodyId(int bodyId);
+    void refreshBodyList();
 
     // Zoom and Pan
     void zoomIn();
@@ -99,11 +107,11 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void leaveEvent(QEvent *event) override;
 
+    HitType performHitTest(const QPoint &pos, BoundaryEdge &outEdge, int &outRow, int &outCol, int &outBodyId) const;
+
 private:
     void setupUi();
     void updateHeaderUi();
-
-    HitType performHitTest(const QPoint &pos, BoundaryEdge &outEdge, int &outRow, int &outCol, int &outBodyId) const;
 
     // Drawing helpers
     void drawGridAndCells(QPainter &painter, const QRect &canvas);
@@ -136,6 +144,7 @@ private:
     QLabel *m_labelDepth{nullptr};
     QPushButton *m_btnStepUp{nullptr};
     QPushButton *m_btnStepDown{nullptr};
+    QComboBox *m_comboActiveBody{nullptr};
     QPushButton *m_btnFit{nullptr};
 
     // Dragging / Interaction State
@@ -145,11 +154,21 @@ private:
     int m_lastDragRow{-1};
     int m_lastDragCol{-1};
 
+    // Drawing Mode State (clicking/dragging from middle point of cell)
+    int m_drawBodyId{-1};
+    int m_drawLastRow{-1};
+    int m_drawLastCol{-1};
+    std::set<std::pair<int, int>> m_drawVisitedCells;
+
     // Hover state
     bool m_isHoveringEdge{false};
     BoundaryEdge m_hoverEdge;
     int m_hoverRow{-1};
     int m_hoverCol{-1};
+
+    bool m_isHoveringCenter{false};
+    int m_hoverCenterRow{-1};
+    int m_hoverCenterCol{-1};
 
     // Pan state
     QPoint m_lastPanPos;
