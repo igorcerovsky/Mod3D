@@ -128,14 +128,14 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // Default layout on opening:
-    //  - top left: E-W profile
+    //  - top left: profile view (E-W)
     //  - top right: map view
-    //  - bottom left: 3D view
-    //  - bottom right: N-S (perpendicular) profile
+    //  - bottom left: horizontal slice view
+    //  - bottom right: 3D view
     auto *pvEW = openProfileView(ProfileOrientation::EastWest);
     openMapView();
+    openHorizontalSliceView();
     openGL3DView();
-    openProfileView(ProfileOrientation::SouthNorth);
 
     if (pvEW) {
         m_settingsPane->setActiveSubWindow(qobject_cast<QMdiSubWindow*>(pvEW->parentWidget()));
@@ -601,6 +601,7 @@ void MainWindow::resizeSubWindowsToFit() {
     // Classify the standard 4 quad subwindows
     QMdiSubWindow *subPvEW = nullptr;
     QMdiSubWindow *subMap = nullptr;
+    QMdiSubWindow *subSlice = nullptr;
     QMdiSubWindow *sub3D = nullptr;
     QMdiSubWindow *subPvNS = nullptr;
 
@@ -618,12 +619,32 @@ void MainWindow::resizeSubWindowsToFit() {
             }
         } else if (qobject_cast<MapView*>(sub->widget())) {
             if (!subMap) subMap = sub;
+        } else if (qobject_cast<HorizontalSliceView*>(sub->widget())) {
+            if (!subSlice) subSlice = sub;
         } else if (qobject_cast<GL3DView*>(sub->widget())) {
             if (!sub3D) sub3D = sub;
         }
     }
 
-    // 1. Standard 2x2 quad layout auto-fit
+    // 1. Standard 2x2 quad layout auto-fit with Horizontal Slice View:
+    // Top-Left: Profile View
+    // Top-Right: Map View
+    // Bottom-Left: Horizontal Slice View
+    // Bottom-Right: 3D View
+    if (subPvEW && subMap && subSlice && sub3D) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+
+        if (!subPvEW->isMinimized()) subPvEW->setGeometry(0, 0, halfW, halfH);
+        if (!subMap->isMinimized()) subMap->setGeometry(halfW, 0, w - halfW, halfH);
+        if (!subSlice->isMinimized()) subSlice->setGeometry(0, halfH, halfW, h - halfH);
+        if (!sub3D->isMinimized()) sub3D->setGeometry(halfW, halfH, w - halfW, h - halfH);
+
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 1b. Legacy 2x2 quad layout (Profile EW, Map, 3D, Profile NS) if Horizontal Slice is absent:
     if (subPvEW && subMap && sub3D && subPvNS) {
         int halfW = w / 2;
         int halfH = h / 2;

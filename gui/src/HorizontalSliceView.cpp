@@ -812,18 +812,14 @@ void HorizontalSliceView::drawBackgroundRaster(QPainter &painter, const QRect &c
 
         double minV = grid->min();
         double maxV = grid->max();
-        if (minV >= maxV) {
-            m_cachedRasterImage = QImage();
-            m_rasterDirty = false;
-            return;
-        }
+        bool flat = (minV >= maxV);
 
         m_cachedRasterImage = QImage(static_cast<int>(cols), static_cast<int>(rows), QImage::Format_RGB32);
 
         for (size_t r = 0; r < rows; ++r) {
             for (size_t c = 0; c < cols; ++c) {
                 double v = (*grid)(r, c);
-                double t = (maxV > minV) ? std::clamp((v - minV) / (maxV - minV), 0.0, 1.0) : 0.5;
+                double t = flat ? 0.5 : std::clamp((v - minV) / (maxV - minV), 0.0, 1.0);
                 QColor col = getSlicePaletteColor(t, palType);
 
                 // Invert row for screen Y (Northing is up)
@@ -831,10 +827,15 @@ void HorizontalSliceView::drawBackgroundRaster(QPainter &painter, const QRect &c
             }
         }
 
-        m_cachedRasterX0 = grid->x0().value();
-        m_cachedRasterY0 = grid->y0().value();
-        m_cachedRasterXMax = (grid->x0() + static_cast<double>(cols - 1) * grid->x_size()).value();
-        m_cachedRasterYMax = (grid->y0() + static_cast<double>(rows - 1) * grid->y_size()).value();
+        double dx = grid->x_size().value();
+        double dy = grid->y_size().value();
+
+        // Node-registered grid to cell-registered bitmap: each field cell of size dx x dy
+        // is centered directly on the station grid point (x_c, y_r).
+        m_cachedRasterX0 = grid->x0().value() - 0.5 * dx;
+        m_cachedRasterY0 = grid->y0().value() - 0.5 * dy;
+        m_cachedRasterXMax = (grid->x0() + static_cast<double>(cols - 1) * grid->x_size()).value() + 0.5 * dx;
+        m_cachedRasterYMax = (grid->y0() + static_cast<double>(rows - 1) * grid->y_size()).value() + 0.5 * dy;
         m_rasterDirty = false;
     }
 

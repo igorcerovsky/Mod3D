@@ -95,6 +95,11 @@ public:
 
     [[nodiscard]] bool hasMeasuredField() const;
 
+    [[nodiscard]] double cachedRasterX0() const noexcept { return m_cachedRasterX0; }
+    [[nodiscard]] double cachedRasterY0() const noexcept { return m_cachedRasterY0; }
+    [[nodiscard]] double cachedRasterXMax() const noexcept { return m_cachedRasterXMax; }
+    [[nodiscard]] double cachedRasterYMax() const noexcept { return m_cachedRasterYMax; }
+
     // View Toggles
     [[nodiscard]] bool showStationPoints() const noexcept { return m_showStationPoints; }
     void setShowStationPoints(bool show);

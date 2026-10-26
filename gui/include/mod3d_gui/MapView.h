@@ -91,6 +91,11 @@ public:
     bool showReliefContours() const noexcept { return m_showReliefContours; }
     void setShowReliefContours(bool show);
 
+    [[nodiscard]] double cachedRasterX0() const noexcept { return m_cachedRasterX0; }
+    [[nodiscard]] double cachedRasterY0() const noexcept { return m_cachedRasterY0; }
+    [[nodiscard]] double cachedRasterXMax() const noexcept { return m_cachedRasterXMax; }
+    [[nodiscard]] double cachedRasterYMax() const noexcept { return m_cachedRasterYMax; }
+
 signals:
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
 

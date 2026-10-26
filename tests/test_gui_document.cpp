@@ -1449,61 +1449,59 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     auto subs = mw.mdiArea()->subWindowList();
     ASSERT_EQ(subs.size(), 4);
 
-    ProfileView *pvEW = nullptr;
+    ProfileView *pv = nullptr;
     MapView *mv = nullptr;
+    HorizontalSliceView *hv = nullptr;
     GL3DView *glv = nullptr;
-    ProfileView *pvNS = nullptr;
 
-    QMdiSubWindow *subEW = nullptr;
+    QMdiSubWindow *subPv = nullptr;
     QMdiSubWindow *subMap = nullptr;
+    QMdiSubWindow *subSlice = nullptr;
     QMdiSubWindow *sub3D = nullptr;
-    QMdiSubWindow *subNS = nullptr;
 
     for (auto *sub : subs) {
-        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
-            if (pv->profileOrientation() == ProfileOrientation::EastWest && !pvEW) {
-                pvEW = pv;
-                subEW = sub;
-            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth && !pvNS) {
-                pvNS = pv;
-                subNS = sub;
-            }
+        if (auto *p = qobject_cast<ProfileView*>(sub->widget())) {
+            pv = p;
+            subPv = sub;
         } else if (auto *m = qobject_cast<MapView*>(sub->widget())) {
             mv = m;
             subMap = sub;
+        } else if (auto *h = qobject_cast<HorizontalSliceView*>(sub->widget())) {
+            hv = h;
+            subSlice = sub;
         } else if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
             glv = g;
             sub3D = sub;
         }
     }
 
-    ASSERT_NE(pvEW, nullptr);
+    ASSERT_NE(pv, nullptr);
     ASSERT_NE(mv, nullptr);
+    ASSERT_NE(hv, nullptr);
     ASSERT_NE(glv, nullptr);
-    ASSERT_NE(pvNS, nullptr);
 
     // Call arrangeDefaultTiles to arrange in 2x2 grid
     mw.arrangeDefaultTiles();
 
     // Verify relative positions:
-    // Top-Left: E-W profile
-    EXPECT_EQ(subEW->x(), 0);
-    EXPECT_EQ(subEW->y(), 0);
+    // Top-Left: Profile view
+    EXPECT_EQ(subPv->x(), 0);
+    EXPECT_EQ(subPv->y(), 0);
 
     // Top-Right: Map view
-    EXPECT_GE(subMap->x(), subEW->width() - 2);
+    EXPECT_GE(subMap->x(), subPv->width() - 2);
     EXPECT_EQ(subMap->y(), 0);
 
-    // Bottom-Left: 3D view
-    EXPECT_EQ(sub3D->x(), 0);
-    EXPECT_GE(sub3D->y(), subEW->height() - 2);
+    // Bottom-Left: Horizontal slice view
+    EXPECT_EQ(subSlice->x(), 0);
+    EXPECT_GE(subSlice->y(), subPv->height() - 2);
 
-    // Bottom-Right: N-S / S-N profile
-    EXPECT_GE(subNS->x(), subEW->width() - 2);
-    EXPECT_GE(subNS->y(), subEW->height() - 2);
+    // Bottom-Right: 3D view
+    EXPECT_GE(sub3D->x(), subSlice->width() - 2);
+    EXPECT_GE(sub3D->y(), subMap->height() - 2);
 
-    // Active profile view should default to top-left E-W profile
-    EXPECT_EQ(mw.activeProfileView(), pvEW);
+    // Active profile view should default to top-left profile
+    EXPECT_EQ(mw.activeProfileView(), pv);
 
 #ifndef _WIN32
     // Save screenshot for visual verification
@@ -1524,36 +1522,34 @@ TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
     auto subs = mw.mdiArea()->subWindowList();
     ASSERT_EQ(subs.size(), 4);
 
-    QMdiSubWindow *subEW = nullptr;
+    QMdiSubWindow *subPv = nullptr;
     QMdiSubWindow *subMap = nullptr;
+    QMdiSubWindow *subSlice = nullptr;
     QMdiSubWindow *sub3D = nullptr;
-    QMdiSubWindow *subNS = nullptr;
 
     for (auto *sub : subs) {
-        if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
-            if (pv->profileOrientation() == ProfileOrientation::EastWest && !subEW) {
-                subEW = sub;
-            } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth && !subNS) {
-                subNS = sub;
-            }
+        if (qobject_cast<ProfileView*>(sub->widget())) {
+            subPv = sub;
         } else if (qobject_cast<MapView*>(sub->widget())) {
             subMap = sub;
+        } else if (qobject_cast<HorizontalSliceView*>(sub->widget())) {
+            subSlice = sub;
         } else if (qobject_cast<GL3DView*>(sub->widget())) {
             sub3D = sub;
         }
     }
 
-    ASSERT_NE(subEW, nullptr);
+    ASSERT_NE(subPv, nullptr);
     ASSERT_NE(subMap, nullptr);
+    ASSERT_NE(subSlice, nullptr);
     ASSERT_NE(sub3D, nullptr);
-    ASSERT_NE(subNS, nullptr);
 
     mw.show();
     QCoreApplication::processEvents();
 
     // Initial tile fitting at 1200x800
-    int w1 = subEW->width() + subMap->width();
-    int h1 = subEW->height() + sub3D->height();
+    int w1 = subPv->width() + subMap->width();
+    int h1 = subPv->height() + subSlice->height();
     EXPECT_GT(w1, 500);
     EXPECT_GT(h1, 400);
 
@@ -1561,25 +1557,25 @@ TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
     mw.resize(1500, 960);
     QCoreApplication::processEvents();
 
-    int w2 = subEW->width() + subMap->width();
-    int h2 = subEW->height() + sub3D->height();
+    int w2 = subPv->width() + subMap->width();
+    int h2 = subPv->height() + subSlice->height();
     EXPECT_GT(w2, w1);
     EXPECT_GT(h2, h1);
-    EXPECT_EQ(subEW->width(), sub3D->width());
-    EXPECT_EQ(subMap->width(), subNS->width());
-    EXPECT_EQ(subEW->height(), subMap->height());
-    EXPECT_EQ(sub3D->height(), subNS->height());
+    EXPECT_EQ(subPv->width(), subSlice->width());
+    EXPECT_EQ(subMap->width(), sub3D->width());
+    EXPECT_EQ(subPv->height(), subMap->height());
+    EXPECT_EQ(subSlice->height(), sub3D->height());
 
     // Resize main window to smaller geometry
     mw.resize(1000, 680);
     QCoreApplication::processEvents();
 
-    int w3 = subEW->width() + subMap->width();
-    int h3 = subEW->height() + sub3D->height();
+    int w3 = subPv->width() + subMap->width();
+    int h3 = subPv->height() + subSlice->height();
     EXPECT_LT(w3, w2);
     EXPECT_LT(h3, h2);
-    EXPECT_EQ(subEW->width(), sub3D->width());
-    EXPECT_EQ(subMap->width(), subNS->width());
+    EXPECT_EQ(subPv->width(), subSlice->width());
+    EXPECT_EQ(subMap->width(), sub3D->width());
 }
 
 TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
@@ -2422,6 +2418,11 @@ TEST_F(GuiDocumentTest, GL3DViewRetainsLastlySelectedProfileViewOnFocus) {
         }
     }
 
+    if (!pvSN) {
+        pvSN = mw.openProfileView(ProfileOrientation::SouthNorth);
+        subSN = qobject_cast<QMdiSubWindow*>(pvSN->parentWidget());
+    }
+
     ASSERT_NE(pvEW, nullptr);
     ASSERT_NE(pvSN, nullptr);
     ASSERT_NE(glv, nullptr);
@@ -2630,6 +2631,9 @@ TEST_F(GuiDocumentTest, GL3DViewQuadrantCutAndSettingsSync) {
             glv = g;
             sub3D = sub;
         }
+    }
+    if (!pvSN1) {
+        pvSN1 = mw.openProfileView(ProfileOrientation::SouthNorth);
     }
     ASSERT_NE(pvEW1, nullptr);
     ASSERT_NE(pvSN1, nullptr);
@@ -3080,6 +3084,11 @@ TEST_F(GuiDocumentTest, ProfilePerpendicularProfileMenuAndNavigation) {
                 subNS = sub;
             }
         }
+    }
+
+    if (!pvNS) {
+        pvNS = mw.openProfileView(ProfileOrientation::SouthNorth);
+        subNS = qobject_cast<QMdiSubWindow*>(pvNS->parentWidget());
     }
 
     ASSERT_NE(pvEW, nullptr);
@@ -3573,7 +3582,9 @@ TEST_F(GuiDocumentTest, MainWindowHorizontalSliceViewDiscoversMdiProfilesAndInte
     auto *hv = mw.openHorizontalSliceView(-500.0);
     ASSERT_NE(hv, nullptr);
 
-    // The MDI area contains both the default EW and SN ProfileViews
+    // Ensure South-North profile view is also open in MDI area to test intersections
+    mw.openProfileView(ProfileOrientation::SouthNorth);
+
     auto openList = hv->collectOpenProfiles();
     EXPECT_GE(openList.size(), 2u);
 
@@ -3648,6 +3659,7 @@ TEST_F(GuiDocumentTest, GL3DViewPlanarViewPlaneAndOctantCut) {
 
     std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
+    mw.openProfileView(ProfileOrientation::SouthNorth);
 
     GL3DView *glv = nullptr;
     for (auto *sub : mw.mdiArea()->subWindowList()) {
@@ -3905,6 +3917,30 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewPropertiesAndSingleFieldBitmapDisplay
     hv->setRasterMode(HorizontalSliceView::SliceRasterMode::Modeled);
     hv->render(&pm);
     EXPECT_FALSE(pm.isNull());
+
+    // 8. Verify field cell center is exactly at the station grid points
+    const auto *grid = mw.document()->modeledGrid(hv->fieldComponent());
+    if (!grid) grid = mw.document()->observedGrid(hv->fieldComponent());
+    if (grid && !grid->empty()) {
+        double dx = grid->x_size().value();
+        double dy = grid->y_size().value();
+        double x0 = grid->x0().value();
+        double y0 = grid->y0().value();
+        double xMax = (grid->x0() + static_cast<double>(grid->cols() - 1) * grid->x_size()).value();
+        double yMax = (grid->y0() + static_cast<double>(grid->rows() - 1) * grid->y_size()).value();
+
+        // The center of cell (r=0, c=0) must be exactly at (x0, y0)
+        EXPECT_NEAR(hv->cachedRasterX0() + 0.5 * dx, x0, 1e-4);
+        EXPECT_NEAR(hv->cachedRasterY0() + 0.5 * dy, y0, 1e-4);
+
+        // The center of cell (r=rows-1, c=cols-1) must be exactly at (xMax, yMax)
+        EXPECT_NEAR(hv->cachedRasterXMax() - 0.5 * dx, xMax, 1e-4);
+        EXPECT_NEAR(hv->cachedRasterYMax() - 0.5 * dy, yMax, 1e-4);
+
+        // Total raster width and height must match cols * dx and rows * dy
+        EXPECT_NEAR(hv->cachedRasterXMax() - hv->cachedRasterX0(), grid->cols() * dx, 1e-4);
+        EXPECT_NEAR(hv->cachedRasterYMax() - hv->cachedRasterY0(), grid->rows() * dy, 1e-4);
+    }
 
     hv->setRasterMode(HorizontalSliceView::SliceRasterMode::None);
     hv->render(&pm);
