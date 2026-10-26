@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-155%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-176%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -43,7 +43,9 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 - 🗺️ **Comprehensive Multi-View Architecture**:
   - **Geological Profile View**: Synchronized East-West and South-North cross-sections, multi-body polygon editing, vertex dragging, body splitting, and real-time field profile fitting.
   - **Map View**: 2D potential field color raster heatmaps, station points, profile traverses, body footprints, and automatic CONREC surface relief/topography contours.
+  - **Horizontal Slice View**: Planar depth slicing at constant elevation ($Z = \text{const}$) with synchronized 3D cut plane, single potential field bitmap raster underlay centered on survey stations, body boundary outlines (including collapsed outer edges), intersecting profile lines, click-and-drag cell painting, and double-click new body creation.
   - **3D Perspective Turntable View**: OpenGL 4.1 hardware-accelerated 3D rendering with LookAt camera, smooth turntable orbit & pan, faceted polyhedral subsurface bodies, active profile cut plane slice highlighting, 3D body raycast hit testing/selection, topographic relief surface & wireframe rendering with elevation colormapping, orientation compass sphere & coordinate tripod, and transparency controls.
+  - **Default 2x2 Quad Layout**: Automatically tiles the workspace into Top-Left Profile, Top-Right Map, Bottom-Left Horizontal Slice, and Bottom-Right 3D Turntable views with proportional auto-resizing.
   - **Unified Settings Inspector**: 4-tab docked controls (**Display**, **Profiles**, **Bodies**, **Physics/Inversion**) with strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
 - 🎯 **Automated Inversion**:
   - Built-in 1D least-squares automated density contrast inversion to match calculated anomalies to observed field surveys.
@@ -108,9 +110,9 @@ Mod3D/
 ├── src/                   # Implementation of mod3d_core
 ├── pfld/                  # Header-only analytical physics kernel
 ├── gui/                   # Modern Qt 6 desktop application (mod3d_gui)
-│   ├── include/mod3d_gui/ # Views: ProfileView, MapView, GL3DView, SettingsPane
+│   ├── include/mod3d_gui/ # Views: ProfileView, MapView, HorizontalSliceView, GL3DView, SettingsPane
 │   └── src/               # Rendering, interaction, and undo/redo controllers
-├── tests/                 # Comprehensive Google Test suite (164 tests)
+├── tests/                 # Comprehensive Google Test suite (176 tests)
 └── examples/              # Sample models (.mod3d) & legacy models (.m3d)
 ```
 
@@ -185,9 +187,15 @@ ctest --test-dir build -C Release --output-on-failure
 | `H` / `E-W` | **East-West Profile** | Switch active profile view to horizontal E-W orientation |
 | `V` / `S-N` | **South-North Profile** | Switch active profile view to vertical S-N orientation |
 | `P` / `N` | **Previous / Next Profile** | Step through parallel survey profiles |
-| `Tile V` / `Tile H` | **Tile Views** | Arrange Profile, Map, and 3D views automatically |
-| `Ctrl + Wheel` | **Zoom 2D** | Smooth proportional zoom on profile or map view |
+| `Tile V` / `Tile H` | **Tile Views** | Arrange Profile, Map, Slice, and 3D views automatically |
+| `Ctrl + Wheel` | **Zoom 2D** | Smooth proportional zoom on profile, map, or slice view |
 | `Left Drag` (Profile) | **Move Vertex** | Interactively move geological boundary vertices |
+| `Left Drag` (Slice Center) | **Paint Body** | Draw/paint active body across cells at current slice depth |
+| `Left Drag` (Boundary Edge) | **Extend / Collapse** | Drag outer body boundary outward to extend or inward to collapse |
+| `Double-Click` (Empty) | **Create Body** | Create brand new body with unique ID & open Body Properties |
+| `Shift + Double-Click` (Empty) | **Insert Active Body** | Insert currently active existing body into cell/column |
+| `Double-Click` (Body) | **Body Properties** | Open Body Properties dialog for the clicked body |
+| `Ctrl + Double-Click` (Body) | **Remove Body** | Remove body from current cell/column |
 | `Left Drag` (3D) | **Orbit Camera** | Turntable 3D camera rotation (azimuth & pitch) |
 | `Shift + Left Drag` / `Middle Drag` (3D) | **Pan Camera** | Smooth 3D scene translation |
 | `Wheel` / `Right Drag` (3D) | **Zoom 3D** | Smooth perspective / orthographic zoom |

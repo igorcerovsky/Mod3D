@@ -18,7 +18,15 @@
 |    | (2D Survey & Contours) |      | (Interactive Geological) |      | (Perspective & Direct) |    |
 |    +------------------------+      +--------------------------+      +------------------------+    |
 |                 ^                               ^                                 ^                |
-|                 |                               |                                 |                |
+|                 |                  +------------+------------+                    |                |
+|                 |                  |                         |                    |                |
+|                 |                  v                         v                    |                |
+|                 |    +--------------------------+  +--------------------------+   |                |
+|                 |    |  Horizontal Slice View   |  |     Spreadsheet View     |   |                |
+|                 |    | (Depth Slices & Planar)  |  |  (Tabular Grid & Fields) |   |                |
+|                 |    +--------------------------+  +--------------------------+   |                |
+|                 |                  ^                         ^                    |                |
+|                 |                  +------------+------------+                    |                |
 |                 v                               v                                 v                |
 |    +------------------------------------------------------------------------------------------+    |
 |    |                      ModelDocument / ModelController (Qt 6 Adapter)                      |    |
@@ -401,12 +409,20 @@ The GUI is built upon a standard Qt 6 Multi-Document Interface (`QMdiArea`):
 - Each document can spawn an arbitrary number of synchronized views:
   - **Profile Views**: Multiple cross-sections across different rows/columns.
   - **Map Views**: Regional and local zoom levels.
+  - **Horizontal Slice Views**: Planar horizontal cross-sections at constant elevation ($Z = \text{const}$).
   - **3D Views**: Perspectives from different azimuths/elevations.
   - **Spreadsheet Views**: Numerical tabular inspection.
+- **Default 2x2 Quad Tile Layout**:
+  Upon opening a model document, Mod3D automatically arranges a synchronized 2x2 quad workspace layout:
+  - **Top-Left**: Geological Profile View (`ProfileView`, E-W orientation)
+  - **Top-Right**: Survey Map View (`MapView`)
+  - **Bottom-Left**: Horizontal Slice View (`HorizontalSliceView`)
+  - **Bottom-Right**: 3D OpenGL View (`GL3DView`)
+  A responsive MDI layout manager automatically scales all 4 quadrant subwindows proportionally when the main window or client area is resized.
 
 ---
 
-### 6.2 The 4 Primary Synchronized Views
+### 6.2 The 5 Primary Synchronized Views
 
 #### 1. Profile View (`ProfileView`)
 The centerpiece modeling canvas:
@@ -424,8 +440,19 @@ Interactive 3D spatial canvas:
 - **Rendering Mode**: Trackball orbit, pan, smooth zoom, preset views (`E`, `W`, `N`, `S`, `M`).
 - **Selection Mode**: Interactive 3D vertex picking; clicking a vertex and dragging vertically moves the subsurface boundary in 3D with live field updates.
 - Alpha transparency $\alpha \in [0, 1]$ for subsurface visibility.
+- **Horizontal Slice Plane**: Displays the cut plane corresponding to the active slice elevation in `HorizontalSliceView`, complete with quadrant cut and subsurface visibility controls.
 
-#### 4. Spreadsheet View (`SpreadsheetView`)
+#### 4. Horizontal Slice View (`HorizontalSliceView`)
+Interactive horizontal planar depth-slice canvas:
+- **Depth / Elevation Control**: Synchronized elevation spinbox and slider allowing interactive traversal of the 3D model volume at constant elevation ($Z = \text{const}$). Synchronized with Profile View (elevation guide indicator) and 3D GL View (horizontal cut plane).
+- **Single Potential Field Raster Overlay**: User selects exactly one or none of the potential field components to display as an interpolated color heatmap underlay (Measured/Observed, Modeled/Calculated, or Difference). Grid cell centers are anchored exactly at observation station coordinates.
+- **Body Boundary Footprints & Collapsed Edges**: Draws precise polyhedral body boundary polygons matching Map View conventions. Accurately renders boundary edges even where the outer body edge is collapsed ($z_{\text{top}} = z_{\text{bottom}}$) at the lateral termination of a body.
+- **Profile Intersection Traces**: Overlays profile trace lines for all active MDI Profile Views, showing where cross-sections intersect the horizontal slice.
+- **Direct Planar Modeling**:
+  - Cell-center drawing mode: dragging across cell centers paints the active body into cells at the current slice elevation.
+  - Lateral boundary dragging: dragging outer boundary edges extends or collapses bodies along rows/columns.
+
+#### 5. Spreadsheet View (`SpreadsheetView`)
 - Table representation of numerical grid data, coordinates, and computed anomalies.
 - Full clipboard copy/paste support for spreadsheet applications.
 
@@ -439,11 +466,27 @@ Interactive 3D spatial canvas:
 +----------------------+--------------------------+--------------------------------------------------+
 | Gesture              | State / Modifier         | Action & Geological Rule                         |
 +----------------------+--------------------------+--------------------------------------------------+
+| Double-Click (Empty) | Profile / Slice View     | Creates brand NEW body with unique ID, default   |
+|                      | Over empty cell / space  | thickness & palette color, selects it as active, |
+|                      |                          | and opens Body Properties dialog.                |
++----------------------+--------------------------+--------------------------------------------------+
+| Shift + Double-Click | Profile / Slice View     | Inserts existing ACTIVE body into cell/column at |
+| (Empty Cell)         | Over empty cell / space  | current slice depth or default profile depth.    |
++----------------------+--------------------------+--------------------------------------------------+
+| Double-Click (Body)  | Profile / Slice View     | Opens Body Properties dialog for the clicked body|
+|                      | Over existing body       | to edit physical properties, color, or notes.    |
++----------------------+--------------------------+--------------------------------------------------+
+| Ctrl + Double-Click  | Profile / Slice View     | Removes the clicked body from this cell/column.  |
+| (Existing Body)      | Over existing body       | (Does not delete the body from other columns).   |
++----------------------+--------------------------+--------------------------------------------------+
+| Cell Center Drag     | Horizontal Slice View    | Paints / draws active body into cells as cursor  |
+|                      | Over cell centers        | crosses grid cells during drag movement.         |
++----------------------+--------------------------+--------------------------------------------------+
+| Boundary Edge Drag   | Slice / Profile View     | Outward drag extends body laterally onto neighbor|
+|                      | Over outer body edge     | cell; inward drag collapses edge.                |
++----------------------+--------------------------+--------------------------------------------------+
 | Vertical Drag        | Over Vertex (cursor_v)   | Moves vertex vertically along column. Clamped to |
 |                      |                          | relief, bottom, and neighboring bodies.          |
-+----------------------+--------------------------+--------------------------------------------------+
-| Side Extension       | Over Body Edge (cursor_e)| Outward drag creates new slice on neighbor col.  |
-|                      |                          | Inward drag collapses edge. Merges same body.    |
 +----------------------+--------------------------+--------------------------------------------------+
 | Freehand Sculpting   | Drag across columns      | Vertices snap to mouse height as cursor crosses  |
 |                      |                          | column grid lines.                               |
@@ -573,6 +616,7 @@ Mod3D/
 │   ├── views/
 │   │   ├── ProfileView.h/.cpp   # Interactive 2D cross-section canvas
 │   │   ├── MapView.h/.cpp       # 2D planimetric survey canvas
+│   │   ├── HorizontalSliceView.h/.cpp # Planar horizontal depth-slice canvas
 │   │   ├── GL3DView.h/.cpp      # Hardware-accelerated OpenGL 3D view
 │   │   └── SpreadsheetView.h/.cpp # Numerical data grid view
 │   └── dialogs/                 # Qt 6 Dialog Implementations (38 Dialogs)
