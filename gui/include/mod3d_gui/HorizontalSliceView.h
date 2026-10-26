@@ -8,6 +8,7 @@
 #include <QPushButton>
 #include <QRect>
 #include <QComboBox>
+#include <QImage>
 #include <QMdiArea>
 #include <vector>
 #include <set>
@@ -79,6 +80,21 @@ public:
     [[nodiscard]] int worldToScreenX(double wx) const;
     [[nodiscard]] int worldToScreenY(double wy) const;
 
+    enum class SliceRasterMode {
+        None = 0,
+        Modeled = 1,
+        Observed = 2,
+        Difference = 3
+    };
+
+    [[nodiscard]] SliceRasterMode rasterMode() const noexcept { return m_rasterMode; }
+    void setRasterMode(SliceRasterMode mode);
+
+    [[nodiscard]] mod3d::FieldComponent fieldComponent() const noexcept { return m_fieldComponent; }
+    void setFieldComponent(mod3d::FieldComponent comp);
+
+    [[nodiscard]] bool hasMeasuredField() const;
+
     // View Toggles
     [[nodiscard]] bool showStationPoints() const noexcept { return m_showStationPoints; }
     void setShowStationPoints(bool show);
@@ -118,6 +134,7 @@ public:
 
 signals:
     void sliceElevationChanged(double z);
+    void displaySettingsChanged();
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
     void requestBodyProperties(int bodyId);
 
@@ -139,6 +156,8 @@ private:
     void updateHeaderUi();
 
     // Drawing helpers
+    void drawBackgroundRaster(QPainter &painter, const QRect &canvas);
+    void drawColorScaleLegend(QPainter &painter, const QRect &canvas);
     void drawGridAndCells(QPainter &painter, const QRect &canvas);
     void drawBodyOutlines(QPainter &painter, const QRect &canvas);
     void drawBoundaryEdges(QPainter &painter, const QRect &canvas);
@@ -163,6 +182,15 @@ private:
     bool m_showProfiles{true};
     bool m_showCellBorders{true};
     bool m_showBodyOutlines{true};
+
+    mod3d::FieldComponent m_fieldComponent{mod3d::FieldComponent::GZ};
+    SliceRasterMode m_rasterMode{SliceRasterMode::None};
+    bool m_rasterDirty{true};
+    QImage m_cachedRasterImage;
+    double m_cachedRasterX0{0.0};
+    double m_cachedRasterY0{0.0};
+    double m_cachedRasterXMax{0.0};
+    double m_cachedRasterYMax{0.0};
 
     // UI Header controls
     QWidget *m_headerWidget{nullptr};

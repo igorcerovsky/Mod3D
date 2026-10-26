@@ -496,13 +496,20 @@ HorizontalSliceView *MainWindow::openHorizontalSliceView(double initialZ) {
     sub->resize(520, 440);
     sub->show();
 
-    connect(hv, &HorizontalSliceView::cursorStationChanged, this, [this](int r, int c, double x, double y, double z, double) {
+    connect(hv, &HorizontalSliceView::cursorStationChanged, this, [this, hv](int r, int c, double x, double y, double z, double fldVal) {
         if (m_isDestroying || !m_statusBarMgr) return;
         m_statusBarMgr->setRow(r);
         m_statusBarMgr->setCol(c);
         m_statusBarMgr->setX(x);
         m_statusBarMgr->setY(y);
         m_statusBarMgr->setZ(z);
+        if (hv && hv->rasterMode() != HorizontalSliceView::SliceRasterMode::None) {
+            QString compName = ModelDocument::componentName(hv->fieldComponent());
+            if (hv->rasterMode() == HorizontalSliceView::SliceRasterMode::Difference) {
+                compName = "d" + compName;
+            }
+            m_statusBarMgr->setFieldValue(compName, fldVal, ModelDocument::componentUnit(hv->fieldComponent()));
+        }
     });
     connect(hv, &HorizontalSliceView::requestBodyProperties, this, &MainWindow::onBodyProperties);
 

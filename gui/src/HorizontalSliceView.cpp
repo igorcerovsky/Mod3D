@@ -41,12 +41,22 @@ HorizontalSliceView::HorizontalSliceView(ModelDocument *doc, double initialZ, QW
     setupUi();
 
     if (m_doc) {
-        connect(m_doc, &ModelDocument::modelGeometryChanged, this, &HorizontalSliceView::refreshBodyList);
-        connect(m_doc, &ModelDocument::modelGeometryChanged, this, QOverload<>::of(&QWidget::update));
-        connect(m_doc, &ModelDocument::computationFinished, this, QOverload<>::of(&QWidget::update));
+        connect(m_doc, &ModelDocument::modelGeometryChanged, this, [this]() {
+            m_rasterDirty = true;
+            refreshBodyList();
+            update();
+        });
+        connect(m_doc, &ModelDocument::computationFinished, this, [this]() {
+            m_rasterDirty = true;
+            update();
+        });
+        connect(m_doc, &ModelDocument::activeFieldChanged, this, [this](mod3d::FieldComponent comp) {
+            setFieldComponent(comp);
+        });
         connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) { update(); });
         connect(m_doc, &ModelDocument::activeProfileCursorChanged, this, [this](const ModelDocument::ProfileCursorPoint &) { update(); });
         connect(m_doc, &ModelDocument::documentReset, this, [this]() {
+            m_rasterDirty = true;
             fitToWindow();
             if (m_doc) {
                 m_sliceZ = m_doc->activeSliceElevation();
@@ -402,10 +412,41 @@ int HorizontalSliceView::worldToScreenY(double wy) const {
     return canvas.top() + static_cast<int>(std::round(t * canvas.height()));
 }
 
+bool HorizontalSliceView::hasMeasuredField() const {
+    if (!m_doc) return false;
+    return m_doc->hasObservedGrid(m_fieldComponent);
+}
+
+void HorizontalSliceView::setRasterMode(SliceRasterMode mode) {
+    if ((mode == SliceRasterMode::Observed || mode == SliceRasterMode::Difference) && !hasMeasuredField()) {
+        mode = SliceRasterMode::Modeled;
+    }
+    if (m_rasterMode != mode) {
+        m_rasterMode = mode;
+        m_rasterDirty = true;
+        m_marginRight = (mode != SliceRasterMode::None) ? 75 : 35;
+        update();
+        emit displaySettingsChanged();
+    }
+}
+
+void HorizontalSliceView::setFieldComponent(mod3d::FieldComponent comp) {
+    if (m_fieldComponent != comp) {
+        m_fieldComponent = comp;
+        m_rasterDirty = true;
+        if ((m_rasterMode == SliceRasterMode::Observed || m_rasterMode == SliceRasterMode::Difference) && !hasMeasuredField()) {
+            m_rasterMode = SliceRasterMode::Modeled;
+        }
+        update();
+        emit displaySettingsChanged();
+    }
+}
+
 void HorizontalSliceView::setShowStationPoints(bool show) {
     if (m_showStationPoints != show) {
         m_showStationPoints = show;
         update();
+        emit displaySettingsChanged();
     }
 }
 
@@ -413,6 +454,7 @@ void HorizontalSliceView::setShowProfiles(bool show) {
     if (m_showProfiles != show) {
         m_showProfiles = show;
         update();
+        emit displaySettingsChanged();
     }
 }
 
@@ -420,6 +462,7 @@ void HorizontalSliceView::setShowCellBorders(bool show) {
     if (m_showCellBorders != show) {
         m_showCellBorders = show;
         update();
+        emit displaySettingsChanged();
     }
 }
 
@@ -427,6 +470,7 @@ void HorizontalSliceView::setShowBodyOutlines(bool show) {
     if (m_showBodyOutlines != show) {
         m_showBodyOutlines = show;
         update();
+        emit displaySettingsChanged();
     }
 }
 
@@ -671,6 +715,228 @@ HorizontalSliceView::HitType HorizontalSliceView::performHitTest(
     return HitType::None;
 }
 
+namespace {
+
+enum class SlicePaletteType {
+    Gravity = 0,
+    Magnetics = 1,
+    Difference = 2,
+    Field = 3
+};
+
+QColor getSlicePaletteColor(double t, SlicePaletteType palette) {
+    t = std::clamp(t, 0.0, 1.0);
+
+    struct ColorPeg {
+        double pos;
+        int r, g, b;
+    };
+
+    // CTBL_FLD: Dark Blue -> Cyan -> Green -> Yellow -> Red -> Magenta -> Light Pink
+    static const std::vector<ColorPeg> gravPegs = {
+        {0.0 / 6.0, 0, 0, 153},
+        {1.0 / 6.0, 0, 204, 255},
+        {2.0 / 6.0, 0, 255, 0},
+        {3.0 / 6.0, 255, 255, 0},
+        {4.0 / 6.0, 255, 0, 0},
+        {5.0 / 6.0, 255, 0, 255},
+        {6.0 / 6.0, 255, 200, 255}
+    };
+
+    // Magnetics / Difference: Diverging Blue -> White -> Red
+    static const std::vector<ColorPeg> diffPegs = {
+        {0.0, 0, 0, 160},
+        {0.5, 255, 255, 255},
+        {1.0, 160, 0, 0}
+    };
+
+    const auto &pegs = (palette == SlicePaletteType::Difference || palette == SlicePaletteType::Magnetics)
+        ? diffPegs : gravPegs;
+
+    if (t <= pegs.front().pos) return QColor(pegs.front().r, pegs.front().g, pegs.front().b);
+    if (t >= pegs.back().pos) return QColor(pegs.back().r, pegs.back().g, pegs.back().b);
+
+    for (size_t i = 0; i < pegs.size() - 1; ++i) {
+        if (t >= pegs[i].pos && t <= pegs[i + 1].pos) {
+            double span = pegs[i + 1].pos - pegs[i].pos;
+            double f = (span > 1e-9) ? (t - pegs[i].pos) / span : 0.0;
+            int r = static_cast<int>(std::round(pegs[i].r + f * (pegs[i + 1].r - pegs[i].r)));
+            int g = static_cast<int>(std::round(pegs[i].g + f * (pegs[i + 1].g - pegs[i].g)));
+            int b = static_cast<int>(std::round(pegs[i].b + f * (pegs[i + 1].b - pegs[i].b)));
+            return QColor(std::clamp(r, 0, 255), std::clamp(g, 0, 255), std::clamp(b, 0, 255));
+        }
+    }
+    return QColor(pegs.back().r, pegs.back().g, pegs.back().b);
+}
+
+} // namespace
+
+void HorizontalSliceView::drawBackgroundRaster(QPainter &painter, const QRect &canvas) {
+    if (m_rasterMode == SliceRasterMode::None || !m_doc) return;
+
+    if (m_rasterDirty) {
+        const mod3d::Grid *grid = nullptr;
+        bool isMag = mod3d::is_magnetic_component(m_fieldComponent);
+        SlicePaletteType palType = isMag ? SlicePaletteType::Magnetics : SlicePaletteType::Gravity;
+
+        if (m_rasterMode == SliceRasterMode::Difference) {
+            grid = m_doc->differenceGrid(m_fieldComponent);
+            if (!isMag) {
+                palType = SlicePaletteType::Difference;
+            }
+        } else if (m_rasterMode == SliceRasterMode::Observed) {
+            grid = m_doc->observedGrid(m_fieldComponent);
+            if ((!grid || grid->empty()) && m_fieldComponent == mod3d::FieldComponent::GZ) {
+                grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
+            }
+        } else { // Modeled
+            grid = m_doc->modeledGrid(m_fieldComponent);
+            if (!grid || grid->empty()) {
+                grid = m_doc->observedGrid(m_fieldComponent);
+            }
+        }
+
+        if (!grid || grid->empty()) {
+            m_cachedRasterImage = QImage();
+            m_rasterDirty = false;
+            return;
+        }
+
+        size_t rows = grid->rows();
+        size_t cols = grid->cols();
+        if (rows < 2 || cols < 2) {
+            m_cachedRasterImage = QImage();
+            m_rasterDirty = false;
+            return;
+        }
+
+        double minV = grid->min();
+        double maxV = grid->max();
+        if (minV >= maxV) {
+            m_cachedRasterImage = QImage();
+            m_rasterDirty = false;
+            return;
+        }
+
+        m_cachedRasterImage = QImage(static_cast<int>(cols), static_cast<int>(rows), QImage::Format_RGB32);
+
+        for (size_t r = 0; r < rows; ++r) {
+            for (size_t c = 0; c < cols; ++c) {
+                double v = (*grid)(r, c);
+                double t = (maxV > minV) ? std::clamp((v - minV) / (maxV - minV), 0.0, 1.0) : 0.5;
+                QColor col = getSlicePaletteColor(t, palType);
+
+                // Invert row for screen Y (Northing is up)
+                m_cachedRasterImage.setPixel(static_cast<int>(c), static_cast<int>(rows - 1 - r), col.rgb());
+            }
+        }
+
+        m_cachedRasterX0 = grid->x0().value();
+        m_cachedRasterY0 = grid->y0().value();
+        m_cachedRasterXMax = (grid->x0() + static_cast<double>(cols - 1) * grid->x_size()).value();
+        m_cachedRasterYMax = (grid->y0() + static_cast<double>(rows - 1) * grid->y_size()).value();
+        m_rasterDirty = false;
+    }
+
+    if (m_cachedRasterImage.isNull()) return;
+
+    int left = worldToScreenX(m_cachedRasterX0);
+    int right = worldToScreenX(m_cachedRasterXMax);
+    int top = worldToScreenY(m_cachedRasterYMax);
+    int bottom = worldToScreenY(m_cachedRasterY0);
+
+    QRect targetRect(left, top, right - left, bottom - top);
+    painter.save();
+    painter.setClipRect(canvas);
+    painter.setOpacity(0.65);
+    painter.drawImage(targetRect, m_cachedRasterImage);
+    painter.restore();
+}
+
+void HorizontalSliceView::drawColorScaleLegend(QPainter &painter, const QRect &canvas) {
+    if (m_rasterMode == SliceRasterMode::None || !m_doc) return;
+
+    const mod3d::Grid *grid = nullptr;
+    bool isMag = mod3d::is_magnetic_component(m_fieldComponent);
+    SlicePaletteType palType = isMag ? SlicePaletteType::Magnetics : SlicePaletteType::Gravity;
+
+    if (m_rasterMode == SliceRasterMode::Difference) {
+        grid = m_doc->differenceGrid(m_fieldComponent);
+        if (!isMag) palType = SlicePaletteType::Difference;
+    } else if (m_rasterMode == SliceRasterMode::Observed) {
+        grid = m_doc->observedGrid(m_fieldComponent);
+        if ((!grid || grid->empty()) && m_fieldComponent == mod3d::FieldComponent::GZ) {
+            grid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
+        }
+    } else { // Modeled
+        grid = m_doc->modeledGrid(m_fieldComponent);
+        if (!grid || grid->empty()) {
+            grid = m_doc->observedGrid(m_fieldComponent);
+        }
+    }
+    if (!grid || grid->empty()) return;
+
+    double minV = grid->min();
+    double maxV = grid->max();
+    if (minV >= maxV) return;
+
+    int barW = 12;
+    int barH = std::clamp(canvas.height() - 40, 60, 240);
+    int barLeft = canvas.right() + 10;
+    int barTop = canvas.top() + (canvas.height() - barH) / 2 - 10;
+    int barBottom = barTop + barH;
+
+    painter.save();
+
+    // 1. Draw gradient vertical bar
+    for (int y = barTop; y <= barBottom; ++y) {
+        double t = (barH > 0) ? static_cast<double>(barBottom - y) / barH : 0.5;
+        QColor col = getSlicePaletteColor(t, palType);
+        painter.setPen(col);
+        painter.drawLine(barLeft, y, barLeft + barW - 1, y);
+    }
+
+    // 2. Bar Border
+    painter.setPen(QColor(60, 60, 70));
+    painter.drawRect(barLeft, barTop, barW, barH);
+
+    // 3. Ticks and Numerical Labels
+    painter.setFont(QFont("Arial", 8));
+    QFontMetrics fm = painter.fontMetrics();
+    int numTicks = 5;
+    double span = maxV - minV;
+    int decimals = (span < 2.0) ? 2 : ((span < 20.0) ? 1 : 0);
+
+    for (int i = 0; i <= numTicks; ++i) {
+        double frac = static_cast<double>(i) / numTicks;
+        double val = minV + frac * span;
+        int ty = barBottom - static_cast<int>(std::round(frac * barH));
+
+        painter.setPen(QColor(80, 80, 90));
+        painter.drawLine(barLeft + barW, ty, barLeft + barW + 4, ty);
+
+        QString valStr = QString::number(val, 'f', decimals);
+        int textY = ty + fm.ascent() / 2 - 1;
+        painter.drawText(barLeft + barW + 7, textY, valStr);
+    }
+
+    // 4. Component Label & Unit below bar
+    QString compStr = ModelDocument::componentName(m_fieldComponent);
+    if (m_rasterMode == SliceRasterMode::Difference) {
+        compStr = "d" + compStr;
+    }
+    QString unitStr = ModelDocument::componentUnit(m_fieldComponent);
+    QString titleStr = unitStr.isEmpty() ? compStr : QString("%1\n(%2)").arg(compStr, unitStr);
+
+    painter.setPen(QColor(40, 40, 50));
+    QFont boldFont("Arial", 8, QFont::Bold);
+    painter.setFont(boldFont);
+    QRect titleRect(barLeft - 6, barBottom + 8, 65, 32);
+    painter.drawText(titleRect, Qt::AlignLeft | Qt::AlignTop, titleStr);
+
+    painter.restore();
+}
+
 void HorizontalSliceView::paintEvent(QPaintEvent *) {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
@@ -679,13 +945,16 @@ void HorizontalSliceView::paintEvent(QPaintEvent *) {
     painter.fillRect(rect(), QColor(248, 248, 250));
 
     QRect canvas = canvasRect();
+    painter.fillRect(canvas, Qt::white);
 
     // Draw main components
+    drawBackgroundRaster(painter, canvas);
     drawGridAndCells(painter, canvas);
     drawBodyOutlines(painter, canvas);
     drawProfilesAndMarkers(painter, canvas);
     drawBoundaryEdges(painter, canvas);
     drawAxes(painter, canvas);
+    drawColorScaleLegend(painter, canvas);
 }
 
 void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canvas) {
@@ -696,7 +965,6 @@ void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canva
 
     painter.save();
     painter.setClipRect(canvas);
-    painter.fillRect(canvas, Qt::white);
 
     auto intersectsAt = [&](int checkR, int checkC, int bId) {
         if (checkR < 1 || checkR >= nRows || checkC < 1 || checkC >= nCols) return false;
@@ -1456,7 +1724,21 @@ void HorizontalSliceView::mouseMoveEvent(QMouseEvent *event) {
     if (m_doc && hitRow >= 1 && hitCol >= 1) {
         double wx = m_doc->model().xd_val(hitCol);
         double wy = m_doc->model().yd_val(hitRow);
-        emit cursorStationChanged(hitRow, hitCol, wx, wy, m_sliceZ, 0.0);
+        double fldVal = 0.0;
+        if (m_rasterMode != SliceRasterMode::None) {
+            const mod3d::Grid *g = nullptr;
+            if (m_rasterMode == SliceRasterMode::Difference) {
+                g = m_doc->differenceGrid(m_fieldComponent);
+            } else if (m_rasterMode == SliceRasterMode::Observed) {
+                g = m_doc->observedGrid(m_fieldComponent);
+            } else {
+                g = m_doc->modeledGrid(m_fieldComponent);
+            }
+            if (g && !g->empty() && hitRow < static_cast<int>(g->rows()) && hitCol < static_cast<int>(g->cols())) {
+                fldVal = (*g)(hitRow, hitCol);
+            }
+        }
+        emit cursorStationChanged(hitRow, hitCol, wx, wy, m_sliceZ, fldVal);
     }
 
     QWidget::mouseMoveEvent(event);

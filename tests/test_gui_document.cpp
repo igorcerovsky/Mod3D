@@ -3813,6 +3813,104 @@ TEST_F(GuiDocumentTest, CollapsedEdgeBodyBoundariesInMapAndHorizontalSliceView) 
     EXPECT_FALSE(pmSlice.isNull());
 }
 
+TEST_F(GuiDocumentTest, HorizontalSliceViewPropertiesAndSingleFieldBitmapDisplay) {
+    MainWindow mw;
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+
+    // Open HorizontalSliceView
+    auto *hv = mw.openHorizontalSliceView(-500.0);
+    ASSERT_NE(hv, nullptr);
+
+    auto *sub = qobject_cast<QMdiSubWindow*>(hv->parentWidget());
+    ASSERT_NE(sub, nullptr);
+
+    // Activate HorizontalSliceView
+    mw.mdiArea()->setActiveSubWindow(sub);
+    pane->setActiveSubWindow(sub);
+
+    // 1. Verify Display Tab context banner
+    auto *lblContext = pane->findChild<QLabel*>();
+    ASSERT_NE(lblContext, nullptr);
+
+    // 2. Verify HorizontalSliceView properties controls are present
+    ASSERT_NE(pane->sliceModeledRadioButton(), nullptr);
+    ASSERT_NE(pane->sliceObservedRadioButton(), nullptr);
+    ASSERT_NE(pane->sliceDifferenceRadioButton(), nullptr);
+    ASSERT_NE(pane->sliceNoneRadioButton(), nullptr);
+    ASSERT_NE(pane->sliceFieldComboBox(), nullptr);
+    ASSERT_NE(pane->sliceBodyOutlinesCheckBox(), nullptr);
+    ASSERT_NE(pane->sliceCellBordersCheckBox(), nullptr);
+    ASSERT_NE(pane->sliceStationPointsCheckBox(), nullptr);
+    ASSERT_NE(pane->sliceProfilesCheckBox(), nullptr);
+
+    // 3. Properties shall NOT contain "Profile Visual Overlays" section
+    // and shall NOT contain "Secondary:" field inside slice properties pane
+    for (auto *box : pane->findChildren<QGroupBox*>()) {
+        if (box->parentWidget() && box->parentWidget()->isVisibleTo(pane)) {
+            EXPECT_FALSE(box->title().contains("Profile Visual Overlays"));
+        }
+    }
+    for (auto *chk : pane->findChildren<QCheckBox*>()) {
+        if (chk->parentWidget() && chk->parentWidget()->isVisibleTo(pane)) {
+            EXPECT_NE(chk->text(), "Secondary:");
+        }
+    }
+
+    // 4. Verify only one or none of modeled, observed, difference can be displayed as bitmap
+    EXPECT_EQ(hv->rasterMode(), HorizontalSliceView::SliceRasterMode::None);
+    EXPECT_TRUE(pane->sliceNoneRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceModeledRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceObservedRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceDifferenceRadioButton()->isChecked());
+
+    // Switch to Modeled field bitmap
+    pane->sliceModeledRadioButton()->click();
+    EXPECT_EQ(hv->rasterMode(), HorizontalSliceView::SliceRasterMode::Modeled);
+    EXPECT_TRUE(pane->sliceModeledRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceNoneRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceObservedRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceDifferenceRadioButton()->isChecked());
+
+    // Switch to None (no bitmap)
+    pane->sliceNoneRadioButton()->click();
+    EXPECT_EQ(hv->rasterMode(), HorizontalSliceView::SliceRasterMode::None);
+    EXPECT_TRUE(pane->sliceNoneRadioButton()->isChecked());
+    EXPECT_FALSE(pane->sliceModeledRadioButton()->isChecked());
+
+    // 5. Test Field Component changes
+    int dtIdx = pane->sliceFieldComboBox()->findData(static_cast<int>(mod3d::FieldComponent::DELTA_T));
+    if (dtIdx >= 0) {
+        pane->sliceFieldComboBox()->setCurrentIndex(dtIdx);
+        EXPECT_EQ(hv->fieldComponent(), mod3d::FieldComponent::DELTA_T);
+    }
+
+    // 6. Test Planar Overlays sync
+    pane->sliceBodyOutlinesCheckBox()->setChecked(false);
+    EXPECT_FALSE(hv->showBodyOutlines());
+    pane->sliceBodyOutlinesCheckBox()->setChecked(true);
+    EXPECT_TRUE(hv->showBodyOutlines());
+
+    pane->sliceCellBordersCheckBox()->setChecked(false);
+    EXPECT_FALSE(hv->showCellBorders());
+    pane->sliceCellBordersCheckBox()->setChecked(true);
+    EXPECT_TRUE(hv->showCellBorders());
+
+    // 7. Verify HorizontalSliceView renders bitmaps cleanly
+    hv->resize(600, 500);
+    QPixmap pm(600, 500);
+    pm.fill(Qt::white);
+
+    hv->setRasterMode(HorizontalSliceView::SliceRasterMode::Modeled);
+    hv->render(&pm);
+    EXPECT_FALSE(pm.isNull());
+
+    hv->setRasterMode(HorizontalSliceView::SliceRasterMode::None);
+    hv->render(&pm);
+    EXPECT_FALSE(pm.isNull());
+}
+
 
 
 

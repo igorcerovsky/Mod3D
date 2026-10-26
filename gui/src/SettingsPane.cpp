@@ -3,6 +3,7 @@
 #include "mod3d_gui/ProfileView.h"
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/GL3DView.h"
+#include "mod3d_gui/HorizontalSliceView.h"
 #include "mod3d_gui/dialogs/BodyPropertiesDialog.h"
 
 #include <QVBoxLayout>
@@ -612,6 +613,113 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     });
 
     layout->addWidget(m_pane3DView);
+
+    // --- Sub-panel 4: Horizontal Slice View Display Controls ---
+    m_paneSliceFields = new QWidget(inner);
+    auto *sliceLayout = new QVBoxLayout(m_paneSliceFields);
+    sliceLayout->setContentsMargins(0, 0, 0, 0);
+    sliceLayout->setSpacing(6);
+    sliceLayout->setAlignment(Qt::AlignTop);
+
+    auto *formSlice = new QFormLayout();
+    formSlice->setContentsMargins(0, 0, 0, 0);
+
+    m_comboSliceField = new QComboBox(m_paneSliceFields);
+    m_comboSliceField->addItem(tr("Gz - Vertical Gravity"), static_cast<int>(mod3d::FieldComponent::GZ));
+    m_comboSliceField->addItem(tr("ΔT - Total Magnetic Field"), static_cast<int>(mod3d::FieldComponent::DELTA_T));
+    m_comboSliceField->addItem(tr("Gt - Total Gravity Field"), static_cast<int>(mod3d::FieldComponent::G_TOT));
+    m_comboSliceField->addItem(tr("Gx - East-West Gravity"), static_cast<int>(mod3d::FieldComponent::GX));
+    m_comboSliceField->addItem(tr("Gy - North-South Gravity"), static_cast<int>(mod3d::FieldComponent::GY));
+    m_comboSliceField->addItem(tr("Mz - Vertical Magnetics"), static_cast<int>(mod3d::FieldComponent::MZ));
+    m_comboSliceField->addItem(tr("Mx - East-West Magnetics"), static_cast<int>(mod3d::FieldComponent::MX));
+    m_comboSliceField->addItem(tr("My - North-South Magnetics"), static_cast<int>(mod3d::FieldComponent::MY));
+    m_comboSliceField->addItem(tr("Tzz - Vertical Gradient"), static_cast<int>(mod3d::FieldComponent::GZZ));
+    m_comboSliceField->addItem(tr("Txx - East-West Gradient"), static_cast<int>(mod3d::FieldComponent::GXX));
+    m_comboSliceField->addItem(tr("Tyy - North-South Gradient"), static_cast<int>(mod3d::FieldComponent::GYY));
+    m_comboSliceField->addItem(tr("Txy - Horizontal Gradient"), static_cast<int>(mod3d::FieldComponent::GXY));
+    m_comboSliceField->addItem(tr("Txz - Cross Gradient XZ"), static_cast<int>(mod3d::FieldComponent::GXZ));
+    m_comboSliceField->addItem(tr("Tyz - Cross Gradient YZ"), static_cast<int>(mod3d::FieldComponent::GYZ));
+    formSlice->addRow(tr("Primary Field:"), m_comboSliceField);
+
+    m_lblSliceFieldInfo = new QLabel(tr("Field: Gz (mGal)"), m_paneSliceFields);
+    m_lblSliceFieldInfo->setStyleSheet("color: #64748b; font-size: 11px;");
+    formSlice->addRow(QString(), m_lblSliceFieldInfo);
+    sliceLayout->addLayout(formSlice);
+
+    connect(m_comboSliceField, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        if (m_blockSync) return;
+        auto comp = static_cast<mod3d::FieldComponent>(m_comboSliceField->itemData(idx).toInt());
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
+            hv->setFieldComponent(comp);
+            updateViewContext();
+        }
+    });
+
+    // Single Field Bitmap Radio Group (Only one or none of modeled, observed, difference)
+    auto *boxSliceRaster = new QGroupBox(tr("Field Bitmap Display (Single Field)"), m_paneSliceFields);
+    auto *sliceRasterLayout = new QVBoxLayout(boxSliceRaster);
+    sliceRasterLayout->setContentsMargins(8, 8, 8, 8);
+    sliceRasterLayout->setSpacing(4);
+
+    m_grpSliceRaster = new QButtonGroup(boxSliceRaster);
+    m_rbSliceModeled = new QRadioButton(tr("Modeled Field Bitmap"), boxSliceRaster);
+    m_rbSliceObserved = new QRadioButton(tr("Measured / Observed Bitmap"), boxSliceRaster);
+    m_rbSliceDiff = new QRadioButton(tr("Difference Field Bitmap"), boxSliceRaster);
+    m_rbSliceNone = new QRadioButton(tr("None (Grid Only)"), boxSliceRaster);
+
+    m_grpSliceRaster->addButton(m_rbSliceModeled, static_cast<int>(HorizontalSliceView::SliceRasterMode::Modeled));
+    m_grpSliceRaster->addButton(m_rbSliceObserved, static_cast<int>(HorizontalSliceView::SliceRasterMode::Observed));
+    m_grpSliceRaster->addButton(m_rbSliceDiff, static_cast<int>(HorizontalSliceView::SliceRasterMode::Difference));
+    m_grpSliceRaster->addButton(m_rbSliceNone, static_cast<int>(HorizontalSliceView::SliceRasterMode::None));
+
+    sliceRasterLayout->addWidget(m_rbSliceModeled);
+    sliceRasterLayout->addWidget(m_rbSliceObserved);
+    sliceRasterLayout->addWidget(m_rbSliceDiff);
+    sliceRasterLayout->addWidget(m_rbSliceNone);
+    sliceLayout->addWidget(boxSliceRaster);
+
+    connect(m_grpSliceRaster, &QButtonGroup::idClicked, this, [this](int id) {
+        if (m_blockSync) return;
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
+            hv->setRasterMode(static_cast<HorizontalSliceView::SliceRasterMode>(id));
+        }
+    });
+
+    // Planar View Overlays
+    auto *boxSliceOverlays = new QGroupBox(tr("Planar View Overlays"), m_paneSliceFields);
+    auto *sliceOverlaysLayout = new QVBoxLayout(boxSliceOverlays);
+    sliceOverlaysLayout->setContentsMargins(8, 8, 8, 8);
+    sliceOverlaysLayout->setSpacing(4);
+
+    m_chkSliceStationPoints = new QCheckBox(tr("Observation Station Points"), boxSliceOverlays);
+    m_chkSliceStationPoints->setChecked(true);
+    m_chkSliceProfiles = new QCheckBox(tr("Profile Navigation Trackers"), boxSliceOverlays);
+    m_chkSliceProfiles->setChecked(true);
+    m_chkSliceCellBorders = new QCheckBox(tr("Cell Borders / Grid"), boxSliceOverlays);
+    m_chkSliceCellBorders->setChecked(true);
+    m_chkSliceBodyOutlines = new QCheckBox(tr("Body Outlines"), boxSliceOverlays);
+    m_chkSliceBodyOutlines->setChecked(true);
+
+    sliceOverlaysLayout->addWidget(m_chkSliceStationPoints);
+    sliceOverlaysLayout->addWidget(m_chkSliceProfiles);
+    sliceOverlaysLayout->addWidget(m_chkSliceCellBorders);
+    sliceOverlaysLayout->addWidget(m_chkSliceBodyOutlines);
+    sliceLayout->addWidget(boxSliceOverlays);
+
+    connect(m_chkSliceStationPoints, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) hv->setShowStationPoints(c);
+    });
+    connect(m_chkSliceProfiles, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) hv->setShowProfiles(c);
+    });
+    connect(m_chkSliceCellBorders, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) hv->setShowCellBorders(c);
+    });
+    connect(m_chkSliceBodyOutlines, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) hv->setShowBodyOutlines(c);
+    });
+
+    layout->addWidget(m_paneSliceFields);
     layout->addStretch(1);
 
     scroll->setWidget(inner);
@@ -1333,6 +1441,10 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
     if (auto *oldPv = qobject_cast<ProfileView*>(m_activeView.data())) {
         disconnect(oldPv, &ProfileView::displaySettingsChanged, this, &SettingsPane::updateViewContext);
     }
+    if (auto *oldHv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
+        disconnect(oldHv, &HorizontalSliceView::displaySettingsChanged, this, &SettingsPane::updateViewContext);
+        disconnect(oldHv, &HorizontalSliceView::sliceElevationChanged, this, &SettingsPane::updateViewContext);
+    }
     if (auto *oldGlv = qobject_cast<GL3DView*>(m_activeView.data())) {
         disconnect(oldGlv, &GL3DView::octantCutChanged, this, &SettingsPane::updateViewContext);
         disconnect(oldGlv, &GL3DView::quadrantCutChanged, this, &SettingsPane::updateViewContext);
@@ -1340,6 +1452,10 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
     m_activeView = (sub && sub->widget()) ? sub->widget() : nullptr;
     if (auto *newPv = qobject_cast<ProfileView*>(m_activeView.data())) {
         connect(newPv, &ProfileView::displaySettingsChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    }
+    if (auto *newHv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
+        connect(newHv, &HorizontalSliceView::displaySettingsChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
+        connect(newHv, &HorizontalSliceView::sliceElevationChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
     }
     if (auto *newGlv = qobject_cast<GL3DView*>(m_activeView.data())) {
         connect(newGlv, &GL3DView::octantCutChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
@@ -1357,6 +1473,7 @@ void SettingsPane::updateViewContext() {
         m_paneProfileFields->setVisible(true);
         m_paneMapFields->setVisible(false);
         m_pane3DView->setVisible(false);
+        m_paneSliceFields->setVisible(false);
 
         // Sync Profile View UI in Display Tab
         int idx = m_comboProfileMainField->findData(static_cast<int>(pv->mainFieldComponent()));
@@ -1420,6 +1537,7 @@ void SettingsPane::updateViewContext() {
         m_paneProfileFields->setVisible(false);
         m_paneMapFields->setVisible(true);
         m_pane3DView->setVisible(false);
+        m_paneSliceFields->setVisible(false);
 
         int idx = m_comboMapField->findData(static_cast<int>(mv->fieldComponent()));
         if (idx >= 0) m_comboMapField->setCurrentIndex(idx);
@@ -1446,6 +1564,7 @@ void SettingsPane::updateViewContext() {
         m_paneProfileFields->setVisible(false);
         m_paneMapFields->setVisible(false);
         m_pane3DView->setVisible(true);
+        m_paneSliceFields->setVisible(false);
 
         m_chk3DSlices->setChecked(glv->showProfilePlane());
         m_chk3DCompass->setChecked(glv->showOrientationIndicator());
@@ -1486,11 +1605,43 @@ void SettingsPane::updateViewContext() {
         QString coordName = (prfOrient == ProfileOrientation::EastWest) ? "Y" : "X";
         m_lblProfTabCoord->setText(QString("%1 = %2 m").arg(coordName).arg(coord, 0, 'f', 1));
 
+    } else if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
+        m_lblViewContext->setText(QString("Active View: Horizontal Planar View (Z = %1 m)").arg(hv->sliceElevation(), 0, 'f', 1));
+        m_paneProfileFields->setVisible(false);
+        m_paneMapFields->setVisible(false);
+        m_pane3DView->setVisible(false);
+        m_paneSliceFields->setVisible(true);
+
+        int idx = m_comboSliceField->findData(static_cast<int>(hv->fieldComponent()));
+        if (idx >= 0) m_comboSliceField->setCurrentIndex(idx);
+        m_lblSliceFieldInfo->setText(QString("Field: %1 (%2)")
+            .arg(ModelDocument::componentName(hv->fieldComponent()))
+            .arg(ModelDocument::componentUnit(hv->fieldComponent())));
+
+        bool hasSliceMeasured = hv->hasMeasuredField();
+        m_rbSliceObserved->setEnabled(hasSliceMeasured);
+        m_rbSliceDiff->setEnabled(hasSliceMeasured);
+        m_rbSliceObserved->setToolTip(hasSliceMeasured ? QString() : tr("No measured field available for %1").arg(ModelDocument::componentName(hv->fieldComponent())));
+        m_rbSliceDiff->setToolTip(hasSliceMeasured ? QString() : tr("No measured field available for difference calculation"));
+
+        if (!hasSliceMeasured && (hv->rasterMode() == HorizontalSliceView::SliceRasterMode::Observed || hv->rasterMode() == HorizontalSliceView::SliceRasterMode::Difference)) {
+            hv->setRasterMode(HorizontalSliceView::SliceRasterMode::Modeled);
+        }
+        if (auto *btn = m_grpSliceRaster->button(static_cast<int>(hv->rasterMode()))) {
+            btn->setChecked(true);
+        }
+
+        m_chkSliceStationPoints->setChecked(hv->showStationPoints());
+        m_chkSliceProfiles->setChecked(hv->showProfiles());
+        m_chkSliceCellBorders->setChecked(hv->showCellBorders());
+        m_chkSliceBodyOutlines->setChecked(hv->showBodyOutlines());
+
     } else {
         m_lblViewContext->setText(tr("Active View: Workspace"));
         m_paneProfileFields->setVisible(true);
         m_paneMapFields->setVisible(false);
         m_pane3DView->setVisible(false);
+        m_paneSliceFields->setVisible(false);
     }
 
     m_blockSync = false;

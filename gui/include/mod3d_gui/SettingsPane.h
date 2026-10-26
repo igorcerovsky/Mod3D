@@ -21,6 +21,7 @@ class MainWindow;
 class ProfileView;
 class MapView;
 class GL3DView;
+class HorizontalSliceView;
 
 class SettingsPane : public QDockWidget {
     Q_OBJECT
@@ -41,6 +42,15 @@ public:
     QCheckBox *differenceCurveCheckBox() const { return m_chkProfDiff; }
     QRadioButton *mapObservedRadioButton() const { return m_rbMapObserved; }
     QRadioButton *mapDifferenceRadioButton() const { return m_rbMapDiff; }
+    QRadioButton *sliceModeledRadioButton() const { return m_rbSliceModeled; }
+    QRadioButton *sliceObservedRadioButton() const { return m_rbSliceObserved; }
+    QRadioButton *sliceDifferenceRadioButton() const { return m_rbSliceDiff; }
+    QRadioButton *sliceNoneRadioButton() const { return m_rbSliceNone; }
+    QComboBox *sliceFieldComboBox() const { return m_comboSliceField; }
+    QCheckBox *sliceBodyOutlinesCheckBox() const { return m_chkSliceBodyOutlines; }
+    QCheckBox *sliceCellBordersCheckBox() const { return m_chkSliceCellBorders; }
+    QCheckBox *sliceStationPointsCheckBox() const { return m_chkSliceStationPoints; }
+    QCheckBox *sliceProfilesCheckBox() const { return m_chkSliceProfiles; }
 
     QComboBox *bodyComboBox() const { return m_comboBodies; }
     QDoubleSpinBox *bodyDensitySpinBox() const { return m_spinDensity; }
@@ -140,6 +150,20 @@ private:
     QCheckBox *m_chk3DTransparentSlices{nullptr};
     QCheckBox *m_chk3DPlanarSlice{nullptr};
     QCheckBox *m_chk3DOctantCut{nullptr};
+
+    // Horizontal Slice View Display Controls
+    QWidget *m_paneSliceFields{nullptr};
+    QComboBox *m_comboSliceField{nullptr};
+    QLabel *m_lblSliceFieldInfo{nullptr};
+    QButtonGroup *m_grpSliceRaster{nullptr};
+    QRadioButton *m_rbSliceModeled{nullptr};
+    QRadioButton *m_rbSliceObserved{nullptr};
+    QRadioButton *m_rbSliceDiff{nullptr};
+    QRadioButton *m_rbSliceNone{nullptr};
+    QCheckBox *m_chkSliceStationPoints{nullptr};
+    QCheckBox *m_chkSliceProfiles{nullptr};
+    QCheckBox *m_chkSliceCellBorders{nullptr};
+    QCheckBox *m_chkSliceBodyOutlines{nullptr};
 
     // Tab 2: Profiles Tab Controls
     QPushButton *m_btnProfTabOrientEW{nullptr};
