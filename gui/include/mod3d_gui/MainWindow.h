@@ -3,6 +3,7 @@
 #include "mod3d_gui/ModelDocument.h"
 #include "mod3d_gui/StatusBarManager.h"
 #include "mod3d_gui/ProfileView.h"
+#include "mod3d_gui/HorizontalSliceView.h"
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/GL3DView.h"
 #include "mod3d_gui/SpreadsheetView.h"
@@ -14,6 +15,7 @@
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QPointer>
+#include <limits>
 
 namespace mod3d_gui {
 
@@ -32,6 +34,7 @@ public:
     ProfileView *openProfileView(ProfileOrientation orient = ProfileOrientation::EastWest, int profileIndex = -1);
     ProfileView *activeProfileView() const;
     ProfileView *lastActiveProfileView() const { return m_lastActiveProfileView.data(); }
+    HorizontalSliceView *openHorizontalSliceView(double initialZ = std::numeric_limits<double>::quiet_NaN());
     MapView *openMapView();
     GL3DView *openGL3DView();
     SpreadsheetView *openSpreadsheetView();

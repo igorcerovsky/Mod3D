@@ -66,6 +66,8 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
             fitToWindow();
             update();
           });
+  connect(m_doc, &ModelDocument::activeSliceElevationChanged, this,
+          QOverload<>::of(&QWidget::update));
   connect(m_doc, &ModelDocument::fieldDisplayToggled, this, [this]() {
     if (hasMeasuredField()) {
       m_showMeasuredCurve = m_doc->showMeasuredField();
@@ -973,6 +975,7 @@ void ProfileView::drawGeologicalSection(QPainter &painter) {
   }
 
   drawProfileIntersections(painter);
+  drawHorizontalSliceIndicator(painter);
 
   drawReliefAndBottom(painter);
 
@@ -1087,6 +1090,31 @@ void ProfileView::drawProfileIntersections(QPainter &painter) {
         painter.drawText(badge, Qt::AlignCenter, label);
       }
     }
+  }
+}
+
+void ProfileView::drawHorizontalSliceIndicator(QPainter &painter) {
+  if (!m_doc)
+    return;
+  double sliceZ = m_doc->activeSliceElevation();
+  if (sliceZ >= m_worldZMin && sliceZ <= m_worldZMax) {
+    int sy = worldToScreenZ(sliceZ);
+    int sxLeft = worldToScreenX(m_worldXMin);
+    int sxRight = worldToScreenX(m_worldXMax);
+
+    painter.setPen(QPen(QColor(0, 160, 220, 190), 1.5, Qt::DashLine));
+    painter.drawLine(sxLeft, sy, sxRight, sy);
+
+    QString sliceText = QString("Z = %1 m").arg(std::round(sliceZ));
+    QRect badge(sxRight - 74, sy - 8, 70, 16);
+    painter.fillRect(badge, QColor(240, 250, 255, 220));
+    painter.setPen(QColor(0, 140, 200));
+    painter.drawRect(badge);
+    QFont f = painter.font();
+    f.setPointSize(7);
+    f.setBold(true);
+    painter.setFont(f);
+    painter.drawText(badge, Qt::AlignCenter, sliceText);
   }
 }
 

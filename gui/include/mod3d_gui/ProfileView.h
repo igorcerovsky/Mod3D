@@ -175,6 +175,7 @@ private:
     void drawGeologicalSection(QPainter &painter);
     void drawGridLines(QPainter &painter);
     void drawProfileIntersections(QPainter &painter);
+    void drawHorizontalSliceIndicator(QPainter &painter);
     void drawReliefAndBottom(QPainter &painter);
     void drawBodies(QPainter &painter);
     void drawGhostBodies(QPainter &painter, int ghostProfileIdx, const QPen &pen);

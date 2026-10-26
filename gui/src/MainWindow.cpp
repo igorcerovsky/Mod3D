@@ -223,12 +223,14 @@ void MainWindow::setupMenus() {
         if (auto *sub = m_mdiArea->activeSubWindow()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) pv->fitToWindow();
             else if (auto *mv = qobject_cast<MapView*>(sub->widget())) mv->fitToWindow();
+            else if (auto *hv = qobject_cast<HorizontalSliceView*>(sub->widget())) hv->fitToWindow();
         }
     });
     auto *actZoomIn = menuView->addAction(createZoomIcon(true), tr("Zoom In"), this, [this]() {
         if (auto *sub = m_mdiArea->activeSubWindow()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) pv->zoomIn();
             else if (auto *mv = qobject_cast<MapView*>(sub->widget())) mv->zoomIn();
+            else if (auto *hv = qobject_cast<HorizontalSliceView*>(sub->widget())) hv->zoomIn();
         }
     });
     actZoomIn->setShortcut(QKeySequence::ZoomIn);
@@ -237,9 +239,12 @@ void MainWindow::setupMenus() {
         if (auto *sub = m_mdiArea->activeSubWindow()) {
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) pv->zoomOut();
             else if (auto *mv = qobject_cast<MapView*>(sub->widget())) mv->zoomOut();
+            else if (auto *hv = qobject_cast<HorizontalSliceView*>(sub->widget())) hv->zoomOut();
         }
     });
     actZoomOut->setShortcut(QKeySequence::ZoomOut);
+    menuView->addSeparator();
+    menuView->addAction(tr("Horizontal Planar View"), this, [this]() { openHorizontalSliceView(); });
 
     // 3. Edit Menu
     auto *menuEdit = mb->addMenu(tr("&Edit"));
@@ -374,6 +379,7 @@ void MainWindow::setupMenus() {
     auto *menuWindow = mb->addMenu(tr("&Window"));
     menuWindow->addAction(tr("New &Profile Window (E-W)"), this, [this]() { openProfileView(ProfileOrientation::EastWest); });
     menuWindow->addAction(tr("New &Profile Window (S-N)"), this, [this]() { openProfileView(ProfileOrientation::SouthNorth); });
+    menuWindow->addAction(tr("New &Horizontal Planar Window"), this, [this]() { openHorizontalSliceView(); });
     menuWindow->addAction(tr("New &Map Window"), this, &MainWindow::openMapView);
     menuWindow->addAction(tr("New &3D Window"), this, &MainWindow::openGL3DView);
     menuWindow->addAction(tr("New &Spreadsheet Window"), this, &MainWindow::openSpreadsheetView);
@@ -477,6 +483,26 @@ MapView *MainWindow::openMapView() {
     });
 
     return mv;
+}
+
+HorizontalSliceView *MainWindow::openHorizontalSliceView(double initialZ) {
+    auto *hv = new HorizontalSliceView(m_doc, initialZ, this);
+    auto *sub = m_mdiArea->addSubWindow(hv);
+    hv->updateTitle();
+    sub->resize(520, 440);
+    sub->show();
+
+    connect(hv, &HorizontalSliceView::cursorStationChanged, this, [this](int r, int c, double x, double y, double z, double) {
+        if (m_isDestroying || !m_statusBarMgr) return;
+        m_statusBarMgr->setRow(r);
+        m_statusBarMgr->setCol(c);
+        m_statusBarMgr->setX(x);
+        m_statusBarMgr->setY(y);
+        m_statusBarMgr->setZ(z);
+    });
+    connect(hv, &HorizontalSliceView::requestBodyProperties, this, &MainWindow::onBodyProperties);
+
+    return hv;
 }
 
 GL3DView *MainWindow::openGL3DView() {

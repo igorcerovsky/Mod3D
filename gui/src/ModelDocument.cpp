@@ -41,6 +41,7 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
 
     m_profileOrient = ProfileOrientation::EastWest;
     m_profileIndex = rows / 2;
+    m_activeSliceZ = (zMin + zMax) * 0.5;
     m_filePath.clear();
     m_modified = false;
     m_showMeasured = false;
@@ -75,6 +76,7 @@ bool ModelDocument::newProjectFromReliefGrid(const mod3d::Grid &reliefGrid, doub
 
     m_profileOrient = ProfileOrientation::EastWest;
     m_profileIndex = static_cast<int>(reliefGrid.rows()) / 2;
+    m_activeSliceZ = (zMin + zMax) * 0.5;
     m_filePath.clear();
     m_modified = false;
     m_showMeasured = false;
@@ -186,6 +188,7 @@ bool ModelDocument::openFile(const QString &path) {
         m_modified = false;
         m_undoStack.clear();
         ensureProfileIndexValid();
+        m_activeSliceZ = (m_project.model().z_min_val() + m_project.model().z_max_val()) * 0.5;
 
         // Auto-select field component based on available observed data
         const auto *gzObs = m_project.observation().observed_grid(mod3d::FieldComponent::GZ);
@@ -954,6 +957,16 @@ void ModelDocument::updateStationPointForProfileChange() {
     };
 
     emit activeProfileCursorChanged(m_activeProfileCursor);
+}
+
+void ModelDocument::setActiveSliceElevation(double z) {
+    double zMin = m_project.model().z_min_val();
+    double zMax = m_project.model().z_max_val();
+    z = std::clamp(z, zMin, zMax);
+    if (std::abs(m_activeSliceZ - z) > 1e-4) {
+        m_activeSliceZ = z;
+        emit activeSliceElevationChanged(m_activeSliceZ);
+    }
 }
 
 } // namespace mod3d_gui

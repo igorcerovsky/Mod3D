@@ -11,6 +11,7 @@ set(GUI_HEADERS
     include/mod3d_gui/ModelDocument.h
     include/mod3d_gui/MainWindow.h
     include/mod3d_gui/ProfileView.h
+    include/mod3d_gui/HorizontalSliceView.h
     include/mod3d_gui/MapView.h
     include/mod3d_gui/GL3DView.h
     include/mod3d_gui/SpreadsheetView.h
@@ -30,6 +31,7 @@ set(GUI_SOURCES
     src/ModelDocument.cpp
     src/MainWindow.cpp
     src/ProfileView.cpp
+    src/HorizontalSliceView.cpp
     src/MapView.cpp
     src/GL3DView.cpp
     src/SpreadsheetView.cpp

@@ -11,6 +11,7 @@
 
 #include "mod3d_gui/ModelDocument.h"
 #include "mod3d_gui/ProfileView.h"
+#include "mod3d_gui/HorizontalSliceView.h"
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/SpreadsheetView.h"
 #include "mod3d_gui/GL3DView.h"
@@ -3266,5 +3267,121 @@ TEST_F(GuiDocumentTest, SettingsPanePhysicsTabRemoveObservedMean) {
     EXPECT_EQ(doc->observedGrid(mod3d::FieldComponent::GZ), rawGrd);
     EXPECT_NEAR(doc->observedGrid(mod3d::FieldComponent::GZ)->mean(), rawMean, 1e-12);
 }
+
+TEST_F(GuiDocumentTest, HorizontalSliceViewInitializationAndElevationSync) {
+    ModelDocument doc;
+    doc.newProject(7, 7, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    HorizontalSliceView sliceView(&doc);
+    sliceView.resize(600, 500);
+
+    // Initial slice elevation should be midpoint of range: (-2000 + 0) / 2 = -1000
+    EXPECT_NEAR(sliceView.sliceElevation(), -1000.0, 1e-4);
+    EXPECT_NEAR(doc.activeSliceElevation(), -1000.0, 1e-4);
+
+    // Changing elevation in view updates document
+    sliceView.setSliceElevation(-500.0);
+    EXPECT_NEAR(sliceView.sliceElevation(), -500.0, 1e-4);
+    EXPECT_NEAR(doc.activeSliceElevation(), -500.0, 1e-4);
+
+    // Stepping elevation up/down
+    sliceView.stepElevation(1); // +50m
+    EXPECT_NEAR(sliceView.sliceElevation(), -450.0, 1e-4);
+    sliceView.stepElevation(-2); // -100m
+    EXPECT_NEAR(sliceView.sliceElevation(), -550.0, 1e-4);
+
+    // Clamping to vertical range
+    sliceView.setSliceElevation(500.0); // Above zMax (0)
+    EXPECT_LE(sliceView.sliceElevation(), 0.0);
+    sliceView.setSliceElevation(-3000.0); // Below zMin (-2000)
+    EXPECT_GE(sliceView.sliceElevation(), -2000.0);
+}
+
+TEST_F(GuiDocumentTest, HorizontalSliceViewBoundaryEdgesDetection) {
+    ModelDocument doc;
+    doc.newProject(7, 7, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert body at row 2, col 2 with midZ = -500, thickness = 200 (top = -400, bot = -600)
+    int bodyId = doc.insertBodyAtRowCol(2, 2, -500.0, 100.0);
+    ASSERT_GT(bodyId, 0);
+
+    HorizontalSliceView sliceView(&doc, -500.0);
+
+    // At Z = -500m, body intersects (2, 2). All 4 sides (N, S, E, W) should be boundary edges!
+    auto edges = sliceView.activeBoundaryEdges();
+    EXPECT_EQ(edges.size(), 4u);
+
+    // At Z = -200m (above top -400m), body does not intersect. No edges!
+    sliceView.setSliceElevation(-200.0);
+    edges = sliceView.activeBoundaryEdges();
+    EXPECT_EQ(edges.size(), 0u);
+
+    // At Z = -800m (below bot -600m), body does not intersect. No edges!
+    sliceView.setSliceElevation(-800.0);
+    edges = sliceView.activeBoundaryEdges();
+    EXPECT_EQ(edges.size(), 0u);
+
+    // Return to -500m and extend body to East neighbor (2, 3)
+    sliceView.setSliceElevation(-500.0);
+    bool extOk = doc.extendBodySideAtRowCol(2, 2, 2, 3, bodyId, -500.0);
+    EXPECT_TRUE(extOk);
+
+    // Now body occupies (2, 2) and (2, 3).
+    // The internal edge between (2, 2) and (2, 3) must disappear!
+    // Total boundary edges for 2 adjacent cells: 4 * 2 - 2 = 6 edges!
+    edges = sliceView.activeBoundaryEdges();
+    EXPECT_EQ(edges.size(), 6u);
+}
+
+TEST_F(GuiDocumentTest, HorizontalSliceViewLateralExtensionAndCollapse) {
+    ModelDocument doc;
+    doc.newProject(7, 7, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert body at row 3, col 3
+    int bodyId = doc.insertBodyAtRowCol(3, 3, -600.0, 150.0);
+    ASSERT_GT(bodyId, 0);
+
+    HorizontalSliceView sliceView(&doc, -600.0);
+    sliceView.resize(600, 500);
+
+    // Verify initial single column body
+    EXPECT_GE(doc.model().body_index(bodyId, 3, 3), 0);
+    EXPECT_LT(doc.model().body_index(bodyId, 3, 4), 0);
+
+    // Extend East to (3, 4)
+    bool extOk = doc.extendBodySideAtRowCol(3, 3, 3, 4, bodyId, -600.0);
+    EXPECT_TRUE(extOk);
+    EXPECT_GE(doc.model().body_index(bodyId, 3, 4), 0);
+
+    // Extend North to (4, 3)
+    bool extNorth = doc.extendBodySideAtRowCol(3, 3, 4, 3, bodyId, -600.0);
+    EXPECT_TRUE(extNorth);
+    EXPECT_GE(doc.model().body_index(bodyId, 4, 3), 0);
+
+    // Collapse (3, 4) back into (3, 3)
+    bool colOk = doc.collapseBodyEdgeAtRowCol(3, 4, bodyId);
+    EXPECT_TRUE(colOk);
+    EXPECT_LT(doc.model().body_index(bodyId, 3, 4), 0);
+    EXPECT_GE(doc.model().body_index(bodyId, 3, 3), 0);
+}
+
+TEST_F(GuiDocumentTest, MainWindowHorizontalSliceViewWindowOpening) {
+    MainWindow win;
+    win.resize(1100, 750);
+    win.show();
+
+    auto *doc = win.document();
+    ASSERT_NE(doc, nullptr);
+
+    auto *sliceView = win.openHorizontalSliceView(-800.0);
+    ASSERT_NE(sliceView, nullptr);
+    EXPECT_NEAR(sliceView->sliceElevation(), -800.0, 1e-4);
+
+    // Render check
+    QPixmap pix(sliceView->size());
+    sliceView->render(&pix);
+    EXPECT_FALSE(pix.isNull());
+}
+
 
 

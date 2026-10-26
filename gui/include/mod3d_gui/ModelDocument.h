@@ -252,6 +252,10 @@ public:
     void updateStationPointForProfileChange();
     void emitModelGeometryChanged() { emit modelGeometryChanged(); }
 
+    // Horizontal Planar Slice Elevation (for Horizontal Modeling View & Profile/3D View Synchronization)
+    [[nodiscard]] double activeSliceElevation() const noexcept { return m_activeSliceZ; }
+    void setActiveSliceElevation(double z);
+
 signals:
     void documentModifiedChanged(bool modified);
     void documentReset();
@@ -263,6 +267,7 @@ signals:
     void computationFinished();
     void statusMessage(const QString &message);
     void activeProfileCursorChanged(const mod3d_gui::ModelDocument::ProfileCursorPoint &pt);
+    void activeSliceElevationChanged(double z);
 
 private:
     void ensureProfileIndexValid();
@@ -286,6 +291,7 @@ private:
     bool m_showPrev{false};
     bool m_showNext{false};
     bool m_showGridLines{true};
+    double m_activeSliceZ{0.0};
 };
 
 } // namespace mod3d_gui
