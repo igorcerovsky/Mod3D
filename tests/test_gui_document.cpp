@@ -3750,6 +3750,70 @@ TEST_F(GuiDocumentTest, GL3DViewPlanarViewPlaneAndOctantCut) {
     EXPECT_FALSE(pmSoftware.isNull());
 }
 
+TEST_F(GuiDocumentTest, CollapsedEdgeBodyBoundariesInMapAndHorizontalSliceView) {
+    ModelDocument doc;
+    doc.newProject(6, 6, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert body at row 2, col 2 with midZ = -500, thickness = 100
+    int bodyId = doc.insertBodyAtRowCol(2, 2, -500.0, 100.0);
+    ASSERT_GT(bodyId, 0);
+
+    // Extend to (2, 3), (3, 2), (3, 3) to form a multi-point body
+    EXPECT_TRUE(doc.extendBodySideAtRowCol(2, 2, 2, 3, bodyId, -500.0));
+    EXPECT_TRUE(doc.extendBodySideAtRowCol(2, 2, 3, 2, bodyId, -500.0));
+    EXPECT_TRUE(doc.extendBodySideAtRowCol(3, 2, 3, 3, bodyId, -500.0));
+
+    // Collapse the outer edge along row 2: (2, 2) and (2, 3) set to z_top == z_bottom == -500
+    int idx22 = doc.model().body_index(bodyId, 2, 2);
+    int idx23 = doc.model().body_index(bodyId, 2, 3);
+    ASSERT_GE(idx22, 0);
+    ASSERT_GE(idx23, 0);
+
+    doc.model().set_z(2, 2, idx22, -500.0);
+    doc.model().set_z(2, 2, idx22 + 1, -500.0);
+    doc.model().set_z(2, 3, idx23, -500.0);
+    doc.model().set_z(2, 3, idx23 + 1, -500.0);
+    doc.model().init_facet_list();
+
+    // Verify that the collapsed edge between (2, 2) and (2, 3) is included in all_body_boundaries()
+    auto boundaries = doc.model().all_body_boundaries();
+    EXPECT_GT(boundaries.size(), 0u);
+
+    double x2 = doc.model().xd_val(2);
+    double x3 = doc.model().xd_val(3);
+    double y2 = doc.model().yd_val(2);
+
+    bool foundCollapsedEdge = false;
+    for (const auto &seg : boundaries) {
+        if (seg.bodyId != bodyId) continue;
+        bool matchForward = (std::abs(seg.pt0.x - x2) < 1e-3 && std::abs(seg.pt0.y - y2) < 1e-3 &&
+                             std::abs(seg.pt1.x - x3) < 1e-3 && std::abs(seg.pt1.y - y2) < 1e-3);
+        bool matchReverse = (std::abs(seg.pt0.x - x3) < 1e-3 && std::abs(seg.pt0.y - y2) < 1e-3 &&
+                             std::abs(seg.pt1.x - x2) < 1e-3 && std::abs(seg.pt1.y - y2) < 1e-3);
+        if (matchForward || matchReverse) {
+            foundCollapsedEdge = true;
+            break;
+        }
+    }
+    EXPECT_TRUE(foundCollapsedEdge);
+
+    // Verify MapView and HorizontalSliceView render successfully with this collapsed edge
+    MapView mv(&doc);
+    mv.resize(600, 500);
+    QPixmap pmMap(600, 500);
+    pmMap.fill(Qt::white);
+    mv.render(&pmMap);
+    EXPECT_FALSE(pmMap.isNull());
+
+    HorizontalSliceView hsv(&doc, -500.0);
+    hsv.resize(600, 500);
+    QPixmap pmSlice(600, 500);
+    pmSlice.fill(Qt::white);
+    hsv.render(&pmSlice);
+    EXPECT_FALSE(pmSlice.isNull());
+}
+
+
 
 
 

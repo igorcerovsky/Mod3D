@@ -534,8 +534,8 @@ std::vector<HorizontalSliceView::BoundaryEdge> HorizontalSliceView::activeBounda
                 if (bIdx < 0) continue;
                 double topZ = model.z(r, c, bIdx);
                 double botZ = model.z(r, c, bIdx + 1);
-                if (topZ <= botZ) continue;
-                if (m_sliceZ < botZ || m_sliceZ > topZ) continue;
+                if (topZ < botZ) continue;
+                if (m_sliceZ < botZ - 1e-4 || m_sliceZ > topZ + 1e-4) continue;
 
                 double xc = model.xd_val(c);
                 double yr = model.yd_val(r);
@@ -550,7 +550,7 @@ std::vector<HorizontalSliceView::BoundaryEdge> HorizontalSliceView::activeBounda
                     if (idx < 0) return false;
                     double tz = model.z(checkR, checkC, idx);
                     double bz = model.z(checkR, checkC, idx + 1);
-                    return (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz);
+                    return (tz >= bz && m_sliceZ >= bz - 1e-4 && m_sliceZ <= tz + 1e-4);
                 };
 
                 // East edge: between c and c+1
@@ -610,7 +610,7 @@ HorizontalSliceView::HitType HorizontalSliceView::performHitTest(
             if (bIdx >= 0) {
                 double tz = model.z(row, col, bIdx);
                 double bz = model.z(row, col, bIdx + 1);
-                if (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz) {
+                if (tz >= bz && m_sliceZ >= bz - 1e-4 && m_sliceZ <= tz + 1e-4) {
                     outBodyId = bPtr->id();
                     break;
                 }
@@ -704,7 +704,7 @@ void HorizontalSliceView::drawGridAndCells(QPainter &painter, const QRect &canva
         if (bIdx < 0) return false;
         double tz = model.z(checkR, checkC, bIdx);
         double bz = model.z(checkR, checkC, bIdx + 1);
-        return (tz > bz && m_sliceZ >= bz && m_sliceZ <= tz);
+        return (tz >= bz && m_sliceZ >= bz - 1e-4 && m_sliceZ <= tz + 1e-4);
     };
 
     int actId = activeBodyId();

@@ -774,11 +774,11 @@ int Model::add_fct_gen(std::vector<FctGen> &fga, int row, int col, int tag)
 
 void Model::init_side_facets_bound(const FctGen &fg, std::vector<Facet3Pt> &facetList, int i0, int i1)
 {
-    if (fg.top[i0] == fg.bot[i0] && fg.top[i1] == fg.bot[i1]) return;
-
     if (current_bound_col_) {
         current_bound_col_->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
     }
+
+    if (fg.top[i0] == fg.bot[i0] && fg.top[i1] == fg.bot[i1]) return;
 
     Body *pBd = body(fg.id);
     if (fg.top[i0] != fg.bot[i0]) {
@@ -808,7 +808,7 @@ void Model::init_side_facets_2(const FctGen &fg, std::vector<Facet3Pt> &facetLis
     if (fg.b[3] && fg.b[0] && fg.top[3].x == (x_min_ - ex_w_).value()) return;
     if (fg.b[1] && fg.b[2] && fg.top[1].x == (x_max_ + ex_e_).value()) return;
 
-    if (fg.b[i0] && fg.b[i1] && ((fg.top[i0] != fg.bot[i0]) || (fg.top[i1] != fg.bot[i1]))) {
+    if (fg.b[i0] && fg.b[i1]) {
         if (current_bound_col_) {
             current_bound_col_->push_back({fg.id, fg.bot[i0], fg.bot[i1]});
         }
