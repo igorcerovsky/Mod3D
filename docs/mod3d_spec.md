@@ -447,6 +447,7 @@ Interactive 3D spatial canvas:
 #### 4. Horizontal Slice View (`HorizontalSliceView`)
 Interactive horizontal planar depth-slice canvas:
 - **Depth / Elevation Control**: Synchronized elevation spinbox and slider allowing interactive traversal of the 3D model volume at constant elevation ($Z = \text{const}$). Synchronized with Profile View (elevation guide indicator) and 3D GL View (horizontal cut plane).
+- **Synchronize Profile Views**: When enabled (via header "Sync Profiles" checkbox, Settings Inspector Display Tab "Synchronize Profile Views", or right-click context menu), mouse clicks automatically synchronize open East-West and South-North Profile Views to the clicked coordinate $(X, Y)$, updating profile cross-sections and station cursor markers.
 - **Single Potential Field Raster Overlay**: User selects exactly one or none of the potential field components to display as an interpolated color heatmap underlay (Measured/Observed, Modeled/Calculated, or Difference). Grid cell centers are anchored exactly at observation station coordinates.
 - **Body Boundary Footprints & Collapsed Edges**: Draws precise polyhedral body boundary polygons matching Map View conventions. Accurately renders boundary edges even where the outer body edge is collapsed ($z_{\text{top}} = z_{\text{bottom}}$) at the lateral termination of a body.
 - **Profile Intersection Traces**: Overlays profile trace lines for all active MDI Profile Views, showing where cross-sections intersect the horizontal slice.
@@ -467,6 +468,9 @@ Interactive horizontal planar depth-slice canvas:
 | INTERACTIVE GESTURE MATRIX                                                                         |
 +----------------------+--------------------------+--------------------------------------------------+
 | Gesture              | State / Modifier         | Action & Geological Rule                         |
++----------------------+--------------------------+--------------------------------------------------+
+| Click (Sync Active)  | Horizontal Slice View    | Automatically synchronizes all open Profile Views|
+|                      | "Sync Profiles" is ON    | (E-W and S-N) to the clicked (X, Y) station.     |
 +----------------------+--------------------------+--------------------------------------------------+
 | Double-Click (Empty) | Profile / Slice View     | Creates brand NEW body with unique ID, default   |
 |                      | Over empty cell / space  | thickness & palette color, selects it as active, |

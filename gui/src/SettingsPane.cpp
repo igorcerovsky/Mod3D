@@ -699,11 +699,15 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chkSliceCellBorders->setChecked(true);
     m_chkSliceBodyOutlines = new QCheckBox(tr("Body Outlines"), boxSliceOverlays);
     m_chkSliceBodyOutlines->setChecked(true);
+    m_chkSliceSyncProfiles = new QCheckBox(tr("Synchronize Profile Views"), boxSliceOverlays);
+    m_chkSliceSyncProfiles->setToolTip(tr("Automatically synchronize profile cross-sections to the clicked position"));
+    m_chkSliceSyncProfiles->setChecked(false);
 
     sliceOverlaysLayout->addWidget(m_chkSliceStationPoints);
     sliceOverlaysLayout->addWidget(m_chkSliceProfiles);
     sliceOverlaysLayout->addWidget(m_chkSliceCellBorders);
     sliceOverlaysLayout->addWidget(m_chkSliceBodyOutlines);
+    sliceOverlaysLayout->addWidget(m_chkSliceSyncProfiles);
     sliceLayout->addWidget(boxSliceOverlays);
 
     connect(m_chkSliceStationPoints, &QCheckBox::toggled, this, [this](bool c) {
@@ -717,6 +721,9 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     });
     connect(m_chkSliceBodyOutlines, &QCheckBox::toggled, this, [this](bool c) {
         if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) hv->setShowBodyOutlines(c);
+    });
+    connect(m_chkSliceSyncProfiles, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *hv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) hv->setSyncProfileViews(c);
     });
 
     layout->addWidget(m_paneSliceFields);
@@ -1444,6 +1451,7 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
     if (auto *oldHv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
         disconnect(oldHv, &HorizontalSliceView::displaySettingsChanged, this, &SettingsPane::updateViewContext);
         disconnect(oldHv, &HorizontalSliceView::sliceElevationChanged, this, &SettingsPane::updateViewContext);
+        disconnect(oldHv, &HorizontalSliceView::syncProfileViewsChanged, this, &SettingsPane::updateViewContext);
     }
     if (auto *oldGlv = qobject_cast<GL3DView*>(m_activeView.data())) {
         disconnect(oldGlv, &GL3DView::octantCutChanged, this, &SettingsPane::updateViewContext);
@@ -1456,6 +1464,7 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
     if (auto *newHv = qobject_cast<HorizontalSliceView*>(m_activeView.data())) {
         connect(newHv, &HorizontalSliceView::displaySettingsChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
         connect(newHv, &HorizontalSliceView::sliceElevationChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
+        connect(newHv, &HorizontalSliceView::syncProfileViewsChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
     }
     if (auto *newGlv = qobject_cast<GL3DView*>(m_activeView.data())) {
         connect(newGlv, &GL3DView::octantCutChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
@@ -1635,6 +1644,7 @@ void SettingsPane::updateViewContext() {
         m_chkSliceProfiles->setChecked(hv->showProfiles());
         m_chkSliceCellBorders->setChecked(hv->showCellBorders());
         m_chkSliceBodyOutlines->setChecked(hv->showBodyOutlines());
+        m_chkSliceSyncProfiles->setChecked(hv->syncProfileViews());
 
     } else {
         m_lblViewContext->setText(tr("Active View: Workspace"));

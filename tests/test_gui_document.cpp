@@ -4041,6 +4041,112 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewPropertiesAndSingleFieldBitmapDisplay
     EXPECT_FALSE(pm.isNull());
 }
 
+TEST_F(GuiDocumentTest, HorizontalSliceViewSynchronizeProfileViewsOnClick) {
+    MainWindow mw;
+    auto *mdi = mw.mdiArea();
+    ASSERT_NE(mdi, nullptr);
+
+    ProfileView *pvNS = nullptr;
+    ProfileView *pvEW = nullptr;
+    HorizontalSliceView *hv = nullptr;
+
+    for (auto *sub : mdi->subWindowList()) {
+        if (!sub || !sub->widget()) continue;
+        if (auto *p = qobject_cast<ProfileView*>(sub->widget())) {
+            if (p->profileOrientation() == ProfileOrientation::SouthNorth) {
+                pvNS = p;
+            } else {
+                pvEW = p;
+            }
+        } else if (auto *h = qobject_cast<HorizontalSliceView*>(sub->widget())) {
+            hv = h;
+        }
+    }
+
+    ASSERT_NE(pvNS, nullptr);
+    ASSERT_NE(pvEW, nullptr);
+    ASSERT_NE(hv, nullptr);
+
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    auto *subHv = qobject_cast<QMdiSubWindow*>(hv->parentWidget());
+    ASSERT_NE(subHv, nullptr);
+    mdi->setActiveSubWindow(subHv);
+    pane->setActiveSubWindow(subHv);
+
+    // 1. Initial State: sync is disabled by default
+    EXPECT_FALSE(hv->syncProfileViews());
+    ASSERT_NE(hv->syncProfilesCheckBox(), nullptr);
+    EXPECT_FALSE(hv->syncProfilesCheckBox()->isChecked());
+    ASSERT_NE(pane->sliceSyncProfilesCheckBox(), nullptr);
+    EXPECT_FALSE(pane->sliceSyncProfilesCheckBox()->isChecked());
+
+    // Record initial profile indices
+    int initEW = pvEW->profileIndex();
+    int initNS = pvNS->profileIndex();
+
+    // 2. Mouse click when disabled: profile views should NOT synchronize
+    hv->resize(800, 600);
+    hv->fitToWindow();
+
+    const auto &model = mw.document()->model();
+    int targetRow = 3;
+    int targetCol = 4;
+    double xc = model.xd_val(targetCol);
+    double yr = model.yd_val(targetRow);
+    int sx = hv->worldToScreenX(xc);
+    int sy = hv->worldToScreenY(yr);
+
+    QMouseEvent clickOff(QEvent::MouseButtonPress, QPointF(sx, sy), QPointF(sx, sy), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(hv, &clickOff);
+
+    EXPECT_EQ(pvEW->profileIndex(), initEW);
+    EXPECT_EQ(pvNS->profileIndex(), initNS);
+
+    // 3. Enable Synchronize Profile Views
+    hv->setSyncProfileViews(true);
+    EXPECT_TRUE(hv->syncProfileViews());
+    EXPECT_TRUE(hv->syncProfilesCheckBox()->isChecked());
+    EXPECT_TRUE(pane->sliceSyncProfilesCheckBox()->isChecked());
+
+    // 4. Mouse click when enabled: both profile views sync to clicked position
+    bool syncSignalReceived = false;
+    int sigRow = -1, sigCol = -1;
+    QObject::connect(hv, &HorizontalSliceView::profilePositionSyncRequested,
+                     [&](int r, int c, double, double) {
+                         syncSignalReceived = true;
+                         sigRow = r;
+                         sigCol = c;
+                     });
+
+    QMouseEvent clickOn(QEvent::MouseButtonPress, QPointF(sx, sy), QPointF(sx, sy), Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+    QApplication::sendEvent(hv, &clickOn);
+
+    EXPECT_TRUE(syncSignalReceived);
+    EXPECT_EQ(sigRow, targetRow);
+    EXPECT_EQ(sigCol, targetCol);
+
+    // East-West profile index is targetRow - 1, hover station along profile is targetCol - 1
+    EXPECT_EQ(pvEW->profileIndex(), targetRow - 1);
+    EXPECT_EQ(pvEW->hoverLineIndex(), targetCol - 1);
+
+    // South-North profile index is targetCol - 1, hover station along profile is targetRow - 1
+    EXPECT_EQ(pvNS->profileIndex(), targetCol - 1);
+    EXPECT_EQ(pvNS->hoverLineIndex(), targetRow - 1);
+
+    // Active profile cursor in document is updated
+    auto cur = mw.document()->activeProfileCursor();
+    EXPECT_TRUE(cur.active);
+    EXPECT_EQ(cur.row, targetRow);
+    EXPECT_EQ(cur.col, targetCol);
+
+    // 5. Toggle via SettingsPane checkbox
+    pane->sliceSyncProfilesCheckBox()->setChecked(false);
+    EXPECT_FALSE(hv->syncProfileViews());
+    EXPECT_FALSE(hv->syncProfilesCheckBox()->isChecked());
+    EXPECT_FALSE(pane->sliceSyncProfilesCheckBox()->isChecked());
+}
+
 
 
 

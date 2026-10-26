@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-176%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-177%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -43,7 +43,7 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 - 🗺️ **Comprehensive Multi-View Architecture**:
   - **Geological Profile View**: Synchronized East-West and South-North cross-sections, multi-body polygon editing, vertex dragging, body splitting, and real-time field profile fitting.
   - **Map View**: 2D potential field color raster heatmaps, station points, profile traverses, body footprints, and automatic CONREC surface relief/topography contours.
-  - **Horizontal Slice View**: Planar depth slicing at constant elevation ($Z = \text{const}$) with synchronized 3D cut plane, single potential field bitmap raster underlay centered on survey stations, body boundary outlines (including collapsed outer edges), intersecting profile lines, click-and-drag cell painting, and double-click new body creation.
+  - **Horizontal Slice View**: Planar depth slicing at constant elevation ($Z = \text{const}$) with synchronized 3D cut plane, single potential field bitmap raster underlay centered on survey stations, body boundary outlines (including collapsed outer edges), intersecting profile lines, click-and-drag cell painting, double-click new body creation, and **Synchronize Profile Views** mode to automatically synchronize profile views to clicked locations.
   - **3D Perspective Turntable View**: OpenGL 4.1 hardware-accelerated 3D rendering with LookAt camera, smooth turntable orbit & pan, faceted polyhedral subsurface bodies, active profile cut plane slice highlighting, 3D body raycast hit testing/selection, topographic relief surface & wireframe rendering with elevation colormapping, orientation compass sphere & coordinate tripod, and transparency controls.
   - **Default 4-Quadrant Workspace Layout**: Automatically tiles the workspace into 4 quadrants: Top-Left Profile N-S, Top-Right Profile E-W, Bottom-Left Horizontal Slice, and Bottom-Right split into 3D Turntable (left) and Map View (right), with proportional auto-resizing.
   - **Unified Settings Inspector**: 4-tab docked controls (**Display**, **Profiles**, **Bodies**, **Physics/Inversion**) with strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
@@ -112,7 +112,7 @@ Mod3D/
 ├── gui/                   # Modern Qt 6 desktop application (mod3d_gui)
 │   ├── include/mod3d_gui/ # Views: ProfileView, MapView, HorizontalSliceView, GL3DView, SettingsPane
 │   └── src/               # Rendering, interaction, and undo/redo controllers
-├── tests/                 # Comprehensive Google Test suite (176 tests)
+├── tests/                 # Comprehensive Google Test suite (177 tests)
 └── examples/              # Sample models (.mod3d) & legacy models (.m3d)
 ```
 

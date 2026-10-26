@@ -9,6 +9,7 @@
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QApplication>
+#include <QMenu>
 #include <algorithm>
 #include <cmath>
 
@@ -163,6 +164,11 @@ void HorizontalSliceView::setupUi() {
     );
     headerLayout->addWidget(m_comboActiveBody);
 
+    m_chkSyncProfileViews = new QCheckBox(tr("Sync Profiles"), m_headerWidget);
+    m_chkSyncProfileViews->setToolTip(tr("Synchronize Profile Views: automatically sync profile cross-sections to clicked position"));
+    m_chkSyncProfileViews->setStyleSheet("font-size: 11px; font-weight: 500; color: #333338;");
+    headerLayout->addWidget(m_chkSyncProfileViews);
+
     headerLayout->addStretch(1);
 
     m_btnFit = new QPushButton(tr("Fit"), m_headerWidget);
@@ -189,6 +195,7 @@ void HorizontalSliceView::setupUi() {
     connect(m_btnStepUp, &QPushButton::clicked, this, [this]() { stepElevation(1); });
     connect(m_btnStepDown, &QPushButton::clicked, this, [this]() { stepElevation(-1); });
     connect(m_btnFit, &QPushButton::clicked, this, &HorizontalSliceView::fitToWindow);
+    connect(m_chkSyncProfileViews, &QCheckBox::toggled, this, &HorizontalSliceView::setSyncProfileViews);
 }
 
 void HorizontalSliceView::updateHeaderUi() {
@@ -472,6 +479,87 @@ void HorizontalSliceView::setShowBodyOutlines(bool show) {
         update();
         emit displaySettingsChanged();
     }
+}
+
+void HorizontalSliceView::setSyncProfileViews(bool sync) {
+    if (m_syncProfileViews != sync) {
+        m_syncProfileViews = sync;
+        if (m_chkSyncProfileViews && m_chkSyncProfileViews->isChecked() != sync) {
+            QSignalBlocker blocker(m_chkSyncProfileViews);
+            m_chkSyncProfileViews->setChecked(sync);
+        }
+        emit syncProfileViewsChanged(sync);
+        emit displaySettingsChanged();
+    }
+}
+
+void HorizontalSliceView::synchronizeProfileViewsToPosition(int row, int col, double wx, double wy) {
+    if (!m_doc) return;
+    const auto &model = m_doc->model();
+    int nRows = model.rows();
+    int nCols = model.cols();
+    if (nRows < 3 || nCols < 3) return;
+
+    int targetRow = std::clamp(row, 1, nRows - 2);
+    int targetCol = std::clamp(col, 1, nCols - 2);
+
+    // 1. Direct update through QMdiArea subwindows if available
+    QMdiArea *mdi = findMdiArea();
+    if (mdi) {
+        for (auto *sub : mdi->subWindowList()) {
+            if (!sub || !sub->widget()) continue;
+            if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                if (pv->profileOrientation() == ProfileOrientation::EastWest) {
+                    pv->setProfileIndex(targetRow - 1);
+                    pv->setHoverLineIndex(targetCol - 1);
+                    pv->updateStationPointOnProfileChange();
+                    pv->update();
+                } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth) {
+                    pv->setProfileIndex(targetCol - 1);
+                    pv->setHoverLineIndex(targetRow - 1);
+                    pv->updateStationPointOnProfileChange();
+                    pv->update();
+                }
+            }
+        }
+    }
+
+    // 2. Also update ModelDocument profile index for active orientation
+    if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
+        m_doc->setProfileIndex(targetRow - 1);
+    } else {
+        m_doc->setProfileIndex(targetCol - 1);
+    }
+
+    // 3. Update cursor station coordinates
+    std::string bName;
+    int bId = -1;
+    for (const auto &bPtr : model.bodies()) {
+        int bIdx = model.body_index(bPtr->id(), targetRow, targetCol);
+        if (bIdx >= 0) {
+            double tz = model.z(targetRow, targetCol, bIdx);
+            double bz = model.z(targetRow, targetCol, bIdx + 1);
+            if (tz >= bz && m_sliceZ >= bz - 1e-4 && m_sliceZ <= tz + 1e-4) {
+                bId = bPtr->id();
+                bName = bPtr->name();
+                break;
+            }
+        }
+    }
+    m_doc->setActiveProfileCursor({
+        true,
+        targetRow,
+        targetCol,
+        model.xd_val(targetCol),
+        model.yd_val(targetRow),
+        m_sliceZ,
+        bId,
+        bName,
+        false
+    });
+
+    emit profilePositionSyncRequested(targetRow, targetCol, wx, wy);
+    update();
 }
 
 QMdiArea *HorizontalSliceView::findMdiArea() const {
@@ -1334,6 +1422,24 @@ void HorizontalSliceView::mousePressEvent(QMouseEvent *event) {
         int hitRow = -1, hitCol = -1, hitBodyId = -1;
         HitType ht = performHitTest(event->pos(), hitEdge, hitRow, hitCol, hitBodyId);
 
+        // Synchronize open Profile Views to clicked position if setting is active
+        if (m_syncProfileViews && m_doc) {
+            const auto &model = m_doc->model();
+            double wx = screenToWorldX(event->pos().x());
+            double wy = screenToWorldY(event->pos().y());
+            double dx = model.dx_val();
+            double dy = model.dy_val();
+            double x0 = model.x0_val();
+            double y0 = model.y0_val();
+            int nRows = model.rows();
+            int nCols = model.cols();
+
+            int targetCol = (hitCol >= 1) ? hitCol : (dx > 0.0 ? std::clamp(static_cast<int>(std::round((wx - x0) / dx)) + 1, 1, nCols - 2) : 1);
+            int targetRow = (hitRow >= 1) ? hitRow : (dy > 0.0 ? std::clamp(static_cast<int>(std::round((wy - y0) / dy)) + 1, 1, nRows - 2) : 1);
+
+            synchronizeProfileViewsToPosition(targetRow, targetCol, model.xd_val(targetCol), model.yd_val(targetRow));
+        }
+
         if (ht == HitType::CellCenterPoint) {
             // Drawing Mode initiated from cell center point!
             m_dragOp = DragOperation::DrawBody;
@@ -1912,6 +2018,47 @@ void HorizontalSliceView::leaveEvent(QEvent *event) {
         setToolTip(QString());
     }
     QWidget::leaveEvent(event);
+}
+
+void HorizontalSliceView::contextMenuEvent(QContextMenuEvent *event) {
+    QMenu menu(this);
+    menu.setObjectName("sliceContextMenu");
+
+    auto *actSync = menu.addAction(tr("Synchronize Profile Views"), this, [this](bool checked) {
+        setSyncProfileViews(checked);
+    });
+    actSync->setCheckable(true);
+    actSync->setChecked(m_syncProfileViews);
+
+    menu.addSeparator();
+    menu.addAction(tr("Fit to Window"), this, &HorizontalSliceView::fitToWindow);
+
+    menu.addSeparator();
+    auto *actPts = menu.addAction(tr("Show Station Points"), this, [this](bool checked) {
+        setShowStationPoints(checked);
+    });
+    actPts->setCheckable(true);
+    actPts->setChecked(m_showStationPoints);
+
+    auto *actProfs = menu.addAction(tr("Show Profile Navigation Trackers"), this, [this](bool checked) {
+        setShowProfiles(checked);
+    });
+    actProfs->setCheckable(true);
+    actProfs->setChecked(m_showProfiles);
+
+    auto *actBorders = menu.addAction(tr("Show Cell Borders"), this, [this](bool checked) {
+        setShowCellBorders(checked);
+    });
+    actBorders->setCheckable(true);
+    actBorders->setChecked(m_showCellBorders);
+
+    auto *actOutlines = menu.addAction(tr("Show Body Outlines"), this, [this](bool checked) {
+        setShowBodyOutlines(checked);
+    });
+    actOutlines->setCheckable(true);
+    actOutlines->setChecked(m_showBodyOutlines);
+
+    menu.exec(event->globalPos());
 }
 
 } // namespace mod3d_gui

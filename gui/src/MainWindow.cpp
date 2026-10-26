@@ -133,7 +133,7 @@ MainWindow::MainWindow(QWidget *parent)
     //  - bottom left: horizontal slice view
     //  - bottom right split into two: left 3D view, right map view
     auto *pvNS = openProfileView(ProfileOrientation::SouthNorth);
-    auto *pvEW = openProfileView(ProfileOrientation::EastWest);
+    openProfileView(ProfileOrientation::EastWest);
     openHorizontalSliceView();
     openGL3DView();
     openMapView();
@@ -513,6 +513,25 @@ HorizontalSliceView *MainWindow::openHorizontalSliceView(double initialZ) {
         }
     });
     connect(hv, &HorizontalSliceView::requestBodyProperties, this, &MainWindow::onBodyProperties);
+    connect(hv, &HorizontalSliceView::profilePositionSyncRequested, this, [this](int r, int c, double, double) {
+        if (m_isDestroying || !m_mdiArea) return;
+        for (auto *sub : m_mdiArea->subWindowList()) {
+            if (!sub || !sub->widget()) continue;
+            if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                if (pv->profileOrientation() == ProfileOrientation::EastWest) {
+                    pv->setProfileIndex(r - 1);
+                    pv->setHoverLineIndex(c - 1);
+                    pv->updateStationPointOnProfileChange();
+                    pv->update();
+                } else if (pv->profileOrientation() == ProfileOrientation::SouthNorth) {
+                    pv->setProfileIndex(c - 1);
+                    pv->setHoverLineIndex(r - 1);
+                    pv->updateStationPointOnProfileChange();
+                    pv->update();
+                }
+            }
+        }
+    });
 
     return hv;
 }

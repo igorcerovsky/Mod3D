@@ -51,6 +51,7 @@ public:
     QCheckBox *sliceCellBordersCheckBox() const { return m_chkSliceCellBorders; }
     QCheckBox *sliceStationPointsCheckBox() const { return m_chkSliceStationPoints; }
     QCheckBox *sliceProfilesCheckBox() const { return m_chkSliceProfiles; }
+    QCheckBox *sliceSyncProfilesCheckBox() const { return m_chkSliceSyncProfiles; }
 
     QComboBox *bodyComboBox() const { return m_comboBodies; }
     QDoubleSpinBox *bodyDensitySpinBox() const { return m_spinDensity; }
@@ -164,6 +165,7 @@ private:
     QCheckBox *m_chkSliceProfiles{nullptr};
     QCheckBox *m_chkSliceCellBorders{nullptr};
     QCheckBox *m_chkSliceBodyOutlines{nullptr};
+    QCheckBox *m_chkSliceSyncProfiles{nullptr};
 
     // Tab 2: Profiles Tab Controls
     QPushButton *m_btnProfTabOrientEW{nullptr};

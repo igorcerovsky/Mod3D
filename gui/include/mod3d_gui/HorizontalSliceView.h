@@ -8,8 +8,10 @@
 #include <QPushButton>
 #include <QRect>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QImage>
 #include <QMdiArea>
+#include <QContextMenuEvent>
 #include <vector>
 #include <set>
 #include <limits>
@@ -113,6 +115,12 @@ public:
     [[nodiscard]] bool showBodyOutlines() const noexcept { return m_showBodyOutlines; }
     void setShowBodyOutlines(bool show);
 
+    // Profile Views Synchronization
+    [[nodiscard]] bool syncProfileViews() const noexcept { return m_syncProfileViews; }
+    void setSyncProfileViews(bool sync);
+    void synchronizeProfileViewsToPosition(int row, int col, double wx, double wy);
+    [[nodiscard]] QCheckBox *syncProfilesCheckBox() const noexcept { return m_chkSyncProfileViews; }
+
     [[nodiscard]] std::vector<BoundaryEdge> activeBoundaryEdges() const;
     void updateTitle();
 
@@ -140,6 +148,8 @@ public:
 signals:
     void sliceElevationChanged(double z);
     void displaySettingsChanged();
+    void syncProfileViewsChanged(bool sync);
+    void profilePositionSyncRequested(int row, int col, double x, double y);
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
     void requestBodyProperties(int bodyId);
 
@@ -153,6 +163,7 @@ protected:
     void keyPressEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void leaveEvent(QEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
 
     HitType performHitTest(const QPoint &pos, BoundaryEdge &outEdge, int &outRow, int &outCol, int &outBodyId) const;
 
@@ -205,6 +216,7 @@ private:
     QPushButton *m_btnStepUp{nullptr};
     QPushButton *m_btnStepDown{nullptr};
     QComboBox *m_comboActiveBody{nullptr};
+    QCheckBox *m_chkSyncProfileViews{nullptr};
     QPushButton *m_btnFit{nullptr};
 
     // Dragging / Interaction State
@@ -241,6 +253,7 @@ private:
     QMdiArea *findMdiArea() const;
     std::vector<OpenProfileInfo> m_customProfiles;
     int m_hoverIntersectionIdx{-1};
+    bool m_syncProfileViews{false};
 };
 
 } // namespace mod3d_gui
