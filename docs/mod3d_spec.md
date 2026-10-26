@@ -412,13 +412,15 @@ The GUI is built upon a standard Qt 6 Multi-Document Interface (`QMdiArea`):
   - **Horizontal Slice Views**: Planar horizontal cross-sections at constant elevation ($Z = \text{const}$).
   - **3D Views**: Perspectives from different azimuths/elevations.
   - **Spreadsheet Views**: Numerical tabular inspection.
-- **Default 2x2 Quad Tile Layout**:
-  Upon opening a model document, Mod3D automatically arranges a synchronized 2x2 quad workspace layout:
-  - **Top-Left**: Geological Profile View (`ProfileView`, E-W orientation)
-  - **Top-Right**: Survey Map View (`MapView`)
+- **Default 4-Quadrant Workspace Layout**:
+  Upon opening a model document, Mod3D automatically arranges a synchronized 4-quadrant workspace layout:
+  - **Top-Left**: Geological Profile View N-S (`ProfileView`, South-North orientation)
+  - **Top-Right**: Geological Profile View E-W (`ProfileView`, East-West orientation)
   - **Bottom-Left**: Horizontal Slice View (`HorizontalSliceView`)
-  - **Bottom-Right**: 3D OpenGL View (`GL3DView`)
-  A responsive MDI layout manager automatically scales all 4 quadrant subwindows proportionally when the main window or client area is resized.
+  - **Bottom-Right**: Split vertically into two views:
+    - **Left**: 3D OpenGL Turntable View (`GL3DView`)
+    - **Right**: Survey Map View (`MapView`)
+  A responsive MDI layout manager automatically scales all quadrant subwindows proportionally when the main window or client area is resized.
 
 ---
 

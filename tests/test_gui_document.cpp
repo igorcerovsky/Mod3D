@@ -1445,24 +1445,31 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
     MainWindow mw;
     mw.resize(1200, 800);
 
-    // Verify 4 subwindows opened by default
+    // Verify 5 subwindows opened by default
     auto subs = mw.mdiArea()->subWindowList();
-    ASSERT_EQ(subs.size(), 4);
+    ASSERT_EQ(subs.size(), 5);
 
-    ProfileView *pv = nullptr;
+    ProfileView *pvNS = nullptr;
+    ProfileView *pvEW = nullptr;
     MapView *mv = nullptr;
     HorizontalSliceView *hv = nullptr;
     GL3DView *glv = nullptr;
 
-    QMdiSubWindow *subPv = nullptr;
+    QMdiSubWindow *subPvNS = nullptr;
+    QMdiSubWindow *subPvEW = nullptr;
     QMdiSubWindow *subMap = nullptr;
     QMdiSubWindow *subSlice = nullptr;
     QMdiSubWindow *sub3D = nullptr;
 
     for (auto *sub : subs) {
         if (auto *p = qobject_cast<ProfileView*>(sub->widget())) {
-            pv = p;
-            subPv = sub;
+            if (p->profileOrientation() == ProfileOrientation::SouthNorth) {
+                pvNS = p;
+                subPvNS = sub;
+            } else {
+                pvEW = p;
+                subPvEW = sub;
+            }
         } else if (auto *m = qobject_cast<MapView*>(sub->widget())) {
             mv = m;
             subMap = sub;
@@ -1475,33 +1482,36 @@ TEST_F(GuiDocumentTest, MainWindowDefaultOpening2x2QuadTileLayout) {
         }
     }
 
-    ASSERT_NE(pv, nullptr);
+    ASSERT_NE(pvNS, nullptr);
+    ASSERT_NE(pvEW, nullptr);
     ASSERT_NE(mv, nullptr);
     ASSERT_NE(hv, nullptr);
     ASSERT_NE(glv, nullptr);
 
-    // Call arrangeDefaultTiles to arrange in 2x2 grid
+    // Call arrangeDefaultTiles to arrange in quadrant grid
     mw.arrangeDefaultTiles();
 
     // Verify relative positions:
-    // Top-Left: Profile view
-    EXPECT_EQ(subPv->x(), 0);
-    EXPECT_EQ(subPv->y(), 0);
+    // Top-Left: Profile view N-S
+    EXPECT_EQ(subPvNS->x(), 0);
+    EXPECT_EQ(subPvNS->y(), 0);
 
-    // Top-Right: Map view
-    EXPECT_GE(subMap->x(), subPv->width() - 2);
-    EXPECT_EQ(subMap->y(), 0);
+    // Top-Right: Profile view E-W
+    EXPECT_GE(subPvEW->x(), subPvNS->width() - 2);
+    EXPECT_EQ(subPvEW->y(), 0);
 
     // Bottom-Left: Horizontal slice view
     EXPECT_EQ(subSlice->x(), 0);
-    EXPECT_GE(subSlice->y(), subPv->height() - 2);
+    EXPECT_GE(subSlice->y(), subPvNS->height() - 2);
 
-    // Bottom-Right: 3D view
+    // Bottom-Right: split into 3D view (left) and Map view (right)
     EXPECT_GE(sub3D->x(), subSlice->width() - 2);
-    EXPECT_GE(sub3D->y(), subMap->height() - 2);
+    EXPECT_GE(sub3D->y(), subPvEW->height() - 2);
+    EXPECT_GE(subMap->x(), sub3D->x() + sub3D->width() - 2);
+    EXPECT_GE(subMap->y(), subPvEW->height() - 2);
 
-    // Active profile view should default to top-left profile
-    EXPECT_EQ(mw.activeProfileView(), pv);
+    // Active profile view should default to top-left profile (N-S)
+    EXPECT_EQ(mw.activeProfileView(), pvNS);
 
 #ifndef _WIN32
     // Save screenshot for visual verification
@@ -1520,16 +1530,18 @@ TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
     mw.resize(1200, 800);
 
     auto subs = mw.mdiArea()->subWindowList();
-    ASSERT_EQ(subs.size(), 4);
+    ASSERT_EQ(subs.size(), 5);
 
-    QMdiSubWindow *subPv = nullptr;
+    QMdiSubWindow *subPvNS = nullptr;
+    QMdiSubWindow *subPvEW = nullptr;
     QMdiSubWindow *subMap = nullptr;
     QMdiSubWindow *subSlice = nullptr;
     QMdiSubWindow *sub3D = nullptr;
 
     for (auto *sub : subs) {
-        if (qobject_cast<ProfileView*>(sub->widget())) {
-            subPv = sub;
+        if (auto *p = qobject_cast<ProfileView*>(sub->widget())) {
+            if (p->profileOrientation() == ProfileOrientation::SouthNorth) subPvNS = sub;
+            else subPvEW = sub;
         } else if (qobject_cast<MapView*>(sub->widget())) {
             subMap = sub;
         } else if (qobject_cast<HorizontalSliceView*>(sub->widget())) {
@@ -1539,7 +1551,8 @@ TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
         }
     }
 
-    ASSERT_NE(subPv, nullptr);
+    ASSERT_NE(subPvNS, nullptr);
+    ASSERT_NE(subPvEW, nullptr);
     ASSERT_NE(subMap, nullptr);
     ASSERT_NE(subSlice, nullptr);
     ASSERT_NE(sub3D, nullptr);
@@ -1548,8 +1561,8 @@ TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
     QCoreApplication::processEvents();
 
     // Initial tile fitting at 1200x800
-    int w1 = subPv->width() + subMap->width();
-    int h1 = subPv->height() + subSlice->height();
+    int w1 = subPvNS->width() + subPvEW->width();
+    int h1 = subPvNS->height() + subSlice->height();
     EXPECT_GT(w1, 500);
     EXPECT_GT(h1, 400);
 
@@ -1557,25 +1570,26 @@ TEST_F(GuiDocumentTest, MainWindowAutoResizeSubWindowsOnClientAreaResize) {
     mw.resize(1500, 960);
     QCoreApplication::processEvents();
 
-    int w2 = subPv->width() + subMap->width();
-    int h2 = subPv->height() + subSlice->height();
+    int w2 = subPvNS->width() + subPvEW->width();
+    int h2 = subPvNS->height() + subSlice->height();
     EXPECT_GT(w2, w1);
     EXPECT_GT(h2, h1);
-    EXPECT_EQ(subPv->width(), subSlice->width());
-    EXPECT_EQ(subMap->width(), sub3D->width());
-    EXPECT_EQ(subPv->height(), subMap->height());
+    EXPECT_EQ(subPvNS->width(), subSlice->width());
+    EXPECT_EQ(subPvEW->width(), sub3D->width() + subMap->width());
+    EXPECT_EQ(subPvNS->height(), subPvEW->height());
     EXPECT_EQ(subSlice->height(), sub3D->height());
+    EXPECT_EQ(sub3D->height(), subMap->height());
 
     // Resize main window to smaller geometry
     mw.resize(1000, 680);
     QCoreApplication::processEvents();
 
-    int w3 = subPv->width() + subMap->width();
-    int h3 = subPv->height() + subSlice->height();
+    int w3 = subPvNS->width() + subPvEW->width();
+    int h3 = subPvNS->height() + subSlice->height();
     EXPECT_LT(w3, w2);
     EXPECT_LT(h3, h2);
-    EXPECT_EQ(subPv->width(), subSlice->width());
-    EXPECT_EQ(subMap->width(), sub3D->width());
+    EXPECT_EQ(subPvNS->width(), subSlice->width());
+    EXPECT_EQ(subPvEW->width(), sub3D->width() + subMap->width());
 }
 
 TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
@@ -1586,9 +1600,9 @@ TEST_F(GuiDocumentTest, ModernSideSettingsPaneAndDockIntegration) {
     EXPECT_EQ(mw.dockWidgetArea(mw.settingsPane()), Qt::RightDockWidgetArea);
     EXPECT_FALSE(mw.settingsPane()->isHidden());
 
-    // Verify 4 default views exist
+    // Verify 5 default views exist
     auto subWindows = mw.mdiArea()->subWindowList();
-    EXPECT_EQ(subWindows.size(), 4);
+    EXPECT_EQ(subWindows.size(), 5);
 
     // Call arrange tiles
     mw.arrangeDefaultTiles();

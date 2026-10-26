@@ -127,18 +127,19 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
-    // Default layout on opening:
-    //  - top left: profile view (E-W)
-    //  - top right: map view
+    // Default layout on opening (4 quadrants):
+    //  - top left: profile view (N-S)
+    //  - top right: profile view (E-W)
     //  - bottom left: horizontal slice view
-    //  - bottom right: 3D view
+    //  - bottom right split into two: left 3D view, right map view
+    auto *pvNS = openProfileView(ProfileOrientation::SouthNorth);
     auto *pvEW = openProfileView(ProfileOrientation::EastWest);
-    openMapView();
     openHorizontalSliceView();
     openGL3DView();
+    openMapView();
 
-    if (pvEW) {
-        m_settingsPane->setActiveSubWindow(qobject_cast<QMdiSubWindow*>(pvEW->parentWidget()));
+    if (pvNS) {
+        m_settingsPane->setActiveSubWindow(qobject_cast<QMdiSubWindow*>(pvNS->parentWidget()));
     }
 
     resize(1260, 820);
@@ -388,7 +389,7 @@ void MainWindow::setupMenus() {
     menuWindow->addAction(tr("New &3D Window"), this, &MainWindow::openGL3DView);
     menuWindow->addAction(tr("New &Spreadsheet Window"), this, &MainWindow::openSpreadsheetView);
     menuWindow->addSeparator();
-    menuWindow->addAction(tr("&2x2 Quad Tile Layout"), this, &MainWindow::arrangeDefaultTiles);
+    menuWindow->addAction(tr("&Quadrant Workspace Layout"), this, &MainWindow::arrangeDefaultTiles);
     menuWindow->addAction(tr("&Cascade"), m_mdiArea, &QMdiArea::cascadeSubWindows);
     menuWindow->addAction(tr("&Tile"), m_mdiArea, &QMdiArea::tileSubWindows);
 
@@ -626,16 +627,43 @@ void MainWindow::resizeSubWindowsToFit() {
         }
     }
 
-    // 1. Standard 2x2 quad layout auto-fit with Horizontal Slice View:
-    // Top-Left: Profile View
-    // Top-Right: Map View
-    // Bottom-Left: Horizontal Slice View
-    // Bottom-Right: 3D View
-    if (subPvEW && subMap && subSlice && sub3D) {
+    // 1. 5-view quadrant layout:
+    // - Top-Left: Profile N-S
+    // - Top-Right: Profile E-W
+    // - Bottom-Left: Horizontal Slice View
+    // - Bottom-Right split into two: Left 3D View, Right Map View
+    if (subPvNS && subPvEW && subSlice && sub3D && subMap) {
         int halfW = w / 2;
         int halfH = h / 2;
 
-        if (!subPvEW->isMinimized()) subPvEW->setGeometry(0, 0, halfW, halfH);
+        if (!subPvNS->isMinimized()) subPvNS->setGeometry(0, 0, halfW, halfH);
+        if (!subPvEW->isMinimized()) subPvEW->setGeometry(halfW, 0, w - halfW, halfH);
+        if (!subSlice->isMinimized()) subSlice->setGeometry(0, halfH, halfW, h - halfH);
+
+        int brX = halfW;
+        int brY = halfH;
+        int brW = w - halfW;
+        int brH = h - halfH;
+        int brLeftW = brW / 2;
+
+        if (!sub3D->isMinimized()) sub3D->setGeometry(brX, brY, brLeftW, brH);
+        if (!subMap->isMinimized()) subMap->setGeometry(brX + brLeftW, brY, brW - brLeftW, brH);
+
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 1b. 4-view quad layout with Horizontal Slice View (if Profile N-S is absent):
+    // Top-Left: Profile View (E-W or N-S)
+    // Top-Right: Map View
+    // Bottom-Left: Horizontal Slice View
+    // Bottom-Right: 3D View
+    QMdiSubWindow *subPvAny = subPvEW ? subPvEW : subPvNS;
+    if (subPvAny && subMap && subSlice && sub3D) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+
+        if (!subPvAny->isMinimized()) subPvAny->setGeometry(0, 0, halfW, halfH);
         if (!subMap->isMinimized()) subMap->setGeometry(halfW, 0, w - halfW, halfH);
         if (!subSlice->isMinimized()) subSlice->setGeometry(0, halfH, halfW, h - halfH);
         if (!sub3D->isMinimized()) sub3D->setGeometry(halfW, halfH, w - halfW, h - halfH);
@@ -644,7 +672,7 @@ void MainWindow::resizeSubWindowsToFit() {
         return;
     }
 
-    // 1b. Legacy 2x2 quad layout (Profile EW, Map, 3D, Profile NS) if Horizontal Slice is absent:
+    // 1c. Legacy 4-view quad layout (Profile EW, Map, 3D, Profile NS) if Horizontal Slice is absent:
     if (subPvEW && subMap && sub3D && subPvNS) {
         int halfW = w / 2;
         int halfH = h / 2;
@@ -658,7 +686,37 @@ void MainWindow::resizeSubWindowsToFit() {
         return;
     }
 
-    // 2. Exactly 3 subwindows open
+    // 2. Generic 5 subwindows open
+    if (subWindows.size() == 5) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+        int brX = halfW;
+        int brY = halfH;
+        int brW = w - halfW;
+        int brH = h - halfH;
+        int brLeftW = brW / 2;
+        if (!subWindows[0]->isMinimized()) subWindows[0]->setGeometry(0, 0, halfW, halfH);
+        if (!subWindows[1]->isMinimized()) subWindows[1]->setGeometry(halfW, 0, w - halfW, halfH);
+        if (!subWindows[2]->isMinimized()) subWindows[2]->setGeometry(0, halfH, halfW, h - halfH);
+        if (!subWindows[3]->isMinimized()) subWindows[3]->setGeometry(brX, brY, brLeftW, brH);
+        if (!subWindows[4]->isMinimized()) subWindows[4]->setGeometry(brX + brLeftW, brY, brW - brLeftW, brH);
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 3. Generic 4 subwindows
+    if (subWindows.size() == 4) {
+        int halfW = w / 2;
+        int halfH = h / 2;
+        if (!subWindows[0]->isMinimized()) subWindows[0]->setGeometry(0, 0, halfW, halfH);
+        if (!subWindows[1]->isMinimized()) subWindows[1]->setGeometry(halfW, 0, w - halfW, halfH);
+        if (!subWindows[2]->isMinimized()) subWindows[2]->setGeometry(0, halfH, halfW, h - halfH);
+        if (!subWindows[3]->isMinimized()) subWindows[3]->setGeometry(halfW, halfH, w - halfW, h - halfH);
+        m_inResizeSubWindows = false;
+        return;
+    }
+
+    // 4. Exactly 3 subwindows open
     if (subWindows.size() == 3) {
         auto *w0 = subWindows[0];
         auto *w1 = subWindows[1];
@@ -678,7 +736,7 @@ void MainWindow::resizeSubWindowsToFit() {
         return;
     }
 
-    // 3. Exactly 2 subwindows open
+    // 5. Exactly 2 subwindows open
     if (subWindows.size() == 2) {
         auto *w0 = subWindows[0];
         auto *w1 = subWindows[1];
@@ -695,7 +753,7 @@ void MainWindow::resizeSubWindowsToFit() {
         return;
     }
 
-    // 4. Exactly 1 subwindow open
+    // 6. Exactly 1 subwindow open
     if (subWindows.size() == 1) {
         if (!subWindows[0]->isMinimized()) {
             subWindows[0]->setGeometry(0, 0, w, h);
@@ -704,19 +762,7 @@ void MainWindow::resizeSubWindowsToFit() {
         return;
     }
 
-    // 5. Generic 4 subwindows
-    if (subWindows.size() == 4) {
-        int halfW = w / 2;
-        int halfH = h / 2;
-        if (!subWindows[0]->isMinimized()) subWindows[0]->setGeometry(0, 0, halfW, halfH);
-        if (!subWindows[1]->isMinimized()) subWindows[1]->setGeometry(halfW, 0, w - halfW, halfH);
-        if (!subWindows[2]->isMinimized()) subWindows[2]->setGeometry(0, halfH, halfW, h - halfH);
-        if (!subWindows[3]->isMinimized()) subWindows[3]->setGeometry(halfW, halfH, w - halfW, h - halfH);
-        m_inResizeSubWindows = false;
-        return;
-    }
-
-    // 6. General N windows fallback: tile to fill client area
+    // 7. General N windows fallback: tile to fill client area
     m_mdiArea->tileSubWindows();
     m_inResizeSubWindows = false;
 }
@@ -730,18 +776,27 @@ void MainWindow::arrangeDefaultTiles() {
 
     resizeSubWindowsToFit();
 
-    // Set Top-Left E-W profile active by default when explicitly requested
+    // Set Top-Left profile (N-S by default, or E-W if absent) active when explicitly requested
+    ProfileView *targetPv = nullptr;
+    QMdiSubWindow *targetSub = nullptr;
     for (auto *sub : m_mdiArea->subWindowList()) {
         if (!sub || !sub->widget()) continue;
         if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
-            if (pv->profileOrientation() == ProfileOrientation::EastWest) {
-                m_mdiArea->setActiveSubWindow(sub);
-                m_lastActiveProfileView = pv;
-                m_doc->setProfileOrientation(pv->profileOrientation());
-                m_doc->setProfileIndex(pv->profileIndex());
+            if (pv->profileOrientation() == ProfileOrientation::SouthNorth) {
+                targetPv = pv;
+                targetSub = sub;
                 break;
+            } else if (!targetPv) {
+                targetPv = pv;
+                targetSub = sub;
             }
         }
+    }
+    if (targetSub && targetPv) {
+        m_mdiArea->setActiveSubWindow(targetSub);
+        m_lastActiveProfileView = targetPv;
+        m_doc->setProfileOrientation(targetPv->profileOrientation());
+        m_doc->setProfileIndex(targetPv->profileIndex());
     }
 }
 
