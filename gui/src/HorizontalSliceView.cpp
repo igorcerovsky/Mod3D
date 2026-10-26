@@ -1338,6 +1338,8 @@ void HorizontalSliceView::mousePressEvent(QMouseEvent *event) {
             // Drawing Mode initiated from cell center point!
             m_dragOp = DragOperation::DrawBody;
             m_dragStartPos = event->pos();
+            m_drawStartRow = hitRow;
+            m_drawStartCol = hitCol;
             m_drawLastRow = hitRow;
             m_drawLastCol = hitCol;
             m_drawVisitedCells.clear();
@@ -1347,19 +1349,11 @@ void HorizontalSliceView::mousePressEvent(QMouseEvent *event) {
             if (hitBodyId >= 0) {
                 m_drawBodyId = hitBodyId;
                 setActiveBodyId(hitBodyId);
+                m_drawPendingStartCell = false;
             } else {
                 int actId = activeBodyId();
-                if (actId >= 0) {
-                    m_drawBodyId = actId;
-                } else if (m_doc) {
-                    m_drawBodyId = m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5, -1);
-                    refreshBodyList();
-                    setActiveBodyId(m_drawBodyId);
-                }
-                // If cell is empty, insert m_drawBodyId into this cell
-                if (m_doc && m_drawBodyId >= 0 && m_doc->model().body_index(m_drawBodyId, hitRow, hitCol) < 0) {
-                    m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5, m_drawBodyId);
-                }
+                m_drawBodyId = actId;
+                m_drawPendingStartCell = true;
             }
 
             setCursor(Qt::PointingHandCursor);
@@ -1451,6 +1445,20 @@ void HorizontalSliceView::mouseMoveEvent(QMouseEvent *event) {
         if (dx > 0.0 && dy > 0.0) {
             int currC = std::clamp(static_cast<int>(std::round((wx - x0) / dx)) + 1, 1, model.cols() - 2);
             int currR = std::clamp(static_cast<int>(std::round((wy - y0) / dy)) + 1, 1, model.rows() - 2);
+
+            if (m_drawPendingStartCell) {
+                if (m_drawBodyId < 0) {
+                    m_drawBodyId = activeBodyId();
+                }
+                if (m_drawBodyId < 0) {
+                    m_drawBodyId = m_doc->insertBodyAtRowCol(m_drawStartRow, m_drawStartCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5, -1);
+                    refreshBodyList();
+                    setActiveBodyId(m_drawBodyId);
+                } else if (model.body_index(m_drawBodyId, m_drawStartRow, m_drawStartCol) < 0) {
+                    m_doc->insertBodyAtRowCol(m_drawStartRow, m_drawStartCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5, m_drawBodyId);
+                }
+                m_drawPendingStartCell = false;
+            }
 
             int r0 = m_drawLastRow;
             int c0 = m_drawLastCol;
@@ -1758,14 +1766,18 @@ void HorizontalSliceView::mouseReleaseEvent(QMouseEvent *event) {
         }
         update();
     } else if (m_dragOp == DragOperation::DrawBody) {
+        bool wasPending = m_drawPendingStartCell;
         m_dragOp = DragOperation::None;
+        m_drawPendingStartCell = false;
         m_drawVisitedCells.clear();
         if (m_doc) {
             auto pt = m_doc->activeProfileCursor();
             pt.isDragging = false;
             m_doc->setActiveProfileCursor(pt);
-            m_doc->computeAll();
-            m_doc->emitModelGeometryChanged();
+            if (!wasPending) {
+                m_doc->computeAll();
+                m_doc->emitModelGeometryChanged();
+            }
         }
         setCursor(Qt::ArrowCursor);
         update();
@@ -1774,25 +1786,71 @@ void HorizontalSliceView::mouseReleaseEvent(QMouseEvent *event) {
 }
 
 void HorizontalSliceView::mouseDoubleClickEvent(QMouseEvent *event) {
-    if (event->button() == Qt::LeftButton) {
-        BoundaryEdge hitEdge;
-        int hitRow = -1, hitCol = -1, hitBodyId = -1;
-        HitType ht = performHitTest(event->pos(), hitEdge, hitRow, hitCol, hitBodyId);
-        if ((ht == HitType::BodyCell || (ht == HitType::CellCenterPoint && hitBodyId >= 0)) && hitBodyId >= 0) {
+    if (event->button() != Qt::LeftButton) {
+        QWidget::mouseDoubleClickEvent(event);
+        return;
+    }
+
+    BoundaryEdge hitEdge;
+    int hitRow = -1, hitCol = -1, hitBodyId = -1;
+    HitType ht = performHitTest(event->pos(), hitEdge, hitRow, hitCol, hitBodyId);
+
+    if (ht == HitType::None || !m_doc || hitRow < 1 || hitCol < 1) {
+        QWidget::mouseDoubleClickEvent(event);
+        return;
+    }
+
+    if (hitBodyId >= 0) {
+        // Double-click on an existing body in this cell
+        if (event->modifiers() & Qt::ControlModifier) {
+            // Ctrl + double-click: remove body at this cell (same as ProfileView)
+            int bIdx = m_doc->model().body_index(hitBodyId, hitRow, hitCol);
+            if (bIdx >= 0) {
+                m_doc->removeBodyAtRowCol(hitRow, hitCol, bIdx);
+                m_doc->computeAll();
+                refreshBodyList();
+                update();
+                return;
+            }
+        } else {
+            // Plain double-click on body: open body properties (same as ProfileView)
             emit requestBodyProperties(hitBodyId);
             return;
-        } else if ((ht == HitType::EmptyCell || (ht == HitType::CellCenterPoint && hitBodyId < 0)) && m_doc && hitRow >= 1 && hitCol >= 1) {
-            // Double click on empty cell inserts a new body at this slice depth
-            int newBodyId = m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, m_doc->model().default_thickness_val() * 0.5);
+        }
+    } else {
+        // Double-click on empty cell
+        if (event->modifiers() & Qt::ShiftModifier) {
+            // Shift + double-click: insert existing active body (same as ProfileView)
+            int existingId = activeBodyId();
+            if (existingId < 0 && !m_doc->model().bodies().empty()) {
+                existingId = m_doc->model().bodies().front()->id();
+            }
+            if (existingId >= 0) {
+                int res = m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, -1.0, existingId);
+                if (res >= 0) {
+                    m_doc->setModified(true);
+                    m_doc->computeAll();
+                    m_doc->emitModelGeometryChanged();
+                    update();
+                    return;
+                }
+            }
+        } else {
+            // Plain double-click: create a brand NEW body! (same as ProfileView)
+            int newBodyId = m_doc->insertBodyAtRowCol(hitRow, hitCol, m_sliceZ, -1.0, -1);
             if (newBodyId >= 0) {
                 m_doc->setModified(true);
                 m_doc->computeAll();
                 m_doc->emitModelGeometryChanged();
+                refreshBodyList();
+                setActiveBodyId(newBodyId);
                 emit requestBodyProperties(newBodyId);
+                update();
                 return;
             }
         }
     }
+
     QWidget::mouseDoubleClickEvent(event);
 }
 

@@ -3407,6 +3407,10 @@ public:
         QMouseEvent ev(QEvent::MouseButtonRelease, QPointF(pos), QPointF(pos), btn, Qt::NoButton, mods);
         mouseReleaseEvent(&ev);
     }
+    void sendMouseDoubleClick(const QPoint &pos, Qt::MouseButton btn = Qt::LeftButton, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QMouseEvent ev(QEvent::MouseButtonDblClick, QPointF(pos), QPointF(pos), btn, btn, mods);
+        mouseDoubleClickEvent(&ev);
+    }
     HitType testHit(const QPoint &pos, BoundaryEdge &outEdge, int &outRow, int &outCol, int &outBodyId) const {
         return performHitTest(pos, outEdge, outRow, outCol, outBodyId);
     }
@@ -3492,12 +3496,11 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewCellCenterDrawingMode) {
     EXPECT_LT(doc.model().body_index(bodyId, 4, 5), 0);
 
     sliceView.sendMousePress(QPoint(sx4_4, sy4_4));
-    // Starting on empty cell immediately inserts active body into start cell
-    EXPECT_GE(doc.model().body_index(bodyId, 4, 4), 0);
-
+    // Dragging starts on move: active body is inserted into start cell and dragged cells
     double xc4_5 = doc.model().xd_val(5);
     int sx4_5 = sliceView.worldToScreenX(xc4_5);
     sliceView.sendMouseMove(QPoint(sx4_5, sy4_4));
+    EXPECT_GE(doc.model().body_index(bodyId, 4, 4), 0);
     EXPECT_GE(doc.model().body_index(bodyId, 4, 5), 0);
 
     sliceView.sendMouseRelease(QPoint(sx4_5, sy4_4));
@@ -3509,6 +3512,83 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewCellCenterDrawingMode) {
     pm.fill(Qt::white);
     sliceView.render(&pm);
     EXPECT_FALSE(pm.isNull());
+}
+
+TEST_F(GuiDocumentTest, HorizontalSliceViewDoubleClickCreatesNewBodyAndBehavesLikeProfileView) {
+    ModelDocument doc;
+    doc.newProject(8, 8, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+    // Insert initial body 1 at (2, 2)
+    int body1 = doc.insertBodyAtRowCol(2, 2, -500.0, 100.0);
+    ASSERT_GT(body1, 0);
+    size_t initialBodyCount = doc.model().bodies().size();
+
+    TestHorizontalSliceView sliceView(&doc, -500.0);
+    sliceView.resize(800, 600);
+    sliceView.fitToWindow();
+
+    int requestedBodyId = -1;
+    QObject::connect(&sliceView, &HorizontalSliceView::requestBodyProperties, [&](int bId) {
+        requestedBodyId = bId;
+    });
+
+    // 1. Plain double click on an EMPTY cell (4, 4) MUST create a brand NEW body
+    double xc4 = doc.model().xd_val(4);
+    double yr4 = doc.model().yd_val(4);
+    int sx4 = sliceView.worldToScreenX(xc4);
+    int sy4 = sliceView.worldToScreenY(yr4);
+
+    EXPECT_LT(doc.model().body_index(body1, 4, 4), 0);
+    requestedBodyId = -1;
+
+    // Simulate double click event sequence: Press -> Release -> DblClick -> Release
+    sliceView.sendMousePress(QPoint(sx4, sy4));
+    sliceView.sendMouseRelease(QPoint(sx4, sy4));
+    sliceView.sendMouseDoubleClick(QPoint(sx4, sy4));
+    sliceView.sendMouseRelease(QPoint(sx4, sy4));
+
+    // A brand new body must have been created!
+    EXPECT_EQ(doc.model().bodies().size(), initialBodyCount + 1);
+    int newBodyId = sliceView.activeBodyId();
+    EXPECT_NE(newBodyId, body1);
+    EXPECT_GT(newBodyId, 0);
+    EXPECT_GE(doc.model().body_index(newBodyId, 4, 4), 0);
+    EXPECT_EQ(requestedBodyId, newBodyId);
+
+    // 2. Plain double click on an EXISTING body cell (4, 4) MUST request body properties without creating a body
+    size_t currentBodyCount = doc.model().bodies().size();
+    requestedBodyId = -1;
+    sliceView.sendMousePress(QPoint(sx4, sy4));
+    sliceView.sendMouseRelease(QPoint(sx4, sy4));
+    sliceView.sendMouseDoubleClick(QPoint(sx4, sy4));
+    sliceView.sendMouseRelease(QPoint(sx4, sy4));
+
+    EXPECT_EQ(doc.model().bodies().size(), currentBodyCount);
+    EXPECT_EQ(requestedBodyId, newBodyId);
+
+    // 3. Shift + double click on an empty cell (5, 5) MUST insert the existing active body (newBodyId)
+    double xc5 = doc.model().xd_val(5);
+    double yr5 = doc.model().yd_val(5);
+    int sx5 = sliceView.worldToScreenX(xc5);
+    int sy5 = sliceView.worldToScreenY(yr5);
+
+    EXPECT_LT(doc.model().body_index(newBodyId, 5, 5), 0);
+    sliceView.sendMousePress(QPoint(sx5, sy5), Qt::LeftButton, Qt::ShiftModifier);
+    sliceView.sendMouseRelease(QPoint(sx5, sy5));
+    sliceView.sendMouseDoubleClick(QPoint(sx5, sy5), Qt::LeftButton, Qt::ShiftModifier);
+    sliceView.sendMouseRelease(QPoint(sx5, sy5));
+
+    // No new body created; existing active body inserted into (5, 5)
+    EXPECT_EQ(doc.model().bodies().size(), currentBodyCount);
+    EXPECT_GE(doc.model().body_index(newBodyId, 5, 5), 0);
+
+    // 4. Ctrl + double click on an existing body cell (5, 5) MUST remove the body from this cell
+    sliceView.sendMousePress(QPoint(sx5, sy5), Qt::LeftButton, Qt::ControlModifier);
+    sliceView.sendMouseRelease(QPoint(sx5, sy5));
+    sliceView.sendMouseDoubleClick(QPoint(sx5, sy5), Qt::LeftButton, Qt::ControlModifier);
+    sliceView.sendMouseRelease(QPoint(sx5, sy5));
+
+    EXPECT_LT(doc.model().body_index(newBodyId, 5, 5), 0);
 }
 
 TEST_F(GuiDocumentTest, HorizontalSliceViewMultiProfileAndPlaneIntersection) {

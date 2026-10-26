@@ -216,8 +216,11 @@ private:
 
     // Drawing Mode State (clicking/dragging from middle point of cell)
     int m_drawBodyId{-1};
+    int m_drawStartRow{-1};
+    int m_drawStartCol{-1};
     int m_drawLastRow{-1};
     int m_drawLastCol{-1};
+    bool m_drawPendingStartCell{false};
     std::set<std::pair<int, int>> m_drawVisitedCells;
 
     // Hover state
