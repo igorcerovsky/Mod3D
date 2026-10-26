@@ -26,12 +26,16 @@ HorizontalSliceView::HorizontalSliceView(ModelDocument *doc, double initialZ, QW
     if (m_doc) {
         if (!std::isnan(initialZ)) {
             m_sliceZ = initialZ;
+            double zMin = m_doc->model().z_min_val();
+            double zMax = m_doc->model().z_max_val();
+            m_sliceZ = std::clamp(m_sliceZ, zMin, zMax);
+            m_doc->setActiveSliceElevation(m_sliceZ);
         } else {
             m_sliceZ = m_doc->activeSliceElevation();
+            double zMin = m_doc->model().z_min_val();
+            double zMax = m_doc->model().z_max_val();
+            m_sliceZ = std::clamp(m_sliceZ, zMin, zMax);
         }
-        double zMin = m_doc->model().z_min_val();
-        double zMax = m_doc->model().z_max_val();
-        m_sliceZ = std::clamp(m_sliceZ, zMin, zMax);
     }
 
     setupUi();

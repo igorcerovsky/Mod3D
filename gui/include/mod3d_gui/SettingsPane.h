@@ -51,7 +51,9 @@ public:
     QCheckBox *bodyTransparentCheckBox() const { return m_chkBodyTransparent; }
     QCheckBox *reliefCheckBox3D() const { return m_chk3DRelief; }
     QComboBox *reliefModeComboBox3D() const { return m_combo3DReliefMode; }
-    QCheckBox *quadrantCutCheckBox3D() const { return m_chk3DQuadrantCut; }
+    QCheckBox *octantCutCheckBox3D() const { return m_chk3DOctantCut; }
+    QCheckBox *quadrantCutCheckBox3D() const { return octantCutCheckBox3D(); }
+    QCheckBox *planarPlaneCheckBox3D() const { return m_chk3DPlanarSlice; }
     QCheckBox *removeObservedMeanCheckBox() const { return m_chkRemoveObservedMean; }
     QLabel *observedMeanLabel() const { return m_lblObservedMean; }
 
@@ -136,7 +138,8 @@ private:
     QCheckBox *m_chk3DDepthFog{nullptr};
     QCheckBox *m_chk3DTransparentBodies{nullptr};
     QCheckBox *m_chk3DTransparentSlices{nullptr};
-    QCheckBox *m_chk3DQuadrantCut{nullptr};
+    QCheckBox *m_chk3DPlanarSlice{nullptr};
+    QCheckBox *m_chk3DOctantCut{nullptr};
 
     // Tab 2: Profiles Tab Controls
     QPushButton *m_btnProfTabOrientEW{nullptr};

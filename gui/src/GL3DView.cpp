@@ -1,5 +1,6 @@
 #include "mod3d_gui/GL3DView.h"
 #include "mod3d_gui/ProfileView.h"
+#include "mod3d_gui/HorizontalSliceView.h"
 #include "mod3d_gui/MainWindow.h"
 #include <QMdiArea>
 #include <QMdiSubWindow>
@@ -371,6 +372,13 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     connect(m_doc, &ModelDocument::profileChanged, this, [this](int, ProfileOrientation) {
         update();
     });
+    connect(m_doc, &ModelDocument::activeSliceElevationChanged, this, [this](double) {
+        if (m_octantCut) {
+            m_cachedCutState = computeOctantCutState();
+            m_meshDirty = true;
+        }
+        update();
+    });
     connect(m_doc, &ModelDocument::activeProfileCursorChanged, this, [this](const ModelDocument::ProfileCursorPoint &pt) {
         if (pt.bodyId >= 0 && pt.bodyId != m_selectedBodyId) {
             setSelectedBodyId(pt.bodyId);
@@ -425,9 +433,9 @@ void GL3DView::setSelectedBodyId(int bodyId) {
     update();
 }
 
-GL3DView::QuadrantCutState GL3DView::computeQuadrantCutState() const {
-    QuadrantCutState state{};
-    if (!m_quadrantCut || !m_doc) return state;
+GL3DView::OctantCutState GL3DView::computeOctantCutState() const {
+    OctantCutState state{};
+    if (!m_octantCut || !m_doc) return state;
 
     const auto &model = m_doc->model();
     int rMax = std::max(1, model.rows() - 2);
@@ -439,13 +447,17 @@ GL3DView::QuadrantCutState GL3DView::computeQuadrantCutState() const {
     double toEyeY = -std::cos(azRad);
     state.cutPosX = (toEyeX >= -1e-5);
     state.cutPosY = (toEyeY > 1e-5);
+    state.cutPosZ = (m_pitch >= 0.0f); // Cut from above when camera pitch >= 0
 
     std::vector<ProfileView*> openPvs;
+    std::vector<HorizontalSliceView*> openHsvs;
     if (QMdiArea *mdi = findMdiArea()) {
         for (auto *sub : mdi->subWindowList()) {
             if (!sub) continue;
             if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
                 openPvs.push_back(pv);
+            } else if (auto *hsv = qobject_cast<HorizontalSliceView*>(sub->widget())) {
+                openHsvs.push_back(hsv);
             }
         }
     }
@@ -490,11 +502,25 @@ GL3DView::QuadrantCutState GL3DView::computeQuadrantCutState() const {
     if (state.hasSN) {
         state.snX = model.xd_val(state.snCol);
     }
-    state.active = (state.hasEW || state.hasSN);
+
+    // Horizontal Planar plane
+    double sliceZ = m_doc->activeSliceElevation();
+    if (std::isnan(sliceZ)) {
+        if (!openHsvs.empty()) {
+            sliceZ = openHsvs.front()->sliceElevation();
+        }
+    }
+    if (std::isnan(sliceZ)) {
+        sliceZ = 0.5 * (model.z_min_val() + model.z_max_val());
+    }
+    state.hasPlanar = true;
+    state.planarZ = sliceZ;
+
+    state.active = (state.hasEW || state.hasSN || state.hasPlanar);
     return state;
 }
 
-void GL3DView::generateBodyCutCaps(int bodyId, const QuadrantCutState &cut,
+void GL3DView::generateBodyCutCaps(int bodyId, const OctantCutState &cut,
                                    std::vector<mod3d::Facet3Pt> &outCapFacets,
                                    std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> &outCapEdges) const {
     outCapFacets.clear();
@@ -542,6 +568,17 @@ void GL3DView::generateBodyCutCaps(int bodyId, const QuadrantCutState &cut,
                 double zb1 = model.z(r, c + 1, idx1 + 1);
 
                 if (std::abs(zt0 - zb0) < 1e-6 && std::abs(zt1 - zb1) < 1e-6) continue;
+
+                if (cut.hasPlanar) {
+                    if (cut.cutPosZ) {
+                        zb0 = std::max(zb0, cut.planarZ);
+                        zb1 = std::max(zb1, cut.planarZ);
+                    } else {
+                        zt0 = std::min(zt0, cut.planarZ);
+                        zt1 = std::min(zt1, cut.planarZ);
+                    }
+                }
+                if (zt0 <= zb0 + 1e-6 && zt1 <= zb1 + 1e-6) continue;
 
                 mod3d::Point3D ptTop0(x0, cut.ewY, zt0);
                 mod3d::Point3D ptBot0(x0, cut.ewY, zb0);
@@ -598,6 +635,17 @@ void GL3DView::generateBodyCutCaps(int bodyId, const QuadrantCutState &cut,
 
                 if (std::abs(zt0 - zb0) < 1e-6 && std::abs(zt1 - zb1) < 1e-6) continue;
 
+                if (cut.hasPlanar) {
+                    if (cut.cutPosZ) {
+                        zb0 = std::max(zb0, cut.planarZ);
+                        zb1 = std::max(zb1, cut.planarZ);
+                    } else {
+                        zt0 = std::min(zt0, cut.planarZ);
+                        zt1 = std::min(zt1, cut.planarZ);
+                    }
+                }
+                if (zt0 <= zb0 + 1e-6 && zt1 <= zb1 + 1e-6) continue;
+
                 mod3d::Point3D ptTop0(cut.snX, y0, zt0);
                 mod3d::Point3D ptBot0(cut.snX, y0, zb0);
                 mod3d::Point3D ptTop1(cut.snX, y1, zt1);
@@ -611,6 +659,79 @@ void GL3DView::generateBodyCutCaps(int bodyId, const QuadrantCutState &cut,
                 }
                 if (!hasKeptVolumeSN(r + 1) && std::abs(zt1 - zb1) >= 1e-6) {
                     outCapEdges.push_back({ptTop1, ptBot1});
+                }
+            }
+        }
+    }
+
+    // 3. Horizontal Planar Cut Cap (at Z = cut.planarZ)
+    if (cut.hasPlanar) {
+        int rStart = 1;
+        int rEnd = rMax - 1;
+        if (cut.hasEW) {
+            if (cut.cutPosY) {
+                rStart = std::max(1, cut.ewRow);
+            } else {
+                rEnd = std::min(rMax - 1, cut.ewRow - 1);
+            }
+        }
+
+        int cStart = 1;
+        int cEnd = cMax - 1;
+        if (cut.hasSN) {
+            if (cut.cutPosX) {
+                cStart = std::max(1, cut.snCol);
+            } else {
+                cEnd = std::min(cMax - 1, cut.snCol - 1);
+            }
+        }
+
+        auto cellHasPlanarCap = [&](int r, int c) -> bool {
+            if (r < rStart || r > rEnd || c < cStart || c > cEnd) return false;
+            int idx00 = model.body_index(bodyId, r, c);
+            int idx10 = model.body_index(bodyId, r, c + 1);
+            int idx11 = model.body_index(bodyId, r + 1, c + 1);
+            int idx01 = model.body_index(bodyId, r + 1, c);
+            if (idx00 < 0 && idx10 < 0 && idx11 < 0 && idx01 < 0) return false;
+
+            int validCorners = 0;
+            auto checkCorner = [&](int row, int col, int idx) {
+                if (idx < 0) return false;
+                double zt = model.z(row, col, idx);
+                double zb = model.z(row, col, idx + 1);
+                return (zt >= cut.planarZ - 1e-4 && zb <= cut.planarZ + 1e-4);
+            };
+            if (checkCorner(r, c, idx00)) ++validCorners;
+            if (checkCorner(r, c + 1, idx10)) ++validCorners;
+            if (checkCorner(r + 1, c + 1, idx11)) ++validCorners;
+            if (checkCorner(r + 1, c, idx01)) ++validCorners;
+            return (validCorners >= 2);
+        };
+
+        for (int r = rStart; r <= rEnd; ++r) {
+            double y0 = model.yd_val(r);
+            double y1 = model.yd_val(r + 1);
+            for (int c = cStart; c <= cEnd; ++c) {
+                if (!cellHasPlanarCap(r, c)) continue;
+                double x0 = model.xd_val(c);
+                double x1 = model.xd_val(c + 1);
+
+                mod3d::Point3D p00(x0, y0, cut.planarZ);
+                mod3d::Point3D p10(x1, y0, cut.planarZ);
+                mod3d::Point3D p11(x1, y1, cut.planarZ);
+                mod3d::Point3D p01(x0, y1, cut.planarZ);
+
+                if (!cellHasPlanarCap(r - 1, c)) {
+                    outCapEdges.push_back({p00, p10});
+                }
+                if (!cellHasPlanarCap(r + 1, c)) {
+                    outCapEdges.push_back({p01, p11});
+                }
+                if (!cellHasPlanarCap(r, c - 1)) {
+                    outCapEdges.push_back({p00, p01});
+                }
+                if (!cellHasPlanarCap(r, c + 1)) {
+                    outCapEdges.push_back({p10, p11});
                 }
             }
         }
@@ -692,7 +813,7 @@ int GL3DView::hitTestBody(const QPoint &pos) {
         return false;
     };
 
-    QuadrantCutState cut = computeQuadrantCutState();
+    OctantCutState cut = computeOctantCutState();
 
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible) continue;
@@ -700,7 +821,8 @@ int GL3DView::hitTestBody(const QPoint &pos) {
             if (cut.active) {
                 double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
                 double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-                if (cut.isPointCut(xm, ym) || cut.isFacetOnCutWall(fct)) continue;
+                double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
+                if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct)) continue;
             }
             QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y), scaleZ(fct[0].z));
             QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y), scaleZ(fct[1].z));
@@ -1042,7 +1164,7 @@ void GL3DView::updateBodyBuffers() {
         m_selectedBodyId = -1;
     }
 
-    QuadrantCutState cut = computeQuadrantCutState();
+    OctantCutState cut = computeOctantCutState();
     m_cachedCutState = cut;
 
     std::vector<Vertex3D> opaqueVerts;
@@ -1087,7 +1209,8 @@ void GL3DView::updateBodyBuffers() {
                 if (cut.active) {
                     double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
                     double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-                    if (cut.isPointCut(xm, ym) || cut.isFacetOnCutWall(fct)) continue;
+                    double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
+                    if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct)) continue;
                 }
                 pushFacet(fct);
             }
@@ -1198,6 +1321,10 @@ void GL3DView::paintGL() {
 
     if (m_showProfilePlane) {
         drawProfilePlane();
+    }
+
+    if (m_showPlanarPlane) {
+        drawPlanarPlane();
     }
 
     if (m_mouseDragging && (m_dragButton == Qt::LeftButton) && !m_draggingGizmo) {
@@ -1394,7 +1521,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
         // Inactive slices (subtle blue)
         int rMaxSw = model.rows() - 2;
         int cMaxSw = model.cols() - 2;
-        QuadrantCutState cutSw = computeQuadrantCutState();
+        OctantCutState cutSw = computeOctantCutState();
 
         for (const auto &sl : swSlices) {
             if (sl.isActive) continue;
@@ -1424,9 +1551,9 @@ void GL3DView::paintSoftware(QPainter &painter) {
                 for (int c = 1; c < cMaxSw; ++c) {
                     double xA = model.xd_val(c);
                     double xB = model.xd_val(c + 1);
-                    if (cutSw.active && cutSw.isPointCut(0.5 * (xA + xB), y)) continue;
                     double zA = model.z(rowIdx, c, 0);
                     double zB = model.z(rowIdx, c + 1, 0);
+                    if (cutSw.active && cutSw.isPointCut(0.5 * (xA + xB), y, 0.5 * (zA + zB))) continue;
                     painter.drawLine(project(xA, y, zA).first, project(xB, y, zB).first);
                 }
             } else {
@@ -1435,9 +1562,9 @@ void GL3DView::paintSoftware(QPainter &painter) {
                 for (int rIdx = 1; rIdx < rMaxSw; ++rIdx) {
                     double yA = model.yd_val(rIdx);
                     double yB = model.yd_val(rIdx + 1);
-                    if (cutSw.active && cutSw.isPointCut(x, 0.5 * (yA + yB))) continue;
                     double zA = model.z(rIdx, colIdx, 0);
                     double zB = model.z(rIdx + 1, colIdx, 0);
+                    if (cutSw.active && cutSw.isPointCut(x, 0.5 * (yA + yB), 0.5 * (zA + zB))) continue;
                     painter.drawLine(project(x, yA, zA).first, project(x, yB, zB).first);
                 }
             }
@@ -1472,9 +1599,9 @@ void GL3DView::paintSoftware(QPainter &painter) {
                 for (int c = 1; c < cMaxSw; ++c) {
                     double xA = model.xd_val(c);
                     double xB = model.xd_val(c + 1);
-                    if (cutSw.active && cutSw.isPointCut(0.5 * (xA + xB), y)) continue;
                     double zA = model.z(rowIdx, c, 0);
                     double zB = model.z(rowIdx, c + 1, 0);
+                    if (cutSw.active && cutSw.isPointCut(0.5 * (xA + xB), y, 0.5 * (zA + zB))) continue;
                     painter.drawLine(project(xA, y, zA).first, project(xB, y, zB).first);
                 }
             } else {
@@ -1483,11 +1610,82 @@ void GL3DView::paintSoftware(QPainter &painter) {
                 for (int rIdx = 1; rIdx < rMaxSw; ++rIdx) {
                     double yA = model.yd_val(rIdx);
                     double yB = model.yd_val(rIdx + 1);
-                    if (cutSw.active && cutSw.isPointCut(x, 0.5 * (yA + yB))) continue;
                     double zA = model.z(rIdx, colIdx, 0);
                     double zB = model.z(rIdx + 1, colIdx, 0);
+                    if (cutSw.active && cutSw.isPointCut(x, 0.5 * (yA + yB), 0.5 * (zA + zB))) continue;
                     painter.drawLine(project(x, yA, zA).first, project(x, yB, zB).first);
                 }
+            }
+        }
+    }
+
+    // 3b. Horizontal Planar View Plane in Software Mode
+    if (m_showPlanarPlane) {
+        double sliceZ = m_doc->activeSliceElevation();
+        if (std::isnan(sliceZ)) {
+            if (QMdiArea *mdi = findMdiArea()) {
+                for (auto *sub : mdi->subWindowList()) {
+                    if (auto *hsv = qobject_cast<HorizontalSliceView*>(sub->widget())) {
+                        sliceZ = hsv->sliceElevation();
+                        break;
+                    }
+                }
+            }
+        }
+        if (std::isnan(sliceZ)) {
+            sliceZ = 0.5 * (model.z_min_val() + model.z_max_val());
+        }
+
+        QPolygonF poly;
+        poly << project(model.x_min_val(), model.y_min_val(), sliceZ).first
+             << project(model.x_max_val(), model.y_min_val(), sliceZ).first
+             << project(model.x_max_val(), model.y_max_val(), sliceZ).first
+             << project(model.x_min_val(), model.y_max_val(), sliceZ).first;
+
+        painter.setBrush(m_transparentProfiles ? QColor(16, 185, 129, 32) : Qt::NoBrush);
+        painter.setPen(QPen(QColor(5, 150, 105, 220), 1.8, Qt::DashLine));
+        painter.drawPolygon(poly);
+
+        // Draw profile intersection lines on the planar sheet
+        std::vector<double> ewYs;
+        std::vector<double> snXs;
+        if (QMdiArea *mdi = findMdiArea()) {
+            for (auto *sub : mdi->subWindowList()) {
+                if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                    if (pv->profileOrientation() == ProfileOrientation::EastWest) {
+                        ewYs.push_back(model.yd_val(pv->profileIndex() + 1));
+                    } else {
+                        snXs.push_back(model.xd_val(pv->profileIndex() + 1));
+                    }
+                }
+            }
+        }
+        if (ewYs.empty() && snXs.empty()) {
+            if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
+                ewYs.push_back(model.yd_val(m_doc->profileIndex() + 1));
+            } else {
+                snXs.push_back(model.xd_val(m_doc->profileIndex() + 1));
+            }
+        }
+
+        painter.setPen(QPen(QColor(230, 50, 35), 2.4, Qt::SolidLine));
+        for (double y : ewYs) {
+            painter.drawLine(project(model.x_min_val(), y, sliceZ).first,
+                             project(model.x_max_val(), y, sliceZ).first);
+        }
+        painter.setPen(QPen(QColor(37, 99, 235), 2.4, Qt::SolidLine));
+        for (double x : snXs) {
+            painter.drawLine(project(x, model.y_min_val(), sliceZ).first,
+                             project(x, model.y_max_val(), sliceZ).first);
+        }
+
+        // Crosshairs at 3-plane intersections
+        painter.setPen(QPen(QColor(234, 179, 8), 3.0, Qt::SolidLine));
+        for (double x : snXs) {
+            for (double y : ewYs) {
+                auto pt = project(x, y, sliceZ).first;
+                painter.drawLine(QPointF(pt.x() - 8, pt.y()), QPointF(pt.x() + 8, pt.y()));
+                painter.drawLine(QPointF(pt.x(), pt.y() - 8), QPointF(pt.x(), pt.y() + 8));
             }
         }
     }
@@ -1527,7 +1725,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
     double lLen = std::sqrt(lx*lx + ly*ly + lz*lz);
     lx /= lLen; ly /= lLen; lz /= lLen;
 
-    QuadrantCutState cut = computeQuadrantCutState();
+    OctantCutState cut = computeOctantCutState();
 
     for (const auto &mesh : m_bodyMeshes) {
         if (!mesh.isVisible) continue;
@@ -1577,7 +1775,8 @@ void GL3DView::paintSoftware(QPainter &painter) {
             if (cut.active) {
                 double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
                 double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-                if (cut.isPointCut(xm, ym) || cut.isFacetOnCutWall(fct)) continue;
+                double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
+                if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct)) continue;
             }
             pushSwFacet(fct);
         }
@@ -1611,12 +1810,13 @@ void GL3DView::paintSoftware(QPainter &painter) {
                     double x0 = model.xd_val(c);
                     double x1 = model.xd_val(c + 1);
 
-                    if (cut.active && cut.isPointCut(0.5 * (x0 + x1), 0.5 * (y0 + y1))) continue;
-
                     float z00Raw = static_cast<float>(model.z(rIdx, c, 0));
                     float z10Raw = static_cast<float>(model.z(rIdx, c + 1, 0));
                     float z11Raw = static_cast<float>(model.z(rIdx + 1, c + 1, 0));
                     float z01Raw = static_cast<float>(model.z(rIdx + 1, c, 0));
+
+                    float zmRaw = 0.25f * (z00Raw + z10Raw + z11Raw + z01Raw);
+                    if (cut.active && cut.isPointCut(0.5 * (x0 + x1), 0.5 * (y0 + y1), zmRaw)) continue;
 
                     auto pt00 = project(x0, y0, z00Raw);
                     auto pt10 = project(x1, y0, z10Raw);
@@ -1683,9 +1883,9 @@ void GL3DView::paintSoftware(QPainter &painter) {
                 for (int c = 1; c < cMax; ++c) {
                     double xA = model.xd_val(c);
                     double xB = model.xd_val(c + 1);
-                    if (cut.active && cut.isPointCut(0.5 * (xA + xB), y)) continue;
                     float zA = static_cast<float>(model.z(rIdx, c, 0));
                     float zB = static_cast<float>(model.z(rIdx, c + 1, 0));
+                    if (cut.active && cut.isPointCut(0.5 * (xA + xB), y, 0.5 * (zA + zB))) continue;
                     auto ptA = project(xA, y, zA);
                     auto ptB = project(xB, y, zB);
                     float midT = (getT(zA) + getT(zB)) * 0.5f;
@@ -1698,9 +1898,9 @@ void GL3DView::paintSoftware(QPainter &painter) {
                 for (int rIdx = 1; rIdx < rMax; ++rIdx) {
                     double yA = model.yd_val(rIdx);
                     double yB = model.yd_val(rIdx + 1);
-                    if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB))) continue;
                     float zA = static_cast<float>(model.z(rIdx, c, 0));
                     float zB = static_cast<float>(model.z(rIdx + 1, c, 0));
+                    if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB), 0.5 * (zA + zB))) continue;
                     auto ptA = project(x, yA, zA);
                     auto ptB = project(x, yB, zB);
                     float midT = (getT(zA) + getT(zB)) * 0.5f;
@@ -1990,7 +2190,7 @@ void GL3DView::drawRelief() {
         return std::clamp((z - zMinRelief) / zSpan, 0.0f, 1.0f);
     };
 
-    QuadrantCutState cut = computeQuadrantCutState();
+    OctantCutState cut = computeOctantCutState();
 
     if (m_reliefMode == ReliefMode::Surface) {
         std::vector<FlatVertex3D> reliefTris;
@@ -2007,12 +2207,13 @@ void GL3DView::drawRelief() {
                 float x0 = static_cast<float>(m.xd_val(c));
                 float x1 = static_cast<float>(m.xd_val(c + 1));
 
-                if (cut.active && cut.isPointCut(0.5 * (x0 + x1), 0.5 * (y0 + y1))) continue;
-
                 float z00Raw = static_cast<float>(m.z(rIdx, c, 0));
                 float z10Raw = static_cast<float>(m.z(rIdx, c + 1, 0));
                 float z11Raw = static_cast<float>(m.z(rIdx + 1, c + 1, 0));
                 float z01Raw = static_cast<float>(m.z(rIdx + 1, c, 0));
+
+                float zmRaw = 0.25f * (z00Raw + z10Raw + z11Raw + z01Raw);
+                if (cut.active && cut.isPointCut(0.5 * (x0 + x1), 0.5 * (y0 + y1), zmRaw)) continue;
 
                 float z00 = scaleZ(z00Raw);
                 float z10 = scaleZ(z10Raw);
@@ -2061,9 +2262,9 @@ void GL3DView::drawRelief() {
             for (int c = 1; c < cMax; ++c) {
                 float xA = static_cast<float>(m.xd_val(c));
                 float xB = static_cast<float>(m.xd_val(c + 1));
-                if (cut.active && cut.isPointCut(0.5 * (xA + xB), y)) continue;
                 float zARaw = static_cast<float>(m.z(rIdx, c, 0));
                 float zBRaw = static_cast<float>(m.z(rIdx, c + 1, 0));
+                if (cut.active && cut.isPointCut(0.5 * (xA + xB), y, 0.5 * (zARaw + zBRaw))) continue;
                 float zA = scaleZ(zARaw);
                 float zB = scaleZ(zBRaw);
                 float rA, gA, bA, rB, gB, bB;
@@ -2080,9 +2281,9 @@ void GL3DView::drawRelief() {
             for (int rIdx = 1; rIdx < rMax; ++rIdx) {
                 float yA = static_cast<float>(m.yd_val(rIdx));
                 float yB = static_cast<float>(m.yd_val(rIdx + 1));
-                if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB))) continue;
                 float zARaw = static_cast<float>(m.z(rIdx, c, 0));
                 float zBRaw = static_cast<float>(m.z(rIdx + 1, c, 0));
+                if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB), 0.5 * (zARaw + zBRaw))) continue;
                 float zA = scaleZ(zARaw);
                 float zB = scaleZ(zBRaw);
                 float rA, gA, bA, rB, gB, bB;
@@ -2102,7 +2303,7 @@ void GL3DView::drawBodies() {
     initShaders();
     initBuffers();
 
-    QuadrantCutState cut = computeQuadrantCutState();
+    OctantCutState cut = computeOctantCutState();
 
     if (!m_meshDirty && m_doc) {
         const auto &modelBodies = m_doc->model().bodies();
@@ -2201,7 +2402,8 @@ void GL3DView::drawBodies() {
                     if (cut.active) {
                         double xm = 0.5 * (edge.first.x + edge.second.x);
                         double ym = 0.5 * (edge.first.y + edge.second.y);
-                        if (cut.isPointCut(xm, ym) || cut.isSegmentOnCutWall(edge.first, edge.second)) continue;
+                        double zm = 0.5 * (edge.first.z + edge.second.z);
+                        if (cut.isPointCut(xm, ym, zm) || cut.isSegmentOnCutWall(edge.first, edge.second)) continue;
                     }
                     targetList.push_back({ static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z), r, g, b, a });
                     targetList.push_back({ static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z), r, g, b, a });
@@ -2289,7 +2491,8 @@ void GL3DView::drawBodies() {
                 if (cut.active) {
                     double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
                     double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-                    if (cut.isPointCut(xm, ym) || cut.isFacetOnCutWall(fct)) continue;
+                    double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
+                    if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct)) continue;
                 }
                 pushTransFacet(fct);
             }
@@ -2376,7 +2579,8 @@ void GL3DView::drawBodies() {
                     if (cut.active) {
                         double xm = 0.5 * (edge.first.x + edge.second.x);
                         double ym = 0.5 * (edge.first.y + edge.second.y);
-                        if (cut.isPointCut(xm, ym) || cut.isSegmentOnCutWall(edge.first, edge.second)) continue;
+                        double zm = 0.5 * (edge.first.z + edge.second.z);
+                        if (cut.isPointCut(xm, ym, zm) || cut.isSegmentOnCutWall(edge.first, edge.second)) continue;
                     }
                     targetList.push_back({ static_cast<float>(edge.first.x), static_cast<float>(edge.first.y), scaleZ(edge.first.z), r, g, b, a });
                     targetList.push_back({ static_cast<float>(edge.second.x), static_cast<float>(edge.second.y), scaleZ(edge.second.z), r, g, b, a });
@@ -2595,7 +2799,7 @@ void GL3DView::drawProfilePlane() {
         return zMid + static_cast<float>(zRaw - zMid) * m_zScale;
     };
     float zEps = std::max(0.20f, (z1 - z0) * 0.0012f);
-    QuadrantCutState cut = computeQuadrantCutState();
+    OctantCutState cut = computeOctantCutState();
     int rMax = m.rows() - 2;
     int cMax = m.cols() - 2;
 
@@ -2613,10 +2817,12 @@ void GL3DView::drawProfilePlane() {
             for (int c = 1; c < cMax; ++c) {
                 float xA = static_cast<float>(m.xd_val(c));
                 float xB = static_cast<float>(m.xd_val(c + 1));
-                if (cut.active && cut.isPointCut(0.5 * (xA + xB), y)) continue;
+                float zARaw = static_cast<float>(m.z(rowIdx, c, 0));
+                float zBRaw = static_cast<float>(m.z(rowIdx, c + 1, 0));
+                if (cut.active && cut.isPointCut(0.5 * (xA + xB), y, 0.5 * (zARaw + zBRaw))) continue;
 
-                float zA = scaleZ(m.z(rowIdx, c, 0)) + zEps;
-                float zB = scaleZ(m.z(rowIdx, c + 1, 0)) + zEps;
+                float zA = scaleZ(zARaw) + zEps;
+                float zB = scaleZ(zBRaw) + zEps;
 
                 targetLines.push_back({ xA, y, zA, r, g, b, a });
                 targetLines.push_back({ xB, y, zB, r, g, b, a });
@@ -2627,10 +2833,12 @@ void GL3DView::drawProfilePlane() {
             for (int rIdx = 1; rIdx < rMax; ++rIdx) {
                 float yA = static_cast<float>(m.yd_val(rIdx));
                 float yB = static_cast<float>(m.yd_val(rIdx + 1));
-                if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB))) continue;
+                float zARaw = static_cast<float>(m.z(rIdx, colIdx, 0));
+                float zBRaw = static_cast<float>(m.z(rIdx + 1, colIdx, 0));
+                if (cut.active && cut.isPointCut(x, 0.5 * (yA + yB), 0.5 * (zARaw + zBRaw))) continue;
 
-                float zA = scaleZ(m.z(rIdx, colIdx, 0)) + zEps;
-                float zB = scaleZ(m.z(rIdx + 1, colIdx, 0)) + zEps;
+                float zA = scaleZ(zARaw) + zEps;
+                float zB = scaleZ(zBRaw) + zEps;
 
                 targetLines.push_back({ x, yA, zA, r, g, b, a });
                 targetLines.push_back({ x, yB, zB, r, g, b, a });
@@ -2643,6 +2851,150 @@ void GL3DView::drawProfilePlane() {
     renderLines(ridgeLines, 3.0f);
     renderLines(inactiveReliefLines, 2.6f);
     renderLines(activeReliefLines, 4.0f);
+}
+
+void GL3DView::drawPlanarPlane() {
+    if (!m_doc) return;
+    const auto &m = m_doc->model();
+
+    double sliceZ = m_doc->activeSliceElevation();
+    if (std::isnan(sliceZ)) {
+        if (QMdiArea *mdi = findMdiArea()) {
+            for (auto *sub : mdi->subWindowList()) {
+                if (auto *hsv = qobject_cast<HorizontalSliceView*>(sub->widget())) {
+                    sliceZ = hsv->sliceElevation();
+                    break;
+                }
+            }
+        }
+    }
+    if (std::isnan(sliceZ)) {
+        sliceZ = 0.5 * (m.z_min_val() + m.z_max_val());
+    }
+
+    float z0Raw = static_cast<float>(m.z_min_val());
+    float z1Raw = static_cast<float>(m.z_max_val());
+    float zMid = (z0Raw + z1Raw) * 0.5f;
+    float zPlanar = zMid + static_cast<float>(sliceZ - zMid) * m_zScale;
+
+    float x0 = static_cast<float>(m.x_min_val());
+    float x1 = static_cast<float>(m.x_max_val());
+    float y0 = static_cast<float>(m.y_min_val());
+    float y1 = static_cast<float>(m.y_max_val());
+
+    // 1. Semi-transparent planar surface
+    if (m_transparentProfiles) {
+        std::vector<FlatVertex3D> planarTris;
+        auto addQuad = [&](const QVector3D &p0, const QVector3D &p1, const QVector3D &p2, const QVector3D &p3,
+                           float r, float g, float b, float a) {
+            planarTris.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+            planarTris.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+            planarTris.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+
+            planarTris.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+            planarTris.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+            planarTris.push_back({ p3.x(), p3.y(), p3.z(), r, g, b, a });
+        };
+
+        // Elegant emerald / teal translucent sheet
+        float r = 0.08f, g = 0.72f, b = 0.58f, a = 0.18f;
+        addQuad(QVector3D(x0, y0, zPlanar), QVector3D(x1, y0, zPlanar),
+                QVector3D(x1, y1, zPlanar), QVector3D(x0, y1, zPlanar),
+                r, g, b, a);
+
+        renderFlatTriangles(planarTris, true);
+    }
+
+    // 2. Planar sheet perimeter boundary loop & intersection lines
+    std::vector<FlatVertex3D> planarLines;
+    std::vector<FlatVertex3D> intersectLines;
+    std::vector<FlatVertex3D> crosshairLines;
+
+    auto addLoopLines = [&](std::vector<FlatVertex3D> &target,
+                            const QVector3D &p0, const QVector3D &p1, const QVector3D &p2, const QVector3D &p3,
+                            float r, float g, float b, float a) {
+        target.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+        target.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+
+        target.push_back({ p1.x(), p1.y(), p1.z(), r, g, b, a });
+        target.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+
+        target.push_back({ p2.x(), p2.y(), p2.z(), r, g, b, a });
+        target.push_back({ p3.x(), p3.y(), p3.z(), r, g, b, a });
+
+        target.push_back({ p3.x(), p3.y(), p3.z(), r, g, b, a });
+        target.push_back({ p0.x(), p0.y(), p0.z(), r, g, b, a });
+    };
+
+    // Perimeter boundary in crisp emerald / cyan
+    addLoopLines(planarLines, QVector3D(x0, y0, zPlanar), QVector3D(x1, y0, zPlanar),
+                 QVector3D(x1, y1, zPlanar), QVector3D(x0, y1, zPlanar),
+                 0.10f, 0.82f, 0.65f, 0.90f);
+
+    // 3. Intersections with open profile planes
+    QMdiArea *mdi = findMdiArea();
+    std::vector<ProfileView*> openPvs;
+    if (mdi) {
+        for (auto *sub : mdi->subWindowList()) {
+            if (auto *pv = qobject_cast<ProfileView*>(sub->widget())) {
+                openPvs.push_back(pv);
+            }
+        }
+    }
+
+    std::vector<float> ewYs;
+    std::vector<float> snXs;
+
+    if (openPvs.empty()) {
+        float r = 0.96f, g = 0.35f, b = 0.20f, a = 0.95f;
+        if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
+            float y = static_cast<float>(m.yd_val(m_doc->profileIndex() + 1));
+            ewYs.push_back(y);
+            intersectLines.push_back({ x0, y, zPlanar, r, g, b, a });
+            intersectLines.push_back({ x1, y, zPlanar, r, g, b, a });
+        } else {
+            float x = static_cast<float>(m.xd_val(m_doc->profileIndex() + 1));
+            snXs.push_back(x);
+            intersectLines.push_back({ x, y0, zPlanar, r, g, b, a });
+            intersectLines.push_back({ x, y1, zPlanar, r, g, b, a });
+        }
+    } else {
+        for (auto *pv : openPvs) {
+            if (pv->profileOrientation() == ProfileOrientation::EastWest) {
+                float y = static_cast<float>(m.yd_val(pv->profileIndex() + 1));
+                ewYs.push_back(y);
+                float r = 0.96f, g = 0.30f, b = 0.20f, a = 0.95f;
+                intersectLines.push_back({ x0, y, zPlanar, r, g, b, a });
+                intersectLines.push_back({ x1, y, zPlanar, r, g, b, a });
+            } else {
+                float x = static_cast<float>(m.xd_val(pv->profileIndex() + 1));
+                snXs.push_back(x);
+                float r = 0.20f, g = 0.65f, b = 0.96f, a = 0.95f;
+                intersectLines.push_back({ x, y0, zPlanar, r, g, b, a });
+                intersectLines.push_back({ x, y1, zPlanar, r, g, b, a });
+            }
+        }
+
+        // 4. 3D Crosshair at each 3-plane intersection (EW x SN x Planar)
+        float armX = (x1 - x0) * 0.025f;
+        float armY = (y1 - y0) * 0.025f;
+        float armZ = std::max(20.0f, (z1Raw - z0Raw) * 0.025f * m_zScale);
+        for (float xInt : snXs) {
+            for (float yInt : ewYs) {
+                float cr = 1.0f, cg = 0.88f, cb = 0.25f, ca = 1.0f;
+                crosshairLines.push_back({ xInt - armX, yInt, zPlanar, cr, cg, cb, ca });
+                crosshairLines.push_back({ xInt + armX, yInt, zPlanar, cr, cg, cb, ca });
+                crosshairLines.push_back({ xInt, yInt - armY, zPlanar, cr, cg, cb, ca });
+                crosshairLines.push_back({ xInt, yInt + armY, zPlanar, cr, cg, cb, ca });
+                crosshairLines.push_back({ xInt, yInt, zPlanar - armZ, cr, cg, cb, ca });
+                crosshairLines.push_back({ xInt, yInt, zPlanar + armZ, cr, cg, cb, ca });
+            }
+        }
+    }
+
+    renderLines(planarLines, 2.2f);
+    renderLines(intersectLines, 3.2f);
+    renderLines(crosshairLines, 3.5f);
 }
 
 int GL3DView::hitTestGizmo(const QPoint &pos) {
@@ -3066,7 +3418,7 @@ void GL3DView::keyPressEvent(QKeyEvent *event) {
         fitToView();
         break;
     case Qt::Key_C:
-        setQuadrantCut(!m_quadrantCut);
+        setOctantCut(!m_octantCut);
         break;
     case Qt::Key_Plus:
     case Qt::Key_Equal:
@@ -3216,11 +3568,17 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
     actOuter->setCheckable(true);
     actOuter->setChecked(m_showOuterFacets);
 
-    auto *actQuadCut = menu.addAction(tr("Quadrant Cut (Front Profiles) (C)"), this, [this](bool checked) {
-        setQuadrantCut(checked);
+    auto *actPlanar = menu.addAction(tr("Show Planar View Plane"), this, [this](bool checked) {
+        setShowPlanarPlane(checked);
     });
-    actQuadCut->setCheckable(true);
-    actQuadCut->setChecked(m_quadrantCut);
+    actPlanar->setCheckable(true);
+    actPlanar->setChecked(m_showPlanarPlane);
+
+    auto *actOctCut = menu.addAction(tr("Octant Cut (Front Profiles & Slice) (C)"), this, [this](bool checked) {
+        setOctantCut(checked);
+    });
+    actOctCut->setCheckable(true);
+    actOctCut->setChecked(m_octantCut);
 
     menu.exec(globalPos);
 
@@ -3413,11 +3771,20 @@ void GL3DView::setShowTransparentProfilePlane(bool enable) {
     }
 }
 
-void GL3DView::setQuadrantCut(bool enable) {
-    if (m_quadrantCut != enable) {
-        m_quadrantCut = enable;
+void GL3DView::setShowPlanarPlane(bool enable) {
+    if (m_showPlanarPlane != enable) {
+        m_showPlanarPlane = enable;
+        update();
+    }
+}
+
+void GL3DView::setOctantCut(bool enable) {
+    if (m_octantCut != enable) {
+        m_octantCut = enable;
+        m_cachedCutState = computeOctantCutState();
         m_meshDirty = true;
-        emit quadrantCutChanged(m_quadrantCut);
+        emit octantCutChanged(m_octantCut);
+        emit quadrantCutChanged(m_octantCut);
         update();
     }
 }

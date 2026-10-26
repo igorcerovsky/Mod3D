@@ -90,27 +90,43 @@ public:
     [[nodiscard]] bool showTransparentProfilePlane() const noexcept { return m_transparentProfiles; }
     void setShowTransparentProfilePlane(bool enable);
 
-    [[nodiscard]] bool quadrantCut() const noexcept { return m_quadrantCut; }
-    void setQuadrantCut(bool enable);
+    [[nodiscard]] bool showPlanarPlane() const noexcept { return m_showPlanarPlane; }
+    void setShowPlanarPlane(bool enable);
 
-    struct QuadrantCutState {
+    [[nodiscard]] bool octantCut() const noexcept { return m_octantCut; }
+    void setOctantCut(bool enable);
+
+    // Backward-compatible quadrantCut aliases
+    [[nodiscard]] bool quadrantCut() const noexcept { return octantCut(); }
+    void setQuadrantCut(bool enable) { setOctantCut(enable); }
+
+    struct OctantCutState {
         bool active{false};
+
+        // East-West profile plane (Y = ewY)
         bool hasEW{false};
         int ewRow{1};
         double ewY{0.0};
         bool cutPosY{false};
 
+        // South-North profile plane (X = snX)
         bool hasSN{false};
         int snCol{1};
         double snX{0.0};
         bool cutPosX{true};
 
-        bool operator==(const QuadrantCutState &o) const noexcept {
+        // Horizontal Planar plane (Z = planarZ)
+        bool hasPlanar{false};
+        double planarZ{0.0};
+        bool cutPosZ{true}; // Cut Z > planarZ when viewing from above
+
+        bool operator==(const OctantCutState &o) const noexcept {
             return active == o.active &&
                    hasEW == o.hasEW && ewRow == o.ewRow && cutPosY == o.cutPosY &&
-                   hasSN == o.hasSN && snCol == o.snCol && cutPosX == o.cutPosX;
+                   hasSN == o.hasSN && snCol == o.snCol && cutPosX == o.cutPosX &&
+                   hasPlanar == o.hasPlanar && std::abs(planarZ - o.planarZ) < 1e-4 && cutPosZ == o.cutPosZ;
         }
-        bool operator!=(const QuadrantCutState &o) const noexcept {
+        bool operator!=(const OctantCutState &o) const noexcept {
             return !(*this == o);
         }
 
@@ -124,27 +140,47 @@ public:
             return cutPosY ? (y > ewY + eps) : (y < ewY - eps);
         }
 
-        [[nodiscard]] bool isPointCut(double x, double y, double eps = 1e-3) const noexcept {
+        [[nodiscard]] bool inCutZ(double z, double eps = 1e-3) const noexcept {
+            if (!hasPlanar) return true;
+            return cutPosZ ? (z > planarZ + eps) : (z < planarZ - eps);
+        }
+
+        [[nodiscard]] bool isPointCut(double x, double y, double z, double eps = 1e-3) const noexcept {
             if (!active) return false;
-            return inCutX(x, eps) && inCutY(y, eps);
+            return inCutX(x, eps) && inCutY(y, eps) && inCutZ(z, eps);
+        }
+
+        // Backward-compatible 2D overload
+        [[nodiscard]] bool isPointCut(double x, double y) const noexcept {
+            if (!active) return false;
+            return inCutX(x) && inCutY(y);
         }
 
         [[nodiscard]] bool isFacetOnCutWall(const mod3d::Facet3Pt &fct, double eps = 1e-3) const noexcept {
             if (!active) return false;
             double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
             double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
+            double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
+
             if (hasEW &&
                 std::abs(fct[0].y - ewY) <= eps &&
                 std::abs(fct[1].y - ewY) <= eps &&
                 std::abs(fct[2].y - ewY) <= eps &&
-                inCutX(xm, eps)) {
+                inCutX(xm, eps) && inCutZ(zm, eps)) {
                 return true;
             }
             if (hasSN &&
                 std::abs(fct[0].x - snX) <= eps &&
                 std::abs(fct[1].x - snX) <= eps &&
                 std::abs(fct[2].x - snX) <= eps &&
-                inCutY(ym, eps)) {
+                inCutY(ym, eps) && inCutZ(zm, eps)) {
+                return true;
+            }
+            if (hasPlanar &&
+                std::abs(fct[0].z - planarZ) <= eps &&
+                std::abs(fct[1].z - planarZ) <= eps &&
+                std::abs(fct[2].z - planarZ) <= eps &&
+                inCutX(xm, eps) && inCutY(ym, eps)) {
                 return true;
             }
             return false;
@@ -154,18 +190,27 @@ public:
             if (!active) return false;
             double xm = 0.5 * (p0.x + p1.x);
             double ym = 0.5 * (p0.y + p1.y);
-            if (hasEW && std::abs(p0.y - ewY) <= eps && std::abs(p1.y - ewY) <= eps && inCutX(xm, -eps)) {
+            double zm = 0.5 * (p0.z + p1.z);
+
+            if (hasEW && std::abs(p0.y - ewY) <= eps && std::abs(p1.y - ewY) <= eps && inCutX(xm, -eps) && inCutZ(zm, -eps)) {
                 return true;
             }
-            if (hasSN && std::abs(p0.x - snX) <= eps && std::abs(p1.x - snX) <= eps && inCutY(ym, -eps)) {
+            if (hasSN && std::abs(p0.x - snX) <= eps && std::abs(p1.x - snX) <= eps && inCutY(ym, -eps) && inCutZ(zm, -eps)) {
+                return true;
+            }
+            if (hasPlanar && std::abs(p0.z - planarZ) <= eps && std::abs(p1.z - planarZ) <= eps && inCutX(xm, -eps) && inCutY(ym, -eps)) {
                 return true;
             }
             return false;
         }
     };
 
-    [[nodiscard]] QuadrantCutState computeQuadrantCutState() const;
-    void generateBodyCutCaps(int bodyId, const QuadrantCutState &cut,
+    using QuadrantCutState = OctantCutState;
+
+    [[nodiscard]] OctantCutState computeOctantCutState() const;
+    [[nodiscard]] OctantCutState computeQuadrantCutState() const { return computeOctantCutState(); }
+
+    void generateBodyCutCaps(int bodyId, const OctantCutState &cut,
                              std::vector<mod3d::Facet3Pt> &outCapFacets,
                              std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> &outCapEdges) const;
 
@@ -204,6 +249,7 @@ signals:
     void projectionChanged(bool isOrtho);
     void bodySelected(int bodyId);
     void reliefModeChanged(ReliefMode mode);
+    void octantCutChanged(bool enabled);
     void quadrantCutChanged(bool enabled);
 
 protected:
@@ -236,6 +282,7 @@ private:
     void drawBoundingBox();
     void drawBodies();
     void drawProfilePlane();
+    void drawPlanarPlane();
     void drawRelief();
     void drawOrientationHud(QPainter &painter);
     void drawPivotIndicator();
@@ -312,12 +359,13 @@ private:
     bool m_showRelief{true};
     ReliefMode m_reliefMode{ReliefMode::Wireframe};
     bool m_showProfilePlane{true};
+    bool m_showPlanarPlane{true};
     bool m_showBoundingBox{true};
     bool m_showOrientationIndicator{true};
     bool m_transparentBodies{false};
     bool m_transparentProfiles{true};
-    bool m_quadrantCut{false};
-    QuadrantCutState m_cachedCutState{};
+    bool m_octantCut{false};
+    OctantCutState m_cachedCutState{};
     QPointer<ProfileView> m_lastActiveProfileView{nullptr};
 };
 

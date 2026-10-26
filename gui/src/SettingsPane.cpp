@@ -530,9 +530,12 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chk3DTransparentBodies->setChecked(false);
     m_chk3DTransparentSlices = new QCheckBox(tr("Transparent Profile / Section Slices"), box3DToggles);
     m_chk3DTransparentSlices->setChecked(true);
-    m_chk3DQuadrantCut = new QCheckBox(tr("Quadrant Cut (Front Profiles)"), box3DToggles);
-    m_chk3DQuadrantCut->setChecked(false);
-    m_chk3DQuadrantCut->setToolTip(tr("Cut away the quadrant closest to the camera bounded by the front-most profile planes (Shortcut: C)"));
+    m_chk3DPlanarSlice = new QCheckBox(tr("Horizontal Planar View Plane"), box3DToggles);
+    m_chk3DPlanarSlice->setChecked(true);
+    m_chk3DPlanarSlice->setToolTip(tr("Show the horizontal planar modeling slice plane (Z = active slice elevation)"));
+    m_chk3DOctantCut = new QCheckBox(tr("Octant Cut (Front Profiles & Slice)"), box3DToggles);
+    m_chk3DOctantCut->setChecked(false);
+    m_chk3DOctantCut->setToolTip(tr("Cut away the front octant closest to the camera bounded by profile planes and horizontal planar slice (Shortcut: C)"));
 
     toggles3DLayout->addWidget(m_chk3DSlices);
     toggles3DLayout->addWidget(m_chk3DCompass);
@@ -544,7 +547,8 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     toggles3DLayout->addWidget(m_chk3DDepthFog);
     toggles3DLayout->addWidget(m_chk3DTransparentBodies);
     toggles3DLayout->addWidget(m_chk3DTransparentSlices);
-    toggles3DLayout->addWidget(m_chk3DQuadrantCut);
+    toggles3DLayout->addWidget(m_chk3DPlanarSlice);
+    toggles3DLayout->addWidget(m_chk3DOctantCut);
     v3dLayout->addWidget(box3DToggles);
 
     auto *box3DDepth = new QGroupBox(tr("Depth & Elevation Scaling"), m_pane3DView);
@@ -597,8 +601,11 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     connect(m_chk3DTransparentSlices, &QCheckBox::toggled, this, [this](bool c) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowTransparentProfilePlane(c);
     });
-    connect(m_chk3DQuadrantCut, &QCheckBox::toggled, this, [this](bool c) {
-        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setQuadrantCut(c);
+    connect(m_chk3DPlanarSlice, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setShowPlanarPlane(c);
+    });
+    connect(m_chk3DOctantCut, &QCheckBox::toggled, this, [this](bool c) {
+        if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setOctantCut(c);
     });
     connect(m_spin3DZScale, &QDoubleSpinBox::valueChanged, this, [this](double val) {
         if (auto *glv = qobject_cast<GL3DView*>(m_activeView.data())) glv->setZScale(static_cast<float>(val));
@@ -1327,6 +1334,7 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
         disconnect(oldPv, &ProfileView::displaySettingsChanged, this, &SettingsPane::updateViewContext);
     }
     if (auto *oldGlv = qobject_cast<GL3DView*>(m_activeView.data())) {
+        disconnect(oldGlv, &GL3DView::octantCutChanged, this, &SettingsPane::updateViewContext);
         disconnect(oldGlv, &GL3DView::quadrantCutChanged, this, &SettingsPane::updateViewContext);
     }
     m_activeView = (sub && sub->widget()) ? sub->widget() : nullptr;
@@ -1334,7 +1342,7 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
         connect(newPv, &ProfileView::displaySettingsChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
     }
     if (auto *newGlv = qobject_cast<GL3DView*>(m_activeView.data())) {
-        connect(newGlv, &GL3DView::quadrantCutChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
+        connect(newGlv, &GL3DView::octantCutChanged, this, &SettingsPane::updateViewContext, Qt::UniqueConnection);
     }
     updateViewContext();
 }
@@ -1454,7 +1462,8 @@ void SettingsPane::updateViewContext() {
         m_chk3DDepthFog->setChecked(glv->showDepthFog());
         m_chk3DTransparentBodies->setChecked(glv->showTransparentBodies());
         m_chk3DTransparentSlices->setChecked(glv->showTransparentProfilePlane());
-        m_chk3DQuadrantCut->setChecked(glv->quadrantCut());
+        m_chk3DPlanarSlice->setChecked(glv->showPlanarPlane());
+        m_chk3DOctantCut->setChecked(glv->octantCut());
         m_spin3DZScale->setValue(glv->zScale());
 
         // Keep Profiles Tab in sync with the latest active profile

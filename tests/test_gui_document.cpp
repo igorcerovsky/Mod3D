@@ -3642,5 +3642,114 @@ TEST_F(GuiDocumentTest, AntiFlickerOpaquePaintAndBackgroundSuppression) {
     EXPECT_EQ(cursorSignalCount, 1);
 }
 
+TEST_F(GuiDocumentTest, GL3DViewPlanarViewPlaneAndOctantCut) {
+    MainWindow mw;
+    mw.resize(1100, 800);
+
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
+    ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
+
+    GL3DView *glv = nullptr;
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (auto *g = qobject_cast<GL3DView*>(sub->widget())) {
+            glv = g;
+            break;
+        }
+    }
+    ASSERT_NE(glv, nullptr);
+
+    // 1. Planar plane visibility default & toggles
+    EXPECT_TRUE(glv->showPlanarPlane());
+    glv->setShowPlanarPlane(false);
+    EXPECT_FALSE(glv->showPlanarPlane());
+    glv->setShowPlanarPlane(true);
+    EXPECT_TRUE(glv->showPlanarPlane());
+
+    // 2. SettingsPane sync
+    auto *settings = mw.settingsPane();
+    ASSERT_NE(settings, nullptr);
+    for (auto *sub : mw.mdiArea()->subWindowList()) {
+        if (sub->widget() == glv) {
+            mw.mdiArea()->setActiveSubWindow(sub);
+            break;
+        }
+    }
+    QApplication::processEvents();
+
+    ASSERT_NE(settings->planarPlaneCheckBox3D(), nullptr);
+    ASSERT_NE(settings->octantCutCheckBox3D(), nullptr);
+    ASSERT_NE(settings->quadrantCutCheckBox3D(), nullptr);
+    EXPECT_TRUE(settings->planarPlaneCheckBox3D()->isChecked());
+    EXPECT_FALSE(settings->octantCutCheckBox3D()->isChecked());
+
+    // 3. Octant cut activation & dual signal emission
+    int octantSignalCount = 0;
+    int quadrantSignalCount = 0;
+    QObject::connect(glv, &GL3DView::octantCutChanged, [&octantSignalCount](bool c) {
+        if (c) octantSignalCount++;
+    });
+    QObject::connect(glv, &GL3DView::quadrantCutChanged, [&quadrantSignalCount](bool c) {
+        if (c) quadrantSignalCount++;
+    });
+
+    glv->setOctantCut(true);
+    EXPECT_TRUE(glv->octantCut());
+    EXPECT_TRUE(glv->quadrantCut()); // backward-compatible alias
+    EXPECT_EQ(octantSignalCount, 1);
+    EXPECT_EQ(quadrantSignalCount, 1);
+
+    // 4. Octant cut state computation
+    glv->setCameraAngles(35.0f, -45.0f); // Looking from above (+pitch)
+    auto cutState = glv->computeOctantCutState();
+    EXPECT_TRUE(cutState.active);
+    EXPECT_TRUE(cutState.hasPlanar);
+    EXPECT_TRUE(cutState.cutPosZ); // Cut top (Z > planarZ) when pitch >= 0
+    EXPECT_NEAR(cutState.planarZ, mw.document()->activeSliceElevation(), 1e-4);
+
+    // Looking from below (-pitch)
+    glv->setCameraAngles(-25.0f, -45.0f);
+    auto cutStateBelow = glv->computeOctantCutState();
+    EXPECT_FALSE(cutStateBelow.cutPosZ); // Cut bottom (Z < planarZ) when pitch < 0
+
+    // Reset camera angles to looking from above
+    glv->setCameraAngles(30.0f, -45.0f);
+
+    // 5. Slice elevation update syncs to 3D octant cut state
+    mw.document()->setActiveSliceElevation(-650.0);
+    auto cutUpdated = glv->computeOctantCutState();
+    EXPECT_NEAR(cutUpdated.planarZ, -650.0, 1e-4);
+
+    // Open HorizontalSliceView and verify it controls planarZ
+    auto *hsv = mw.openHorizontalSliceView(-400.0);
+    ASSERT_NE(hsv, nullptr);
+    EXPECT_NEAR(mw.document()->activeSliceElevation(), -400.0, 1e-4);
+    EXPECT_NEAR(glv->computeOctantCutState().planarZ, -400.0, 1e-4);
+
+    // 6. Test isPointCut 3D logic
+    auto cutTest = glv->computeOctantCutState();
+    double xMid = cutTest.hasSN ? cutTest.snX : ((mw.document()->model().x_min_val() + mw.document()->model().x_max_val()) * 0.5);
+    double yMid = cutTest.hasEW ? cutTest.ewY : ((mw.document()->model().y_min_val() + mw.document()->model().y_max_val()) * 0.5);
+    double testX = cutTest.cutPosX ? (xMid + 500.0) : (xMid - 500.0);
+    double testY = cutTest.cutPosY ? (yMid + 500.0) : (yMid - 500.0);
+
+    // Point in front-top octant: cut!
+    EXPECT_TRUE(cutTest.isPointCut(testX, testY, -400.0 + 100.0));
+    // Point in front-bottom octant: kept!
+    EXPECT_FALSE(cutTest.isPointCut(testX, testY, -400.0 - 100.0));
+    // Point outside front octant in X: kept!
+    double oppX = cutTest.cutPosX ? (xMid - 500.0) : (xMid + 500.0);
+    EXPECT_FALSE(cutTest.isPointCut(oppX, testY, -400.0 + 100.0));
+
+    // 7. Software rendering validation with planar plane and octant cut
+    QPixmap pmSoftware(600, 500);
+    pmSoftware.fill(Qt::white);
+    {
+        QPainter painter(&pmSoftware);
+        glv->paintSoftware(painter);
+    }
+    EXPECT_FALSE(pmSoftware.isNull());
+}
+
+
 
 
