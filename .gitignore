@@ -37,5 +37,5 @@ _UpgradeReport_Files/
 .DS_Store
 ._*
 
-legacy/
+/legacy/
 examples_old

@@ -38,6 +38,29 @@ void saveTestScreenshot(const QPixmap &pix, const QString &filename) {
         }
     }
 }
+
+std::string resolveLegacySamplePath(const std::string &filename) {
+#ifdef MOD3D_LEGACY_EXAMPLES_DIR
+    std::string pLegacy = std::string(MOD3D_LEGACY_EXAMPLES_DIR) + "/" + filename;
+    if (std::filesystem::exists(pLegacy)) return pLegacy;
+#endif
+#ifdef MOD3D_EXAMPLES_DIR
+    std::string pExamplesSub = std::string(MOD3D_EXAMPLES_DIR) + "/legacy/" + filename;
+    if (std::filesystem::exists(pExamplesSub)) return pExamplesSub;
+    std::string pExamples = std::string(MOD3D_EXAMPLES_DIR) + "/" + filename;
+    if (std::filesystem::exists(pExamples)) return pExamples;
+#endif
+    if (std::filesystem::exists("examples/legacy/" + filename)) return "examples/legacy/" + filename;
+    if (std::filesystem::exists("examples/" + filename)) return "examples/" + filename;
+    if (std::filesystem::exists("examples_old/" + filename)) return "examples_old/" + filename;
+#ifdef MOD3D_TEST_DATA_DIR
+    std::string pTestData = std::string(MOD3D_TEST_DATA_DIR) + "/models/" + filename;
+    if (std::filesystem::exists(pTestData)) return pTestData;
+    std::string pTestDataGrid = std::string(MOD3D_TEST_DATA_DIR) + "/grids/" + filename;
+    if (std::filesystem::exists(pTestDataGrid)) return pTestDataGrid;
+#endif
+    return "examples/legacy/" + filename;
+}
 } // namespace
 
 class GuiDocumentTest : public ::testing::Test {
@@ -172,9 +195,9 @@ TEST_F(GuiDocumentTest, CopyBodyAcrossProfiles) {
 
 TEST_F(GuiDocumentTest, LoadLegacyProjectAndComputeField) {
     ModelDocument doc;
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Test.m3d";
+    std::string samplePath = resolveLegacySamplePath("Test.m3d");
     if (!std::filesystem::exists(samplePath)) {
-        samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+        samplePath = resolveLegacySamplePath("Sample.m3d");
     }
 
     if (std::filesystem::exists(samplePath)) {
@@ -216,7 +239,7 @@ TEST_F(GuiDocumentTest, ProfileViewHitTestingAndOffscreenRendering) {
 
 TEST_F(GuiDocumentTest, MeasuredFieldLoadingFromLegacyM3DAndExternalGrid) {
     ModelDocument doc;
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     if (std::filesystem::exists(samplePath)) {
         bool ok = doc.openFile(QString::fromStdString(samplePath));
         EXPECT_TRUE(ok);
@@ -232,7 +255,7 @@ TEST_F(GuiDocumentTest, MeasuredFieldLoadingFromLegacyM3DAndExternalGrid) {
     }
 
     // Test importing external Surfer 7 DSRB binary grid (gz.grd)
-    std::string gzGrdPath = std::string(MOD3D_EXAMPLES_DIR) + "/gz.grd";
+    std::string gzGrdPath = resolveLegacySamplePath("gz.grd");
     if (std::filesystem::exists(gzGrdPath)) {
         bool ok = doc.loadMeasuredGrid(QString::fromStdString(gzGrdPath), mod3d::FieldComponent::GZ);
         EXPECT_TRUE(ok);
@@ -320,7 +343,7 @@ TEST_F(GuiDocumentTest, FieldUnitsAndComponentNaming) {
 
 TEST_F(GuiDocumentTest, ProfileFieldAxisGridScaling) {
     ModelDocument doc;
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     if (std::filesystem::exists(samplePath)) {
         bool ok = doc.openFile(QString::fromStdString(samplePath));
         ASSERT_TRUE(ok);
@@ -395,7 +418,7 @@ TEST_F(GuiDocumentTest, NewBodyInsertionCreatesPointOnProfile) {
     EXPECT_GE(doc.model().body_index(line0Body, row0, col0), 0);
 
     // 2. Test shallow depth model like Test.m3d [-100, 0]
-    std::string testPath = std::string(MOD3D_EXAMPLES_DIR) + "/Test.m3d";
+    std::string testPath = resolveLegacySamplePath("Test.m3d");
     if (std::filesystem::exists(testPath)) {
         bool ok = doc.openFile(QString::fromStdString(testPath));
         ASSERT_TRUE(ok);
@@ -495,7 +518,7 @@ TEST_F(GuiDocumentTest, BodyColorAndFillApplication) {
 
 TEST_F(GuiDocumentTest, FieldScalingAnomalyIsNotStraightLine) {
     ModelDocument doc;
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     if (std::filesystem::exists(samplePath)) {
         bool ok = doc.openFile(QString::fromStdString(samplePath));
         ASSERT_TRUE(ok);
@@ -861,10 +884,7 @@ public:
 
 TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
     ModelDocument doc;
-    std::string testPath = std::string(MOD3D_EXAMPLES_DIR) + "/Test.m3d";
-    if (!std::filesystem::exists(testPath)) {
-        testPath = std::string(MOD3D_TEST_DATA_DIR) + "/models/Test.m3d";
-    }
+    std::string testPath = resolveLegacySamplePath("Test.m3d");
     ASSERT_TRUE(std::filesystem::exists(testPath));
     ASSERT_TRUE(doc.openFile(QString::fromStdString(testPath)));
 
@@ -1964,10 +1984,7 @@ TEST_F(GuiDocumentTest, OpenSampleBeginAndVerifyCleanDisplay) {
     MainWindow mw;
     mw.resize(1400, 900);
 
-    std::string sampleBeginPath = std::string(MOD3D_EXAMPLES_DIR) + "/SampleBegin.m3d";
-    if (!std::filesystem::exists(sampleBeginPath)) {
-        sampleBeginPath = "Examples/SampleBegin.m3d";
-    }
+    std::string sampleBeginPath = resolveLegacySamplePath("SampleBegin.m3d");
     bool ok = mw.document()->openFile(QString::fromStdString(sampleBeginPath));
     EXPECT_TRUE(ok);
 
@@ -2002,10 +2019,7 @@ TEST_F(GuiDocumentTest, SampleM3DBodyPropertiesAndSIUnitsMatchBetweenPaneAndDial
     MainWindow mw;
     mw.resize(1400, 900);
 
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
-    if (!std::filesystem::exists(samplePath)) {
-        samplePath = "Examples/Sample.m3d";
-    }
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
     ASSERT_TRUE(ok);
 
@@ -2070,10 +2084,7 @@ TEST_F(GuiDocumentTest, MapViewTopographyReliefContoursOverlay) {
     MainWindow mw;
     mw.resize(1400, 900);
 
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
-    if (!std::filesystem::exists(samplePath)) {
-        samplePath = "Examples/Sample.m3d";
-    }
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
     ASSERT_TRUE(ok);
 
@@ -2142,10 +2153,7 @@ TEST_F(GuiDocumentTest, GenerateReadmeScreenshots) {
     MainWindow mw;
     mw.resize(1440, 920);
 
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
-    if (!std::filesystem::exists(samplePath)) {
-        samplePath = "Examples/Sample.m3d";
-    }
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
     ASSERT_TRUE(ok);
 
@@ -2476,10 +2484,7 @@ TEST_F(GuiDocumentTest, BodyDeletionRemovesBodyFrom3DView) {
     MainWindow mw;
     mw.resize(1200, 800);
 
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
-    if (!std::filesystem::exists(samplePath)) {
-        samplePath = "Examples/Sample.m3d";
-    }
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     bool ok = mw.document()->openFile(QString::fromStdString(samplePath));
     ASSERT_TRUE(ok);
 
@@ -2555,10 +2560,7 @@ TEST_F(GuiDocumentTest, BodyDeletionRemovesBodyFrom3DView) {
 }
 
 TEST_F(GuiDocumentTest, FirstVertexMoveAfterOpeningModelDoesNotBlowUpRealTimeField) {
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
-    if (!std::filesystem::exists(samplePath)) {
-        samplePath = "Examples/Sample.m3d";
-    }
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     ASSERT_TRUE(std::filesystem::exists(samplePath));
 
     ModelDocument doc;
@@ -2611,10 +2613,7 @@ TEST_F(GuiDocumentTest, GL3DViewQuadrantCutAndSettingsSync) {
     MainWindow mw;
     mw.resize(1200, 800);
 
-    std::string samplePath = std::string(MOD3D_EXAMPLES_DIR) + "/Sample.m3d";
-    if (!std::filesystem::exists(samplePath)) {
-        samplePath = "Examples/Sample.m3d";
-    }
+    std::string samplePath = resolveLegacySamplePath("Sample.m3d");
     ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
 
     ProfileView *pvEW1 = nullptr;

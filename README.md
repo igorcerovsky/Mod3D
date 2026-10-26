@@ -110,8 +110,8 @@ Mod3D/
 ├── gui/                   # Modern Qt 6 desktop application (mod3d_gui)
 │   ├── include/mod3d_gui/ # Views: ProfileView, MapView, GL3DView, SettingsPane
 │   └── src/               # Rendering, interaction, and undo/redo controllers
-├── tests/                 # Comprehensive Google Test suite (152 tests)
-└── Examples/              # Authentic sample models (.m3d) & survey grids
+├── tests/                 # Comprehensive Google Test suite (164 tests)
+└── examples/              # Sample models (.mod3d) & legacy models (.m3d)
 ```
 
 ---
