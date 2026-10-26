@@ -133,7 +133,7 @@ jobs:
           DIST_DIR="Mod3D-Linux-x86_64"
           mkdir -p "$DIST_DIR/bin"
           cp build/gui/mod3d_gui "$DIST_DIR/bin/"
-          cp -r Examples "$DIST_DIR/"
+          cp -r examples "$DIST_DIR/"
           cp README.md LICENSE "$DIST_DIR/"
           tar -czvf "Mod3D-Linux-x86_64.tar.gz" "$DIST_DIR"
 
@@ -192,7 +192,7 @@ jobs:
 
           # Copy binaries and bundled assets
           Copy-Item -Path build\gui\Release\* -Destination $DistDir -Recurse
-          Copy-Item -Path Examples -Destination "$DistDir\Examples" -Recurse
+          Copy-Item -Path examples -Destination "$DistDir\examples" -Recurse
           Copy-Item -Path README.md, LICENSE -Destination $DistDir
 
           # Create zip package
