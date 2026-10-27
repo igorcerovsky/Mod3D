@@ -35,8 +35,28 @@ public:
     void selectDisplayTab();
     void selectFieldsTab() { selectDisplayTab(); }
     void selectProfilesTab();
+    void selectModellingTab();
     void selectBodyEditorTab();
     void selectPhysicsTab();
+
+    QWidget *modellingTab() const { return m_tabModelling; }
+    QComboBox *modellingBodyComboBox() const { return m_comboModellingBody; }
+    QDoubleSpinBox *modellingStepSpinBox() const { return m_spinModellingStep; }
+
+    QPushButton *bodyUpUntilHitButton() const { return m_btnBodyUpUntilHit; }
+    QPushButton *bodyDownUntilHitButton() const { return m_btnBodyDownUntilHit; }
+    QPushButton *bodyUpStepButton() const { return m_btnBodyUpStep; }
+    QPushButton *bodyDownStepButton() const { return m_btnBodyDownStep; }
+
+    QPushButton *upperUpUntilHitButton() const { return m_btnUpperUpUntilHit; }
+    QPushButton *upperDownUntilHitButton() const { return m_btnUpperDownUntilHit; }
+    QPushButton *upperUpStepButton() const { return m_btnUpperUpStep; }
+    QPushButton *upperDownStepButton() const { return m_btnUpperDownStep; }
+
+    QPushButton *lowerDownUntilHitButton() const { return m_btnLowerDownUntilHit; }
+    QPushButton *lowerUpUntilHitButton() const { return m_btnLowerUpUntilHit; }
+    QPushButton *lowerDownStepButton() const { return m_btnLowerDownStep; }
+    QPushButton *lowerUpStepButton() const { return m_btnLowerUpStep; }
 
     QCheckBox *measuredCurveCheckBox() const { return m_chkProfMeasured; }
     QCheckBox *differenceCurveCheckBox() const { return m_chkProfDiff; }
@@ -75,6 +95,7 @@ private:
     void setupUi();
     void setupDisplayTab(QWidget *container);
     void setupProfilesTab(QWidget *container);
+    void setupModellingTab(QWidget *container);
     void setupBodyEditorTab(QWidget *container);
     void setupPhysicsTab(QWidget *container);
     void setupComputeCard(QWidget *container);
@@ -93,6 +114,7 @@ private:
     QTabWidget *m_tabs{nullptr};
     QWidget *m_tabDisplay{nullptr};
     QWidget *m_tabProfiles{nullptr};
+    QWidget *m_tabModelling{nullptr};
     QWidget *m_tabBodies{nullptr};
     QWidget *m_tabPhysics{nullptr};
 
@@ -188,7 +210,33 @@ private:
     QPushButton *m_btnCopyBodyNext{nullptr};
     QPushButton *m_btnOpenPerpendicular{nullptr};
 
-    // Tab 3: Geological Body Editor Controls
+    // Tab 3: Modelling Tab Controls
+    QLabel *m_lblModellingContext{nullptr};
+
+    // Profile View Modelling Controls
+    QWidget *m_paneProfileModelling{nullptr};
+    QComboBox *m_comboModellingBody{nullptr};
+    QDoubleSpinBox *m_spinModellingStep{nullptr};
+    QPushButton *m_btnBodyUpUntilHit{nullptr};
+    QPushButton *m_btnBodyDownUntilHit{nullptr};
+    QPushButton *m_btnBodyUpStep{nullptr};
+    QPushButton *m_btnBodyDownStep{nullptr};
+    QPushButton *m_btnUpperUpUntilHit{nullptr};
+    QPushButton *m_btnUpperDownUntilHit{nullptr};
+    QPushButton *m_btnUpperUpStep{nullptr};
+    QPushButton *m_btnUpperDownStep{nullptr};
+    QPushButton *m_btnLowerDownUntilHit{nullptr};
+    QPushButton *m_btnLowerUpUntilHit{nullptr};
+    QPushButton *m_btnLowerDownStep{nullptr};
+    QPushButton *m_btnLowerUpStep{nullptr};
+
+    // Other View Modelling Panels (expandable)
+    QWidget *m_paneSliceModelling{nullptr};
+    QWidget *m_paneMapModelling{nullptr};
+    QWidget *m_pane3DModelling{nullptr};
+    QWidget *m_paneDefaultModelling{nullptr};
+
+    // Tab 4: Geological Body Editor Controls
     QComboBox *m_comboBodies{nullptr};
     QLineEdit *m_editBodyName{nullptr};
     QDoubleSpinBox *m_spinDensity{nullptr};

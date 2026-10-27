@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-177%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-180%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -26,7 +26,7 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
 
 <p align="center">
   <img src="docs/images/mod3d_main_workspace.png" alt="Mod3D Main Workspace" width="100%">
-  <em>Mod3D Multi-View Workspace: Synchronized East-West and South-North cross-sections with live anomaly curves, 2D potential field heatmap with CONREC topography contours and body footprints, hardware-accelerated 3D turntable view with elevation-colored relief surface and active profile slice, and modern 4-tab Settings Inspector.</em>
+  <em>Mod3D Multi-View Workspace: Synchronized East-West and South-North cross-sections with live anomaly curves, 2D potential field heatmap with CONREC topography contours and body footprints, hardware-accelerated 3D turntable view with elevation-colored relief surface and active profile slice, and modern 5-tab Settings Inspector.</em>
 </p>
 
 ---
@@ -41,12 +41,17 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
   - **Magnetic Potential & Total Field ($\Delta T$)**: Total anomalous flux density with inducing field ($T_0, I_0, D_0$) and remanent magnetization vectors ($J_{\text{rem}}, I_{\text{rem}}, D_{\text{rem}}$).
   - Alternative classical kernels included: Guptasarma & Singh (1999), Götze & Petersen (1992).
 - 🗺️ **Comprehensive Multi-View Architecture**:
-  - **Geological Profile View**: Synchronized East-West and South-North cross-sections, multi-body polygon editing, vertex dragging, body splitting, and real-time field profile fitting.
+  - **Geological Profile View**: Synchronized East-West and South-North cross-sections, multi-body polygon editing, vertex dragging, body splitting, real-time field profile fitting, and vertical collision movement:
+    - **Move Entire Body Until Hit (`Shift + ↑ / ↓`)**: Translates entire body vertically (top and bottom contact vertices rigidly together without altering thickness) until any vertex hits an adjacent body, surface relief, or base depth.
+    - **Move Upper Boundary Until Hit (`Ctrl + Shift + ↑ / ↓`)**: Translates upper contact points vertically until hitting an overlying obstacle or collapsing down to the lower boundary.
+    - **Move Lower Boundary Until Hit (`Alt + Shift + ↓ / ↑`)**: Translates lower contact points vertically until hitting an underlying obstacle or collapsing up to the upper boundary.
   - **Map View**: 2D potential field color raster heatmaps, station points, profile traverses, body footprints, and automatic CONREC surface relief/topography contours.
   - **Horizontal Slice View**: Planar depth slicing at constant elevation ($Z = \text{const}$) with synchronized 3D cut plane, single potential field bitmap raster underlay centered on survey stations, body boundary outlines (including collapsed outer edges), intersecting profile lines, click-and-drag cell painting, double-click new body creation, and **Synchronize Profile Views** mode to automatically synchronize profile views to clicked locations.
   - **3D Perspective Turntable View**: OpenGL 4.1 hardware-accelerated 3D rendering with LookAt camera, smooth turntable orbit & pan, faceted polyhedral subsurface bodies, active profile cut plane slice highlighting, 3D body raycast hit testing/selection, topographic relief surface & wireframe rendering with elevation colormapping, orientation compass sphere & coordinate tripod, and transparency controls.
   - **Default 4-Quadrant Workspace Layout**: Automatically tiles the workspace into 4 quadrants: Top-Left Profile N-S, Top-Right Profile E-W, Bottom-Left Horizontal Slice, and Bottom-Right split into 3D Turntable (left) and Map View (right), with proportional auto-resizing.
-  - **Unified Settings Inspector**: 4-tab docked controls (**Display**, **Profiles**, **Bodies**, **Physics/Inversion**) with strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
+  - **Unified Settings Inspector**: 5-tab docked controls (**Display**, **Profiles**, **Modelling**, **Bodies**, **Physics/Inversion**):
+    - **Modelling Tab (`🛠 Modelling`)**: Context-aware modeling controls that adapt dynamically to the active view (Profile, Horizontal Slice, Map, 3D), active body selection, customizable vertical step size, one-click action buttons for Entire Body / Upper Boundary / Lower Boundary (Until Hit & Step Up/Down), and an integrated **Modelling Shortcuts & Fast Help** quick-reference guide.
+    - **Bodies & Physics Tabs**: Strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
 - 🎯 **Automated Inversion**:
   - Built-in 1D least-squares automated density contrast inversion to match calculated anomalies to observed field surveys.
 - 🌐 **Modern C++20 & Qt 6 Design**:

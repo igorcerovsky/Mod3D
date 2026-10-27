@@ -179,6 +179,20 @@ public:
     bool copyBodyBetweenProfiles(int bodyId, ProfileOrientation orient, int srcPrfIdx, int dstPrfIdx);
     bool translateBodyVerticalOnProfile(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ);
 
+    // Body & Boundary Vertical Movement Operations
+    [[nodiscard]] double calculateBodyMaxUpTranslation(int bodyId, ProfileOrientation orient, int prfIdx) const;
+    [[nodiscard]] double calculateBodyMaxDownTranslation(int bodyId, ProfileOrientation orient, int prfIdx) const;
+    [[nodiscard]] double calculateUpperBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx) const;
+    [[nodiscard]] double calculateUpperBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx) const;
+    [[nodiscard]] double calculateLowerBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx) const;
+    [[nodiscard]] double calculateLowerBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx) const;
+
+    bool moveBodyVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp);
+    bool moveUpperBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp);
+    bool moveLowerBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveDown);
+    bool moveUpperBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ);
+    bool moveLowerBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ);
+
     // Convenience Profile-based Operations (using document default profile)
     mod3d::Body *createNewBody();
     bool deleteBody(int bodyId);
@@ -193,6 +207,28 @@ public:
     bool extendBodySide(int bodyId, int sourceLineIdx, int targetLineIdx, double targetZ = std::numeric_limits<double>::quiet_NaN());
     bool collapseBodyEdge(int bodyId, int lineIdx);
     bool translateBodyVertical(int bodyId, double deltaZ);
+
+    [[nodiscard]] double calculateBodyMaxUpTranslation(int bodyId) const {
+        return calculateBodyMaxUpTranslation(bodyId, m_profileOrient, m_profileIndex);
+    }
+    [[nodiscard]] double calculateBodyMaxDownTranslation(int bodyId) const {
+        return calculateBodyMaxDownTranslation(bodyId, m_profileOrient, m_profileIndex);
+    }
+    bool moveBodyVerticalUntilHit(int bodyId, bool moveUp) {
+        return moveBodyVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveUp);
+    }
+    bool moveUpperBoundaryVerticalUntilHit(int bodyId, bool moveUp) {
+        return moveUpperBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveUp);
+    }
+    bool moveLowerBoundaryVerticalUntilHit(int bodyId, bool moveDown) {
+        return moveLowerBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveDown);
+    }
+    bool moveUpperBoundaryVertical(int bodyId, double deltaZ) {
+        return moveUpperBoundaryVertical(bodyId, m_profileOrient, m_profileIndex, deltaZ);
+    }
+    bool moveLowerBoundaryVertical(int bodyId, double deltaZ) {
+        return moveLowerBoundaryVertical(bodyId, m_profileOrient, m_profileIndex, deltaZ);
+    }
 
     // Computation Pipeline
     void computeAll();
@@ -256,6 +292,10 @@ public:
     [[nodiscard]] double activeSliceElevation() const noexcept { return m_activeSliceZ; }
     void setActiveSliceElevation(double z);
 
+    // Active Body Selection (for Modelling & Inspection)
+    [[nodiscard]] int activeBodyId() const noexcept { return m_activeBodyId; }
+    void setActiveBodyId(int id);
+
 signals:
     void documentModifiedChanged(bool modified);
     void documentReset();
@@ -268,6 +308,7 @@ signals:
     void statusMessage(const QString &message);
     void activeProfileCursorChanged(const mod3d_gui::ModelDocument::ProfileCursorPoint &pt);
     void activeSliceElevationChanged(double z);
+    void activeBodyChanged(int id);
 
 private:
     void ensureProfileIndexValid();
@@ -279,6 +320,7 @@ private:
 
     ProfileOrientation m_profileOrient{ProfileOrientation::EastWest};
     int m_profileIndex{0};
+    int m_activeBodyId{1};
 
     ProfileCursorPoint m_activeProfileCursor;
 

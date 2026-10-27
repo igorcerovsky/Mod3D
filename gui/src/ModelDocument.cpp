@@ -653,18 +653,116 @@ bool ModelDocument::collapseBodyEdge(int bodyId, int lineIdx) {
     return collapseBodyEdgeAtRowCol(row, col, bodyId);
 }
 
-bool ModelDocument::translateBodyVerticalOnProfile(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ) {
+double ModelDocument::calculateBodyMaxUpTranslation(int bodyId, ProfileOrientation orient, int prfIdx) const {
     bool isEW = (orient == ProfileOrientation::EastWest);
     int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
-    bool anyMoved = false;
+    double minGap = std::numeric_limits<double>::max();
+    bool foundAny = false;
+
     for (int l = 0; l < nLines; ++l) {
         int row = isEW ? (prfIdx + 1) : (l + 1);
         int col = isEW ? (l + 1) : (prfIdx + 1);
         int bIdx = m_project.model().body_index(bodyId, row, col);
-        if (bIdx >= 0) {
-            double currentZ = m_project.model().z(row, col, bIdx);
-            double newZ = currentZ + deltaZ;
-            m_project.model().move_vertex(bIdx, row, col, newZ);
+        if (bIdx >= 1) {
+            foundAny = true;
+            double topZ = m_project.model().z(row, col, bIdx);
+            double zAbove = m_project.model().z(row, col, bIdx - 1);
+            double gap = std::max(0.0, zAbove - topZ);
+            if (gap < minGap) {
+                minGap = gap;
+            }
+        }
+    }
+    return foundAny ? minGap : 0.0;
+}
+
+double ModelDocument::calculateBodyMaxDownTranslation(int bodyId, ProfileOrientation orient, int prfIdx) const {
+    bool isEW = (orient == ProfileOrientation::EastWest);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
+    double minGap = std::numeric_limits<double>::max();
+    bool foundAny = false;
+
+    for (int l = 0; l < nLines; ++l) {
+        int row = isEW ? (prfIdx + 1) : (l + 1);
+        int col = isEW ? (l + 1) : (prfIdx + 1);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
+        if (bIdx >= 1) {
+            foundAny = true;
+            double botZ = m_project.model().z(row, col, bIdx + 1);
+            double zBelow = m_project.model().z(row, col, bIdx + 2);
+            double gap = std::max(0.0, botZ - zBelow);
+            if (gap < minGap) {
+                minGap = gap;
+            }
+        }
+    }
+    return foundAny ? minGap : 0.0;
+}
+
+double ModelDocument::calculateUpperBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx) const {
+    return calculateBodyMaxUpTranslation(bodyId, orient, prfIdx);
+}
+
+double ModelDocument::calculateUpperBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx) const {
+    bool isEW = (orient == ProfileOrientation::EastWest);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
+    double minGap = std::numeric_limits<double>::max();
+    bool foundAny = false;
+
+    for (int l = 0; l < nLines; ++l) {
+        int row = isEW ? (prfIdx + 1) : (l + 1);
+        int col = isEW ? (l + 1) : (prfIdx + 1);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
+        if (bIdx >= 1) {
+            double topZ = m_project.model().z(row, col, bIdx);
+            double botZ = m_project.model().z(row, col, bIdx + 1);
+            if (topZ > botZ + 1e-6) {
+                foundAny = true;
+                double gap = topZ - botZ;
+                if (gap < minGap) {
+                    minGap = gap;
+                }
+            }
+        }
+    }
+    return foundAny ? minGap : 0.0;
+}
+
+double ModelDocument::calculateLowerBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx) const {
+    return calculateBodyMaxDownTranslation(bodyId, orient, prfIdx);
+}
+
+double ModelDocument::calculateLowerBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx) const {
+    return calculateUpperBoundaryMaxDown(bodyId, orient, prfIdx);
+}
+
+bool ModelDocument::translateBodyVerticalOnProfile(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ) {
+    if (std::abs(deltaZ) < 1e-6) return false;
+    double maxUp = calculateBodyMaxUpTranslation(bodyId, orient, prfIdx);
+    double maxDown = calculateBodyMaxDownTranslation(bodyId, orient, prfIdx);
+
+    double clampedDelta = deltaZ;
+    if (clampedDelta > 0.0) {
+        clampedDelta = std::min(clampedDelta, maxUp);
+    } else {
+        clampedDelta = std::max(clampedDelta, -maxDown);
+    }
+    if (std::abs(clampedDelta) < 1e-6) return false;
+
+    bool isEW = (orient == ProfileOrientation::EastWest);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
+    bool anyMoved = false;
+
+    for (int l = 0; l < nLines; ++l) {
+        int row = isEW ? (prfIdx + 1) : (l + 1);
+        int col = isEW ? (l + 1) : (prfIdx + 1);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
+        if (bIdx >= 1) {
+            double curTopZ = m_project.model().z(row, col, bIdx);
+            double curBotZ = m_project.model().z(row, col, bIdx + 1);
+            m_project.model().set_z(row, col, bIdx, curTopZ + clampedDelta);
+            m_project.model().set_z(row, col, bIdx + 1, curBotZ + clampedDelta);
+            m_project.model().update_facet_list(row, col);
             anyMoved = true;
         }
     }
@@ -679,8 +777,117 @@ bool ModelDocument::translateBodyVerticalOnProfile(int bodyId, ProfileOrientatio
     return anyMoved;
 }
 
-bool ModelDocument::translateBodyVertical(int bodyId, double deltaZ) {
-    return translateBodyVerticalOnProfile(bodyId, m_profileOrient, m_profileIndex, deltaZ);
+bool ModelDocument::moveBodyVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp) {
+    if (moveUp) {
+        double maxUp = calculateBodyMaxUpTranslation(bodyId, orient, prfIdx);
+        if (maxUp > 1e-4) {
+            return translateBodyVerticalOnProfile(bodyId, orient, prfIdx, maxUp);
+        }
+    } else {
+        double maxDown = calculateBodyMaxDownTranslation(bodyId, orient, prfIdx);
+        if (maxDown > 1e-4) {
+            return translateBodyVerticalOnProfile(bodyId, orient, prfIdx, -maxDown);
+        }
+    }
+    return false;
+}
+
+bool ModelDocument::moveUpperBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ) {
+    if (std::abs(deltaZ) < 1e-6) return false;
+    bool isEW = (orient == ProfileOrientation::EastWest);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
+    bool anyMoved = false;
+
+    for (int l = 0; l < nLines; ++l) {
+        int row = isEW ? (prfIdx + 1) : (l + 1);
+        int col = isEW ? (l + 1) : (prfIdx + 1);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
+        if (bIdx >= 1) {
+            double curTopZ = m_project.model().z(row, col, bIdx);
+            double curBotZ = m_project.model().z(row, col, bIdx + 1);
+            double zAbove = m_project.model().z(row, col, bIdx - 1);
+            double newTopZ = curTopZ + deltaZ;
+            newTopZ = std::clamp(newTopZ, curBotZ, zAbove);
+            if (std::abs(newTopZ - curTopZ) > 1e-6) {
+                m_project.model().set_z(row, col, bIdx, newTopZ);
+                m_project.model().update_facet_list(row, col);
+                anyMoved = true;
+            }
+        }
+    }
+    if (anyMoved) {
+        setModified(true);
+        if (m_realTimeCompute) {
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
+        }
+        emit modelGeometryChanged();
+    }
+    return anyMoved;
+}
+
+bool ModelDocument::moveUpperBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp) {
+    if (moveUp) {
+        double maxUp = calculateUpperBoundaryMaxUp(bodyId, orient, prfIdx);
+        if (maxUp > 1e-4) {
+            return moveUpperBoundaryVertical(bodyId, orient, prfIdx, maxUp);
+        }
+    } else {
+        double maxDown = calculateUpperBoundaryMaxDown(bodyId, orient, prfIdx);
+        if (maxDown > 1e-4) {
+            return moveUpperBoundaryVertical(bodyId, orient, prfIdx, -maxDown);
+        }
+    }
+    return false;
+}
+
+bool ModelDocument::moveLowerBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ) {
+    if (std::abs(deltaZ) < 1e-6) return false;
+    bool isEW = (orient == ProfileOrientation::EastWest);
+    int nLines = isEW ? std::max(0, m_project.model().cols() - 2) : std::max(0, m_project.model().rows() - 2);
+    bool anyMoved = false;
+
+    for (int l = 0; l < nLines; ++l) {
+        int row = isEW ? (prfIdx + 1) : (l + 1);
+        int col = isEW ? (l + 1) : (prfIdx + 1);
+        int bIdx = m_project.model().body_index(bodyId, row, col);
+        if (bIdx >= 1) {
+            double curTopZ = m_project.model().z(row, col, bIdx);
+            double curBotZ = m_project.model().z(row, col, bIdx + 1);
+            double zBelow = m_project.model().z(row, col, bIdx + 2);
+            double newBotZ = curBotZ + deltaZ;
+            newBotZ = std::clamp(newBotZ, zBelow, curTopZ);
+            if (std::abs(newBotZ - curBotZ) > 1e-6) {
+                m_project.model().set_z(row, col, bIdx + 1, newBotZ);
+                m_project.model().update_facet_list(row, col);
+                anyMoved = true;
+            }
+        }
+    }
+    if (anyMoved) {
+        setModified(true);
+        if (m_realTimeCompute) {
+            computeDelta(m_project.model().facets_update());
+            m_project.model().clear_facets_update();
+        }
+        emit modelGeometryChanged();
+    }
+    return anyMoved;
+}
+
+bool ModelDocument::moveLowerBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveDown) {
+    if (moveDown) {
+        double maxDown = calculateLowerBoundaryMaxDown(bodyId, orient, prfIdx);
+        if (maxDown > 1e-4) {
+            return moveLowerBoundaryVertical(bodyId, orient, prfIdx, -maxDown);
+        }
+    } else {
+        double maxUp = calculateLowerBoundaryMaxUp(bodyId, orient, prfIdx);
+        if (maxUp > 1e-4) {
+            return moveLowerBoundaryVertical(bodyId, orient, prfIdx, maxUp);
+        }
+    }
+    return false;
 }
 
 void ModelDocument::computeAll() {
@@ -976,6 +1183,13 @@ void ModelDocument::setActiveSliceElevation(double z) {
     if (std::abs(m_activeSliceZ - z) > 1e-4) {
         m_activeSliceZ = z;
         emit activeSliceElevationChanged(m_activeSliceZ);
+    }
+}
+
+void ModelDocument::setActiveBodyId(int id) {
+    if (m_activeBodyId != id) {
+        m_activeBodyId = id;
+        emit activeBodyChanged(m_activeBodyId);
     }
 }
 

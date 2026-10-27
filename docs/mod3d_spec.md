@@ -503,6 +503,15 @@ Interactive horizontal planar depth-slice canvas:
 +----------------------+--------------------------+--------------------------------------------------+
 | Body Translation     | Shift + Drag body        | Translates entire body vertically as rigid unit. |
 +----------------------+--------------------------+--------------------------------------------------+
+| Body Move Until Hit  | Shift + ↑ / ↓            | Moves entire body vertically (both top & bottom) |
+|                      |                          | until any vertex hits adjacent body or boundary. |
++----------------------+--------------------------+--------------------------------------------------+
+| Upper Move Until Hit | Ctrl + Shift + ↑ / ↓     | Moves upper boundary vertices vertically until   |
+|                      |                          | hitting upper obstacle or lower boundary.        |
++----------------------+--------------------------+--------------------------------------------------+
+| Lower Move Until Hit | Alt + Shift + ↓ / ↑      | Moves lower boundary vertices vertically until   |
+|                      |                          | hitting lower obstacle or upper boundary.        |
++----------------------+--------------------------+--------------------------------------------------+
 | Profile Step         | N / P or Arrow keys      | Steps to Next / Previous profile slice.          |
 +----------------------+--------------------------+--------------------------------------------------+
 | Orientation Switch   | H / V                    | Switches between East-West and South-North slices|
@@ -513,7 +522,38 @@ Interactive horizontal planar depth-slice canvas:
 
 ---
 
-### 6.4 Comprehensive Dialog Inventory (All 38 Dialogs)
+### 6.4 Settings Inspector "🛠 Modelling" Tab & Vertical Collision Movement
+
+Mod3D features a dedicated **Modelling** tab in the docked Settings Inspector (`SettingsPane`), providing view-adaptive modeling operations and fast interactive help.
+
+#### 1. View-Adaptive Controls
+The Modelling tab automatically detects the currently active MDI view and switches context:
+- **Profile View Context**:
+  - **Active Body Selection**: Synchronized with the global active body in `ModelDocument` and the Bodies tab.
+  - **Vertical Step Size**: Adjustable numeric step size (e.g. 10.0 m) for incremental boundary or body translations.
+  - **Entire Body Movement (Rigid Vertical)**:
+    - **Move Up Until Hit (`Shift + ↑`)**: Calculates the minimum vertical gap between the body's upper boundary and any overlying body or surface relief $\min_{(r,c)} (z_{\text{above}} - z_{\text{top}})$, translating both upper and lower contact vertices together without altering thickness. Stops precisely upon first contact.
+    - **Move Down Until Hit (`Shift + ↓`)**: Calculates the minimum vertical gap between the body's lower boundary and any underlying body or model base depth $\min_{(r,c)} (z_{\text{bottom}} - z_{\text{below}})$, translating both boundaries rigidly downward until contact.
+    - **Step Up / Step Down**: Translates entire body by the user-configured step size clamped to obstacle limits.
+  - **Upper Boundary Movement**:
+    - **Move Up Until Hit (`Ctrl + Shift + ↑`)**: Expands upper boundary upward until hitting an upper body or surface relief.
+    - **Move Down Until Hit (`Ctrl + Shift + ↓`)**: Compresses upper boundary downward until collapsing onto the lower boundary ($z_{\text{top}} = z_{\text{bottom}}$).
+    - **Step Up / Step Down**: Adjusts upper boundary vertically by step size.
+  - **Lower Boundary Movement**:
+    - **Move Down Until Hit (`Alt + Shift + ↓`)**: Expands lower boundary downward until hitting an underlying body or base depth.
+    - **Move Up Until Hit (`Alt + Shift + ↑`)**: Compresses lower boundary upward until collapsing onto the upper boundary ($z_{\text{bottom}} = z_{\text{top}}$).
+    - **Step Down / Step Up**: Adjusts lower boundary vertically by step size.
+- **Horizontal Planar View Context**:
+  - Highlights horizontal section creation, active body drawing, and coordinate synchronization.
+- **Map View & 3D View Context**:
+  - Summarizes view-specific inspection features, profile line selection, octant cutting, and 3D cross-sections.
+
+#### 2. Modelling Shortcuts & Fast Help Card
+A persistent quick-reference table is embedded directly inside the Modelling tab, detailing all mouse gestures, modifier combinations (`Shift`, `Ctrl`, `Alt`), and shortcut commands for rapid user consultation.
+
+---
+
+### 6.5 Comprehensive Dialog Inventory (All 38 Dialogs)
 
 The GUI encompasses 38 dedicated dialogs and property sheets:
 1. `ModelPropertiesDialog` (`IDD_DLG_MODEL`): Global model bounds, lateral extensions, and motion constraints.

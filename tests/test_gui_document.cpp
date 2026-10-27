@@ -4147,6 +4147,213 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewSynchronizeProfileViewsOnClick) {
     EXPECT_FALSE(pane->sliceSyncProfilesCheckBox()->isChecked());
 }
 
+TEST_F(GuiDocumentTest, ModelDocumentVerticalCollisionCalculationsAndUntilHitMovement) {
+    ModelDocument doc;
+    auto orient = ProfileOrientation::EastWest;
+    int profIdx = 2; // Row 3
+    int row = profIdx + 1;
+    int col = 3;
+
+    double zRelief = doc.model().z(row, col, 0);
+
+    // Insert Body 1 (upper body) around Z = 0
+    double zBody1 = 0.0;
+    ASSERT_TRUE(doc.insertBodyAtRowCol(row, col, zBody1, 100.0, -1));
+    int b1Idx = doc.model().body_index(1, row, col);
+    ASSERT_GT(b1Idx, 0);
+    double b1Bot = doc.model().z(row, col, b1Idx + 1);
+
+    // Insert Body 2 (lower body) around Z = -300
+    double zBody2 = -300.0;
+    ASSERT_TRUE(doc.insertBodyAtRowCol(row, col, zBody2, 80.0, -1));
+    int b2Idx = doc.model().body_index(2, row, col);
+    ASSERT_GT(b2Idx, 0);
+    double b2Top = doc.model().z(row, col, b2Idx);
+
+    // Initial gap between Body 1 bottom and Body 2 top
+    double initialGap12 = b1Bot - b2Top;
+    EXPECT_GT(initialGap12, 50.0);
+
+    // 1. Calculate max downward translation for Body 1: must match initialGap12
+    double maxDownB1 = doc.calculateBodyMaxDownTranslation(1, orient, profIdx);
+    EXPECT_NEAR(maxDownB1, initialGap12, 1e-4);
+
+    // 2. Move Body 1 Downward Until Hit
+    EXPECT_TRUE(doc.moveBodyVerticalUntilHit(1, orient, profIdx, false));
+    b1Idx = doc.model().body_index(1, row, col);
+    b2Idx = doc.model().body_index(2, row, col);
+    double newB1Bot = doc.model().z(row, col, b1Idx + 1);
+    double newB2Top = doc.model().z(row, col, b2Idx);
+    EXPECT_NEAR(newB1Bot, newB2Top, 1e-4); // Now in contact!
+
+    // Moving down again should return false (already touching)
+    EXPECT_FALSE(doc.moveBodyVerticalUntilHit(1, orient, profIdx, false));
+
+    // 3. Move Body 1 Upward Until Hit (stopping at surface relief)
+    double maxUpB1 = doc.calculateBodyMaxUpTranslation(1, orient, profIdx);
+    double expectedReliefGap = zRelief - doc.model().z(row, col, b1Idx);
+    EXPECT_NEAR(maxUpB1, expectedReliefGap, 1e-4);
+    EXPECT_TRUE(doc.moveBodyVerticalUntilHit(1, orient, profIdx, true));
+    b1Idx = doc.model().body_index(1, row, col);
+    EXPECT_NEAR(doc.model().z(row, col, b1Idx), zRelief, 1e-4);
+
+    // 4. Upper Boundary Movements
+    // Move upper boundary down until hit (collapsing down to lower boundary)
+    double upperDownGap = doc.calculateUpperBoundaryMaxDown(1, orient, profIdx);
+    EXPECT_GT(upperDownGap, 0.0);
+    EXPECT_TRUE(doc.moveUpperBoundaryVerticalUntilHit(1, orient, profIdx, false));
+    b1Idx = doc.model().body_index(1, row, col);
+    EXPECT_NEAR(doc.model().z(row, col, b1Idx), doc.model().z(row, col, b1Idx + 1), 1e-4);
+
+    // Move upper boundary back up until hit (relief)
+    EXPECT_TRUE(doc.moveUpperBoundaryVerticalUntilHit(1, orient, profIdx, true));
+    b1Idx = doc.model().body_index(1, row, col);
+    EXPECT_NEAR(doc.model().z(row, col, b1Idx), zRelief, 1e-4);
+
+    // 5. Lower Boundary Movements
+    // Move lower boundary down until hit (stopping at Body 2 top)
+    b2Idx = doc.model().body_index(2, row, col);
+    double expectedBotGap = doc.model().z(row, col, b1Idx + 1) - doc.model().z(row, col, b2Idx);
+    double lowerDownGap = doc.calculateLowerBoundaryMaxDown(1, orient, profIdx);
+    EXPECT_NEAR(lowerDownGap, expectedBotGap, 1e-4);
+    EXPECT_TRUE(doc.moveLowerBoundaryVerticalUntilHit(1, orient, profIdx, true));
+    b1Idx = doc.model().body_index(1, row, col);
+    b2Idx = doc.model().body_index(2, row, col);
+    EXPECT_NEAR(doc.model().z(row, col, b1Idx + 1), doc.model().z(row, col, b2Idx), 1e-4);
+
+    // Move lower boundary up until hit (collapsing up to upper boundary)
+    EXPECT_TRUE(doc.moveLowerBoundaryVerticalUntilHit(1, orient, profIdx, false));
+    b1Idx = doc.model().body_index(1, row, col);
+    EXPECT_NEAR(doc.model().z(row, col, b1Idx + 1), doc.model().z(row, col, b1Idx), 1e-4);
+}
+
+TEST_F(GuiDocumentTest, ProfileViewVerticalMovementAndShortcuts) {
+    MainWindow mw;
+    auto *pv = mw.activeProfileView();
+    ASSERT_NE(pv, nullptr);
+    auto *doc = mw.document();
+    ASSERT_NE(doc, nullptr);
+
+    int row = 0, col = 0;
+    pv->getRowCol(2, row, col);
+    ASSERT_TRUE(doc->insertBodyAtRowCol(row, col, -100.0, 100.0, -1));
+    int bId = doc->activeBodyId();
+    EXPECT_EQ(pv->activeOrHoverBodyId(), bId);
+
+    // Test ProfileView vertical methods
+    EXPECT_TRUE(pv->moveActiveBodyVerticalUntilHit(true)); // Up
+    EXPECT_TRUE(pv->translateActiveBodyVertical(-20.0)); // Step Down
+    EXPECT_TRUE(pv->moveActiveUpperBoundaryVertical(-10.0));
+    EXPECT_TRUE(pv->moveActiveUpperBoundaryVerticalUntilHit(true)); // Upper up
+    EXPECT_TRUE(pv->moveActiveLowerBoundaryVertical(-10.0));
+    EXPECT_TRUE(pv->moveActiveLowerBoundaryVerticalUntilHit(true)); // Lower down
+
+    // Test Keyboard shortcuts
+    // 1. Shift+Up (Entire body up until hit)
+    QKeyEvent shiftUp(QEvent::KeyPress, Qt::Key_Up, Qt::ShiftModifier);
+    QApplication::sendEvent(pv, &shiftUp);
+    int bIdx = doc->model().body_index(bId, row, col);
+    ASSERT_GT(bIdx, 0);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx), doc->model().z(row, col, 0), 1e-4);
+
+    // 2. Shift+Down (Entire body down until hit)
+    QKeyEvent shiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::ShiftModifier);
+    QApplication::sendEvent(pv, &shiftDown);
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx + 1), doc->model().z_min_val(), 1e-4);
+
+    // 3. Ctrl+Shift+Up (Upper boundary up until hit)
+    QKeyEvent ctrlShiftUp(QEvent::KeyPress, Qt::Key_Up, Qt::ControlModifier | Qt::ShiftModifier);
+    QApplication::sendEvent(pv, &ctrlShiftUp);
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx), doc->model().z(row, col, 0), 1e-4);
+
+    // 4. Ctrl+Shift+Down (Upper boundary down until hit)
+    QKeyEvent ctrlShiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::ControlModifier | Qt::ShiftModifier);
+    QApplication::sendEvent(pv, &ctrlShiftDown);
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx), doc->model().z(row, col, bIdx + 1), 1e-4);
+
+    // 5. Alt+Shift+Down (Lower boundary down until hit)
+    QKeyEvent altShiftDown(QEvent::KeyPress, Qt::Key_Down, Qt::AltModifier | Qt::ShiftModifier);
+    QApplication::sendEvent(pv, &altShiftDown);
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx + 1), doc->model().z_min_val(), 1e-4);
+
+    // 6. Alt+Shift+Up (Lower boundary up until hit)
+    QKeyEvent altShiftUp(QEvent::KeyPress, Qt::Key_Up, Qt::AltModifier | Qt::ShiftModifier);
+    QApplication::sendEvent(pv, &altShiftUp);
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx + 1), doc->model().z(row, col, bIdx), 1e-4);
+}
+
+TEST_F(GuiDocumentTest, SettingsPaneModellingTabIntegrationAndFastHelp) {
+    MainWindow mw;
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    auto *doc = mw.document();
+    ASSERT_NE(doc, nullptr);
+
+    // 1. Select Modelling Tab
+    pane->selectModellingTab();
+    ASSERT_NE(pane->modellingTab(), nullptr);
+
+    // 2. Verify controls exist
+    ASSERT_NE(pane->modellingBodyComboBox(), nullptr);
+    ASSERT_NE(pane->modellingStepSpinBox(), nullptr);
+    ASSERT_NE(pane->bodyUpUntilHitButton(), nullptr);
+    ASSERT_NE(pane->bodyDownUntilHitButton(), nullptr);
+    ASSERT_NE(pane->bodyUpStepButton(), nullptr);
+    ASSERT_NE(pane->bodyDownStepButton(), nullptr);
+    ASSERT_NE(pane->upperUpUntilHitButton(), nullptr);
+    ASSERT_NE(pane->upperDownUntilHitButton(), nullptr);
+    ASSERT_NE(pane->upperUpStepButton(), nullptr);
+    ASSERT_NE(pane->upperDownStepButton(), nullptr);
+    ASSERT_NE(pane->lowerDownUntilHitButton(), nullptr);
+    ASSERT_NE(pane->lowerUpUntilHitButton(), nullptr);
+    ASSERT_NE(pane->lowerDownStepButton(), nullptr);
+    ASSERT_NE(pane->lowerUpStepButton(), nullptr);
+
+    // Verify step size
+    EXPECT_DOUBLE_EQ(pane->modellingStepSpinBox()->value(), 10.0);
+
+    // Insert body on active profile
+    auto *pv = mw.activeProfileView();
+    ASSERT_NE(pv, nullptr);
+    int row = 0, col = 0;
+    pv->getRowCol(2, row, col);
+    ASSERT_TRUE(doc->insertBodyAtRowCol(row, col, -100.0, 100.0, -1));
+    int bId = doc->activeBodyId();
+
+    EXPECT_GT(pane->modellingBodyComboBox()->count(), 0);
+    EXPECT_EQ(pane->modellingBodyComboBox()->currentData().toInt(), bId);
+
+    // Test button clicks
+    pane->bodyUpUntilHitButton()->click();
+    int bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx), doc->model().z(row, col, 0), 1e-4);
+
+    pane->bodyDownUntilHitButton()->click();
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx + 1), doc->model().z_min_val(), 1e-4);
+
+    pane->upperDownUntilHitButton()->click();
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx), doc->model().z(row, col, bIdx + 1), 1e-4);
+
+    // Test stepping via spinbox
+    pane->modellingStepSpinBox()->setValue(25.0);
+    pane->upperUpStepButton()->click();
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx), doc->model().z_min_val() + 25.0, 1e-4);
+
+    double curZ = doc->model().z(row, col, bIdx + 1);
+    pane->bodyUpStepButton()->click();
+    bIdx = doc->model().body_index(bId, row, col);
+    EXPECT_NEAR(doc->model().z(row, col, bIdx + 1), curZ + 25.0, 1e-4);
+}
+
+
 
 
 

@@ -1433,6 +1433,9 @@ void ProfileView::mousePressEvent(QMouseEvent *event) {
   if (event->button() == Qt::LeftButton) {
     int lineIdx = -1, vIdx = -1, bId = -1;
     CursorMode mode = performHitTest(event->pos(), lineIdx, vIdx, bId);
+    if (bId >= 0 && m_doc) {
+      m_doc->setActiveBodyId(bId);
+    }
 
     if (mode == CursorMode::OverDivider) {
       m_dragOp = DragOperation::ResizeDivider;
@@ -1819,6 +1822,32 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
   case Qt::Key_A:
     jumpToMax();
     break;
+  case Qt::Key_Up:
+    if (event->modifiers() & Qt::ShiftModifier) {
+      if (event->modifiers() & Qt::ControlModifier) {
+        moveActiveUpperBoundaryVerticalUntilHit(true);
+      } else if (event->modifiers() & Qt::AltModifier) {
+        moveActiveLowerBoundaryVerticalUntilHit(false);
+      } else {
+        moveActiveBodyVerticalUntilHit(true);
+      }
+      event->accept();
+      return;
+    }
+    break;
+  case Qt::Key_Down:
+    if (event->modifiers() & Qt::ShiftModifier) {
+      if (event->modifiers() & Qt::ControlModifier) {
+        moveActiveUpperBoundaryVerticalUntilHit(false);
+      } else if (event->modifiers() & Qt::AltModifier) {
+        moveActiveLowerBoundaryVerticalUntilHit(true);
+      } else {
+        moveActiveBodyVerticalUntilHit(false);
+      }
+      event->accept();
+      return;
+    }
+    break;
   default:
     QWidget::keyPressEvent(event);
     break;
@@ -2073,6 +2102,9 @@ void ProfileView::showGridLineContextMenu(const QPoint &globalPos, int lineIdx,
 
 void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,
                                       int vertexIdx) {
+  if (bodyId >= 0 && m_doc) {
+    m_doc->setActiveBodyId(bodyId);
+  }
   QMenu menu(this);
   menu.addAction(tr("Properties..."),
                  [this, bodyId]() { emit requestBodyProperties(bodyId); });
@@ -2088,6 +2120,34 @@ void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,
     actFill->setCheckable(true);
     actFill->setChecked(b->is_filled());
   }
+  menu.addSeparator();
+  auto *menuMove = menu.addMenu(tr("Vertical Movement"));
+  menuMove->addAction(tr("Move Entire Body Up Until Hit\tShift+Up"), [this, bodyId]() {
+    m_doc->moveBodyVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, true);
+    update();
+  });
+  menuMove->addAction(tr("Move Entire Body Down Until Hit\tShift+Down"), [this, bodyId]() {
+    m_doc->moveBodyVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, false);
+    update();
+  });
+  menuMove->addSeparator();
+  menuMove->addAction(tr("Move Upper Boundary Up Until Hit\tCtrl+Shift+Up"), [this, bodyId]() {
+    m_doc->moveUpperBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, true);
+    update();
+  });
+  menuMove->addAction(tr("Move Upper Boundary Down Until Hit"), [this, bodyId]() {
+    m_doc->moveUpperBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, false);
+    update();
+  });
+  menuMove->addSeparator();
+  menuMove->addAction(tr("Move Lower Boundary Down Until Hit\tAlt+Shift+Down"), [this, bodyId]() {
+    m_doc->moveLowerBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, true);
+    update();
+  });
+  menuMove->addAction(tr("Move Lower Boundary Up Until Hit"), [this, bodyId]() {
+    m_doc->moveLowerBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, false);
+    update();
+  });
   menu.addSeparator();
   menu.addAction(
       tr("Copy to Previous Profile\tCtrl+Shift+P"), [this, bodyId]() {
@@ -2154,6 +2214,70 @@ void ProfileView::showVertexContextMenu(const QPoint &globalPos, int lineIdx,
     emit requestFit1DDialog(lineIdx, vertexIdx);
   });
   menu.exec(globalPos);
+}
+
+int ProfileView::activeOrHoverBodyId() const {
+  if (m_hoverBodyId >= 0) return m_hoverBodyId;
+  if (!m_doc) return -1;
+  if (m_doc->activeBodyId() >= 0 && m_doc->model().body(m_doc->activeBodyId())) {
+    return m_doc->activeBodyId();
+  }
+  const auto &bodies = m_doc->model().bodies();
+  return bodies.empty() ? -1 : bodies.front()->id();
+}
+
+bool ProfileView::moveActiveBodyVerticalUntilHit(bool moveUp) {
+  if (!m_doc) return false;
+  int bId = activeOrHoverBodyId();
+  if (bId < 0) return false;
+  bool res = m_doc->moveBodyVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveUp);
+  if (res) update();
+  return res;
+}
+
+bool ProfileView::moveActiveUpperBoundaryVerticalUntilHit(bool moveUp) {
+  if (!m_doc) return false;
+  int bId = activeOrHoverBodyId();
+  if (bId < 0) return false;
+  bool res = m_doc->moveUpperBoundaryVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveUp);
+  if (res) update();
+  return res;
+}
+
+bool ProfileView::moveActiveLowerBoundaryVerticalUntilHit(bool moveDown) {
+  if (!m_doc) return false;
+  int bId = activeOrHoverBodyId();
+  if (bId < 0) return false;
+  bool res = m_doc->moveLowerBoundaryVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveDown);
+  if (res) update();
+  return res;
+}
+
+bool ProfileView::translateActiveBodyVertical(double deltaZ) {
+  if (!m_doc) return false;
+  int bId = activeOrHoverBodyId();
+  if (bId < 0) return false;
+  bool res = m_doc->translateBodyVerticalOnProfile(bId, m_profileOrient, m_profileIndex, deltaZ);
+  if (res) update();
+  return res;
+}
+
+bool ProfileView::moveActiveUpperBoundaryVertical(double deltaZ) {
+  if (!m_doc) return false;
+  int bId = activeOrHoverBodyId();
+  if (bId < 0) return false;
+  bool res = m_doc->moveUpperBoundaryVertical(bId, m_profileOrient, m_profileIndex, deltaZ);
+  if (res) update();
+  return res;
+}
+
+bool ProfileView::moveActiveLowerBoundaryVertical(double deltaZ) {
+  if (!m_doc) return false;
+  int bId = activeOrHoverBodyId();
+  if (bId < 0) return false;
+  bool res = m_doc->moveLowerBoundaryVertical(bId, m_profileOrient, m_profileIndex, deltaZ);
+  if (res) update();
+  return res;
 }
 
 } // namespace mod3d_gui

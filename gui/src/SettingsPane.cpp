@@ -86,6 +86,20 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *
             m_blockSync = false;
         }
     });
+    connect(m_doc, &ModelDocument::activeBodyChanged, this, [this](int bodyId) {
+        if (!m_blockSync) {
+            m_blockSync = true;
+            if (m_comboBodies) {
+                int idx = m_comboBodies->findData(bodyId);
+                if (idx >= 0) m_comboBodies->setCurrentIndex(idx);
+            }
+            if (m_comboModellingBody) {
+                int idx = m_comboModellingBody->findData(bodyId);
+                if (idx >= 0) m_comboModellingBody->setCurrentIndex(idx);
+            }
+            m_blockSync = false;
+        }
+    });
 
     refreshAll();
 }
@@ -96,24 +110,31 @@ SettingsPane::~SettingsPane() {
 }
 
 void SettingsPane::selectDisplayTab() {
-    if (m_tabs) m_tabs->setCurrentIndex(0);
+    if (m_tabs && m_tabDisplay) m_tabs->setCurrentWidget(m_tabDisplay);
 }
 
 void SettingsPane::selectProfilesTab() {
-    if (m_tabs) m_tabs->setCurrentIndex(1);
+    if (m_tabs && m_tabProfiles) m_tabs->setCurrentWidget(m_tabProfiles);
+}
+
+void SettingsPane::selectModellingTab() {
+    if (m_tabs && m_tabModelling) {
+        m_tabs->setCurrentWidget(m_tabModelling);
+        updateBodyList();
+    }
 }
 
 void SettingsPane::selectBodyEditorTab() {
-    if (m_tabs) {
-        m_tabs->setCurrentIndex(2);
+    if (m_tabs && m_tabBodies) {
+        m_tabs->setCurrentWidget(m_tabBodies);
         updateBodyList();
         loadBodyData();
     }
 }
 
 void SettingsPane::selectPhysicsTab() {
-    if (m_tabs) {
-        m_tabs->setCurrentIndex(3);
+    if (m_tabs && m_tabPhysics) {
+        m_tabs->setCurrentWidget(m_tabPhysics);
         loadPhysicsData();
     }
 }
@@ -156,25 +177,31 @@ void SettingsPane::setupUi() {
 
     m_tabDisplay = new QWidget();
     m_tabProfiles = new QWidget();
+    m_tabModelling = new QWidget();
     m_tabBodies = new QWidget();
     m_tabPhysics = new QWidget();
 
     setupDisplayTab(m_tabDisplay);
     setupProfilesTab(m_tabProfiles);
+    setupModellingTab(m_tabModelling);
     setupBodyEditorTab(m_tabBodies);
     setupPhysicsTab(m_tabPhysics);
 
     m_tabs->addTab(m_tabDisplay, tr("📊 Display"));
     m_tabs->addTab(m_tabProfiles, tr("📏 Profiles"));
+    m_tabs->addTab(m_tabModelling, tr("🛠 Modelling"));
     m_tabs->addTab(m_tabBodies, tr("🪨 Bodies"));
     m_tabs->addTab(m_tabPhysics, tr("⚙ Physics"));
 
     connect(m_tabs, &QTabWidget::currentChanged, this, [this](int idx) {
-        if (idx == 2) {
+        QWidget *w = m_tabs->widget(idx);
+        if (w == m_tabBodies) {
             updateBodyList();
             loadBodyData();
-        } else if (idx == 3) {
+        } else if (w == m_tabPhysics) {
             loadPhysicsData();
+        } else if (w == m_tabModelling) {
+            updateBodyList();
         }
     });
 
@@ -988,7 +1015,413 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
 }
 
 // ============================================================================
-// TAB 3: Geological Body Editor Tab
+// TAB 3: Modelling Tab
+// ============================================================================
+void SettingsPane::setupModellingTab(QWidget *container) {
+    auto *scroll = new QScrollArea(container);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+
+    auto *inner = new QWidget(scroll);
+    auto *layout = new QVBoxLayout(inner);
+    layout->setContentsMargins(6, 8, 6, 8);
+    layout->setSpacing(6);
+    layout->setAlignment(Qt::AlignTop);
+
+    // Active View Context Banner
+    m_lblModellingContext = new QLabel(tr("Active View: None"), inner);
+    m_lblModellingContext->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    m_lblModellingContext->setFixedHeight(26);
+    m_lblModellingContext->setAlignment(Qt::AlignCenter);
+    m_lblModellingContext->setStyleSheet("font-weight: bold; color: #1e293b; padding: 4px 6px; background-color: #e2e8f0; border-radius: 4px;");
+    layout->addWidget(m_lblModellingContext);
+
+    // ------------------------------------------------------------------------
+    // Sub-panel 1: Profile View Modelling Controls
+    // ------------------------------------------------------------------------
+    m_paneProfileModelling = new QWidget(inner);
+    auto *pvLayout = new QVBoxLayout(m_paneProfileModelling);
+    pvLayout->setContentsMargins(0, 0, 0, 0);
+    pvLayout->setSpacing(6);
+    pvLayout->setAlignment(Qt::AlignTop);
+
+    // Target Body & Step Group
+    auto *grpTarget = new QGroupBox(tr("Target Body & Step Size"), m_paneProfileModelling);
+    auto *targetLayout = new QFormLayout(grpTarget);
+    targetLayout->setContentsMargins(8, 8, 8, 8);
+    targetLayout->setSpacing(6);
+
+    m_comboModellingBody = new QComboBox(grpTarget);
+    m_comboModellingBody->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    targetLayout->addRow(tr("Active Body:"), m_comboModellingBody);
+
+    connect(m_comboModellingBody, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
+        if (!m_blockSync && m_comboModellingBody) {
+            int bodyId = m_comboModellingBody->currentData().toInt();
+            if (bodyId > 0 && m_doc) {
+                m_doc->setActiveBodyId(bodyId);
+            }
+        }
+    });
+
+    m_spinModellingStep = new QDoubleSpinBox(grpTarget);
+    m_spinModellingStep->setRange(0.1, 1000.0);
+    m_spinModellingStep->setSingleStep(5.0);
+    m_spinModellingStep->setValue(10.0);
+    m_spinModellingStep->setDecimals(1);
+    m_spinModellingStep->setSuffix(" m");
+    targetLayout->addRow(tr("Step Size:"), m_spinModellingStep);
+
+    pvLayout->addWidget(grpTarget);
+
+    auto getTargetProfile = [this]() -> ProfileView* {
+        if (auto *pv = qobject_cast<ProfileView*>(m_activeView.data())) return pv;
+        if (m_mainWindow && !m_mainWindow->isDestroying()) return m_mainWindow->activeProfileView();
+        return nullptr;
+    };
+
+    // --- Entire Body Group ---
+    auto *grpEntire = new QGroupBox(tr("Entire Body (Rigid Vertical)"), m_paneProfileModelling);
+    auto *entireLayout = new QVBoxLayout(grpEntire);
+    entireLayout->setContentsMargins(8, 8, 8, 8);
+    entireLayout->setSpacing(4);
+
+    auto *lblEntireHelp = new QLabel(tr("Translates entire body vertically without deforming thickness. Automatically stops when hitting obstacles."), grpEntire);
+    lblEntireHelp->setStyleSheet("font-size: 10px; color: #64748b;");
+    lblEntireHelp->setWordWrap(true);
+    entireLayout->addWidget(lblEntireHelp);
+
+    auto *entireHitRow = new QHBoxLayout();
+    entireHitRow->setSpacing(4);
+    m_btnBodyUpUntilHit = new QPushButton(tr("🔼 Up (Until Hit)"), grpEntire);
+    m_btnBodyUpUntilHit->setToolTip(tr("Move entire body upward until contact with upper body or surface relief (Shift+Up)"));
+    m_btnBodyDownUntilHit = new QPushButton(tr("🔽 Down (Until Hit)"), grpEntire);
+    m_btnBodyDownUntilHit->setToolTip(tr("Move entire body downward until contact with lower body or base depth (Shift+Down)"));
+    entireHitRow->addWidget(m_btnBodyUpUntilHit);
+    entireHitRow->addWidget(m_btnBodyDownUntilHit);
+    entireLayout->addLayout(entireHitRow);
+
+    auto *entireStepRow = new QHBoxLayout();
+    entireStepRow->setSpacing(4);
+    m_btnBodyUpStep = new QPushButton(tr("⬆ Step Up"), grpEntire);
+    m_btnBodyUpStep->setToolTip(tr("Translate entire body upward by step size"));
+    m_btnBodyDownStep = new QPushButton(tr("⬇ Step Down"), grpEntire);
+    m_btnBodyDownStep->setToolTip(tr("Translate entire body downward by step size"));
+    entireStepRow->addWidget(m_btnBodyUpStep);
+    entireStepRow->addWidget(m_btnBodyDownStep);
+    entireLayout->addLayout(entireStepRow);
+
+    pvLayout->addWidget(grpEntire);
+
+    connect(m_btnBodyUpUntilHit, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveBodyVerticalUntilHit(true);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveBodyVerticalUntilHit(bId, m_doc->profileOrientation(), m_doc->profileIndex(), true);
+        }
+    });
+
+    connect(m_btnBodyDownUntilHit, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveBodyVerticalUntilHit(false);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveBodyVerticalUntilHit(bId, m_doc->profileOrientation(), m_doc->profileIndex(), false);
+        }
+    });
+
+    connect(m_btnBodyUpStep, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        double step = m_spinModellingStep ? m_spinModellingStep->value() : 10.0;
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->translateActiveBodyVertical(step);
+        } else if (m_doc && bId > 0) {
+            m_doc->translateBodyVerticalOnProfile(bId, m_doc->profileOrientation(), m_doc->profileIndex(), step);
+        }
+    });
+
+    connect(m_btnBodyDownStep, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        double step = m_spinModellingStep ? m_spinModellingStep->value() : 10.0;
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->translateActiveBodyVertical(-step);
+        } else if (m_doc && bId > 0) {
+            m_doc->translateBodyVerticalOnProfile(bId, m_doc->profileOrientation(), m_doc->profileIndex(), -step);
+        }
+    });
+
+    // --- Upper Boundary Group ---
+    auto *grpUpper = new QGroupBox(tr("Upper Boundary"), m_paneProfileModelling);
+    auto *upperLayout = new QVBoxLayout(grpUpper);
+    upperLayout->setContentsMargins(8, 8, 8, 8);
+    upperLayout->setSpacing(4);
+
+    auto *lblUpperHelp = new QLabel(tr("Translates upper contact points vertically. Stops at upper body/relief or lower boundary."), grpUpper);
+    lblUpperHelp->setStyleSheet("font-size: 10px; color: #64748b;");
+    lblUpperHelp->setWordWrap(true);
+    upperLayout->addWidget(lblUpperHelp);
+
+    auto *upperHitRow = new QHBoxLayout();
+    upperHitRow->setSpacing(4);
+    m_btnUpperUpUntilHit = new QPushButton(tr("🔼 Up (Until Hit)"), grpUpper);
+    m_btnUpperUpUntilHit->setToolTip(tr("Move upper boundary upward until contact with upper body or relief (Ctrl+Shift+Up)"));
+    m_btnUpperDownUntilHit = new QPushButton(tr("🔽 Down (Until Hit)"), grpUpper);
+    m_btnUpperDownUntilHit->setToolTip(tr("Move upper boundary downward until contact with lower boundary (Ctrl+Shift+Down)"));
+    upperHitRow->addWidget(m_btnUpperUpUntilHit);
+    upperHitRow->addWidget(m_btnUpperDownUntilHit);
+    upperLayout->addLayout(upperHitRow);
+
+    auto *upperStepRow = new QHBoxLayout();
+    upperStepRow->setSpacing(4);
+    m_btnUpperUpStep = new QPushButton(tr("⬆ Step Up"), grpUpper);
+    m_btnUpperUpStep->setToolTip(tr("Translate upper boundary upward by step size"));
+    m_btnUpperDownStep = new QPushButton(tr("⬇ Step Down"), grpUpper);
+    m_btnUpperDownStep->setToolTip(tr("Translate upper boundary downward by step size"));
+    upperStepRow->addWidget(m_btnUpperUpStep);
+    upperStepRow->addWidget(m_btnUpperDownStep);
+    upperLayout->addLayout(upperStepRow);
+
+    pvLayout->addWidget(grpUpper);
+
+    connect(m_btnUpperUpUntilHit, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveUpperBoundaryVerticalUntilHit(true);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveUpperBoundaryVerticalUntilHit(bId, m_doc->profileOrientation(), m_doc->profileIndex(), true);
+        }
+    });
+
+    connect(m_btnUpperDownUntilHit, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveUpperBoundaryVerticalUntilHit(false);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveUpperBoundaryVerticalUntilHit(bId, m_doc->profileOrientation(), m_doc->profileIndex(), false);
+        }
+    });
+
+    connect(m_btnUpperUpStep, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        double step = m_spinModellingStep ? m_spinModellingStep->value() : 10.0;
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveUpperBoundaryVertical(step);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveUpperBoundaryVertical(bId, m_doc->profileOrientation(), m_doc->profileIndex(), step);
+        }
+    });
+
+    connect(m_btnUpperDownStep, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        double step = m_spinModellingStep ? m_spinModellingStep->value() : 10.0;
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveUpperBoundaryVertical(-step);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveUpperBoundaryVertical(bId, m_doc->profileOrientation(), m_doc->profileIndex(), -step);
+        }
+    });
+
+    // --- Lower Boundary Group ---
+    auto *grpLower = new QGroupBox(tr("Lower Boundary"), m_paneProfileModelling);
+    auto *lowerLayout = new QVBoxLayout(grpLower);
+    lowerLayout->setContentsMargins(8, 8, 8, 8);
+    lowerLayout->setSpacing(4);
+
+    auto *lblLowerHelp = new QLabel(tr("Translates lower contact points vertically. Stops at lower body/base or upper boundary."), grpLower);
+    lblLowerHelp->setStyleSheet("font-size: 10px; color: #64748b;");
+    lblLowerHelp->setWordWrap(true);
+    lowerLayout->addWidget(lblLowerHelp);
+
+    auto *lowerHitRow = new QHBoxLayout();
+    lowerHitRow->setSpacing(4);
+    m_btnLowerDownUntilHit = new QPushButton(tr("🔽 Down (Until Hit)"), grpLower);
+    m_btnLowerDownUntilHit->setToolTip(tr("Move lower boundary downward until contact with lower body or base depth (Alt+Shift+Down)"));
+    m_btnLowerUpUntilHit = new QPushButton(tr("🔼 Up (Until Hit)"), grpLower);
+    m_btnLowerUpUntilHit->setToolTip(tr("Move lower boundary upward until contact with upper boundary (Alt+Shift+Up)"));
+    lowerHitRow->addWidget(m_btnLowerDownUntilHit);
+    lowerHitRow->addWidget(m_btnLowerUpUntilHit);
+    lowerLayout->addLayout(lowerHitRow);
+
+    auto *lowerStepRow = new QHBoxLayout();
+    lowerStepRow->setSpacing(4);
+    m_btnLowerDownStep = new QPushButton(tr("⬇ Step Down"), grpLower);
+    m_btnLowerDownStep->setToolTip(tr("Translate lower boundary downward by step size"));
+    m_btnLowerUpStep = new QPushButton(tr("⬆ Step Up"), grpLower);
+    m_btnLowerUpStep->setToolTip(tr("Translate lower boundary upward by step size"));
+    lowerStepRow->addWidget(m_btnLowerDownStep);
+    lowerStepRow->addWidget(m_btnLowerUpStep);
+    lowerLayout->addLayout(lowerStepRow);
+
+    pvLayout->addWidget(grpLower);
+
+    connect(m_btnLowerDownUntilHit, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveLowerBoundaryVerticalUntilHit(true);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveLowerBoundaryVerticalUntilHit(bId, m_doc->profileOrientation(), m_doc->profileIndex(), true);
+        }
+    });
+
+    connect(m_btnLowerUpUntilHit, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveLowerBoundaryVerticalUntilHit(false);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveLowerBoundaryVerticalUntilHit(bId, m_doc->profileOrientation(), m_doc->profileIndex(), false);
+        }
+    });
+
+    connect(m_btnLowerDownStep, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        double step = m_spinModellingStep ? m_spinModellingStep->value() : 10.0;
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveLowerBoundaryVertical(-step);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveLowerBoundaryVertical(bId, m_doc->profileOrientation(), m_doc->profileIndex(), -step);
+        }
+    });
+
+    connect(m_btnLowerUpStep, &QPushButton::clicked, this, [this, getTargetProfile]() {
+        double step = m_spinModellingStep ? m_spinModellingStep->value() : 10.0;
+        int bId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+        if (bId < 0 && m_doc) bId = m_doc->activeBodyId();
+        if (auto *pv = getTargetProfile()) {
+            pv->moveActiveLowerBoundaryVertical(step);
+        } else if (m_doc && bId > 0) {
+            m_doc->moveLowerBoundaryVertical(bId, m_doc->profileOrientation(), m_doc->profileIndex(), step);
+        }
+    });
+
+    layout->addWidget(m_paneProfileModelling);
+
+    // ------------------------------------------------------------------------
+    // Sub-panel 2: Horizontal Slice View Modelling
+    // ------------------------------------------------------------------------
+    m_paneSliceModelling = new QWidget(inner);
+    auto *sliceLayout = new QVBoxLayout(m_paneSliceModelling);
+    sliceLayout->setContentsMargins(0, 0, 0, 0);
+    sliceLayout->setSpacing(6);
+    auto *grpSlice = new QGroupBox(tr("Horizontal Planar View Modelling"), m_paneSliceModelling);
+    auto *grpSliceLayout = new QVBoxLayout(grpSlice);
+    grpSliceLayout->setContentsMargins(8, 8, 8, 8);
+    grpSliceLayout->setSpacing(6);
+    auto *lblSliceInfo = new QLabel(
+        tr("<b>Planar Modelling Features:</b><br>"
+           "• <b>Double-click</b> empty area to create a new body at this slice elevation.<br>"
+           "• <b>Double-click</b> inside an existing body to edit or expand it.<br>"
+           "• <b>Click</b> to synchronize profile views (when 'Sync Profiles' is checked).<br>"
+           "• Use toolbar buttons to step Z-elevation up/down."), grpSlice);
+    lblSliceInfo->setWordWrap(true);
+    lblSliceInfo->setStyleSheet("font-size: 11px; color: #334155; line-height: 1.4;");
+    grpSliceLayout->addWidget(lblSliceInfo);
+    sliceLayout->addWidget(grpSlice);
+    m_paneSliceModelling->setVisible(false);
+    layout->addWidget(m_paneSliceModelling);
+
+    // ------------------------------------------------------------------------
+    // Sub-panel 3: Map View Modelling
+    // ------------------------------------------------------------------------
+    m_paneMapModelling = new QWidget(inner);
+    auto *mapLayout = new QVBoxLayout(m_paneMapModelling);
+    mapLayout->setContentsMargins(0, 0, 0, 0);
+    mapLayout->setSpacing(6);
+    auto *grpMap = new QGroupBox(tr("Map View Modelling"), m_paneMapModelling);
+    auto *grpMapLayout = new QVBoxLayout(grpMap);
+    grpMapLayout->setContentsMargins(8, 8, 8, 8);
+    grpMapLayout->setSpacing(6);
+    auto *lblMapInfo = new QLabel(
+        tr("<b>Map View Features:</b><br>"
+           "• <b>Click</b> on any profile track line to make it active.<br>"
+           "• <b>Double-click</b> to center and synchronize 2D/3D profile views.<br>"
+           "• Inspect body footprints and surface relief contours.<br>"
+           "• Observe station point gravity and magnetic anomalies."), grpMap);
+    lblMapInfo->setWordWrap(true);
+    lblMapInfo->setStyleSheet("font-size: 11px; color: #334155; line-height: 1.4;");
+    grpMapLayout->addWidget(lblMapInfo);
+    mapLayout->addWidget(grpMap);
+    m_paneMapModelling->setVisible(false);
+    layout->addWidget(m_paneMapModelling);
+
+    // ------------------------------------------------------------------------
+    // Sub-panel 4: 3D View Modelling
+    // ------------------------------------------------------------------------
+    m_pane3DModelling = new QWidget(inner);
+    auto *glLayout = new QVBoxLayout(m_pane3DModelling);
+    glLayout->setContentsMargins(0, 0, 0, 0);
+    glLayout->setSpacing(6);
+    auto *grp3D = new QGroupBox(tr("3D View Modelling"), m_pane3DModelling);
+    auto *grp3DLayout = new QVBoxLayout(grp3D);
+    grp3DLayout->setContentsMargins(8, 8, 8, 8);
+    grp3DLayout->setSpacing(6);
+    auto *lbl3DInfo = new QLabel(
+        tr("<b>3D Inspection Features:</b><br>"
+           "• Inspect 3D body geometry and cross-sections in real-time.<br>"
+           "• Use <b>Octant Cut</b> to view internal body structures.<br>"
+           "• Toggle transparent bodies to see interior contacts.<br>"
+           "• Cross-sections update synchronously with 2D profile edits."), grp3D);
+    lbl3DInfo->setWordWrap(true);
+    lbl3DInfo->setStyleSheet("font-size: 11px; color: #334155; line-height: 1.4;");
+    grp3DLayout->addWidget(lbl3DInfo);
+    glLayout->addWidget(grp3D);
+    m_pane3DModelling->setVisible(false);
+    layout->addWidget(m_pane3DModelling);
+
+    // ------------------------------------------------------------------------
+    // Fast Help & Shortcuts Group
+    // ------------------------------------------------------------------------
+    auto *grpHelp = new QGroupBox(tr("💡 Modelling Shortcuts & Fast Help"), inner);
+    auto *helpLayout = new QVBoxLayout(grpHelp);
+    helpLayout->setContentsMargins(8, 8, 8, 8);
+    helpLayout->setSpacing(4);
+
+    auto *lblHelpTable = new QLabel(grpHelp);
+    lblHelpTable->setWordWrap(true);
+    lblHelpTable->setTextFormat(Qt::RichText);
+    lblHelpTable->setText(
+        "<table style='width:100%; border-collapse: collapse; font-size: 11px;'>"
+        "<tr style='background:#f1f5f9;'><th align='left' style='padding:4px 6px; border-bottom: 1px solid #cbd5e1;'>Command / Action</th><th align='left' style='padding:4px 6px; border-bottom: 1px solid #cbd5e1;'>Shortcut / Gesture</th></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Entire Body Up / Down</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Shift + ↑ / ↓</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Upper Boundary Up / Down</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Ctrl + Shift + ↑ / ↓</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Lower Boundary Down / Up</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Alt + Shift + ↓ / ↑</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Vertical Body Drag</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Shift + Drag Body</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Move Contact Vertex</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Drag Vertex</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Unsnap Shared Contact</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Ctrl + Drag Vertex</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Extend Body Laterally</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Drag Side Handle</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Insert New Body</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Double-Click Empty</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Insert Active Body</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Shift + Double-Click</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Body Properties</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Double-Click Vertex</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Delete Column Point</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Ctrl + Double-Click</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Context Menu</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Right-Click</b></td></tr>"
+        "<tr><td style='padding:3px 6px;'>Undo / Redo</td><td style='padding:3px 6px;'><b>Ctrl + Z / Ctrl + Y</b></td></tr>"
+        "</table>"
+    );
+    helpLayout->addWidget(lblHelpTable);
+    layout->addWidget(grpHelp);
+
+    layout->addStretch(1);
+
+    scroll->setWidget(inner);
+    auto *tabLayout = new QVBoxLayout(container);
+    tabLayout->setContentsMargins(0, 0, 0, 0);
+    tabLayout->addWidget(scroll);
+}
+
+// ============================================================================
+// TAB 4: Geological Body Editor Tab
 // ============================================================================
 void SettingsPane::setupBodyEditorTab(QWidget *container) {
     auto *scroll = new QScrollArea(container);
@@ -1484,6 +1917,12 @@ void SettingsPane::updateViewContext() {
         m_pane3DView->setVisible(false);
         m_paneSliceFields->setVisible(false);
 
+        if (m_lblModellingContext) m_lblModellingContext->setText(QString("Active View: Profile %1 [%2]").arg(pv->profileIndex() + 1).arg(dirStr));
+        if (m_paneProfileModelling) m_paneProfileModelling->setVisible(true);
+        if (m_paneMapModelling) m_paneMapModelling->setVisible(false);
+        if (m_pane3DModelling) m_pane3DModelling->setVisible(false);
+        if (m_paneSliceModelling) m_paneSliceModelling->setVisible(false);
+
         // Sync Profile View UI in Display Tab
         int idx = m_comboProfileMainField->findData(static_cast<int>(pv->mainFieldComponent()));
         if (idx >= 0) m_comboProfileMainField->setCurrentIndex(idx);
@@ -1548,6 +1987,12 @@ void SettingsPane::updateViewContext() {
         m_pane3DView->setVisible(false);
         m_paneSliceFields->setVisible(false);
 
+        if (m_lblModellingContext) m_lblModellingContext->setText(tr("Active View: Map View"));
+        if (m_paneProfileModelling) m_paneProfileModelling->setVisible(false);
+        if (m_paneMapModelling) m_paneMapModelling->setVisible(true);
+        if (m_pane3DModelling) m_pane3DModelling->setVisible(false);
+        if (m_paneSliceModelling) m_paneSliceModelling->setVisible(false);
+
         int idx = m_comboMapField->findData(static_cast<int>(mv->fieldComponent()));
         if (idx >= 0) m_comboMapField->setCurrentIndex(idx);
 
@@ -1574,6 +2019,12 @@ void SettingsPane::updateViewContext() {
         m_paneMapFields->setVisible(false);
         m_pane3DView->setVisible(true);
         m_paneSliceFields->setVisible(false);
+
+        if (m_lblModellingContext) m_lblModellingContext->setText(tr("Active View: 3D View"));
+        if (m_paneProfileModelling) m_paneProfileModelling->setVisible(false);
+        if (m_paneMapModelling) m_paneMapModelling->setVisible(false);
+        if (m_pane3DModelling) m_pane3DModelling->setVisible(true);
+        if (m_paneSliceModelling) m_paneSliceModelling->setVisible(false);
 
         m_chk3DSlices->setChecked(glv->showProfilePlane());
         m_chk3DCompass->setChecked(glv->showOrientationIndicator());
@@ -1621,6 +2072,12 @@ void SettingsPane::updateViewContext() {
         m_pane3DView->setVisible(false);
         m_paneSliceFields->setVisible(true);
 
+        if (m_lblModellingContext) m_lblModellingContext->setText(QString("Active View: Horizontal Planar View (Z = %1 m)").arg(hv->sliceElevation(), 0, 'f', 1));
+        if (m_paneProfileModelling) m_paneProfileModelling->setVisible(false);
+        if (m_paneMapModelling) m_paneMapModelling->setVisible(false);
+        if (m_pane3DModelling) m_pane3DModelling->setVisible(false);
+        if (m_paneSliceModelling) m_paneSliceModelling->setVisible(true);
+
         int idx = m_comboSliceField->findData(static_cast<int>(hv->fieldComponent()));
         if (idx >= 0) m_comboSliceField->setCurrentIndex(idx);
         m_lblSliceFieldInfo->setText(QString("Field: %1 (%2)")
@@ -1652,6 +2109,12 @@ void SettingsPane::updateViewContext() {
         m_paneMapFields->setVisible(false);
         m_pane3DView->setVisible(false);
         m_paneSliceFields->setVisible(false);
+
+        if (m_lblModellingContext) m_lblModellingContext->setText(tr("Active View: Workspace"));
+        if (m_paneProfileModelling) m_paneProfileModelling->setVisible(true);
+        if (m_paneMapModelling) m_paneMapModelling->setVisible(false);
+        if (m_pane3DModelling) m_pane3DModelling->setVisible(false);
+        if (m_paneSliceModelling) m_paneSliceModelling->setVisible(false);
     }
 
     m_blockSync = false;
@@ -1661,19 +2124,37 @@ void SettingsPane::updateBodyList() {
     m_blockSync = true;
     int prevBodyId = m_comboBodies->currentData().toInt();
     m_comboBodies->clear();
+    int prevModellingId = m_comboModellingBody ? m_comboModellingBody->currentData().toInt() : -1;
+    if (m_comboModellingBody) m_comboModellingBody->clear();
 
     const auto &bodies = m_doc->model().bodies();
     for (const auto &b : bodies) {
         QColor col(b->color().r, b->color().g, b->color().b);
         QString itemText = QString("Body %1: %2 (ρ=%3 kg/m³)").arg(b->id()).arg(QString::fromStdString(b->name())).arg(b->raw_density().value(), 0, 'f', 1);
         m_comboBodies->addItem(createColorIcon(col), itemText, b->id());
+        if (m_comboModellingBody) {
+            m_comboModellingBody->addItem(createColorIcon(col), itemText, b->id());
+        }
     }
 
+    int activeDocBodyId = m_doc ? m_doc->activeBodyId() : -1;
+
     int idx = m_comboBodies->findData(prevBodyId);
+    if (idx < 0 && activeDocBodyId > 0) idx = m_comboBodies->findData(activeDocBodyId);
     if (idx >= 0) {
         m_comboBodies->setCurrentIndex(idx);
     } else if (m_comboBodies->count() > 0) {
         m_comboBodies->setCurrentIndex(0);
+    }
+
+    if (m_comboModellingBody) {
+        int mIdx = m_comboModellingBody->findData(prevModellingId);
+        if (mIdx < 0 && activeDocBodyId > 0) mIdx = m_comboModellingBody->findData(activeDocBodyId);
+        if (mIdx >= 0) {
+            m_comboModellingBody->setCurrentIndex(mIdx);
+        } else if (m_comboModellingBody->count() > 0) {
+            m_comboModellingBody->setCurrentIndex(0);
+        }
     }
     m_blockSync = false;
 }

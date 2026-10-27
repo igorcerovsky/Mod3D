@@ -70,6 +70,15 @@ public:
     void jumpToMin();
     void jumpToMax();
 
+    // Vertical Body and Boundary Movements
+    [[nodiscard]] int activeOrHoverBodyId() const;
+    bool moveActiveBodyVerticalUntilHit(bool moveUp);
+    bool moveActiveUpperBoundaryVerticalUntilHit(bool moveUp);
+    bool moveActiveLowerBoundaryVerticalUntilHit(bool moveDown);
+    bool translateActiveBodyVertical(double deltaZ);
+    bool moveActiveUpperBoundaryVertical(double deltaZ);
+    bool moveActiveLowerBoundaryVertical(double deltaZ);
+
     bool showPreviousProfile() const noexcept { return m_showPreviousProfile; }
     void setShowPreviousProfile(bool show);
 
