@@ -90,6 +90,7 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
   }
 
   fitToWindow();
+  updatePaneRects();
   updateTitle();
 }
 
@@ -1382,7 +1383,26 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
         poly << QPointF(sx0, topY0) << QPointF(sx1, topY1)
              << QPointF(sx1, botY1) << QPointF(sx0, botY0);
 
-        if (poly.containsPoint(pos, Qt::OddEvenFill)) {
+        bool hit = poly.containsPoint(pos, Qt::OddEvenFill);
+        if (!hit) {
+          int minX = std::min(sx0, sx1);
+          int maxX = std::max(sx0, sx1);
+          if (pos.x() >= minX - 4 && pos.x() <= maxX + 4) {
+            float dx = static_cast<float>(sx1 - sx0);
+            if (std::abs(dx) > 1e-3f) {
+              float t = std::clamp((static_cast<float>(pos.x()) - sx0) / dx, 0.0f, 1.0f);
+              float segTopY = topY0 + t * (topY1 - topY0);
+              float segBotY = botY0 + t * (botY1 - botY0);
+              float minY = std::min(segTopY, segBotY) - 6.0f;
+              float maxY = std::max(segTopY, segBotY) + 6.0f;
+              if (pos.y() >= minY && pos.y() <= maxY) {
+                hit = true;
+              }
+            }
+          }
+        }
+
+        if (hit) {
           hitLineIdx = c;
           hitVertexIdx = idx0;
           hitBodyId = bId;
@@ -1405,20 +1425,31 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
 }
 
 void ProfileView::updateCursorShape(CursorMode mode) {
+  auto mods = QApplication::keyboardModifiers();
+  bool shift = (mods & Qt::ShiftModifier);
+  bool ctrl = (mods & Qt::ControlModifier);
+  bool alt = (mods & Qt::AltModifier);
+
   switch (mode) {
   case CursorMode::OverDivider:
     setCursor(Qt::SplitVCursor);
     break;
   case CursorMode::OverVertex:
-    setCursor(Qt::SizeVerCursor);
+    setCursor(shift ? Qt::SizeVerCursor : Qt::SizeVerCursor);
     break;
   case CursorMode::OverBodyLine:
-    setCursor(Qt::SizeHorCursor);
+    setCursor(shift ? Qt::SizeVerCursor : Qt::SizeHorCursor);
     break;
   case CursorMode::OverBody:
-    setCursor((QApplication::keyboardModifiers() & Qt::ShiftModifier)
-                  ? Qt::ClosedHandCursor
-                  : Qt::OpenHandCursor);
+    if (shift) {
+      if (ctrl || alt) {
+        setCursor(Qt::SizeVerCursor);
+      } else {
+        setCursor(Qt::ClosedHandCursor);
+      }
+    } else {
+      setCursor(Qt::OpenHandCursor);
+    }
     break;
   case CursorMode::OverGridLine:
     setCursor(Qt::CrossCursor);
@@ -1437,9 +1468,39 @@ void ProfileView::mousePressEvent(QMouseEvent *event) {
       m_doc->setActiveBodyId(bId);
     }
 
+    bool shiftPressed = (event->modifiers() & Qt::ShiftModifier);
+    bool ctrlPressed = (event->modifiers() & Qt::ControlModifier);
+    bool altPressed = (event->modifiers() & Qt::AltModifier);
+
+    int targetBodyId = (bId >= 0) ? bId : m_hoverBodyId;
+    if (targetBodyId < 0 && m_doc) {
+      targetBodyId = m_doc->activeBodyId();
+    }
+
+    bool isBodyHit = (mode == CursorMode::OverBody ||
+                      mode == CursorMode::OverVertex ||
+                      mode == CursorMode::OverBodyLine);
+    if (!isBodyHit && (ctrlPressed || altPressed || shiftPressed) &&
+        m_rectSectionPane.contains(event->pos()) && targetBodyId >= 0) {
+      isBodyHit = true;
+    }
+
     if (mode == CursorMode::OverDivider) {
       m_dragOp = DragOperation::ResizeDivider;
       m_dragStartPos = event->pos();
+    } else if (shiftPressed && isBodyHit && targetBodyId >= 0) {
+      if (ctrlPressed) {
+        m_dragOp = DragOperation::MoveUpperBoundaryVertical;
+      } else if (altPressed) {
+        m_dragOp = DragOperation::MoveLowerBoundaryVertical;
+      } else {
+        m_dragOp = DragOperation::MoveBodyVertical;
+      }
+      m_dragBodyId = targetBodyId;
+      m_dragLineIdx = (lineIdx >= 0) ? lineIdx : 0;
+      m_dragVertexIdx = vIdx;
+      m_dragStartPos = event->pos();
+      m_dragLastMouseZ = screenToWorldZ(event->pos().y());
     } else if (mode == CursorMode::OverVertex) {
       m_dragOp = DragOperation::MoveVertex;
       m_dragLineIdx = lineIdx;
@@ -1453,12 +1514,6 @@ void ProfileView::mousePressEvent(QMouseEvent *event) {
       m_dragVertexIdx = vIdx;
       m_dragBodyId = bId;
       m_dragStartPos = event->pos();
-    } else if (mode == CursorMode::OverBody &&
-               (event->modifiers() & Qt::ShiftModifier)) {
-      m_dragOp = DragOperation::MoveBodyVertical;
-      m_dragBodyId = bId;
-      m_dragStartPos = event->pos();
-      m_dragLastMouseZ = screenToWorldZ(event->pos().y());
     }
   }
   QWidget::mousePressEvent(event);
@@ -1558,12 +1613,22 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
     return;
   }
 
-  if (m_dragOp == DragOperation::MoveBodyVertical) {
+  if (m_dragOp == DragOperation::MoveBodyVertical ||
+      m_dragOp == DragOperation::MoveUpperBoundaryVertical ||
+      m_dragOp == DragOperation::MoveLowerBoundaryVertical) {
     double currentZ = screenToWorldZ(event->pos().y());
     double deltaZ = currentZ - m_dragLastMouseZ;
     if (std::abs(deltaZ) > 1.0) {
-      m_doc->translateBodyVerticalOnProfile(m_dragBodyId, m_profileOrient,
-                                            m_profileIndex, deltaZ);
+      if (m_dragOp == DragOperation::MoveBodyVertical) {
+        m_doc->translateBodyVerticalOnProfile(m_dragBodyId, m_profileOrient,
+                                              m_profileIndex, deltaZ);
+      } else if (m_dragOp == DragOperation::MoveUpperBoundaryVertical) {
+        m_doc->moveUpperBoundaryVertical(m_dragBodyId, m_profileOrient,
+                                         m_profileIndex, deltaZ);
+      } else if (m_dragOp == DragOperation::MoveLowerBoundaryVertical) {
+        m_doc->moveLowerBoundaryVertical(m_dragBodyId, m_profileOrient,
+                                         m_profileIndex, deltaZ);
+      }
       m_dragLastMouseZ = currentZ;
       int rStation = 0, cStation = 0;
       getRowCol(m_dragLineIdx, rStation, cStation);
@@ -1587,6 +1652,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
           bName,
           true
       });
+      update();
     }
     return;
   }
@@ -1729,6 +1795,8 @@ void ProfileView::mouseReleaseEvent(QMouseEvent *event) {
   if (m_dragOp != DragOperation::None) {
     bool wasModelDrag = (m_dragOp == DragOperation::MoveVertex ||
                          m_dragOp == DragOperation::MoveBodyVertical ||
+                         m_dragOp == DragOperation::MoveUpperBoundaryVertical ||
+                         m_dragOp == DragOperation::MoveLowerBoundaryVertical ||
                          m_dragOp == DragOperation::ExtendBodyLateral);
     m_dragOp = DragOperation::None;
     m_dragBodyId = -1;
@@ -1788,6 +1856,7 @@ void ProfileView::wheelEvent(QWheelEvent *event) {
 }
 
 void ProfileView::keyPressEvent(QKeyEvent *event) {
+  updateCursorShape(m_currentCursorMode);
   switch (event->key()) {
   case Qt::Key_N:
     if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
@@ -1852,6 +1921,11 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
     QWidget::keyPressEvent(event);
     break;
   }
+}
+
+void ProfileView::keyReleaseEvent(QKeyEvent *event) {
+  updateCursorShape(m_currentCursorMode);
+  QWidget::keyReleaseEvent(event);
 }
 
 void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {

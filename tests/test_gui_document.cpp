@@ -881,6 +881,10 @@ public:
     }
     int toScreenX(double xw) const { return worldToScreenX(xw); }
     int toScreenZ(double zw) const { return worldToScreenZ(zw); }
+    void setTestSize(int w, int h) {
+        resize(w, h);
+        updatePaneRects();
+    }
 };
 
 TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
@@ -4471,4 +4475,93 @@ TEST_F(GuiDocumentTest, SettingsPaneAndProfileViewGlobalMovementSync) {
     int bIdxP1 = doc->model().body_index(bId, 2, 1);
     EXPECT_NEAR(doc->model().z(1, 1, bIdxP0), p0InitZ - 15.0, 1e-4);
     EXPECT_NEAR(doc->model().z(2, 1, bIdxP1), p1InitZ - 15.0, 1e-4);
+}
+
+TEST_F(GuiDocumentTest, ProfileViewVerticalDragGestures) {
+    ModelDocument doc;
+    TestProfileView pv(&doc, ProfileOrientation::EastWest, 0);
+    pv.setTestSize(800, 600);
+
+    // Insert Body 1 on row 1, col 1 and col 2: center = -100, thickness = 100 -> top = -50, bottom = -150
+    int bId = doc.insertBodyAtRowCol(1, 1, -100.0, 100.0, -1);
+    ASSERT_GT(bId, 0);
+    ASSERT_EQ(doc.insertBodyAtRowCol(1, 2, -100.0, 100.0, bId), bId);
+
+    int bIdx = doc.model().body_index(bId, 1, 1);
+    ASSERT_GT(bIdx, 0);
+    EXPECT_NEAR(doc.model().z(1, 1, bIdx), -50.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(1, 1, bIdx + 1), -150.0, 1e-4);
+
+    double xwMid = doc.model().x0_val() + 0.5 * doc.model().dx_val();
+    int sx = pv.toScreenX(xwMid);
+    int syMid = pv.toScreenZ(-100.0);
+
+    // 1. CTRL + SHIFT + Mouse Drag: Moves Upper Boundary Vertically
+    double initialBot = doc.model().z(1, 1, bIdx + 1);
+    double initialTop = doc.model().z(1, 1, bIdx);
+
+    // Drag mouse upward (decreasing Y on screen increases world Z)
+    pv.sendMousePress(QPoint(sx, syMid), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier);
+    pv.sendMouseMove(QPoint(sx, syMid - 30), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier);
+    pv.sendMouseRelease(QPoint(sx, syMid - 30), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    double newTop = doc.model().z(1, 1, bIdx);
+    double newBot = doc.model().z(1, 1, bIdx + 1);
+    // Upper boundary moved up
+    EXPECT_GT(newTop, initialTop);
+    // Lower boundary remained unchanged!
+    EXPECT_NEAR(newBot, initialBot, 1e-4);
+
+    // 2. ALT + SHIFT + Mouse Drag: Moves Lower Boundary Vertically
+    initialTop = newTop;
+    initialBot = newBot;
+
+    // Drag mouse downward (increasing Y on screen decreases world Z)
+    pv.sendMousePress(QPoint(sx, syMid), Qt::LeftButton, Qt::AltModifier | Qt::ShiftModifier);
+    pv.sendMouseMove(QPoint(sx, syMid + 30), Qt::LeftButton, Qt::AltModifier | Qt::ShiftModifier);
+    pv.sendMouseRelease(QPoint(sx, syMid + 30), Qt::LeftButton, Qt::AltModifier | Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    newTop = doc.model().z(1, 1, bIdx);
+    newBot = doc.model().z(1, 1, bIdx + 1);
+    // Upper boundary remained unchanged!
+    EXPECT_NEAR(newTop, initialTop, 1e-4);
+    // Lower boundary moved down
+    EXPECT_LT(newBot, initialBot);
+
+    // 3. SHIFT + Mouse Drag (alone): Moves Entire Body Vertically (Rigid)
+    initialTop = newTop;
+    initialBot = newBot;
+    double initialThickness = initialTop - initialBot;
+
+    // Drag mouse upward by 25 pixels
+    pv.sendMousePress(QPoint(sx, syMid), Qt::LeftButton, Qt::ShiftModifier);
+    pv.sendMouseMove(QPoint(sx, syMid - 25), Qt::LeftButton, Qt::ShiftModifier);
+    pv.sendMouseRelease(QPoint(sx, syMid - 25), Qt::LeftButton, Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    newTop = doc.model().z(1, 1, bIdx);
+    newBot = doc.model().z(1, 1, bIdx + 1);
+    // Both boundaries moved up
+    EXPECT_GT(newTop, initialTop);
+    EXPECT_GT(newBot, initialBot);
+    // Body thickness is rigidly preserved
+    EXPECT_NEAR(newTop - newBot, initialThickness, 1e-4);
+
+    // 4. Test dragging starting directly ON a vertex with Ctrl+Shift
+    int sxLine0 = pv.toScreenX(doc.model().x0_val());
+    int syTopVertex = pv.toScreenZ(newTop);
+    initialTop = newTop;
+    initialBot = newBot;
+
+    pv.sendMousePress(QPoint(sxLine0, syTopVertex), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier);
+    pv.sendMouseMove(QPoint(sxLine0, syTopVertex - 20), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier);
+    pv.sendMouseRelease(QPoint(sxLine0, syTopVertex - 20), Qt::LeftButton, Qt::ControlModifier | Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    newTop = doc.model().z(1, 1, bIdx);
+    newBot = doc.model().z(1, 1, bIdx + 1);
+    EXPECT_GT(newTop, initialTop);
+    EXPECT_NEAR(newBot, initialBot, 1e-4);
 }

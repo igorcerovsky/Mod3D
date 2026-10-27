@@ -30,6 +30,8 @@ public:
         None = 0,
         MoveVertex,
         MoveBodyVertical,
+        MoveUpperBoundaryVertical,
+        MoveLowerBoundaryVertical,
         ExtendBodyLateral,
         ResizeDivider
     };
@@ -141,6 +143,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event) override;
     void wheelEvent(QWheelEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
+    void keyReleaseEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
     void leaveEvent(QEvent *event) override;
@@ -171,9 +174,10 @@ protected:
         return mod3d::units::Meters(screenToWorldZ(screenZ));
     }
 
+    void updatePaneRects();
+
 private:
     // Layout & Geometry
-    void updatePaneRects();
     int worldToScreenField(double fldVal, double minFld, double maxFld) const;
     int findClosestLineIndex(int screenX) const;
 

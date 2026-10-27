@@ -1413,6 +1413,8 @@ void SettingsPane::setupModellingTab(QWidget *container) {
         "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Upper Boundary Up / Down</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Ctrl + Shift + ↑ / ↓</b></td></tr>"
         "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Lower Boundary Down / Up</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Alt + Shift + ↓ / ↑</b></td></tr>"
         "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Vertical Body Drag</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Shift + Drag Body</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Upper Boundary Drag</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Ctrl + Shift + Drag</b></td></tr>"
+        "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Lower Boundary Drag</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Alt + Shift + Drag</b></td></tr>"
         "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Move Contact Vertex</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Drag Vertex</b></td></tr>"
         "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Unsnap Shared Contact</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Ctrl + Drag Vertex</b></td></tr>"
         "<tr><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'>Extend Body Laterally</td><td style='padding:3px 6px; border-bottom: 1px solid #e2e8f0;'><b>Drag Side Handle</b></td></tr>"

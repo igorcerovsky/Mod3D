@@ -538,14 +538,17 @@ The Modelling tab automatically detects the currently active MDI view and switch
     - **Move Up Until Hit (`Shift + ↑`)**: Calculates the minimum vertical gap between the body's upper boundary and any overlying body or surface relief $\min_{(r,c)} (z_{\text{above}} - z_{\text{top}})$ (evaluated across the current profile or the entire 3D body when in Global mode), translating both upper and lower contact vertices together without altering thickness. Stops precisely upon first contact.
     - **Move Down Until Hit (`Shift + ↓`)**: Calculates the minimum vertical gap between the body's lower boundary and any underlying body or model base depth $\min_{(r,c)} (z_{\text{bottom}} - z_{\text{below}})$, translating both boundaries rigidly downward until contact.
     - **Step Up / Step Down**: Translates body by the user-configured step size clamped to obstacle limits.
+    - **Vertical Drag (`Shift + Drag Body`)**: Interactively moves the entire body up or down following the mouse pointer, clamped to obstacle limits without deforming thickness.
   - **Upper Boundary Movement**:
     - **Move Up Until Hit (`Ctrl + Shift + ↑`)**: Expands upper boundary upward until hitting an upper body or surface relief.
     - **Move Down Until Hit (`Ctrl + Shift + ↓`)**: Compresses upper boundary downward until collapsing onto the lower boundary ($z_{\text{top}} = z_{\text{bottom}}$).
     - **Step Up / Step Down**: Adjusts upper boundary vertically by step size.
+    - **Vertical Drag (`Ctrl + Shift + Drag`)**: Interactively drags the upper boundary vertically with the mouse (clamped between lower boundary and overlying obstacles).
   - **Lower Boundary Movement**:
     - **Move Down Until Hit (`Alt + Shift + ↓`)**: Expands lower boundary downward until hitting an underlying body or base depth.
     - **Move Up Until Hit (`Alt + Shift + ↑`)**: Compresses lower boundary upward until collapsing onto the upper boundary ($z_{\text{bottom}} = z_{\text{top}}$).
     - **Step Down / Step Up**: Adjusts lower boundary vertically by step size.
+    - **Vertical Drag (`Alt + Shift + Drag`)**: Interactively drags the lower boundary vertically with the mouse (clamped between upper boundary and underlying obstacles).
 - **Horizontal Planar View Context**:
   - Highlights horizontal section creation, active body drawing, and coordinate synchronization.
 - **Map View & 3D View Context**:
