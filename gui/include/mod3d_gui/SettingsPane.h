@@ -42,6 +42,7 @@ public:
     QWidget *modellingTab() const { return m_tabModelling; }
     QComboBox *modellingBodyComboBox() const { return m_comboModellingBody; }
     QDoubleSpinBox *modellingStepSpinBox() const { return m_spinModellingStep; }
+    QCheckBox *globalMovementCheckBox() const { return m_chkGlobalMovement; }
 
     QPushButton *bodyUpUntilHitButton() const { return m_btnBodyUpUntilHit; }
     QPushButton *bodyDownUntilHitButton() const { return m_btnBodyDownUntilHit; }
@@ -217,6 +218,7 @@ private:
     QWidget *m_paneProfileModelling{nullptr};
     QComboBox *m_comboModellingBody{nullptr};
     QDoubleSpinBox *m_spinModellingStep{nullptr};
+    QCheckBox *m_chkGlobalMovement{nullptr};
     QPushButton *m_btnBodyUpUntilHit{nullptr};
     QPushButton *m_btnBodyDownUntilHit{nullptr};
     QPushButton *m_btnBodyUpStep{nullptr};

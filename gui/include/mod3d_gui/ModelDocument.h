@@ -11,6 +11,7 @@
 #include <vector>
 #include <limits>
 #include <cmath>
+#include <optional>
 
 namespace mod3d_gui {
 
@@ -177,21 +178,22 @@ public:
     bool collapseBodyEdgeAtRowCol(int row, int col, int bodyId);
     bool removeBodyFromProfile(int bodyId, ProfileOrientation orient, int prfIdx);
     bool copyBodyBetweenProfiles(int bodyId, ProfileOrientation orient, int srcPrfIdx, int dstPrfIdx);
-    bool translateBodyVerticalOnProfile(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ);
+    [[nodiscard]] std::vector<std::pair<int, int>> getTargetColumns(ProfileOrientation orient, int prfIdx, bool global) const;
+    bool translateBodyVerticalOnProfile(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ, std::optional<bool> global = std::nullopt);
 
     // Body & Boundary Vertical Movement Operations
-    [[nodiscard]] double calculateBodyMaxUpTranslation(int bodyId, ProfileOrientation orient, int prfIdx) const;
-    [[nodiscard]] double calculateBodyMaxDownTranslation(int bodyId, ProfileOrientation orient, int prfIdx) const;
-    [[nodiscard]] double calculateUpperBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx) const;
-    [[nodiscard]] double calculateUpperBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx) const;
-    [[nodiscard]] double calculateLowerBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx) const;
-    [[nodiscard]] double calculateLowerBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx) const;
+    [[nodiscard]] double calculateBodyMaxUpTranslation(int bodyId, ProfileOrientation orient, int prfIdx, std::optional<bool> global = std::nullopt) const;
+    [[nodiscard]] double calculateBodyMaxDownTranslation(int bodyId, ProfileOrientation orient, int prfIdx, std::optional<bool> global = std::nullopt) const;
+    [[nodiscard]] double calculateUpperBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx, std::optional<bool> global = std::nullopt) const;
+    [[nodiscard]] double calculateUpperBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx, std::optional<bool> global = std::nullopt) const;
+    [[nodiscard]] double calculateLowerBoundaryMaxDown(int bodyId, ProfileOrientation orient, int prfIdx, std::optional<bool> global = std::nullopt) const;
+    [[nodiscard]] double calculateLowerBoundaryMaxUp(int bodyId, ProfileOrientation orient, int prfIdx, std::optional<bool> global = std::nullopt) const;
 
-    bool moveBodyVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp);
-    bool moveUpperBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp);
-    bool moveLowerBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveDown);
-    bool moveUpperBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ);
-    bool moveLowerBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ);
+    bool moveBodyVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp, std::optional<bool> global = std::nullopt);
+    bool moveUpperBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveUp, std::optional<bool> global = std::nullopt);
+    bool moveLowerBoundaryVerticalUntilHit(int bodyId, ProfileOrientation orient, int prfIdx, bool moveDown, std::optional<bool> global = std::nullopt);
+    bool moveUpperBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ, std::optional<bool> global = std::nullopt);
+    bool moveLowerBoundaryVertical(int bodyId, ProfileOrientation orient, int prfIdx, double deltaZ, std::optional<bool> global = std::nullopt);
 
     // Convenience Profile-based Operations (using document default profile)
     mod3d::Body *createNewBody();
@@ -206,28 +208,30 @@ public:
     bool unsnapVertexAt(int lineIdx, int vertexIdx, double separation = -1.0);
     bool extendBodySide(int bodyId, int sourceLineIdx, int targetLineIdx, double targetZ = std::numeric_limits<double>::quiet_NaN());
     bool collapseBodyEdge(int bodyId, int lineIdx);
-    bool translateBodyVertical(int bodyId, double deltaZ);
+    bool translateBodyVertical(int bodyId, double deltaZ, std::optional<bool> global = std::nullopt) {
+        return translateBodyVerticalOnProfile(bodyId, m_profileOrient, m_profileIndex, deltaZ, global);
+    }
 
-    [[nodiscard]] double calculateBodyMaxUpTranslation(int bodyId) const {
-        return calculateBodyMaxUpTranslation(bodyId, m_profileOrient, m_profileIndex);
+    [[nodiscard]] double calculateBodyMaxUpTranslation(int bodyId, std::optional<bool> global = std::nullopt) const {
+        return calculateBodyMaxUpTranslation(bodyId, m_profileOrient, m_profileIndex, global);
     }
-    [[nodiscard]] double calculateBodyMaxDownTranslation(int bodyId) const {
-        return calculateBodyMaxDownTranslation(bodyId, m_profileOrient, m_profileIndex);
+    [[nodiscard]] double calculateBodyMaxDownTranslation(int bodyId, std::optional<bool> global = std::nullopt) const {
+        return calculateBodyMaxDownTranslation(bodyId, m_profileOrient, m_profileIndex, global);
     }
-    bool moveBodyVerticalUntilHit(int bodyId, bool moveUp) {
-        return moveBodyVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveUp);
+    bool moveBodyVerticalUntilHit(int bodyId, bool moveUp, std::optional<bool> global = std::nullopt) {
+        return moveBodyVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveUp, global);
     }
-    bool moveUpperBoundaryVerticalUntilHit(int bodyId, bool moveUp) {
-        return moveUpperBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveUp);
+    bool moveUpperBoundaryVerticalUntilHit(int bodyId, bool moveUp, std::optional<bool> global = std::nullopt) {
+        return moveUpperBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveUp, global);
     }
-    bool moveLowerBoundaryVerticalUntilHit(int bodyId, bool moveDown) {
-        return moveLowerBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveDown);
+    bool moveLowerBoundaryVerticalUntilHit(int bodyId, bool moveDown, std::optional<bool> global = std::nullopt) {
+        return moveLowerBoundaryVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, moveDown, global);
     }
-    bool moveUpperBoundaryVertical(int bodyId, double deltaZ) {
-        return moveUpperBoundaryVertical(bodyId, m_profileOrient, m_profileIndex, deltaZ);
+    bool moveUpperBoundaryVertical(int bodyId, double deltaZ, std::optional<bool> global = std::nullopt) {
+        return moveUpperBoundaryVertical(bodyId, m_profileOrient, m_profileIndex, deltaZ, global);
     }
-    bool moveLowerBoundaryVertical(int bodyId, double deltaZ) {
-        return moveLowerBoundaryVertical(bodyId, m_profileOrient, m_profileIndex, deltaZ);
+    bool moveLowerBoundaryVertical(int bodyId, double deltaZ, std::optional<bool> global = std::nullopt) {
+        return moveLowerBoundaryVertical(bodyId, m_profileOrient, m_profileIndex, deltaZ, global);
     }
 
     // Computation Pipeline
@@ -296,6 +300,10 @@ public:
     [[nodiscard]] int activeBodyId() const noexcept { return m_activeBodyId; }
     void setActiveBodyId(int id);
 
+    // Global Movement Mode (whole 3D body vs. active profile slice)
+    [[nodiscard]] bool globalMovement() const noexcept { return m_globalMovement; }
+    void setGlobalMovement(bool enabled);
+
 signals:
     void documentModifiedChanged(bool modified);
     void documentReset();
@@ -309,6 +317,7 @@ signals:
     void activeProfileCursorChanged(const mod3d_gui::ModelDocument::ProfileCursorPoint &pt);
     void activeSliceElevationChanged(double z);
     void activeBodyChanged(int id);
+    void globalMovementChanged(bool enabled);
 
 private:
     void ensureProfileIndexValid();
@@ -321,6 +330,7 @@ private:
     ProfileOrientation m_profileOrient{ProfileOrientation::EastWest};
     int m_profileIndex{0};
     int m_activeBodyId{1};
+    bool m_globalMovement{false};
 
     ProfileCursorPoint m_activeProfileCursor;
 

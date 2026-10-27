@@ -8,6 +8,7 @@
 #include <QRect>
 #include <memory>
 #include <vector>
+#include <optional>
 
 namespace mod3d_gui {
 
@@ -72,12 +73,12 @@ public:
 
     // Vertical Body and Boundary Movements
     [[nodiscard]] int activeOrHoverBodyId() const;
-    bool moveActiveBodyVerticalUntilHit(bool moveUp);
-    bool moveActiveUpperBoundaryVerticalUntilHit(bool moveUp);
-    bool moveActiveLowerBoundaryVerticalUntilHit(bool moveDown);
-    bool translateActiveBodyVertical(double deltaZ);
-    bool moveActiveUpperBoundaryVertical(double deltaZ);
-    bool moveActiveLowerBoundaryVertical(double deltaZ);
+    bool moveActiveBodyVerticalUntilHit(bool moveUp, std::optional<bool> global = std::nullopt);
+    bool moveActiveUpperBoundaryVerticalUntilHit(bool moveUp, std::optional<bool> global = std::nullopt);
+    bool moveActiveLowerBoundaryVerticalUntilHit(bool moveDown, std::optional<bool> global = std::nullopt);
+    bool translateActiveBodyVertical(double deltaZ, std::optional<bool> global = std::nullopt);
+    bool moveActiveUpperBoundaryVertical(double deltaZ, std::optional<bool> global = std::nullopt);
+    bool moveActiveLowerBoundaryVertical(double deltaZ, std::optional<bool> global = std::nullopt);
 
     bool showPreviousProfile() const noexcept { return m_showPreviousProfile; }
     void setShowPreviousProfile(bool show);

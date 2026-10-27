@@ -4353,8 +4353,122 @@ TEST_F(GuiDocumentTest, SettingsPaneModellingTabIntegrationAndFastHelp) {
     EXPECT_NEAR(doc->model().z(row, col, bIdx + 1), curZ + 25.0, 1e-4);
 }
 
+TEST_F(GuiDocumentTest, ModelDocumentGlobalMovementMode) {
+    ModelDocument doc;
+    auto orient = ProfileOrientation::EastWest;
 
+    // Insert Body 1 on Profile 0 (row 1, col 1) with center = -150, thickness = 100 -> top = -100, bottom = -200
+    int b1Id = doc.insertBodyAtRowCol(1, 1, -150.0, 100.0, -1);
+    ASSERT_GT(b1Id, 0);
 
+    // Insert Body 1 on Profile 1 (row 2, col 1) with center = -170, thickness = 100 -> top = -120, bottom = -220
+    int b1P1 = doc.insertBodyAtRowCol(2, 1, -170.0, 100.0, b1Id);
+    ASSERT_EQ(b1P1, b1Id);
 
+    // Insert Body 2 as an obstacle on Profile 1 (row 2, col 1) above Body 1: center = -25.0, thickness = 50.0 -> top = 0.0, bottom = -50.0
+    int b2Id = doc.insertBodyAtRowCol(2, 1, -25.0, 50.0, -1);
+    ASSERT_GT(b2Id, 0);
+    EXPECT_NE(b1Id, b2Id);
 
+    // Initial checks
+    int b1Prof0 = doc.model().body_index(b1Id, 1, 1);
+    int b1Prof1 = doc.model().body_index(b1Id, 2, 1);
+    ASSERT_GT(b1Prof0, 0);
+    ASSERT_GT(b1Prof1, 0);
+    EXPECT_NEAR(doc.model().z(1, 1, b1Prof0), -100.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(2, 1, b1Prof1), -120.0, 1e-4);
 
+    // 1. With globalMovement() == false (default)
+    EXPECT_FALSE(doc.globalMovement());
+    double zReliefP0 = doc.model().z(1, 1, 0);
+    // On Profile 0, upward gap is to relief: gap = zReliefP0 - (-100)
+    double localUpProf0 = doc.calculateBodyMaxUpTranslation(b1Id, orient, 0, false);
+    EXPECT_NEAR(localUpProf0, zReliefP0 - (-100.0), 1e-4);
+
+    // Translate Body 1 on Profile 0 by +40 in local mode
+    EXPECT_TRUE(doc.translateBodyVerticalOnProfile(b1Id, orient, 0, 40.0, false));
+    b1Prof0 = doc.model().body_index(b1Id, 1, 1);
+    b1Prof1 = doc.model().body_index(b1Id, 2, 1);
+    EXPECT_NEAR(doc.model().z(1, 1, b1Prof0), -60.0, 1e-4);
+    // Profile 1 must NOT have moved!
+    EXPECT_NEAR(doc.model().z(2, 1, b1Prof1), -120.0, 1e-4);
+
+    // 2. Enable globalMovement
+    doc.setGlobalMovement(true);
+    EXPECT_TRUE(doc.globalMovement());
+
+    // In global mode:
+    // On Profile 0 (row 1, col 1): top is -60.0, relief is zReliefP0 (1000.0) -> gap = 1060.0
+    // On Profile 1 (row 2, col 1): top is -120.0, obstacle Body 2 bottom is -50.0 -> gap = 70.0
+    // Min gap across entire 3D body is min(1060.0, 70.0) = 70.0 (constrained by Body 2 on Profile 1!)
+    double globalUp = doc.calculateBodyMaxUpTranslation(b1Id, orient, 0);
+    EXPECT_NEAR(globalUp, 70.0, 1e-4);
+
+    // Now move Body 1 up until hit in global mode
+    EXPECT_TRUE(doc.moveBodyVerticalUntilHit(b1Id, orient, 0, true));
+    b1Prof0 = doc.model().body_index(b1Id, 1, 1);
+    b1Prof1 = doc.model().body_index(b1Id, 2, 1);
+    // Profile 0 moved rigidly by +70.0: -60.0 + 70.0 = 10.0
+    EXPECT_NEAR(doc.model().z(1, 1, b1Prof0), 10.0, 1e-4);
+    // Profile 1 hit Body 2 bottom: -120.0 + 70.0 = -50.0
+    EXPECT_NEAR(doc.model().z(2, 1, b1Prof1), -50.0, 1e-4);
+    int b2Idx = doc.model().body_index(b2Id, 2, 1);
+    EXPECT_NEAR(doc.model().z(2, 1, b1Prof1), doc.model().z(2, 1, b2Idx + 1), 1e-4);
+
+    // 3. Move downward in global mode
+    double curP0Bot = doc.model().z(1, 1, b1Prof0 + 1);
+    double curP1Bot = doc.model().z(2, 1, b1Prof1 + 1);
+    EXPECT_TRUE(doc.translateBodyVerticalOnProfile(b1Id, orient, 0, -30.0));
+    b1Prof0 = doc.model().body_index(b1Id, 1, 1);
+    b1Prof1 = doc.model().body_index(b1Id, 2, 1);
+    EXPECT_NEAR(doc.model().z(1, 1, b1Prof0 + 1), curP0Bot - 30.0, 1e-4);
+    EXPECT_NEAR(doc.model().z(2, 1, b1Prof1 + 1), curP1Bot - 30.0, 1e-4);
+}
+
+TEST_F(GuiDocumentTest, SettingsPaneAndProfileViewGlobalMovementSync) {
+    MainWindow mw;
+    auto *pane = mw.settingsPane();
+    ASSERT_NE(pane, nullptr);
+    auto *doc = mw.document();
+    ASSERT_NE(doc, nullptr);
+    auto *chkGlobal = pane->globalMovementCheckBox();
+    ASSERT_NE(chkGlobal, nullptr);
+
+    // Default state
+    EXPECT_FALSE(doc->globalMovement());
+    EXPECT_FALSE(chkGlobal->isChecked());
+
+    // Toggle via SettingsPane UI
+    chkGlobal->setChecked(true);
+    EXPECT_TRUE(doc->globalMovement());
+
+    // Toggle via ModelDocument
+    doc->setGlobalMovement(false);
+    EXPECT_FALSE(chkGlobal->isChecked());
+
+    doc->setGlobalMovement(true);
+    EXPECT_TRUE(chkGlobal->isChecked());
+
+    // Verify tooltip
+    EXPECT_FALSE(chkGlobal->toolTip().isEmpty());
+
+    // Insert body on row 1 col 1 and row 2 col 1
+    int bId = doc->insertBodyAtRowCol(1, 1, -100.0, 100.0, -1);
+    ASSERT_GT(bId, 0);
+    int bIdP1 = doc->insertBodyAtRowCol(2, 1, -100.0, 100.0, bId);
+    ASSERT_EQ(bIdP1, bId);
+
+    auto *pv = mw.activeProfileView();
+    ASSERT_NE(pv, nullptr);
+
+    // With globalMovement active, translating active body via pane button moves both profiles
+    double p0InitZ = doc->model().z(1, 1, doc->model().body_index(bId, 1, 1));
+    double p1InitZ = doc->model().z(2, 1, doc->model().body_index(bId, 2, 1));
+    pane->modellingStepSpinBox()->setValue(15.0);
+    pane->bodyDownStepButton()->click();
+
+    int bIdxP0 = doc->model().body_index(bId, 1, 1);
+    int bIdxP1 = doc->model().body_index(bId, 2, 1);
+    EXPECT_NEAR(doc->model().z(1, 1, bIdxP0), p0InitZ - 15.0, 1e-4);
+    EXPECT_NEAR(doc->model().z(2, 1, bIdxP1), p1InitZ - 15.0, 1e-4);
+}

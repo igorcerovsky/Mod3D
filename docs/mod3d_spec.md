@@ -531,10 +531,13 @@ The Modelling tab automatically detects the currently active MDI view and switch
 - **Profile View Context**:
   - **Active Body Selection**: Synchronized with the global active body in `ModelDocument` and the Bodies tab.
   - **Vertical Step Size**: Adjustable numeric step size (e.g. 10.0 m) for incremental boundary or body translations.
+  - **Global Movement Mode (`Global movement (entire 3D body)`)**:
+    - **Local Profile Mode (Unchecked, Default)**: Vertical movement and collision calculations are scoped strictly to the current profile line, translating only the vertices along that 2D cross-section.
+    - **Global Mode (Checked)**: Vertical movement shifts the **entire 3D geological body** across all profiles in the model volume ($r = 1..\text{rows}-2, c = 1..\text{cols}-2$). The minimum collision gap is evaluated across all columns containing the body, ensuring rigid vertical translation that stops cleanly when any vertex of the body anywhere in 3D hits an adjacent body, surface relief, or base depth. Also toggleable directly in the Profile View context menu under *Vertical Movement -> Global Movement Mode (Entire 3D Body)*.
   - **Entire Body Movement (Rigid Vertical)**:
-    - **Move Up Until Hit (`Shift + ↑`)**: Calculates the minimum vertical gap between the body's upper boundary and any overlying body or surface relief $\min_{(r,c)} (z_{\text{above}} - z_{\text{top}})$, translating both upper and lower contact vertices together without altering thickness. Stops precisely upon first contact.
+    - **Move Up Until Hit (`Shift + ↑`)**: Calculates the minimum vertical gap between the body's upper boundary and any overlying body or surface relief $\min_{(r,c)} (z_{\text{above}} - z_{\text{top}})$ (evaluated across the current profile or the entire 3D body when in Global mode), translating both upper and lower contact vertices together without altering thickness. Stops precisely upon first contact.
     - **Move Down Until Hit (`Shift + ↓`)**: Calculates the minimum vertical gap between the body's lower boundary and any underlying body or model base depth $\min_{(r,c)} (z_{\text{bottom}} - z_{\text{below}})$, translating both boundaries rigidly downward until contact.
-    - **Step Up / Step Down**: Translates entire body by the user-configured step size clamped to obstacle limits.
+    - **Step Up / Step Down**: Translates body by the user-configured step size clamped to obstacle limits.
   - **Upper Boundary Movement**:
     - **Move Up Until Hit (`Ctrl + Shift + ↑`)**: Expands upper boundary upward until hitting an upper body or surface relief.
     - **Move Down Until Hit (`Ctrl + Shift + ↓`)**: Compresses upper boundary downward until collapsing onto the lower boundary ($z_{\text{top}} = z_{\text{bottom}}$).

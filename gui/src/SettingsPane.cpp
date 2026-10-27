@@ -100,6 +100,12 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow, QWidget *
             m_blockSync = false;
         }
     });
+    connect(m_doc, &ModelDocument::globalMovementChanged, this, [this](bool enabled) {
+        if (m_chkGlobalMovement && m_chkGlobalMovement->isChecked() != enabled) {
+            QSignalBlocker blocker(m_chkGlobalMovement);
+            m_chkGlobalMovement->setChecked(enabled);
+        }
+    });
 
     refreshAll();
 }
@@ -1072,6 +1078,15 @@ void SettingsPane::setupModellingTab(QWidget *container) {
     m_spinModellingStep->setDecimals(1);
     m_spinModellingStep->setSuffix(" m");
     targetLayout->addRow(tr("Step Size:"), m_spinModellingStep);
+
+    m_chkGlobalMovement = new QCheckBox(tr("Global movement (entire 3D body)"), grpTarget);
+    m_chkGlobalMovement->setToolTip(tr("When checked, vertical movement applies to the entire 3D body across all profiles, stopping when any vertex hits an obstacle. When unchecked, movement applies only to the active profile."));
+    m_chkGlobalMovement->setChecked(m_doc ? m_doc->globalMovement() : false);
+    targetLayout->addRow(QString(), m_chkGlobalMovement);
+
+    connect(m_chkGlobalMovement, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_doc) m_doc->setGlobalMovement(checked);
+    });
 
     pvLayout->addWidget(grpTarget);
 
@@ -2310,6 +2325,10 @@ void SettingsPane::refreshAll() {
     updateBodyList();
     loadBodyData();
     loadPhysicsData();
+    if (m_chkGlobalMovement && m_doc) {
+        QSignalBlocker blocker(m_chkGlobalMovement);
+        m_chkGlobalMovement->setChecked(m_doc->globalMovement());
+    }
 }
 
 } // namespace mod3d_gui

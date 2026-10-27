@@ -2122,6 +2122,12 @@ void ProfileView::showBodyContextMenu(const QPoint &globalPos, int bodyId, int,
   }
   menu.addSeparator();
   auto *menuMove = menu.addMenu(tr("Vertical Movement"));
+  auto *actGlobal = menuMove->addAction(tr("Global Movement Mode (Entire 3D Body)"), [this](bool checked) {
+    if (m_doc) m_doc->setGlobalMovement(checked);
+  });
+  actGlobal->setCheckable(true);
+  actGlobal->setChecked(m_doc && m_doc->globalMovement());
+  menuMove->addSeparator();
   menuMove->addAction(tr("Move Entire Body Up Until Hit\tShift+Up"), [this, bodyId]() {
     m_doc->moveBodyVerticalUntilHit(bodyId, m_profileOrient, m_profileIndex, true);
     update();
@@ -2226,56 +2232,56 @@ int ProfileView::activeOrHoverBodyId() const {
   return bodies.empty() ? -1 : bodies.front()->id();
 }
 
-bool ProfileView::moveActiveBodyVerticalUntilHit(bool moveUp) {
+bool ProfileView::moveActiveBodyVerticalUntilHit(bool moveUp, std::optional<bool> global) {
   if (!m_doc) return false;
   int bId = activeOrHoverBodyId();
   if (bId < 0) return false;
-  bool res = m_doc->moveBodyVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveUp);
+  bool res = m_doc->moveBodyVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveUp, global);
   if (res) update();
   return res;
 }
 
-bool ProfileView::moveActiveUpperBoundaryVerticalUntilHit(bool moveUp) {
+bool ProfileView::moveActiveUpperBoundaryVerticalUntilHit(bool moveUp, std::optional<bool> global) {
   if (!m_doc) return false;
   int bId = activeOrHoverBodyId();
   if (bId < 0) return false;
-  bool res = m_doc->moveUpperBoundaryVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveUp);
+  bool res = m_doc->moveUpperBoundaryVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveUp, global);
   if (res) update();
   return res;
 }
 
-bool ProfileView::moveActiveLowerBoundaryVerticalUntilHit(bool moveDown) {
+bool ProfileView::moveActiveLowerBoundaryVerticalUntilHit(bool moveDown, std::optional<bool> global) {
   if (!m_doc) return false;
   int bId = activeOrHoverBodyId();
   if (bId < 0) return false;
-  bool res = m_doc->moveLowerBoundaryVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveDown);
+  bool res = m_doc->moveLowerBoundaryVerticalUntilHit(bId, m_profileOrient, m_profileIndex, moveDown, global);
   if (res) update();
   return res;
 }
 
-bool ProfileView::translateActiveBodyVertical(double deltaZ) {
+bool ProfileView::translateActiveBodyVertical(double deltaZ, std::optional<bool> global) {
   if (!m_doc) return false;
   int bId = activeOrHoverBodyId();
   if (bId < 0) return false;
-  bool res = m_doc->translateBodyVerticalOnProfile(bId, m_profileOrient, m_profileIndex, deltaZ);
+  bool res = m_doc->translateBodyVerticalOnProfile(bId, m_profileOrient, m_profileIndex, deltaZ, global);
   if (res) update();
   return res;
 }
 
-bool ProfileView::moveActiveUpperBoundaryVertical(double deltaZ) {
+bool ProfileView::moveActiveUpperBoundaryVertical(double deltaZ, std::optional<bool> global) {
   if (!m_doc) return false;
   int bId = activeOrHoverBodyId();
   if (bId < 0) return false;
-  bool res = m_doc->moveUpperBoundaryVertical(bId, m_profileOrient, m_profileIndex, deltaZ);
+  bool res = m_doc->moveUpperBoundaryVertical(bId, m_profileOrient, m_profileIndex, deltaZ, global);
   if (res) update();
   return res;
 }
 
-bool ProfileView::moveActiveLowerBoundaryVertical(double deltaZ) {
+bool ProfileView::moveActiveLowerBoundaryVertical(double deltaZ, std::optional<bool> global) {
   if (!m_doc) return false;
   int bId = activeOrHoverBodyId();
   if (bId < 0) return false;
-  bool res = m_doc->moveLowerBoundaryVertical(bId, m_profileOrient, m_profileIndex, deltaZ);
+  bool res = m_doc->moveLowerBoundaryVertical(bId, m_profileOrient, m_profileIndex, deltaZ, global);
   if (res) update();
   return res;
 }
