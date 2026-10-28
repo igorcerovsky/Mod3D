@@ -543,7 +543,7 @@ The Modelling tab automatically detects the currently active MDI view and switch
     - **Move Up Until Hit (`Ctrl + Shift + ↑`)**: Expands upper boundary upward until hitting an upper body or surface relief.
     - **Move Down Until Hit (`Ctrl + Shift + ↓`)**: Compresses upper boundary downward until collapsing onto the lower boundary ($z_{\text{top}} = z_{\text{bottom}}$).
     - **Step Up / Step Down**: Adjusts upper boundary vertically by step size.
-    - **Vertical Drag (`Ctrl + Shift + Drag`)**: Interactively drags the upper boundary vertically with the mouse (clamped between lower boundary and overlying obstacles).
+    - **Vertical Drag (`Ctrl + Shift + Drag` / `⌘ + Shift + Drag`)**: Interactively drags the upper boundary vertically with the mouse (clamped between lower boundary and overlying obstacles; macOS Ctrl+Click right-button translation handled seamlessly with context menu suppression).
   - **Lower Boundary Movement**:
     - **Move Down Until Hit (`Alt + Shift + ↓`)**: Expands lower boundary downward until hitting an underlying body or base depth.
     - **Move Up Until Hit (`Alt + Shift + ↑`)**: Compresses lower boundary upward until collapsing onto the upper boundary ($z_{\text{bottom}} = z_{\text{top}}$).

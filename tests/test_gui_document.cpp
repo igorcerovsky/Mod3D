@@ -885,6 +885,15 @@ public:
         resize(w, h);
         updatePaneRects();
     }
+    bool sendContextMenu(const QPoint &pos, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QContextMenuEvent ev(QContextMenuEvent::Mouse, pos, pos, mods);
+        contextMenuEvent(&ev);
+        return ev.isAccepted();
+    }
+    void sendKeyPress(int key, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+        QKeyEvent ev(QEvent::KeyPress, key, mods);
+        keyPressEvent(&ev);
+    }
 };
 
 TEST_F(GuiDocumentTest, LoadedBodyDrawingModeTest) {
@@ -4563,5 +4572,52 @@ TEST_F(GuiDocumentTest, ProfileViewVerticalDragGestures) {
     newTop = doc.model().z(1, 1, bIdx);
     newBot = doc.model().z(1, 1, bIdx + 1);
     EXPECT_GT(newTop, initialTop);
+    EXPECT_NEAR(newBot, initialBot, 1e-4);
+
+    // 5. macOS Control + Shift + Drag emulation:
+    // On macOS Cocoa, physical Ctrl + Left Click sends Qt::RightButton with Qt::ControlModifier or Qt::MetaModifier.
+    // Drag mouse downward by 20 pixels to move upper boundary down.
+    initialTop = newTop;
+    initialBot = newBot;
+    pv.sendMousePress(QPoint(sx, syMid), Qt::RightButton, Qt::ControlModifier | Qt::ShiftModifier);
+    pv.sendMouseMove(QPoint(sx, syMid + 20), Qt::RightButton, Qt::ControlModifier | Qt::ShiftModifier);
+    pv.sendMouseRelease(QPoint(sx, syMid + 20), Qt::RightButton, Qt::ControlModifier | Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    newTop = doc.model().z(1, 1, bIdx);
+    newBot = doc.model().z(1, 1, bIdx + 1);
+    EXPECT_LT(newTop, initialTop);
+    EXPECT_NEAR(newBot, initialBot, 1e-4);
+
+    // 6. macOS physical Control key (Qt::MetaModifier) with RightButton:
+    // Drag mouse upward by 20 pixels to move upper boundary up.
+    initialTop = newTop;
+    initialBot = newBot;
+    pv.sendMousePress(QPoint(sx, syMid), Qt::RightButton, Qt::MetaModifier | Qt::ShiftModifier);
+    pv.sendMouseMove(QPoint(sx, syMid - 20), Qt::RightButton, Qt::MetaModifier | Qt::ShiftModifier);
+    pv.sendMouseRelease(QPoint(sx, syMid - 20), Qt::RightButton, Qt::MetaModifier | Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    newTop = doc.model().z(1, 1, bIdx);
+    newBot = doc.model().z(1, 1, bIdx + 1);
+    EXPECT_GT(newTop, initialTop);
+    EXPECT_NEAR(newBot, initialBot, 1e-4);
+
+    // 7. Context menu suppression during Shift gestures:
+    // Right clicks while Shift is held must NEVER display a context menu.
+    EXPECT_FALSE(pv.sendContextMenu(QPoint(sx, syMid), Qt::ShiftModifier));
+    EXPECT_FALSE(pv.sendContextMenu(QPoint(sx, syMid), Qt::ControlModifier | Qt::ShiftModifier));
+    EXPECT_FALSE(pv.sendContextMenu(QPoint(sx, syMid), Qt::MetaModifier | Qt::ShiftModifier));
+    EXPECT_FALSE(pv.sendContextMenu(QPoint(sx, syMid), Qt::AltModifier | Qt::ShiftModifier));
+
+    // 8. Keyboard shortcut with MetaModifier (macOS physical Ctrl) moves upper boundary downward
+    initialTop = newTop;
+    initialBot = newBot;
+    pv.sendKeyPress(Qt::Key_Down, Qt::MetaModifier | Qt::ShiftModifier);
+
+    bIdx = doc.model().body_index(bId, 1, 1);
+    newTop = doc.model().z(1, 1, bIdx);
+    newBot = doc.model().z(1, 1, bIdx + 1);
+    EXPECT_LT(newTop, initialTop);
     EXPECT_NEAR(newBot, initialBot, 1e-4);
 }

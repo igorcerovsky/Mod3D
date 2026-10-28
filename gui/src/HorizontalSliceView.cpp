@@ -1908,7 +1908,7 @@ void HorizontalSliceView::mouseDoubleClickEvent(QMouseEvent *event) {
 
     if (hitBodyId >= 0) {
         // Double-click on an existing body in this cell
-        if (event->modifiers() & Qt::ControlModifier) {
+        if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
             // Ctrl + double-click: remove body at this cell (same as ProfileView)
             int bIdx = m_doc->model().body_index(hitBodyId, hitRow, hitCol);
             if (bIdx >= 0) {
@@ -1961,7 +1961,7 @@ void HorizontalSliceView::mouseDoubleClickEvent(QMouseEvent *event) {
 }
 
 void HorizontalSliceView::wheelEvent(QWheelEvent *event) {
-    if (event->modifiers() & Qt::ControlModifier) {
+    if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
         // Ctrl + Wheel: Zoom in / zoom out
         int numDegrees = event->angleDelta().y() / 8;
         if (numDegrees > 0) {
@@ -2021,6 +2021,10 @@ void HorizontalSliceView::leaveEvent(QEvent *event) {
 }
 
 void HorizontalSliceView::contextMenuEvent(QContextMenuEvent *event) {
+    if ((event->modifiers() & Qt::ShiftModifier) || m_dragOp != DragOperation::None) {
+        event->ignore();
+        return;
+    }
     QMenu menu(this);
     menu.setObjectName("sliceContextMenu");
 

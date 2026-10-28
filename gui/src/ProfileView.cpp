@@ -1426,9 +1426,9 @@ ProfileView::CursorMode ProfileView::performHitTest(const QPoint &pos,
 
 void ProfileView::updateCursorShape(CursorMode mode) {
   auto mods = QApplication::keyboardModifiers();
-  bool shift = (mods & Qt::ShiftModifier);
-  bool ctrl = (mods & Qt::ControlModifier);
-  bool alt = (mods & Qt::AltModifier);
+  bool shift = (mods & Qt::ShiftModifier) != 0;
+  bool ctrl = (mods & (Qt::ControlModifier | Qt::MetaModifier)) != 0;
+  bool alt = (mods & Qt::AltModifier) != 0;
 
   switch (mode) {
   case CursorMode::OverDivider:
@@ -1461,16 +1461,20 @@ void ProfileView::updateCursorShape(CursorMode mode) {
 }
 
 void ProfileView::mousePressEvent(QMouseEvent *event) {
-  if (event->button() == Qt::LeftButton) {
+  bool shiftPressed = (event->modifiers() & Qt::ShiftModifier) != 0;
+  bool ctrlPressed = ((event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) != 0) ||
+                     (event->button() == Qt::RightButton && shiftPressed && !(event->modifiers() & Qt::AltModifier));
+  bool altPressed = (event->modifiers() & Qt::AltModifier) != 0;
+
+  bool isLeftBtn = (event->button() == Qt::LeftButton);
+  bool isMacCtrlClick = (event->button() == Qt::RightButton && shiftPressed);
+
+  if (isLeftBtn || isMacCtrlClick) {
     int lineIdx = -1, vIdx = -1, bId = -1;
     CursorMode mode = performHitTest(event->pos(), lineIdx, vIdx, bId);
     if (bId >= 0 && m_doc) {
       m_doc->setActiveBodyId(bId);
     }
-
-    bool shiftPressed = (event->modifiers() & Qt::ShiftModifier);
-    bool ctrlPressed = (event->modifiers() & Qt::ControlModifier);
-    bool altPressed = (event->modifiers() & Qt::AltModifier);
 
     int targetBodyId = (bId >= 0) ? bId : m_hoverBodyId;
     if (targetBodyId < 0 && m_doc) {
@@ -1515,6 +1519,11 @@ void ProfileView::mousePressEvent(QMouseEvent *event) {
       m_dragBodyId = bId;
       m_dragStartPos = event->pos();
     }
+
+    if (m_dragOp != DragOperation::None) {
+      event->accept();
+      return;
+    }
   }
   QWidget::mousePressEvent(event);
 }
@@ -1536,7 +1545,7 @@ void ProfileView::mouseMoveEvent(QMouseEvent *event) {
     double zMax = m_doc->model().z_max_val();
     newZ = std::clamp(newZ, zMin, zMax);
 
-    bool ctrlPressed = (event->modifiers() & Qt::ControlModifier);
+    bool ctrlPressed = (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) != 0;
     mod3d::BodyMoveType moveType =
         ctrlPressed ? mod3d::BodyMoveType::Split : mod3d::BodyMoveType::Normal;
 
@@ -1823,7 +1832,7 @@ void ProfileView::leaveEvent(QEvent *event) {
 }
 
 void ProfileView::wheelEvent(QWheelEvent *event) {
-  if (event->modifiers() & Qt::ControlModifier) {
+  if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
     if (event->angleDelta().y() > 0) {
       zoomIn();
     } else if (event->angleDelta().y() < 0) {
@@ -1859,7 +1868,7 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
   updateCursorShape(m_currentCursorMode);
   switch (event->key()) {
   case Qt::Key_N:
-    if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
+    if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier | Qt::ShiftModifier)) {
       if (m_hoverBodyId >= 0)
         m_doc->copyBodyBetweenProfiles(m_hoverBodyId, m_profileOrient,
                                        m_profileIndex, m_profileIndex + 1);
@@ -1868,7 +1877,7 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
     }
     break;
   case Qt::Key_P:
-    if (event->modifiers() & (Qt::ControlModifier | Qt::ShiftModifier)) {
+    if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier | Qt::ShiftModifier)) {
       if (m_hoverBodyId >= 0)
         m_doc->copyBodyBetweenProfiles(m_hoverBodyId, m_profileOrient,
                                        m_profileIndex, m_profileIndex - 1);
@@ -1893,7 +1902,7 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
     break;
   case Qt::Key_Up:
     if (event->modifiers() & Qt::ShiftModifier) {
-      if (event->modifiers() & Qt::ControlModifier) {
+      if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
         moveActiveUpperBoundaryVerticalUntilHit(true);
       } else if (event->modifiers() & Qt::AltModifier) {
         moveActiveLowerBoundaryVerticalUntilHit(false);
@@ -1906,7 +1915,7 @@ void ProfileView::keyPressEvent(QKeyEvent *event) {
     break;
   case Qt::Key_Down:
     if (event->modifiers() & Qt::ShiftModifier) {
-      if (event->modifiers() & Qt::ControlModifier) {
+      if (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier)) {
         moveActiveUpperBoundaryVerticalUntilHit(false);
       } else if (event->modifiers() & Qt::AltModifier) {
         moveActiveLowerBoundaryVerticalUntilHit(true);
@@ -1943,7 +1952,7 @@ void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {
   }
 
   if (mode == CursorMode::OverBodyLine &&
-      (event->modifiers() & Qt::ControlModifier)) {
+      (event->modifiers() & (Qt::ControlModifier | Qt::MetaModifier))) {
     int r = 0, c = 0;
     getRowCol(lineIdx, r, c);
     m_doc->removeBodyAtRowCol(r, c, vIdx);
@@ -1985,6 +1994,11 @@ void ProfileView::mouseDoubleClickEvent(QMouseEvent *event) {
 }
 
 void ProfileView::contextMenuEvent(QContextMenuEvent *event) {
+  if ((event->modifiers() & Qt::ShiftModifier) || m_dragOp != DragOperation::None) {
+    event->ignore();
+    return;
+  }
+
   int lineIdx = -1, vIdx = -1, bId = -1;
   CursorMode mode = performHitTest(event->pos(), lineIdx, vIdx, bId);
 
