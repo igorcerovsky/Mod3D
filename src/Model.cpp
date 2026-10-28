@@ -1478,19 +1478,24 @@ int Model::body_facets(int bodyId, std::vector<Facet3Pt> &outList,
       }
 
       // If excluding the outer extension ring and this interior cell contains
-      // volume of `bodyId` (l >= 3), emit the boundary wall on any edge that
-      // borders the excluded outer ring.
+      // volume of `bodyId` (l >= 3), emit the boundary wall only on edges where
+      // the body terminates at the interior border (i.e. does not extend into
+      // the adjacent outer-ring cell, where its FCT_SIDE was stored).
       if (clipOuter && bodyId != -1 && l >= 3) {
-        if (r == rMin && has0 && has1) {
+        if (r == rMin && has0 && has1 && body_index(bodyId, r - 1, c) < 1 &&
+            body_index(bodyId, r - 1, c + 1) < 1) {
           emitBoundaryQuad(bodyId, t0, b0, t1, b1);
         }
-        if (r == rMax && has2 && has3) {
+        if (r == rMax && has2 && has3 && body_index(bodyId, r + 2, c) < 1 &&
+            body_index(bodyId, r + 2, c + 1) < 1) {
           emitBoundaryQuad(bodyId, t2, b2, t3, b3);
         }
-        if (c == cMin && has3 && has0) {
+        if (c == cMin && has3 && has0 && body_index(bodyId, r, c - 1) < 1 &&
+            body_index(bodyId, r + 1, c - 1) < 1) {
           emitBoundaryQuad(bodyId, t3, b3, t0, b0);
         }
-        if (c == cMax && has1 && has2) {
+        if (c == cMax && has1 && has2 && body_index(bodyId, r, c + 2) < 1 &&
+            body_index(bodyId, r + 1, c + 2) < 1) {
           emitBoundaryQuad(bodyId, t1, b1, t2, b2);
         }
       }

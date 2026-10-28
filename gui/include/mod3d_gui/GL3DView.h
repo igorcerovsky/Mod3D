@@ -16,6 +16,7 @@ class QMdiArea;
 #include "mod3d_gui/ProfileView.h"
 #include <QPointer>
 #include <QVariantAnimation>
+#include <array>
 
 namespace mod3d_gui {
 
@@ -143,6 +144,18 @@ public:
       return !(*this == o);
     }
 
+    [[nodiscard]] double distCutX(double x) const noexcept {
+      return cutPosX ? (x - snX) : (snX - x);
+    }
+
+    [[nodiscard]] double distCutY(double y) const noexcept {
+      return cutPosY ? (y - ewY) : (ewY - y);
+    }
+
+    [[nodiscard]] double distCutZ(double z) const noexcept {
+      return cutPosZ ? (z - planarZ) : (planarZ - z);
+    }
+
     [[nodiscard]] bool inCutX(double x, double eps = 1e-3) const noexcept {
       if (!hasSN)
         return true;
@@ -225,6 +238,156 @@ public:
         return true;
       }
       return false;
+    }
+
+    // Evaluates signed distance to the cut plane on `axis` (0 = X, 1 = Y,
+    // 2 = Z); positive values lie on the cut-away side.
+    [[nodiscard]] double planeDist(int axis,
+                                   const mod3d::Point3D &p) const noexcept {
+      if (axis == 0)
+        return distCutX(p.x);
+      if (axis == 1)
+        return distCutY(p.y);
+      return distCutZ(p.z);
+    }
+
+    // Clips triangle (v0, v1, v2) against the octant cut region
+    // (Hx n Hy n Hz), emitting the kept pieces with preserved winding using
+    // the disjoint partition ~Hx u (Hx n ~Hy) u (Hx n Hy n ~Hz).
+    void clipTriangle(const mod3d::Point3D &v0, const mod3d::Point3D &v1,
+                      const mod3d::Point3D &v2,
+                      std::vector<std::array<mod3d::Point3D, 3>> &outTris,
+                      double eps = 1e-3) const {
+      int axes[3];
+      int numPlanes = 0;
+      if (active) {
+        if (hasSN)
+          axes[numPlanes++] = 0;
+        if (hasEW)
+          axes[numPlanes++] = 1;
+        if (hasPlanar)
+          axes[numPlanes++] = 2;
+      }
+      if (numPlanes == 0) {
+        outTris.push_back({v0, v1, v2});
+        return;
+      }
+
+      auto emitPoly = [&outTris](const std::vector<mod3d::Point3D> &poly) {
+        for (size_t i = 1; i + 1 < poly.size(); ++i) {
+          const auto &a = poly[0];
+          const auto &b = poly[i];
+          const auto &c = poly[i + 1];
+          double ux = b.x - a.x, uy = b.y - a.y, uz = b.z - a.z;
+          double vx = c.x - a.x, vy = c.y - a.y, vz = c.z - a.z;
+          double nx = uy * vz - uz * vy;
+          double ny = uz * vx - ux * vz;
+          double nz = ux * vy - uy * vx;
+          if (nx * nx + ny * ny + nz * nz > 1e-12)
+            outTris.push_back({a, b, c});
+        }
+      };
+
+      std::vector<mod3d::Point3D> curPoly = {v0, v1, v2};
+      for (int pIdx = 0; pIdx < numPlanes; ++pIdx) {
+        if (curPoly.size() < 3)
+          return;
+        const int axis = axes[pIdx];
+        std::vector<double> d(curPoly.size());
+        bool anyCut = false;
+        bool anyKept = false;
+        for (size_t i = 0; i < curPoly.size(); ++i) {
+          d[i] = planeDist(axis, curPoly[i]);
+          if (d[i] > eps)
+            anyCut = true;
+          if (d[i] < -eps)
+            anyKept = true;
+        }
+        if (!anyCut) {
+          if (anyKept) {
+            emitPoly(curPoly); // fully on the kept side of this plane
+            return;
+          }
+          continue; // lies on the plane itself: test next plane
+        }
+        if (!anyKept)
+          continue; // fully on the cut side: test next plane
+
+        std::vector<mod3d::Point3D> keptPoly;
+        std::vector<mod3d::Point3D> cutPoly;
+        const size_t n = curPoly.size();
+        for (size_t i = 0; i < n; ++i) {
+          const size_t j = (i + 1) % n;
+          const auto &pi = curPoly[i];
+          const auto &pj = curPoly[j];
+          const double di = d[i];
+          const double dj = d[j];
+          if (di <= 0.0)
+            keptPoly.push_back(pi);
+          if (di >= 0.0)
+            cutPoly.push_back(pi);
+          if ((di < 0.0 && dj > 0.0) || (di > 0.0 && dj < 0.0)) {
+            const double t = -di / (dj - di);
+            mod3d::Point3D inter(pi.x + t * (pj.x - pi.x),
+                                 pi.y + t * (pj.y - pi.y),
+                                 pi.z + t * (pj.z - pi.z));
+            keptPoly.push_back(inter);
+            cutPoly.push_back(inter);
+          }
+        }
+        emitPoly(keptPoly);
+        curPoly = std::move(cutPoly);
+      }
+      // Whatever remains lies inside the cut octant (or on its walls): drop.
+    }
+
+    // Clips segment (p0, p1) against the octant cut region, emitting kept
+    // sub-segments.
+    void clipSegment(
+        const mod3d::Point3D &p0, const mod3d::Point3D &p1,
+        std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> &outSegs,
+        double eps = 1e-3) const {
+      int axes[3];
+      int numPlanes = 0;
+      if (active) {
+        if (hasSN)
+          axes[numPlanes++] = 0;
+        if (hasEW)
+          axes[numPlanes++] = 1;
+        if (hasPlanar)
+          axes[numPlanes++] = 2;
+      }
+      if (numPlanes == 0) {
+        outSegs.push_back({p0, p1});
+        return;
+      }
+
+      mod3d::Point3D a = p0;
+      mod3d::Point3D b = p1;
+      for (int pIdx = 0; pIdx < numPlanes; ++pIdx) {
+        const double da = planeDist(axes[pIdx], a);
+        const double db = planeDist(axes[pIdx], b);
+        if (da <= eps && db <= eps) {
+          if (da < -eps || db < -eps) {
+            outSegs.push_back({a, b});
+            return;
+          }
+          continue; // on the plane
+        }
+        if (da >= -eps && db >= -eps)
+          continue; // cut side
+
+        const double t = -da / (db - da);
+        mod3d::Point3D mid(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y),
+                           a.z + t * (b.z - a.z));
+        if (da < 0.0) {
+          outSegs.push_back({a, mid});
+          a = mid;
+        } else {
+          outSegs.push_back({mid, b});
+          b = mid;
+        }
+      }
     }
   };
 

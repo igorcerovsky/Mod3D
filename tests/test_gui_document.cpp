@@ -4298,18 +4298,24 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewSynchronizeProfileViewsOnClick) {
   mdi->setActiveSubWindow(subHv);
   pane->setActiveSubWindow(subHv);
 
-  // 1. Initial State: sync is disabled by default
-  EXPECT_FALSE(hv->syncProfileViews());
+  // 1. Initial State: sync is enabled by default
+  EXPECT_TRUE(hv->syncProfileViews());
   ASSERT_NE(hv->syncProfilesCheckBox(), nullptr);
-  EXPECT_FALSE(hv->syncProfilesCheckBox()->isChecked());
+  EXPECT_TRUE(hv->syncProfilesCheckBox()->isChecked());
   ASSERT_NE(pane->sliceSyncProfilesCheckBox(), nullptr);
+  EXPECT_TRUE(pane->sliceSyncProfilesCheckBox()->isChecked());
+
+  // 2. Disable Synchronize Profile Views to test click when disabled
+  hv->setSyncProfileViews(false);
+  EXPECT_FALSE(hv->syncProfileViews());
+  EXPECT_FALSE(hv->syncProfilesCheckBox()->isChecked());
   EXPECT_FALSE(pane->sliceSyncProfilesCheckBox()->isChecked());
 
   // Record initial profile indices
   int initEW = pvEW->profileIndex();
   int initNS = pvNS->profileIndex();
 
-  // 2. Mouse click when disabled: profile views should NOT synchronize
+  // 3. Mouse click when disabled: profile views should NOT synchronize
   hv->resize(800, 600);
   hv->fitToWindow();
 
@@ -4329,7 +4335,7 @@ TEST_F(GuiDocumentTest, HorizontalSliceViewSynchronizeProfileViewsOnClick) {
   EXPECT_EQ(pvEW->profileIndex(), initEW);
   EXPECT_EQ(pvNS->profileIndex(), initNS);
 
-  // 3. Enable Synchronize Profile Views
+  // 4. Re-enable Synchronize Profile Views
   hv->setSyncProfileViews(true);
   EXPECT_TRUE(hv->syncProfileViews());
   EXPECT_TRUE(hv->syncProfilesCheckBox()->isChecked());
@@ -4885,4 +4891,91 @@ TEST_F(GuiDocumentTest, ProfileViewVerticalDragGestures) {
   newBot = doc.model().z(1, 1, bIdx + 1);
   EXPECT_LT(newTop, initialTop);
   EXPECT_NEAR(newBot, initialBot, 1e-4);
+}
+
+TEST_F(GuiDocumentTest, GL3DViewOctantCutBoundaryTriangleClipping) {
+  // 1. Direct verification of OctantCutState::clipTriangle on vertical &
+  // diagonal facets straddling Z = planarZ
+  GL3DView::OctantCutState cut;
+  cut.active = true;
+  cut.hasSN = true;
+  cut.snX = 200.0;
+  cut.cutPosX = true; // Cut X > 200
+  cut.hasEW = true;
+  cut.ewY = 200.0;
+  cut.cutPosY = true; // Cut Y > 200
+  cut.hasPlanar = true;
+  cut.planarZ = -400.0;
+  cut.cutPosZ = true; // Cut Z > -400
+
+  mod3d::Point3D t0(300.0, 300.0, -200.0);
+  mod3d::Point3D b0(300.0, 300.0, -600.0);
+  mod3d::Point3D t1(400.0, 300.0, -200.0);
+  mod3d::Point3D b1(400.0, 300.0, -600.0);
+
+  std::vector<std::array<mod3d::Point3D, 3>> clipped;
+  cut.clipTriangle(t0, b0, t1, clipped);
+  cut.clipTriangle(b0, b1, t1, clipped);
+  ASSERT_GE(clipped.size(), 2u);
+
+  double totalClippedArea = 0.0;
+  for (const auto &tri : clipped) {
+    for (int i = 0; i < 3; ++i) {
+      EXPECT_FALSE(cut.isPointCut(tri[i].x, tri[i].y, tri[i].z));
+      EXPECT_LE(tri[i].z, cut.planarZ + 1e-6);
+    }
+    mod3d::Facet3Pt f(tri[0], tri[1], tri[2]);
+    totalClippedArea += f.area();
+    EXPECT_LT(f.normal().y, -0.99);
+  }
+  EXPECT_NEAR(totalClippedArea, 100.0 * 200.0, 1e-3);
+
+  // 2. Verify vertical wall lying ON the cut wall X = snX
+  std::vector<std::array<mod3d::Point3D, 3>> wallClipped;
+  cut.clipTriangle(mod3d::Point3D(200.0, 200.0, -200.0),
+                   mod3d::Point3D(200.0, 200.0, -600.0),
+                   mod3d::Point3D(200.0, 300.0, -200.0), wallClipped);
+  cut.clipTriangle(mod3d::Point3D(200.0, 200.0, -600.0),
+                   mod3d::Point3D(200.0, 300.0, -600.0),
+                   mod3d::Point3D(200.0, 300.0, -200.0), wallClipped);
+  double wallKeptArea = 0.0;
+  for (const auto &tri : wallClipped) {
+    for (int i = 0; i < 3; ++i) {
+      EXPECT_LE(tri[i].z, cut.planarZ + 1e-6);
+    }
+    mod3d::Facet3Pt f(tri[0], tri[1], tri[2]);
+    wallKeptArea += f.area();
+  }
+  EXPECT_NEAR(wallKeptArea, 100.0 * 200.0, 1e-3);
+
+  // 3. Full Sample.m3d model mesh check under Octant Cut
+  MainWindow mw;
+  std::string samplePath = resolveLegacySamplePath("Sample.m3d");
+  ASSERT_TRUE(mw.document()->openFile(QString::fromStdString(samplePath)));
+
+  GL3DView *glv = nullptr;
+  for (auto *sub : mw.mdiArea()->subWindowList()) {
+    if (auto *g = qobject_cast<GL3DView *>(sub->widget())) {
+      glv = g;
+      break;
+    }
+  }
+  ASSERT_NE(glv, nullptr);
+  glv->setOctantCut(true);
+  auto modelCut = glv->computeOctantCutState();
+  ASSERT_TRUE(modelCut.active);
+
+  auto meshes = mw.document()->model().generate_body_meshes(-1, false);
+  ASSERT_FALSE(meshes.empty());
+  for (const auto &mesh : meshes) {
+    for (const auto &fct : mesh.facets) {
+      std::vector<std::array<mod3d::Point3D, 3>> out;
+      modelCut.clipTriangle(fct[0], fct[1], fct[2], out);
+      for (const auto &tri : out) {
+        for (int i = 0; i < 3; ++i) {
+          EXPECT_FALSE(modelCut.isPointCut(tri[i].x, tri[i].y, tri[i].z, 1e-2));
+        }
+      }
+    }
+  }
 }

@@ -570,6 +570,70 @@ void GL3DView::generateBodyCutCaps(
   if (rMax < 1 || cMax < 1)
     return;
 
+  // Emits rim edges of a vertical cut-wall quad (top zt0->zt1, bottom
+  // zb0->zb1, from (x0, y0) to (x1, y1)), clipped exactly against the kept
+  // side of the horizontal cut plane Z = cut.planarZ.
+  auto emitWallQuadEdges = [&](double x0, double y0, double zt0, double zb0,
+                               double x1, double y1, double zt1, double zb1,
+                               bool drawLeftVert, bool drawRightVert) {
+    // Keep only the part of a segment lying on the cut side of Z (where the
+    // cut wall is exposed); with no planar cut the whole segment is kept.
+    auto clipToCutZ = [&](const mod3d::Point3D &a, const mod3d::Point3D &b) {
+      if (!cut.hasPlanar) {
+        outCapEdges.push_back({a, b});
+        return;
+      }
+      const double da = cut.distCutZ(a.z);
+      const double db = cut.distCutZ(b.z);
+      if (da < -1e-6 && db < -1e-6)
+        return;
+      if (da >= -1e-6 && db >= -1e-6) {
+        outCapEdges.push_back({a, b});
+        return;
+      }
+      const double t = -da / (db - da);
+      mod3d::Point3D mid(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y),
+                         cut.planarZ);
+      if (da > db)
+        outCapEdges.push_back({a, mid});
+      else
+        outCapEdges.push_back({mid, b});
+    };
+
+    clipToCutZ(mod3d::Point3D(x0, y0, zt0), mod3d::Point3D(x1, y1, zt1));
+    clipToCutZ(mod3d::Point3D(x0, y0, zb0), mod3d::Point3D(x1, y1, zb1));
+    if (drawLeftVert && std::abs(zt0 - zb0) >= 1e-6)
+      clipToCutZ(mod3d::Point3D(x0, y0, zt0), mod3d::Point3D(x0, y0, zb0));
+    if (drawRightVert && std::abs(zt1 - zb1) >= 1e-6)
+      clipToCutZ(mod3d::Point3D(x1, y1, zt1), mod3d::Point3D(x1, y1, zb1));
+
+    if (!cut.hasPlanar)
+      return;
+
+    // Intersection of the wall with Z = planarZ: parameter range s in [0,1]
+    // where zb(s) <= planarZ <= zt(s).
+    double sMin = 0.0, sMax = 1.0;
+    auto restrict = [&](double f0, double f1) { // keep f(s) >= 0
+      if (f0 < 0.0 && f1 < 0.0) {
+        sMin = 1.0;
+        sMax = 0.0;
+      } else if (f0 < 0.0) {
+        sMin = std::max(sMin, -f0 / (f1 - f0));
+      } else if (f1 < 0.0) {
+        sMax = std::min(sMax, -f0 / (f1 - f0));
+      }
+    };
+    restrict(zt0 - cut.planarZ, zt1 - cut.planarZ);
+    restrict(cut.planarZ - zb0, cut.planarZ - zb1);
+    if (sMax > sMin + 1e-9) {
+      outCapEdges.push_back(
+          {mod3d::Point3D(x0 + sMin * (x1 - x0), y0 + sMin * (y1 - y0),
+                          cut.planarZ),
+           mod3d::Point3D(x0 + sMax * (x1 - x0), y0 + sMax * (y1 - y0),
+                          cut.planarZ)});
+    }
+  };
+
   // 1. East-West Cut Wall (at row = cut.ewRow, Y = cut.ewY)
   if (cut.hasEW && cut.ewRow >= 1 && cut.ewRow <= rMax) {
     int r = cut.ewRow;
@@ -612,32 +676,8 @@ void GL3DView::generateBodyCutCaps(
         if (std::abs(zt0 - zb0) < 1e-6 && std::abs(zt1 - zb1) < 1e-6)
           continue;
 
-        if (cut.hasPlanar) {
-          if (cut.cutPosZ) {
-            zb0 = std::max(zb0, cut.planarZ);
-            zb1 = std::max(zb1, cut.planarZ);
-          } else {
-            zt0 = std::min(zt0, cut.planarZ);
-            zt1 = std::min(zt1, cut.planarZ);
-          }
-        }
-        if (zt0 <= zb0 + 1e-6 && zt1 <= zb1 + 1e-6)
-          continue;
-
-        mod3d::Point3D ptTop0(x0, cut.ewY, zt0);
-        mod3d::Point3D ptBot0(x0, cut.ewY, zb0);
-        mod3d::Point3D ptTop1(x1, cut.ewY, zt1);
-        mod3d::Point3D ptBot1(x1, cut.ewY, zb1);
-
-        outCapEdges.push_back({ptTop0, ptTop1});
-        outCapEdges.push_back({ptBot0, ptBot1});
-
-        if (!hasKeptVolumeEW(c - 1) && std::abs(zt0 - zb0) >= 1e-6) {
-          outCapEdges.push_back({ptTop0, ptBot0});
-        }
-        if (!hasKeptVolumeEW(c + 1) && std::abs(zt1 - zb1) >= 1e-6) {
-          outCapEdges.push_back({ptTop1, ptBot1});
-        }
+        emitWallQuadEdges(x0, cut.ewY, zt0, zb0, x1, cut.ewY, zt1, zb1,
+                          !hasKeptVolumeEW(c - 1), !hasKeptVolumeEW(c + 1));
       }
     }
   }
@@ -684,114 +724,77 @@ void GL3DView::generateBodyCutCaps(
         if (std::abs(zt0 - zb0) < 1e-6 && std::abs(zt1 - zb1) < 1e-6)
           continue;
 
-        if (cut.hasPlanar) {
-          if (cut.cutPosZ) {
-            zb0 = std::max(zb0, cut.planarZ);
-            zb1 = std::max(zb1, cut.planarZ);
-          } else {
-            zt0 = std::min(zt0, cut.planarZ);
-            zt1 = std::min(zt1, cut.planarZ);
-          }
-        }
-        if (zt0 <= zb0 + 1e-6 && zt1 <= zb1 + 1e-6)
-          continue;
-
-        mod3d::Point3D ptTop0(cut.snX, y0, zt0);
-        mod3d::Point3D ptBot0(cut.snX, y0, zb0);
-        mod3d::Point3D ptTop1(cut.snX, y1, zt1);
-        mod3d::Point3D ptBot1(cut.snX, y1, zb1);
-
-        outCapEdges.push_back({ptTop0, ptTop1});
-        outCapEdges.push_back({ptBot0, ptBot1});
-
-        if (!hasKeptVolumeSN(r - 1) && std::abs(zt0 - zb0) >= 1e-6) {
-          outCapEdges.push_back({ptTop0, ptBot0});
-        }
-        if (!hasKeptVolumeSN(r + 1) && std::abs(zt1 - zb1) >= 1e-6) {
-          outCapEdges.push_back({ptTop1, ptBot1});
-        }
+        emitWallQuadEdges(cut.snX, y0, zt0, zb0, cut.snX, y1, zt1, zb1,
+                          !hasKeptVolumeSN(r - 1), !hasKeptVolumeSN(r + 1));
       }
     }
   }
 
-  // 3. Horizontal Planar Cut Cap (at Z = cut.planarZ)
+  // 3. Horizontal Planar Cut Cap (at Z = cut.planarZ): exact intersection of
+  // the body's boundary facets with the plane, restricted to the cut X-Y
+  // quadrant, so sloped/diagonal facets yield correct rim segments.
   if (cut.hasPlanar) {
-    int rStart = 1;
-    int rEnd = rMax - 1;
-    if (cut.hasEW) {
-      if (cut.cutPosY) {
-        rStart = std::max(1, cut.ewRow);
-      } else {
-        rEnd = std::min(rMax - 1, cut.ewRow - 1);
+    const std::vector<mod3d::Facet3Pt> *facetsPtr = nullptr;
+    std::vector<mod3d::Facet3Pt> fallbackFacets;
+    for (const auto &m : m_bodyMeshes) {
+      if (m.bodyId == bodyId) {
+        facetsPtr = &m.facets;
+        break;
       }
     }
-
-    int cStart = 1;
-    int cEnd = cMax - 1;
-    if (cut.hasSN) {
-      if (cut.cutPosX) {
-        cStart = std::max(1, cut.snCol);
-      } else {
-        cEnd = std::min(cMax - 1, cut.snCol - 1);
-      }
+    if (!facetsPtr) {
+      model.body_facets(bodyId, fallbackFacets, m_showOuterFacets);
+      facetsPtr = &fallbackFacets;
     }
 
-    auto cellHasPlanarCap = [&](int r, int c) -> bool {
-      if (r < rStart || r > rEnd || c < cStart || c > cEnd)
-        return false;
-      int idx00 = model.body_index(bodyId, r, c);
-      int idx10 = model.body_index(bodyId, r, c + 1);
-      int idx11 = model.body_index(bodyId, r + 1, c + 1);
-      int idx01 = model.body_index(bodyId, r + 1, c);
-      if (idx00 < 0 && idx10 < 0 && idx11 < 0 && idx01 < 0)
-        return false;
-
-      int validCorners = 0;
-      auto checkCorner = [&](int row, int col, int idx) {
-        if (idx < 0)
-          return false;
-        double zt = model.z(row, col, idx);
-        double zb = model.z(row, col, idx + 1);
-        return (zt >= cut.planarZ - 1e-4 && zb <= cut.planarZ + 1e-4);
-      };
-      if (checkCorner(r, c, idx00))
-        ++validCorners;
-      if (checkCorner(r, c + 1, idx10))
-        ++validCorners;
-      if (checkCorner(r + 1, c + 1, idx11))
-        ++validCorners;
-      if (checkCorner(r + 1, c, idx01))
-        ++validCorners;
-      return (validCorners >= 2);
+    // Restrict the planar-cut rim to Hx n Hy (clip a segment on Z = planarZ).
+    auto clipToQuadrant = [&](mod3d::Point3D a, mod3d::Point3D b) {
+      for (int axis = 0; axis < 2; ++axis) {
+        if ((axis == 0 && !cut.hasSN) || (axis == 1 && !cut.hasEW))
+          continue;
+        const double da = cut.planeDist(axis, a);
+        const double db = cut.planeDist(axis, b);
+        if (da < 1e-6 && db < 1e-6)
+          return; // kept side or on the wall: not part of the planar cut face
+        if (da < 0.0 || db < 0.0) {
+          const double t = -da / (db - da);
+          mod3d::Point3D mid(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y),
+                             cut.planarZ);
+          if (da < 0.0)
+            a = mid;
+          else
+            b = mid;
+        }
+      }
+      const double dx = b.x - a.x, dy = b.y - a.y;
+      if (dx * dx + dy * dy > 1e-8)
+        outCapEdges.push_back({a, b});
     };
 
-    for (int r = rStart; r <= rEnd; ++r) {
-      double y0 = model.yd_val(r);
-      double y1 = model.yd_val(r + 1);
-      for (int c = cStart; c <= cEnd; ++c) {
-        if (!cellHasPlanarCap(r, c))
-          continue;
-        double x0 = model.xd_val(c);
-        double x1 = model.xd_val(c + 1);
+    for (const auto &fct : *facetsPtr) {
+      const double d[3] = {fct[0].z - cut.planarZ, fct[1].z - cut.planarZ,
+                           fct[2].z - cut.planarZ};
+      const double dMin = std::min({d[0], d[1], d[2]});
+      const double dMax = std::max({d[0], d[1], d[2]});
+      if (dMin >= -1e-6 || dMax <= 1e-6)
+        continue; // facet does not strictly straddle the plane
 
-        mod3d::Point3D p00(x0, y0, cut.planarZ);
-        mod3d::Point3D p10(x1, y0, cut.planarZ);
-        mod3d::Point3D p11(x1, y1, cut.planarZ);
-        mod3d::Point3D p01(x0, y1, cut.planarZ);
-
-        if (!cellHasPlanarCap(r - 1, c)) {
-          outCapEdges.push_back({p00, p10});
-        }
-        if (!cellHasPlanarCap(r + 1, c)) {
-          outCapEdges.push_back({p01, p11});
-        }
-        if (!cellHasPlanarCap(r, c - 1)) {
-          outCapEdges.push_back({p00, p01});
-        }
-        if (!cellHasPlanarCap(r, c + 1)) {
-          outCapEdges.push_back({p10, p11});
+      mod3d::Point3D pts[3];
+      int nPts = 0;
+      for (int i = 0; i < 3 && nPts < 3; ++i) {
+        const int j = (i + 1) % 3;
+        if (std::abs(d[i]) <= 1e-6) {
+          pts[nPts++] = mod3d::Point3D(fct[i].x, fct[i].y, cut.planarZ);
+        } else if ((d[i] < -1e-6 && d[j] > 1e-6) ||
+                   (d[i] > 1e-6 && d[j] < -1e-6)) {
+          const double t = -d[i] / (d[j] - d[i]);
+          pts[nPts++] =
+              mod3d::Point3D(fct[i].x + t * (fct[j].x - fct[i].x),
+                             fct[i].y + t * (fct[j].y - fct[i].y), cut.planarZ);
         }
       }
+      if (nPts >= 2)
+        clipToQuadrant(pts[0], pts[1]);
     }
   }
 }
@@ -881,30 +884,28 @@ int GL3DView::hitTestBody(const QPoint &pos) {
   };
 
   OctantCutState cut = computeOctantCutState();
+  std::vector<std::array<mod3d::Point3D, 3>> clippedTris;
 
   for (const auto &mesh : m_bodyMeshes) {
     if (!mesh.isVisible)
       continue;
     for (const auto &fct : mesh.facets) {
-      if (cut.active) {
-        double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
-        double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-        double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
-        if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct))
-          continue;
-      }
-      QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y),
-                   scaleZ(fct[0].z));
-      QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y),
-                   scaleZ(fct[1].z));
-      QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y),
-                   scaleZ(fct[2].z));
+      clippedTris.clear();
+      cut.clipTriangle(fct[0], fct[1], fct[2], clippedTris);
+      for (const auto &tri : clippedTris) {
+        QVector3D v0(static_cast<float>(tri[0].x), static_cast<float>(tri[0].y),
+                     scaleZ(tri[0].z));
+        QVector3D v1(static_cast<float>(tri[1].x), static_cast<float>(tri[1].y),
+                     scaleZ(tri[1].z));
+        QVector3D v2(static_cast<float>(tri[2].x), static_cast<float>(tri[2].y),
+                     scaleZ(tri[2].z));
 
-      float t = 0.0f;
-      if (intersectTriangle(rayOrigin, rayDir, v0, v1, v2, t)) {
-        if (t < minT) {
-          minT = t;
-          bestBodyId = mesh.bodyId;
+        float t = 0.0f;
+        if (intersectTriangle(rayOrigin, rayDir, v0, v1, v2, t)) {
+          if (t < minT) {
+            minT = t;
+            bestBodyId = mesh.bodyId;
+          }
         }
       }
     }
@@ -1288,8 +1289,8 @@ void GL3DView::updateBodyBuffers() {
       float b = mesh.color.b / 255.0f;
       float a = 1.0f;
 
-      auto pushFacet = [&](const mod3d::Facet3Pt &fct) {
-        auto norm = fct.normal();
+      auto pushTri = [&](const mod3d::Point3D &p0, const mod3d::Point3D &p1,
+                         const mod3d::Point3D &p2, mod3d::Point3D norm) {
         double nLen =
             std::sqrt(norm.x * norm.x + norm.y * norm.y + norm.z * norm.z);
         if (nLen > 1e-6) {
@@ -1298,11 +1299,12 @@ void GL3DView::updateBodyBuffers() {
           norm.z /= nLen;
         }
 
+        const mod3d::Point3D pts[3] = {p0, p1, p2};
         for (int i = 0; i < 3; ++i) {
           Vertex3D v;
-          v.x = static_cast<float>(fct[i].x);
-          v.y = static_cast<float>(fct[i].y);
-          v.z = static_cast<float>(fct[i].z);
+          v.x = static_cast<float>(pts[i].x);
+          v.y = static_cast<float>(pts[i].y);
+          v.z = static_cast<float>(pts[i].z);
           v.nx = static_cast<float>(norm.x);
           v.ny = static_cast<float>(norm.y);
           v.nz = static_cast<float>(norm.z);
@@ -1314,15 +1316,14 @@ void GL3DView::updateBodyBuffers() {
         }
       };
 
+      std::vector<std::array<mod3d::Point3D, 3>> clippedTris;
       for (const auto &fct : mesh.facets) {
-        if (cut.active) {
-          double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
-          double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-          double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
-          if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct))
-            continue;
+        const auto norm = fct.normal();
+        clippedTris.clear();
+        cut.clipTriangle(fct[0], fct[1], fct[2], clippedTris);
+        for (const auto &tri : clippedTris) {
+          pushTri(tri[0], tri[1], tri[2], norm);
         }
-        pushFacet(fct);
       }
     }
 
@@ -1886,15 +1887,15 @@ void GL3DView::paintSoftware(QPainter &painter) {
     auto bc = mesh.color;
     bool isSelected = (mesh.bodyId == m_selectedBodyId);
 
-    auto pushSwFacet = [&](const mod3d::Facet3Pt &fct) {
-      auto pt0 = project(fct[0].x, fct[0].y, fct[0].z);
-      auto pt1 = project(fct[1].x, fct[1].y, fct[1].z);
-      auto pt2 = project(fct[2].x, fct[2].y, fct[2].z);
+    auto pushSwFacet = [&](const mod3d::Point3D &v0, const mod3d::Point3D &v1,
+                           const mod3d::Point3D &v2, mod3d::Point3D norm) {
+      auto pt0 = project(v0.x, v0.y, v0.z);
+      auto pt1 = project(v1.x, v1.y, v1.z);
+      auto pt2 = project(v2.x, v2.y, v2.z);
 
       double avgDepth = (pt0.second + pt1.second + pt2.second) / 3.0;
 
       // Rotate normal into camera space
-      auto norm = fct.normal();
       norm.z /= std::max(0.1f, m_zScale);
       double nLen =
           std::sqrt(norm.x * norm.x + norm.y * norm.y + norm.z * norm.z);
@@ -1940,15 +1941,14 @@ void GL3DView::paintSoftware(QPainter &painter) {
                               edgeWidth});
     };
 
+    std::vector<std::array<mod3d::Point3D, 3>> clippedTris;
     for (const auto &fct : mesh.facets) {
-      if (cut.active) {
-        double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
-        double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-        double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
-        if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct))
-          continue;
+      const auto norm = fct.normal();
+      clippedTris.clear();
+      cut.clipTriangle(fct[0], fct[1], fct[2], clippedTris);
+      for (const auto &tri : clippedTris) {
+        pushSwFacet(tri[0], tri[1], tri[2], norm);
       }
-      pushSwFacet(fct);
     }
   }
 
@@ -2636,21 +2636,18 @@ void GL3DView::drawBodies() {
           a = 0.85f;
         }
 
+        std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> clippedSegs;
         for (const auto &edge : mesh.featureEdges) {
-          if (cut.active) {
-            double xm = 0.5 * (edge.first.x + edge.second.x);
-            double ym = 0.5 * (edge.first.y + edge.second.y);
-            double zm = 0.5 * (edge.first.z + edge.second.z);
-            if (cut.isPointCut(xm, ym, zm) ||
-                cut.isSegmentOnCutWall(edge.first, edge.second))
-              continue;
+          clippedSegs.clear();
+          cut.clipSegment(edge.first, edge.second, clippedSegs);
+          for (const auto &seg : clippedSegs) {
+            targetList.push_back({static_cast<float>(seg.first.x),
+                                  static_cast<float>(seg.first.y),
+                                  scaleZ(seg.first.z), r, g, b, a});
+            targetList.push_back({static_cast<float>(seg.second.x),
+                                  static_cast<float>(seg.second.y),
+                                  scaleZ(seg.second.z), r, g, b, a});
           }
-          targetList.push_back({static_cast<float>(edge.first.x),
-                                static_cast<float>(edge.first.y),
-                                scaleZ(edge.first.z), r, g, b, a});
-          targetList.push_back({static_cast<float>(edge.second.x),
-                                static_cast<float>(edge.second.y),
-                                scaleZ(edge.second.z), r, g, b, a});
         }
 
         if (cut.active) {
@@ -2719,15 +2716,16 @@ void GL3DView::drawBodies() {
       float gVal = bc.g / 255.0f;
       float bVal = bc.b / 255.0f;
 
-      auto pushTransFacet = [&](const mod3d::Facet3Pt &fct) {
-        QVector3D v0(static_cast<float>(fct[0].x), static_cast<float>(fct[0].y),
-                     static_cast<float>(fct[0].z));
-        QVector3D v1(static_cast<float>(fct[1].x), static_cast<float>(fct[1].y),
-                     static_cast<float>(fct[1].z));
-        QVector3D v2(static_cast<float>(fct[2].x), static_cast<float>(fct[2].y),
-                     static_cast<float>(fct[2].z));
+      auto pushTransFacet = [&](const mod3d::Point3D &p0,
+                                const mod3d::Point3D &p1,
+                                const mod3d::Point3D &p2, mod3d::Point3D norm) {
+        QVector3D v0(static_cast<float>(p0.x), static_cast<float>(p0.y),
+                     static_cast<float>(p0.z));
+        QVector3D v1(static_cast<float>(p1.x), static_cast<float>(p1.y),
+                     static_cast<float>(p1.z));
+        QVector3D v2(static_cast<float>(p2.x), static_cast<float>(p2.y),
+                     static_cast<float>(p2.z));
 
-        auto norm = fct.normal();
         double nLen =
             std::sqrt(norm.x * norm.x + norm.y * norm.y + norm.z * norm.z);
         if (nLen > 1e-6) {
@@ -2745,15 +2743,14 @@ void GL3DView::drawBodies() {
                                rVal, gVal, bVal, alphaVal, d, mesh.bodyId});
       };
 
+      std::vector<std::array<mod3d::Point3D, 3>> clippedTris;
       for (const auto &fct : mesh.facets) {
-        if (cut.active) {
-          double xm = (fct[0].x + fct[1].x + fct[2].x) / 3.0;
-          double ym = (fct[0].y + fct[1].y + fct[2].y) / 3.0;
-          double zm = (fct[0].z + fct[1].z + fct[2].z) / 3.0;
-          if (cut.isPointCut(xm, ym, zm) || cut.isFacetOnCutWall(fct))
-            continue;
+        const auto norm = fct.normal();
+        clippedTris.clear();
+        cut.clipTriangle(fct[0], fct[1], fct[2], clippedTris);
+        for (const auto &tri : clippedTris) {
+          pushTransFacet(tri[0], tri[1], tri[2], norm);
         }
-        pushTransFacet(fct);
       }
     }
 
@@ -2848,21 +2845,18 @@ void GL3DView::drawBodies() {
           a = 0.65f;
         }
 
+        std::vector<std::pair<mod3d::Point3D, mod3d::Point3D>> clippedSegs;
         for (const auto &edge : mesh.featureEdges) {
-          if (cut.active) {
-            double xm = 0.5 * (edge.first.x + edge.second.x);
-            double ym = 0.5 * (edge.first.y + edge.second.y);
-            double zm = 0.5 * (edge.first.z + edge.second.z);
-            if (cut.isPointCut(xm, ym, zm) ||
-                cut.isSegmentOnCutWall(edge.first, edge.second))
-              continue;
+          clippedSegs.clear();
+          cut.clipSegment(edge.first, edge.second, clippedSegs);
+          for (const auto &seg : clippedSegs) {
+            targetList.push_back({static_cast<float>(seg.first.x),
+                                  static_cast<float>(seg.first.y),
+                                  scaleZ(seg.first.z), r, g, b, a});
+            targetList.push_back({static_cast<float>(seg.second.x),
+                                  static_cast<float>(seg.second.y),
+                                  scaleZ(seg.second.z), r, g, b, a});
           }
-          targetList.push_back({static_cast<float>(edge.first.x),
-                                static_cast<float>(edge.first.y),
-                                scaleZ(edge.first.z), r, g, b, a});
-          targetList.push_back({static_cast<float>(edge.second.x),
-                                static_cast<float>(edge.second.y),
-                                scaleZ(edge.second.z), r, g, b, a});
         }
 
         if (cut.active) {
