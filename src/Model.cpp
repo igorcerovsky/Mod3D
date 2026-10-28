@@ -322,8 +322,8 @@ void Model::set_vertical_range(units::Meters zMin, units::Meters zMax) {
 
       double topBound = colVec.front().z().value();
       if (flatTopAtOldZMax || topBound > zMaxVal || topBound < zMinVal) {
-        topBound = flatTopAtOldZMax ? zMaxVal
-                                    : std::clamp(topBound, zMinVal, zMaxVal);
+        topBound =
+            flatTopAtOldZMax ? zMaxVal : std::clamp(topBound, zMinVal, zMaxVal);
         set_column_point_coords(colVec.front(), r, c, topBound);
         colVec.front().set_z(topBound);
       }
@@ -656,8 +656,8 @@ bool Model::would_create_stratigraphic_cycle(int index, int bodyId, int row,
     }
   }
 
-  // Check if adding `bodyId` at `index` in `(row, col)` creates a directed cycle
-  // via Kahn's topological sort / cycle detection
+  // Check if adding `bodyId` at `index` in `(row, col)` creates a directed
+  // cycle via Kahn's topological sort / cycle detection
   std::unordered_map<int, int> inDegree;
   for (const auto &[u, nbrs] : adj) {
     inDegree.try_emplace(u, 0);
@@ -981,8 +981,8 @@ void Model::fg_to_fct_bound(FctGen &fg, std::vector<Facet3Pt> &facetList) {
   if (fg.l == 2)
     return;
 
-  // Use exact topological cell indices so zero-extension outer rings (ex_* == 0)
-  // never falsely trigger boundary closure on interior cells.
+  // Use exact topological cell indices so zero-extension outer rings (ex_* ==
+  // 0) never falsely trigger boundary closure on interior cells.
   if (fg.b[0] && fg.b[1] && current_row_ == 0)
     init_side_facets_bound(fg, facetList, 0, 1);
   if (fg.b[2] && fg.b[3] && current_row_ == rows_ - 2)
@@ -1199,8 +1199,9 @@ int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col) {
   }
 
   if (!fga.empty()) {
-    // Sort in stratigraphic order (shallower depth first) using exact column rank
-    // when both bodies exist in a shared corner, or mean elevation fallback.
+    // Sort in stratigraphic order (shallower depth first) using exact column
+    // rank when both bodies exist in a shared corner, or mean elevation
+    // fallback.
     std::sort(fga.begin(), fga.end(), [](const FctGen &f1, const FctGen &f2) {
       int f1Above = 0;
       int f2Above = 0;
@@ -1235,20 +1236,15 @@ int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col) {
       // Search all subsequent bodies in the cell for a shared contact interface
       for (size_t j = i + 1; j < n; ++j) {
         FctGen &pN = fga[j];
-        bool b01 =
-            (pC.bot[0].z == pN.top[0].z) && (pC.bot[1].z == pN.top[1].z);
-        bool b12 =
-            (pC.bot[1].z == pN.top[1].z) && (pC.bot[2].z == pN.top[2].z);
-        bool b23 =
-            (pC.bot[2].z == pN.top[2].z) && (pC.bot[3].z == pN.top[3].z);
-        bool b30 =
-            (pC.bot[3].z == pN.top[3].z) && (pC.bot[0].z == pN.top[0].z);
+        bool b01 = (pC.bot[0].z == pN.top[0].z) && (pC.bot[1].z == pN.top[1].z);
+        bool b12 = (pC.bot[1].z == pN.top[1].z) && (pC.bot[2].z == pN.top[2].z);
+        bool b23 = (pC.bot[2].z == pN.top[2].z) && (pC.bot[3].z == pN.top[3].z);
+        bool b30 = (pC.bot[3].z == pN.top[3].z) && (pC.bot[0].z == pN.top[0].z);
         bool sharedEdge = (pC.b[0] && pN.b[0] && pC.b[1] && pN.b[1] && b01) ||
                           (pC.b[1] && pN.b[1] && pC.b[2] && pN.b[2] && b12) ||
                           (pC.b[2] && pN.b[2] && pC.b[3] && pN.b[3] && b23) ||
                           (pC.b[3] && pN.b[3] && pC.b[0] && pN.b[0] && b30);
-        bool fullContact =
-            (pC.l == 4 && pN.l == 4 && b01 && b12 && b23 && b30);
+        bool fullContact = (pC.l == 4 && pN.l == 4 && b01 && b12 && b23 && b30);
         if (fullContact || ((pC.l == 3 || pN.l == 3) && sharedEdge)) {
           if (pN.top[4].z == pN.bot[4].z) {
             pN.top[4].z = pN.bot[4].z = pC.bot[4].z;
@@ -1292,7 +1288,8 @@ int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col) {
           --i;
           break;
         } else {
-          // Fuse into a single shared facet with both primary and opposite bodies
+          // Fuse into a single shared facet with both primary and opposite
+          // bodies
           facetList[i].opposite = facetList[j].primary;
           facetList.erase(facetList.begin() + static_cast<std::ptrdiff_t>(j));
           break;
@@ -1469,8 +1466,8 @@ int Model::body_facets(int bodyId, std::vector<Facet3Pt> &outList,
               copy.opposite = nullptr;
               outList.push_back(copy);
             } else if (fct.opposite && fct.opposite->id() == bodyId) {
-              // Contact interface: invert winding and normal so it faces outward
-              // from this body
+              // Contact interface: invert winding and normal so it faces
+              // outward from this body
               Facet3Pt copy = fct;
               copy.reverse();
               copy.opposite = nullptr;
@@ -1578,7 +1575,8 @@ std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId,
 
     for (size_t i = 0; i < edgeRecords.size();) {
       size_t j = i + 1;
-      while (j < edgeRecords.size() && edgeRecords[i].same_key(edgeRecords[j])) {
+      while (j < edgeRecords.size() &&
+             edgeRecords[i].same_key(edgeRecords[j])) {
         ++j;
       }
       const size_t count = j - i;
@@ -1817,15 +1815,16 @@ BodyTopologyStatus Model::analyze_body_topology(int bodyId,
 
   // BFS on Dual Facet Graph: compute signed volume per connected component via
   // Divergence Theorem: V = (1/6) * sum(p0 . (p1 x p2))
-  // Because Facet3Pt stores outward normal n = normalize((p0 - p1) x (p1 - p2)),
-  // the outward-oriented triple product is p0 . ((p0 - p1) x (p1 - p2)) = (p0 x p1) . p2.
-  // Wait: let's check the exact sign of (p0 - p1) x (p1 - p2):
+  // Because Facet3Pt stores outward normal n = normalize((p0 - p1) x (p1 -
+  // p2)), the outward-oriented triple product is p0 . ((p0 - p1) x (p1 - p2)) =
+  // (p0 x p1) . p2. Wait: let's check the exact sign of (p0 - p1) x (p1 - p2):
   // (p0 - p1) x (p1 - p2) = p0 x p1 - p0 x p2 - p1 x p1 + p1 x p2
   // = (p1 - p0) x (p2 - p0) if and only if:
-  // (p1 - p0) x (p2 - p0) = p1 x p2 - p1 x p0 - p0 x p2 = p0 x p1 + p1 x p2 + p2 x p0!
-  // Yes! (p0 - p1) x (p1 - p2) == (p1 - p0) x (p2 - p0) identically!
-  // Therefore, for any closed surface with outward normal _n = normalize((p0 - p1) x (p1 - p2)),
-  // the signed volume is V = (1/6) * sum( p0 . ((p1 - p0) x (p2 - p0)) ) = (1/6) * sum( p0 . (p1 x p2) ) > 0!
+  // (p1 - p0) x (p2 - p0) = p1 x p2 - p1 x p0 - p0 x p2 = p0 x p1 + p1 x p2 +
+  // p2 x p0! Yes! (p0 - p1) x (p1 - p2) == (p1 - p0) x (p2 - p0) identically!
+  // Therefore, for any closed surface with outward normal _n = normalize((p0 -
+  // p1) x (p1 - p2)), the signed volume is V = (1/6) * sum( p0 . ((p1 - p0) x
+  // (p2 - p0)) ) = (1/6) * sum( p0 . (p1 x p2) ) > 0!
   std::vector<bool> visited(facets.size(), false);
   bool allShellsPositiveVolume = true;
   double totalVolume = 0.0;
@@ -1864,9 +1863,9 @@ BodyTopologyStatus Model::analyze_body_topology(int bodyId,
   }
 
   status.signedVolume = totalVolume;
-  status.isWatertight = (status.boundaryEdgeCount == 0 &&
-                         status.nonManifoldEdgeCount == 0 &&
-                         status.degenerateFacetCount == 0);
+  status.isWatertight =
+      (status.boundaryEdgeCount == 0 && status.nonManifoldEdgeCount == 0 &&
+       status.degenerateFacetCount == 0);
   status.isOutwardOriented =
       status.isWatertight && allShellsPositiveVolume && (totalVolume > 1e-9);
   return status;
