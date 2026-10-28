@@ -3,7 +3,10 @@
 #include <cassert>
 #include <cmath>
 #include <map>
+#include <queue>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 
 namespace mod3d {
 
@@ -272,7 +275,28 @@ void Model::set_z(int row, int col, int index, double z_val) {
   }
 }
 
+bool Model::would_vertical_range_adjust_bodies(
+    units::Meters zMin, units::Meters zMax) const noexcept {
+  const double zMinVal = zMin.value();
+  const double zMaxVal = zMax.value();
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      const auto &colVec = data_[r * cols_ + c];
+      for (size_t k = 1; k + 1 < colVec.size(); ++k) {
+        const double zk = colVec[k].z().value();
+        if (zk > zMaxVal + 1e-9 || zk < zMinVal - 1e-9) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
 void Model::set_vertical_range(units::Meters zMin, units::Meters zMax) {
+  if (zMin >= zMax) {
+    return;
+  }
   const double oldZMax = z_max_.value();
   bool flatTopAtOldZMax = (rows_ > 0 && cols_ > 0);
   for (int r = 0; r < rows_ && flatTopAtOldZMax; ++r) {
@@ -287,20 +311,40 @@ void Model::set_vertical_range(units::Meters zMin, units::Meters zMax) {
 
   z_min_ = zMin;
   z_max_ = zMax;
+  const double zMinVal = z_min_.value();
+  const double zMaxVal = z_max_.value();
+
   for (int r = 0; r < rows_; ++r) {
     for (int c = 0; c < cols_; ++c) {
-      if (flatTopAtOldZMax) {
-        if (ColumnPoint *ptTop = at(r, c, 0)) {
-          set_column_point_coords(*ptTop, r, c, z_max_);
-        }
+      auto &colVec = data_[r * cols_ + c];
+      if (colVec.empty())
+        continue;
+
+      double topBound = colVec.front().z().value();
+      if (flatTopAtOldZMax || topBound > zMaxVal || topBound < zMinVal) {
+        topBound = flatTopAtOldZMax ? zMaxVal
+                                    : std::clamp(topBound, zMinVal, zMaxVal);
+        set_column_point_coords(colVec.front(), r, c, topBound);
+        colVec.front().set_z(topBound);
       }
-      int nBot = upper_bound(r, c);
-      if (nBot >= 1) {
-        if (ColumnPoint *pt = at(r, c, nBot)) {
-          set_column_point_coords(*pt, r, c, z_min_);
-        }
+
+      if (colVec.size() >= 2) {
+        set_column_point_coords(colVec.back(), r, c, zMinVal);
+        colVec.back().set_z(zMinVal);
+      }
+
+      double prevZ = topBound;
+      for (size_t k = 1; k + 1 < colVec.size(); ++k) {
+        double zk = std::clamp(colVec[k].z().value(), zMinVal, prevZ);
+        set_column_point_coords(colVec[k], r, c, zk);
+        colVec[k].set_z(zk);
+        prevZ = zk;
       }
     }
+  }
+
+  if (initialized_) {
+    init_facet_list();
   }
 }
 
@@ -358,13 +402,6 @@ bool Model::set_surface_relief(const Grid &reliefGrid) {
         ColumnPoint &pTop = colVec.front();
         set_column_point_coords(pTop, r, c, v);
         pTop.set_z(v);
-
-        for (size_t k = 1; k + 1 < colVec.size(); ++k) {
-          if (colVec[k].z().value() > v) {
-            colVec[k].set_z(v);
-            set_column_point_coords(colVec[k], r, c, v);
-          }
-        }
       }
     }
   }
@@ -374,20 +411,74 @@ bool Model::set_surface_relief(const Grid &reliefGrid) {
   }
   if (minReliefZ < z_min_.value()) {
     z_min_ = units::Meters(std::floor(minReliefZ) - 100.0);
-    for (int r = 0; r < rows_; ++r) {
-      for (int c = 0; c < cols_; ++c) {
-        auto &colVec = data_[r * cols_ + c];
-        if (colVec.size() >= 2) {
-          ColumnPoint &pBot = colVec.back();
-          pBot.set_z(z_min_);
-          set_column_point_coords(pBot, r, c, z_min_);
-        }
+  }
+
+  const double zMinVal = z_min_.value();
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      auto &colVec = data_[r * cols_ + c];
+      if (colVec.empty())
+        continue;
+      if (colVec.size() >= 2) {
+        ColumnPoint &pBot = colVec.back();
+        pBot.set_z(z_min_);
+        set_column_point_coords(pBot, r, c, z_min_);
+      }
+      double prevZ = colVec.front().z().value();
+      for (size_t k = 1; k + 1 < colVec.size(); ++k) {
+        double zk = std::clamp(colVec[k].z().value(), zMinVal, prevZ);
+        colVec[k].set_z(zk);
+        set_column_point_coords(colVec[k], r, c, zk);
+        prevZ = zk;
       }
     }
   }
 
   init_facet_list();
   return true;
+}
+
+void Model::set_extensions(units::Meters exN, units::Meters exS,
+                           units::Meters exE, units::Meters exW, bool enable) {
+  ex_n_ = exN;
+  ex_s_ = exS;
+  ex_e_ = exE;
+  ex_w_ = exW;
+  extend_ = enable;
+
+  if (!initialized_ || rows_ < 2 || cols_ < 2) {
+    return;
+  }
+
+  // Resynchronize (x, y) coordinates on the outer extension ring
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      if (r != 0 && r != rows_ - 1 && c != 0 && c != cols_ - 1)
+        continue;
+      auto &colVec = data_[r * cols_ + c];
+      for (auto &pt : colVec) {
+        set_column_point_coords(pt, r, c, pt.z());
+      }
+    }
+  }
+
+  // Update border facet cells if facets have already been generated
+  bool anyFacets = false;
+  for (const auto &fl : facets_) {
+    if (!fl.empty()) {
+      anyFacets = true;
+      break;
+    }
+  }
+  if (anyFacets) {
+    for (int r = 0; r < rows_ - 1; ++r) {
+      for (int c = 0; c < cols_ - 1; ++c) {
+        if (r == 0 || r == rows_ - 2 || c == 0 || c == cols_ - 2) {
+          update_facet_column(r, c);
+        }
+      }
+    }
+  }
 }
 
 double Model::thickness(int row, int col, int index) const {
@@ -522,7 +613,81 @@ bool Model::is_ins_pos_ok(int index, int bodyId, int row, int col) const {
     if (!is_ins_pos_ok_1(tag, bodyId, idCheck, row - 1, col + 1))
       return false;
   }
+
+  if (would_create_stratigraphic_cycle(index, bodyId, row, col))
+    return false;
+
   return true;
+}
+
+bool Model::would_create_stratigraphic_cycle(int index, int bodyId, int row,
+                                             int col) const {
+  // Build global directed stratigraphic precedence graph G = (V, E)
+  // Edge u -> v means body u lies above body v in at least one column.
+  std::unordered_map<int, std::unordered_set<int>> adj;
+
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      const int cnt = static_cast<int>(count(r, c));
+      std::vector<int> colBodies;
+      colBodies.reserve(static_cast<size_t>(cnt / 2 + 1));
+      bool inserted = false;
+      for (int i = 1; i < cnt - 1; i += 2) {
+        if (r == row && c == col && i == index && !inserted) {
+          colBodies.push_back(bodyId);
+          inserted = true;
+        }
+        int bId = id(i, r, c);
+        if (bId >= 0) {
+          colBodies.push_back(bId);
+        }
+      }
+      if (r == row && c == col && !inserted) {
+        colBodies.push_back(bodyId);
+      }
+
+      for (size_t u = 0; u < colBodies.size(); ++u) {
+        for (size_t v = u + 1; v < colBodies.size(); ++v) {
+          if (colBodies[u] != colBodies[v]) {
+            adj[colBodies[u]].insert(colBodies[v]);
+          }
+        }
+      }
+    }
+  }
+
+  // Check if adding `bodyId` at `index` in `(row, col)` creates a directed cycle
+  // via Kahn's topological sort / cycle detection
+  std::unordered_map<int, int> inDegree;
+  for (const auto &[u, nbrs] : adj) {
+    inDegree.try_emplace(u, 0);
+    for (int v : nbrs) {
+      inDegree[v]++;
+    }
+  }
+
+  std::queue<int> q;
+  for (const auto &[node, deg] : inDegree) {
+    if (deg == 0) {
+      q.push(node);
+    }
+  }
+
+  size_t visited = 0;
+  while (!q.empty()) {
+    int u = q.front();
+    q.pop();
+    visited++;
+    if (auto it = adj.find(u); it != adj.end()) {
+      for (int v : it->second) {
+        if (--inDegree[v] == 0) {
+          q.push(v);
+        }
+      }
+    }
+  }
+
+  return visited != inDegree.size();
 }
 
 bool Model::is_ins_pos_ok_1(int tag, int bodyId, int idCheck, int row,
@@ -766,6 +931,7 @@ int Model::add_fct_gen(std::vector<FctGen> &fga, int row, int col, int tag) {
       if (fg.id == bodyId) {
         fg.idPrev[tag] = id(i - 1, row, col);
         fg.idNext[tag] = id(i + 1, row, col);
+        fg.stratRank[tag] = i;
         fg.top[tag] = at(row, col, i)->point();
         fg.bot[tag] = at(row, col, i + 1)->point();
         fg.b[tag] = true;
@@ -779,6 +945,7 @@ int Model::add_fct_gen(std::vector<FctGen> &fga, int row, int col, int tag) {
       fg.id = bodyId;
       fg.idPrev[tag] = id(i - 1, row, col);
       fg.idNext[tag] = id(i + 1, row, col);
+      fg.stratRank[tag] = i;
       fg.top[tag] = at(row, col, i)->point();
       fg.bot[tag] = at(row, col, i + 1)->point();
       fg.b[tag] = true;
@@ -814,26 +981,29 @@ void Model::fg_to_fct_bound(FctGen &fg, std::vector<Facet3Pt> &facetList) {
   if (fg.l == 2)
     return;
 
-  if (fg.b[0] && fg.b[1] && fg.top[0].y == (y_min_ - ex_s_).value())
+  // Use exact topological cell indices so zero-extension outer rings (ex_* == 0)
+  // never falsely trigger boundary closure on interior cells.
+  if (fg.b[0] && fg.b[1] && current_row_ == 0)
     init_side_facets_bound(fg, facetList, 0, 1);
-  if (fg.b[2] && fg.b[3] && fg.top[2].y == (y_max_ + ex_n_).value())
+  if (fg.b[2] && fg.b[3] && current_row_ == rows_ - 2)
     init_side_facets_bound(fg, facetList, 2, 3);
-  if (fg.b[3] && fg.b[0] && fg.top[3].x == (x_min_ - ex_w_).value())
+  if (fg.b[3] && fg.b[0] && current_col_ == 0)
     init_side_facets_bound(fg, facetList, 3, 0);
-  if (fg.b[1] && fg.b[2] && fg.top[1].x == (x_max_ + ex_e_).value())
+  if (fg.b[1] && fg.b[2] && current_col_ == cols_ - 2)
     init_side_facets_bound(fg, facetList, 1, 2);
 }
 
 void Model::init_side_facets_2(const FctGen &fg,
                                std::vector<Facet3Pt> &facetList, int i0,
                                int i1) {
-  if (fg.b[0] && fg.b[1] && fg.top[0].y == (y_min_ - ex_s_).value())
+  // Only skip if the 2-corner edge lies on the outer model boundary
+  if (fg.b[0] && fg.b[1] && current_row_ == 0)
     return;
-  if (fg.b[2] && fg.b[3] && fg.top[2].y == (y_max_ + ex_n_).value())
+  if (fg.b[2] && fg.b[3] && current_row_ == rows_ - 2)
     return;
-  if (fg.b[3] && fg.b[0] && fg.top[3].x == (x_min_ - ex_w_).value())
+  if (fg.b[3] && fg.b[0] && current_col_ == 0)
     return;
-  if (fg.b[1] && fg.b[2] && fg.top[1].x == (x_max_ + ex_e_).value())
+  if (fg.b[1] && fg.b[2] && current_col_ == cols_ - 2)
     return;
 
   if (fg.b[i0] && fg.b[i1]) {
@@ -979,6 +1149,9 @@ int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col) {
   if (row < 0 || col < 0 || row > rows_ - 2 || col > cols_ - 2)
     return 0;
 
+  current_row_ = row;
+  current_col_ = col;
+
   std::vector<FctGen> fga;
   fga.reserve(16);
 
@@ -1025,49 +1198,108 @@ int Model::generate_facets(std::vector<Facet3Pt> &facetList, int row, int col) {
     }
   }
 
-  if (fga.empty())
-    return 0;
-
-  // Sort in ascending Z (shallower depth first)
-  std::sort(fga.begin(), fga.end(), [](const FctGen &f1, const FctGen &f2) {
-    for (int i = 0; i < 4; ++i) {
-      if (f1.top[i].z > f2.bot[i].z && f1.b[i] && f2.b[i])
-        return true;
-      if (f1.bot[i].z < f2.top[i].z && f1.b[i] && f2.b[i])
-        return false;
-    }
-    return f1.id < f2.id;
-  });
-
-  const size_t n = fga.size();
-  for (size_t i = 0; i < n; ++i) {
-    FctGen &pC = fga[i];
-    if (i < n - 1) {
-      FctGen &pN = fga[i + 1];
-      bool b01 = (pC.bot[0].z == pN.top[0].z) && (pC.bot[1].z == pN.top[1].z);
-      bool b12 = (pC.bot[1].z == pN.top[1].z) && (pC.bot[2].z == pN.top[2].z);
-      bool b23 = (pC.bot[2].z == pN.top[2].z) && (pC.bot[3].z == pN.top[3].z);
-      bool b30 = (pC.bot[3].z == pN.top[3].z) && (pC.bot[0].z == pN.top[0].z);
-      if ((pC.l == 3 || pN.l == 3) &&
-          ((pC.b[0] && pN.b[0] && pC.b[1] && pN.b[1] && b01) ||
-           (pC.b[1] && pN.b[1] && pC.b[2] && pN.b[2] && b12) ||
-           (pC.b[2] && pN.b[2] && pC.b[3] && pN.b[3] && b23) ||
-           (pC.b[3] && pN.b[3] && pC.b[0] && pN.b[0] && b30))) {
-        if (pN.top[4].z == pN.bot[4].z) {
-          pN.top[4].z = pN.bot[4].z = pC.bot[4].z;
+  if (!fga.empty()) {
+    // Sort in stratigraphic order (shallower depth first) using exact column rank
+    // when both bodies exist in a shared corner, or mean elevation fallback.
+    std::sort(fga.begin(), fga.end(), [](const FctGen &f1, const FctGen &f2) {
+      int f1Above = 0;
+      int f2Above = 0;
+      for (int i = 0; i < 4; ++i) {
+        if (f1.b[i] && f2.b[i]) {
+          if (f1.stratRank[i] >= 0 && f2.stratRank[i] >= 0 &&
+              f1.stratRank[i] != f2.stratRank[i]) {
+            if (f1.stratRank[i] < f2.stratRank[i])
+              f1Above++;
+            else
+              f2Above++;
+          } else if (f1.top[i].z > f2.bot[i].z && f1.bot[i].z >= f2.top[i].z) {
+            f1Above++;
+          } else if (f1.bot[i].z < f2.top[i].z && f1.top[i].z <= f2.bot[i].z) {
+            f2Above++;
+          }
         }
-        pN.top[4].z = pC.bot[4].z;
-        if (pN.top[4].z < pN.bot[4].z)
-          pN.bot[4].z = pN.top[4].z;
       }
+      if (f1Above != f2Above)
+        return f1Above > f2Above;
+
+      double z1 = 0.5 * (f1.top[4].z + f1.bot[4].z);
+      double z2 = 0.5 * (f2.top[4].z + f2.bot[4].z);
+      if (std::abs(z1 - z2) > 1e-9)
+        return z1 > z2;
+      return f1.id < f2.id;
+    });
+
+    const size_t n = fga.size();
+    for (size_t i = 0; i < n; ++i) {
+      FctGen &pC = fga[i];
+      // Search all subsequent bodies in the cell for a shared contact interface
+      for (size_t j = i + 1; j < n; ++j) {
+        FctGen &pN = fga[j];
+        bool b01 =
+            (pC.bot[0].z == pN.top[0].z) && (pC.bot[1].z == pN.top[1].z);
+        bool b12 =
+            (pC.bot[1].z == pN.top[1].z) && (pC.bot[2].z == pN.top[2].z);
+        bool b23 =
+            (pC.bot[2].z == pN.top[2].z) && (pC.bot[3].z == pN.top[3].z);
+        bool b30 =
+            (pC.bot[3].z == pN.top[3].z) && (pC.bot[0].z == pN.top[0].z);
+        bool sharedEdge = (pC.b[0] && pN.b[0] && pC.b[1] && pN.b[1] && b01) ||
+                          (pC.b[1] && pN.b[1] && pC.b[2] && pN.b[2] && b12) ||
+                          (pC.b[2] && pN.b[2] && pC.b[3] && pN.b[3] && b23) ||
+                          (pC.b[3] && pN.b[3] && pC.b[0] && pN.b[0] && b30);
+        bool fullContact =
+            (pC.l == 4 && pN.l == 4 && b01 && b12 && b23 && b30);
+        if (fullContact || ((pC.l == 3 || pN.l == 3) && sharedEdge)) {
+          if (pN.top[4].z == pN.bot[4].z) {
+            pN.top[4].z = pN.bot[4].z = pC.bot[4].z;
+          }
+          pN.top[4].z = pC.bot[4].z;
+          if (pN.top[4].z < pN.bot[4].z)
+            pN.bot[4].z = pN.top[4].z;
+        }
+      }
+      init_side_facets(pC, facetList);
     }
-    init_side_facets(pC, facetList);
+
+    fg_to_fct(fga, facetList, 0, 1);
+    fg_to_fct(fga, facetList, 1, 2);
+    fg_to_fct(fga, facetList, 2, 3);
+    fg_to_fct(fga, facetList, 3, 0);
   }
 
-  fg_to_fct(fga, facetList, 0, 1);
-  fg_to_fct(fga, facetList, 1, 2);
-  fg_to_fct(fga, facetList, 2, 3);
-  fg_to_fct(fga, facetList, 3, 0);
+  // Remove degenerate (zero-area) facets and fuse coincident opposite facets
+  // within the cell into single shared-interface facets (primary + opposite).
+  for (size_t i = 0; i < facetList.size();) {
+    if (!facetList[i].pfld_facet().is_initialized() ||
+        facetList[i].area() <= 1e-12) {
+      facetList.erase(facetList.begin() + static_cast<std::ptrdiff_t>(i));
+    } else {
+      ++i;
+    }
+  }
+
+  for (size_t i = 0; i < facetList.size(); ++i) {
+    if (facetList[i].opposite != nullptr)
+      continue;
+    for (size_t j = i + 1; j < facetList.size(); ++j) {
+      if (facetList[j].opposite != nullptr)
+        continue;
+      if (facetList[i].is_opposite(facetList[j])) {
+        if (facetList[i].primary == facetList[j].primary) {
+          // Internal seam between two parts of the same body cancels out
+          facetList.erase(facetList.begin() + static_cast<std::ptrdiff_t>(j));
+          facetList.erase(facetList.begin() + static_cast<std::ptrdiff_t>(i));
+          --i;
+          break;
+        } else {
+          // Fuse into a single shared facet with both primary and opposite bodies
+          facetList[i].opposite = facetList[j].primary;
+          facetList.erase(facetList.begin() + static_cast<std::ptrdiff_t>(j));
+          break;
+        }
+      }
+    }
+  }
 
   return static_cast<int>(facetList.size());
 }
@@ -1164,24 +1396,105 @@ int Model::body_facets(int bodyId, std::vector<Facet3Pt> &outList,
     cMax = cols_ - 3;
   }
 
+  auto hasBodyInCol = [this](int r, int c, int bId, Point3D &topPt,
+                             Point3D &botPt) noexcept -> bool {
+    const int idx = body_index(bId, r, c);
+    if (idx < 1)
+      return false;
+    const ColumnPoint *pT = at(r, c, idx);
+    const ColumnPoint *pB = at(r, c, idx + 1);
+    if (!pT || !pB)
+      return false;
+    topPt = pT->point();
+    botPt = pB->point();
+    return true;
+  };
+
+  auto emitBoundaryQuad = [this, &outList](int bId, const Point3D &t0,
+                                           const Point3D &b0, const Point3D &t1,
+                                           const Point3D &b1) {
+    if (t0 == b0 && t1 == b1)
+      return;
+    Body *pBd = const_cast<Body *>(body(bId));
+    if (t0 != b0) {
+      auto &fct = outList.emplace_back(t0, b0, t1);
+      if (fct.pfld_facet().is_initialized() && fct.area() > 1e-12) {
+        fct.primary = pBd;
+      } else {
+        outList.pop_back();
+      }
+    }
+    if (t1 != b1) {
+      auto &fct = outList.emplace_back(b0, b1, t1);
+      if (fct.pfld_facet().is_initialized() && fct.area() > 1e-12) {
+        fct.primary = pBd;
+      } else {
+        outList.pop_back();
+      }
+    }
+  };
+
+  const bool clipOuter = (!includeOuter && rows_ > 3 && cols_ > 3);
+
   for (int r = rMin; r <= rMax; ++r) {
     for (int c = cMin; c <= cMax; ++c) {
-      const auto *lst = facet_list(r, c);
-      if (!lst)
-        continue;
-      for (const auto &fct : *lst) {
-        if (bodyId == -1) {
-          outList.push_back(fct);
-        } else {
-          if (fct.primary && fct.primary->id() == bodyId) {
-            outList.push_back(fct);
-          } else if (fct.opposite && fct.opposite->id() == bodyId) {
-            // Contact interface: invert winding and normal so it faces outward
-            // from this body
-            Facet3Pt copy = fct;
-            copy.reverse();
-            outList.push_back(copy);
+      Point3D t0, b0, t1, b1, t2, b2, t3, b3;
+      bool has0 = false, has1 = false, has2 = false, has3 = false;
+      int l = 0;
+      if (clipOuter && bodyId != -1) {
+        has0 = hasBodyInCol(r, c, bodyId, t0, b0);
+        has1 = hasBodyInCol(r, c + 1, bodyId, t1, b1);
+        has2 = hasBodyInCol(r + 1, c + 1, bodyId, t2, b2);
+        has3 = hasBodyInCol(r + 1, c, bodyId, t3, b3);
+        l = (has0 ? 1 : 0) + (has1 ? 1 : 0) + (has2 ? 1 : 0) + (has3 ? 1 : 0);
+
+        // If l == 2 and the 2 active corners lie on the clipped outer border,
+        // those FCT_SIDE facets belong to the excluded outer-ring cell.
+        if (l == 2) {
+          if ((has0 && has1 && r == rMin) || (has2 && has3 && r == rMax) ||
+              (has3 && has0 && c == cMin) || (has1 && has2 && c == cMax)) {
+            continue;
           }
+        }
+      }
+
+      const auto *lst = facet_list(r, c);
+      if (lst) {
+        for (const auto &fct : *lst) {
+          if (bodyId == -1) {
+            outList.push_back(fct);
+          } else {
+            if (fct.primary && fct.primary->id() == bodyId) {
+              Facet3Pt copy = fct;
+              copy.opposite = nullptr;
+              outList.push_back(copy);
+            } else if (fct.opposite && fct.opposite->id() == bodyId) {
+              // Contact interface: invert winding and normal so it faces outward
+              // from this body
+              Facet3Pt copy = fct;
+              copy.reverse();
+              copy.opposite = nullptr;
+              outList.push_back(copy);
+            }
+          }
+        }
+      }
+
+      // If excluding the outer extension ring and this interior cell contains
+      // volume of `bodyId` (l >= 3), emit the boundary wall on any edge that
+      // borders the excluded outer ring.
+      if (clipOuter && bodyId != -1 && l >= 3) {
+        if (r == rMin && has0 && has1) {
+          emitBoundaryQuad(bodyId, t0, b0, t1, b1);
+        }
+        if (r == rMax && has2 && has3) {
+          emitBoundaryQuad(bodyId, t2, b2, t3, b3);
+        }
+        if (c == cMin && has3 && has0) {
+          emitBoundaryQuad(bodyId, t3, b3, t0, b0);
+        }
+        if (c == cMax && has1 && has2) {
+          emitBoundaryQuad(bodyId, t1, b1, t2, b2);
         }
       }
     }
@@ -1191,6 +1504,7 @@ int Model::body_facets(int bodyId, std::vector<Facet3Pt> &outList,
 
 int Model::facets_for_3d_view(std::vector<Facet3Pt> &outList,
                               bool includeOuter) const {
+  outList.clear();
   return body_facets(-1, outList, includeOuter);
 }
 
@@ -1217,39 +1531,33 @@ std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId,
     if (mesh.facets.empty())
       continue;
 
-    // Extract feature crease & boundary edges for crisp CAD rendering
-    struct CanonicalEdge {
+    // Extract feature crease & boundary edges using cache-friendly flat sort
+    struct EdgeRecord {
       long long x0, y0, z0;
       long long x1, y1, z1;
       Point3D pt0, pt1;
+      Point3D normal;
 
-      bool operator<(const CanonicalEdge &o) const {
-        if (x0 != o.x0)
-          return x0 < o.x0;
-        if (y0 != o.y0)
-          return y0 < o.y0;
-        if (z0 != o.z0)
-          return z0 < o.z0;
-        if (x1 != o.x1)
-          return x1 < o.x1;
-        if (y1 != o.y1)
-          return y1 < o.y1;
-        return z1 < o.z1;
+      bool same_key(const EdgeRecord &o) const noexcept {
+        return x0 == o.x0 && y0 == o.y0 && z0 == o.z0 && x1 == o.x1 &&
+               y1 == o.y1 && z1 == o.z1;
+      }
+
+      bool operator<(const EdgeRecord &o) const noexcept {
+        return std::tie(x0, y0, z0, x1, y1, z1) <
+               std::tie(o.x0, o.y0, o.z0, o.x1, o.y1, o.z1);
       }
     };
 
-    struct EdgeInfo {
-      Point3D pt0, pt1;
-      std::vector<Point3D> facetNormals;
-    };
+    std::vector<EdgeRecord> edgeRecords;
+    edgeRecords.reserve(mesh.facets.size() * 3);
 
-    std::map<CanonicalEdge, EdgeInfo> edgeMap;
-
-    auto quant = [](double v) -> long long {
-      return static_cast<long long>(std::round(v * 100.0));
+    auto quant = [](double v) noexcept -> long long {
+      return static_cast<long long>(std::llround(v * 1000.0));
     };
 
     for (const auto &f : mesh.facets) {
+      const Point3D n = f.normal();
       for (int k = 0; k < 3; ++k) {
         const Point3D &pA = f[k];
         const Point3D &pB = f[(k + 1) % 3];
@@ -1257,43 +1565,440 @@ std::vector<BodyMesh3D> Model::generate_body_meshes(int bodyId,
         long long qAx = quant(pA.x), qAy = quant(pA.y), qAz = quant(pA.z);
         long long qBx = quant(pB.x), qBy = quant(pB.y), qBz = quant(pB.z);
 
-        CanonicalEdge key;
-        Point3D startPt, endPt;
         if (std::tie(qAx, qAy, qAz) <= std::tie(qBx, qBy, qBz)) {
-          key = {qAx, qAy, qAz, qBx, qBy, qBz, pA, pB};
-          startPt = pA;
-          endPt = pB;
+          edgeRecords.push_back({qAx, qAy, qAz, qBx, qBy, qBz, pA, pB, n});
         } else {
-          key = {qBx, qBy, qBz, qAx, qAy, qAz, pB, pA};
-          startPt = pB;
-          endPt = pA;
+          edgeRecords.push_back({qBx, qBy, qBz, qAx, qAy, qAz, pB, pA, n});
         }
-
-        auto &info = edgeMap[key];
-        info.pt0 = startPt;
-        info.pt1 = endPt;
-        info.facetNormals.push_back(f.normal());
       }
     }
 
-    mesh.featureEdges.reserve(edgeMap.size() / 2);
-    for (const auto &[key, info] : edgeMap) {
-      if (info.facetNormals.size() == 1) {
-        // Boundary / silhouette edge
-        mesh.featureEdges.push_back({info.pt0, info.pt1});
-      } else if (info.facetNormals.size() >= 2) {
-        // Dihedral angle check between adjacent facets: crease edge if angle >
-        // ~20 deg
-        double dot = info.facetNormals[0].dot(info.facetNormals[1]);
+    std::sort(edgeRecords.begin(), edgeRecords.end());
+    mesh.featureEdges.reserve(edgeRecords.size() / 4);
+
+    for (size_t i = 0; i < edgeRecords.size();) {
+      size_t j = i + 1;
+      while (j < edgeRecords.size() && edgeRecords[i].same_key(edgeRecords[j])) {
+        ++j;
+      }
+      const size_t count = j - i;
+      if (count == 1) {
+        mesh.featureEdges.push_back({edgeRecords[i].pt0, edgeRecords[i].pt1});
+      } else if (count >= 2) {
+        double dot = edgeRecords[i].normal.dot(edgeRecords[i + 1].normal);
         if (dot < 0.94) {
-          mesh.featureEdges.push_back({info.pt0, info.pt1});
+          mesh.featureEdges.push_back({edgeRecords[i].pt0, edgeRecords[i].pt1});
         }
       }
+      i = j;
     }
 
     meshes.push_back(std::move(mesh));
   }
   return meshes;
+}
+
+// ---------------------------------------------------------------------------
+// Graph-Theoretic Topological Validation, Stratigraphic DAG & Sanitizer
+// ---------------------------------------------------------------------------
+
+std::vector<int> Model::stratigraphic_topological_order() const {
+  std::unordered_map<int, std::unordered_set<int>> adj;
+  std::unordered_map<int, int> inDegree;
+
+  for (const auto &bPtr : bodies_) {
+    if (bPtr) {
+      inDegree.try_emplace(bPtr->id(), 0);
+    }
+  }
+
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      const int cnt = static_cast<int>(count(r, c));
+      std::vector<int> colBodies;
+      for (int i = 1; i < cnt - 1; i += 2) {
+        int bId = id(i, r, c);
+        if (bId >= 0) {
+          colBodies.push_back(bId);
+          inDegree.try_emplace(bId, 0);
+        }
+      }
+      for (size_t u = 0; u < colBodies.size(); ++u) {
+        for (size_t v = u + 1; v < colBodies.size(); ++v) {
+          if (colBodies[u] != colBodies[v]) {
+            if (adj[colBodies[u]].insert(colBodies[v]).second) {
+              inDegree[colBodies[v]]++;
+            }
+          }
+        }
+      }
+    }
+  }
+
+  std::priority_queue<int, std::vector<int>, std::greater<int>> q;
+  for (const auto &[bId, deg] : inDegree) {
+    if (deg == 0) {
+      q.push(bId);
+    }
+  }
+
+  std::vector<int> order;
+  order.reserve(inDegree.size());
+  while (!q.empty()) {
+    int u = q.top();
+    q.pop();
+    order.push_back(u);
+    if (auto it = adj.find(u); it != adj.end()) {
+      for (int v : it->second) {
+        if (--inDegree[v] == 0) {
+          q.push(v);
+        }
+      }
+    }
+  }
+
+  if (order.size() != inDegree.size()) {
+    return {};
+  }
+  return order;
+}
+
+bool Model::is_stratigraphic_dag_valid() const {
+  if (bodies_.empty())
+    return true;
+  std::unordered_set<int> activeBodies;
+  for (const auto &b : bodies_) {
+    if (b)
+      activeBodies.insert(b->id());
+  }
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      const int cnt = static_cast<int>(count(r, c));
+      std::unordered_set<int> seenInCol;
+      for (int i = 1; i < cnt - 1; i += 2) {
+        int bId = id(i, r, c);
+        if (bId >= 0) {
+          if (!seenInCol.insert(bId).second)
+            return false; // Duplicate body in same column
+          activeBodies.insert(bId);
+        }
+      }
+    }
+  }
+  auto order = stratigraphic_topological_order();
+  return order.size() == activeBodies.size();
+}
+
+BodyTopologyStatus Model::analyze_body_topology(int bodyId,
+                                                bool includeOuter) const {
+  BodyTopologyStatus status;
+  status.bodyId = bodyId;
+
+  std::vector<Facet3Pt> facets;
+  body_facets(bodyId, facets, includeOuter);
+  status.facetCount = facets.size();
+  if (facets.empty()) {
+    status.isWatertight = true;
+    status.isOutwardOriented = true;
+    return status;
+  }
+
+  struct QuantPt {
+    long long x, y, z;
+    bool operator==(const QuantPt &o) const noexcept {
+      return x == o.x && y == o.y && z == o.z;
+    }
+  };
+  struct QuantPtHash {
+    size_t operator()(const QuantPt &p) const noexcept {
+      size_t h1 = std::hash<long long>{}(p.x);
+      size_t h2 = std::hash<long long>{}(p.y);
+      size_t h3 = std::hash<long long>{}(p.z);
+      return h1 ^ (h2 * 0x9e3779b97f4a7c15ULL + (h1 << 6) + (h1 >> 2)) ^
+             (h3 * 0x517cc1b727220a95ULL + (h2 << 6) + (h2 >> 2));
+    }
+  };
+
+  auto quantPt = [](const Point3D &p) noexcept -> QuantPt {
+    return {static_cast<long long>(std::llround(p.x * 1000.0)),
+            static_cast<long long>(std::llround(p.y * 1000.0)),
+            static_cast<long long>(std::llround(p.z * 1000.0))};
+  };
+
+  std::unordered_map<QuantPt, int, QuantPtHash> vertexToId;
+  int nextVid = 0;
+
+  struct DirectedEdge {
+    int u, v;
+    size_t facetIdx;
+  };
+
+  struct UndirectedEdgeKey {
+    int a, b;
+    bool operator==(const UndirectedEdgeKey &o) const noexcept {
+      return a == o.a && b == o.b;
+    }
+  };
+  struct UndirectedEdgeHash {
+    size_t operator()(const UndirectedEdgeKey &e) const noexcept {
+      return (static_cast<size_t>(e.a) << 32) ^ static_cast<size_t>(e.b);
+    }
+  };
+
+  struct EdgeIncidence {
+    int forwardCount{0};  // u < v
+    int backwardCount{0}; // u > v
+    std::vector<size_t> incidentFacets;
+  };
+
+  std::unordered_map<UndirectedEdgeKey, EdgeIncidence, UndirectedEdgeHash>
+      edgeGraph;
+
+  for (size_t fIdx = 0; fIdx < facets.size(); ++fIdx) {
+    const auto &f = facets[fIdx];
+    if (!f.pfld_facet().is_initialized() || f.area() <= 1e-12 ||
+        f.normal().is_zero()) {
+      status.degenerateFacetCount++;
+      continue;
+    }
+
+    int vids[3];
+    for (int k = 0; k < 3; ++k) {
+      QuantPt qp = quantPt(f[k]);
+      auto [it, inserted] = vertexToId.try_emplace(qp, nextVid);
+      if (inserted)
+        nextVid++;
+      vids[k] = it->second;
+    }
+
+    if (vids[0] == vids[1] || vids[1] == vids[2] || vids[2] == vids[0]) {
+      status.degenerateFacetCount++;
+      continue;
+    }
+
+    for (int k = 0; k < 3; ++k) {
+      int u = vids[k];
+      int v = vids[(k + 1) % 3];
+      status.halfEdgeCount++;
+      UndirectedEdgeKey key{std::min(u, v), std::max(u, v)};
+      auto &inc = edgeGraph[key];
+      if (u < v)
+        inc.forwardCount++;
+      else
+        inc.backwardCount++;
+      inc.incidentFacets.push_back(fIdx);
+    }
+  }
+
+  status.vertexCount = vertexToId.size();
+
+  // Build Dual Facet Graph adjacency list to find connected polyhedral shells
+  std::vector<std::vector<size_t>> dualAdj(facets.size());
+  for (const auto &[key, inc] : edgeGraph) {
+    if (inc.forwardCount != inc.backwardCount) {
+      // Unbalanced half-edges on this edge
+      status.boundaryEdgeCount +=
+          static_cast<size_t>(std::abs(inc.forwardCount - inc.backwardCount));
+    }
+    if ((inc.forwardCount > 1 && inc.backwardCount == 0) ||
+        (inc.backwardCount > 1 && inc.forwardCount == 0)) {
+      // Conflicting winding (Möbius strip defect)
+      status.nonManifoldEdgeCount++;
+    }
+    for (size_t i = 0; i < inc.incidentFacets.size(); ++i) {
+      for (size_t j = i + 1; j < inc.incidentFacets.size(); ++j) {
+        size_t f1 = inc.incidentFacets[i];
+        size_t f2 = inc.incidentFacets[j];
+        dualAdj[f1].push_back(f2);
+        dualAdj[f2].push_back(f1);
+      }
+    }
+  }
+
+  // BFS on Dual Facet Graph: compute signed volume per connected component via
+  // Divergence Theorem: V = (1/6) * sum(p0 . (p1 x p2))
+  // Because Facet3Pt stores outward normal n = normalize((p0 - p1) x (p1 - p2)),
+  // the outward-oriented triple product is p0 . ((p0 - p1) x (p1 - p2)) = (p0 x p1) . p2.
+  // Wait: let's check the exact sign of (p0 - p1) x (p1 - p2):
+  // (p0 - p1) x (p1 - p2) = p0 x p1 - p0 x p2 - p1 x p1 + p1 x p2
+  // = (p1 - p0) x (p2 - p0) if and only if:
+  // (p1 - p0) x (p2 - p0) = p1 x p2 - p1 x p0 - p0 x p2 = p0 x p1 + p1 x p2 + p2 x p0!
+  // Yes! (p0 - p1) x (p1 - p2) == (p1 - p0) x (p2 - p0) identically!
+  // Therefore, for any closed surface with outward normal _n = normalize((p0 - p1) x (p1 - p2)),
+  // the signed volume is V = (1/6) * sum( p0 . ((p1 - p0) x (p2 - p0)) ) = (1/6) * sum( p0 . (p1 x p2) ) > 0!
+  std::vector<bool> visited(facets.size(), false);
+  bool allShellsPositiveVolume = true;
+  double totalVolume = 0.0;
+
+  for (size_t i = 0; i < facets.size(); ++i) {
+    if (visited[i])
+      continue;
+    if (!facets[i].pfld_facet().is_initialized() || facets[i].area() <= 1e-12)
+      continue;
+
+    status.connectedComponents++;
+    double shellVolume6 = 0.0;
+    std::queue<size_t> q;
+    q.push(i);
+    visited[i] = true;
+
+    while (!q.empty()) {
+      size_t curr = q.front();
+      q.pop();
+      const auto &f = facets[curr];
+      shellVolume6 += f[0].dot(f[1].cross(f[2]));
+
+      for (size_t nb : dualAdj[curr]) {
+        if (!visited[nb]) {
+          visited[nb] = true;
+          q.push(nb);
+        }
+      }
+    }
+
+    const double shellVol = shellVolume6 / 6.0;
+    totalVolume += shellVol;
+    if (shellVol <= 1e-9) {
+      allShellsPositiveVolume = false;
+    }
+  }
+
+  status.signedVolume = totalVolume;
+  status.isWatertight = (status.boundaryEdgeCount == 0 &&
+                         status.nonManifoldEdgeCount == 0 &&
+                         status.degenerateFacetCount == 0);
+  status.isOutwardOriented =
+      status.isWatertight && allShellsPositiveVolume && (totalVolume > 1e-9);
+  return status;
+}
+
+ModelTopologyReport Model::analyze_topology(bool includeOuter) const {
+  ModelTopologyReport report;
+  report.isStratigraphicDagValid = is_stratigraphic_dag_valid();
+
+  std::vector<Facet3Pt> compFacets;
+  facets_computation(compFacets);
+  report.totalComputationFacets = compFacets.size();
+  for (const auto &fct : compFacets) {
+    if (fct.primary != nullptr && fct.opposite != nullptr) {
+      report.sharedInterfaceFacets++;
+    }
+  }
+
+  for (const auto &bPtr : bodies_) {
+    if (!bPtr)
+      continue;
+    report.bodyStatuses.push_back(
+        analyze_body_topology(bPtr->id(), includeOuter));
+  }
+  return report;
+}
+
+size_t Model::sanitize() {
+  if (!initialized_ || rows_ <= 0 || cols_ <= 0) {
+    return 0;
+  }
+
+  size_t repairs = 0;
+  const double zMinVal = z_min_.value();
+  const double zMaxVal = z_max_.value();
+
+  for (int r = 0; r < rows_; ++r) {
+    for (int c = 0; c < cols_; ++c) {
+      auto &colVec = data_[r * cols_ + c];
+
+      // 1. Ensure column has at least [top, bottom] boundary points
+      if (colVec.size() < 2) {
+        colVec.clear();
+        ColumnPoint pTop(z_max_);
+        set_column_point_coords(pTop, r, c, z_max_);
+        colVec.push_back(pTop);
+
+        ColumnPoint pBot(z_min_);
+        set_column_point_coords(pBot, r, c, z_min_);
+        colVec.push_back(pBot);
+        repairs++;
+        continue;
+      }
+
+      // 2. Clamp surface and bottom points to [zMin, zMax]
+      double topZ = colVec.front().z().value();
+      if (topZ > zMaxVal || topZ < zMinVal) {
+        topZ = std::clamp(topZ, zMinVal, zMaxVal);
+        colVec.front().set_z(topZ);
+        repairs++;
+      }
+      set_column_point_coords(colVec.front(), r, c, topZ);
+
+      if (std::abs(colVec.back().z().value() - zMinVal) > 1e-9) {
+        colVec.back().set_z(zMinVal);
+        repairs++;
+      }
+      set_column_point_coords(colVec.back(), r, c, zMinVal);
+
+      // 3. Validate interior body vertex pairs [1 .. size-2]
+      std::vector<ColumnPoint> validPairs;
+      validPairs.reserve(colVec.size());
+      std::unordered_set<int> seenBodies;
+      double prevZ = topZ;
+
+      for (size_t k = 1; k + 1 < colVec.size();) {
+        if (k + 2 >= colVec.size()) {
+          // Dangling odd point at end of column before bottom boundary
+          repairs++;
+          break;
+        }
+        ColumnPoint ptT = colVec[k];
+        ColumnPoint ptB = colVec[k + 1];
+        const int bIdT = ptT.body_id();
+        const int bIdB = ptB.body_id();
+        Body *bPtr = (bIdT >= 0) ? body(bIdT) : nullptr;
+
+        if (bIdT < 0 || bIdT != bIdB || bPtr == nullptr ||
+            seenBodies.count(bIdT) > 0) {
+          // Invalid body ID, mismatched pair, or duplicate body in same column
+          repairs++;
+          k += (bIdT == bIdB) ? 2 : 1;
+          continue;
+        }
+
+        seenBodies.insert(bIdT);
+        double zT = std::clamp(ptT.z().value(), zMinVal, prevZ);
+        double zB = std::clamp(ptB.z().value(), zMinVal, zT);
+        if (std::abs(zT - ptT.z().value()) > 1e-9 ||
+            std::abs(zB - ptB.z().value()) > 1e-9) {
+          repairs++;
+        }
+
+        ptT.set_body(bPtr);
+        ptB.set_body(bPtr);
+        ptT.set_z(zT);
+        ptB.set_z(zB);
+        set_column_point_coords(ptT, r, c, zT);
+        set_column_point_coords(ptB, r, c, zB);
+        validPairs.push_back(ptT);
+        validPairs.push_back(ptB);
+        prevZ = zB;
+        k += 2;
+      }
+
+      if (validPairs.size() + 2 != colVec.size()) {
+        ColumnPoint frontPt = colVec.front();
+        ColumnPoint backPt = colVec.back();
+        colVec.clear();
+        colVec.push_back(frontPt);
+        colVec.insert(colVec.end(), validPairs.begin(), validPairs.end());
+        colVec.push_back(backPt);
+      } else {
+        for (size_t j = 0; j < validPairs.size(); ++j) {
+          colVec[j + 1] = validPairs[j];
+        }
+      }
+    }
+  }
+
+  init_facet_list();
+  return repairs;
 }
 
 const std::vector<BodyBoundarySegment> *Model::body_bound_at(int row,

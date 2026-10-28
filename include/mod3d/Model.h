@@ -26,6 +26,7 @@ struct FctGen {
   int id{-1};                    // body ID
   int idPrev[4]{-1, -1, -1, -1}; // previous body ID at 4 corners
   int idNext[4]{-1, -1, -1, -1}; // next body ID at 4 corners
+  int stratRank[4]{-1, -1, -1, -1}; // column stratigraphic index at 4 corners
   int l{0};                      // number of valid points in column cell
   bool b[4]{false, false, false, false}; // whether each corner is valid
   Point3D top[5];                        // top points: 0..3 corners, 4 center
@@ -56,6 +57,45 @@ struct BodyMesh3D {
   // Feature / boundary edges (for crisp CAD-style rendering on top of shaded
   // facets)
   std::vector<std::pair<Point3D, Point3D>> featureEdges;
+};
+
+// Graph-theoretic topological analysis of a single 3D polyhedral body
+struct BodyTopologyStatus {
+  int bodyId{-1};
+  size_t facetCount{0};
+  size_t vertexCount{0};
+  size_t halfEdgeCount{0};
+  size_t boundaryEdgeCount{0};    // Unmatched half-edges (0 if watertight 2-manifold)
+  size_t nonManifoldEdgeCount{0}; // Edges with conflicting winding orientation (Möbius defect)
+  size_t degenerateFacetCount{0}; // Zero-area or invalid normal facets
+  size_t connectedComponents{0};  // Connected polyhedral shells via Dual Facet Graph BFS
+  double signedVolume{0.0};       // Closed volume via Divergence Theorem (> 0 when normals point outward)
+  bool isWatertight{false};       // True if closed 2-manifold without open boundary or orientation conflicts
+  bool isOutwardOriented{false};  // True if every connected shell has strictly outward normals (V > 0)
+};
+
+// Model-wide graph-theoretic correctness & facet sharing report
+struct ModelTopologyReport {
+  bool isStratigraphicDagValid{true}; // True if the global inter-body stratigraphic precedence graph is a DAG
+  size_t totalComputationFacets{0};   // Active facets in computation list
+  size_t sharedInterfaceFacets{0};    // Facets shared between two adjacent bodies (primary + opposite)
+  std::vector<BodyTopologyStatus> bodyStatuses;
+
+  [[nodiscard]] bool is_all_watertight() const noexcept {
+    for (const auto &s : bodyStatuses) {
+      if (s.facetCount > 0 && !s.isWatertight)
+        return false;
+    }
+    return isStratigraphicDagValid;
+  }
+
+  [[nodiscard]] bool is_all_outward_oriented() const noexcept {
+    for (const auto &s : bodyStatuses) {
+      if (s.facetCount > 0 && !s.isOutwardOriented)
+        return false;
+    }
+    return isStratigraphicDagValid;
+  }
 };
 
 /**
@@ -149,6 +189,13 @@ public:
   void set_z_min(double zMin) noexcept { z_min_ = units::Meters(zMin); }
   void set_z_max(units::Meters zMax) noexcept { z_max_ = zMax; }
   void set_z_max(double zMax) noexcept { z_max_ = units::Meters(zMax); }
+  [[nodiscard]] bool would_vertical_range_adjust_bodies(
+      units::Meters zMin, units::Meters zMax) const noexcept;
+  [[nodiscard]] bool would_vertical_range_adjust_bodies(
+      double zMin, double zMax) const noexcept {
+    return would_vertical_range_adjust_bodies(units::Meters(zMin),
+                                              units::Meters(zMax));
+  }
   void set_vertical_range(units::Meters zMin, units::Meters zMax);
   void set_vertical_range(double zMin, double zMax) {
     set_vertical_range(units::Meters(zMin), units::Meters(zMax));
@@ -310,6 +357,15 @@ public:
   int facets_for_3d_view(std::vector<Facet3Pt> &outList,
                          bool includeOuter = false) const;
 
+  // Graph-Theoretic Topological Validation, Stratigraphic DAG & Sanitizer
+  [[nodiscard]] bool is_stratigraphic_dag_valid() const;
+  [[nodiscard]] std::vector<int> stratigraphic_topological_order() const;
+  [[nodiscard]] BodyTopologyStatus
+  analyze_body_topology(int bodyId, bool includeOuter = true) const;
+  [[nodiscard]] ModelTopologyReport
+  analyze_topology(bool includeOuter = true) const;
+  size_t sanitize();
+
   // Body Boundaries (2D Horizontal Projection for Map View)
   [[nodiscard]] const std::vector<BodyBoundarySegment> *
   body_bound_at(int row, int col) const;
@@ -332,15 +388,9 @@ public:
 
   // Boundary Extensions
   void set_extensions(units::Meters exN, units::Meters exS, units::Meters exE,
-                      units::Meters exW, bool enable = true) noexcept {
-    ex_n_ = exN;
-    ex_s_ = exS;
-    ex_e_ = exE;
-    ex_w_ = exW;
-    extend_ = enable;
-  }
+                      units::Meters exW, bool enable = true);
   void set_extensions(double exN, double exS, double exE, double exW,
-                      bool enable = true) noexcept {
+                      bool enable = true) {
     set_extensions(units::Meters(exN), units::Meters(exS), units::Meters(exE),
                    units::Meters(exW), enable);
   }
@@ -353,7 +403,7 @@ public:
   void
   set_extensions(const units::Quantity<UN> &exN, const units::Quantity<US> &exS,
                  const units::Quantity<UE> &exE, const units::Quantity<UW> &exW,
-                 bool enable = true) noexcept {
+                 bool enable = true) {
     set_extensions(exN.template as<units::tag::Meters>(),
                    exS.template as<units::tag::Meters>(),
                    exE.template as<units::tag::Meters>(),
@@ -403,6 +453,8 @@ private:
                        int col) const;
   bool is_ins_pos_ok_2(int tag, int bodyId, int idCheck, int row,
                        int col) const;
+  bool would_create_stratigraphic_cycle(int index, int bodyId, int row,
+                                        int col) const;
 
   bool initialized_{false};
   int rows_{0};

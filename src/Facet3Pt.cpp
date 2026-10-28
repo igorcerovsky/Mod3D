@@ -171,9 +171,11 @@ bool Facet3Pt::is_opposite(const Facet3Pt &fct) const noexcept {
   const auto &p2 = fct.pfld_.points();
   if (p1.size() < 3 || p2.size() < 3)
     return false;
-  Point3D c1 = p1[0] + p1[2] + p1[1];
-  Point3D c2 = p2[0] + p2[1] + p2[2];
-  return (c1 == c2);
+  // Two triangular facets are opposite iff they share the exact 3 vertices
+  // in reversed cyclic winding order: (0, 2, 1), (2, 1, 0), or (1, 0, 2).
+  return (p1[0] == p2[0] && p1[1] == p2[2] && p1[2] == p2[1]) ||
+         (p1[0] == p2[2] && p1[1] == p2[1] && p1[2] == p2[0]) ||
+         (p1[0] == p2[1] && p1[1] == p2[0] && p1[2] == p2[2]);
 }
 
 void Facet3Pt::reverse() {
@@ -203,8 +205,11 @@ static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet,
         facet.fld_vlado(v_r, fOb, v_ref_dens_grad, ref_dens_org);
         f_grv = fb - fOb;
       } else {
-        facet.fld_vlado(v_r, f_grv);
-        f_grv = f_grv * (pBody->density().value() - ref_density);
+        const double drho = pBody->density().value() - ref_density;
+        if (drho != 0.0) {
+          facet.fld_vlado(v_r, f_grv);
+          f_grv = f_grv * drho;
+        }
       }
     } else {
       facet.fld_vlado(v_r, fb, pBody->density_gradient(),
@@ -218,24 +223,37 @@ static bool ComputeGravityVlado(const Point3D &v_r, const Facet3Pt &facet,
       f_grv = fb - fOb;
     }
   } else {
-    if (pBody) {
-      if (pBody->density_gradient().is_zero()) {
+    const bool primConst = !pBody || pBody->density_gradient().is_zero();
+    const bool oposConst = pBodyOpos->density_gradient().is_zero();
+    if (primConst && oposConst) {
+      // Single geometric evaluation for shared contact facet between two constant-density bodies
+      const double rhoPrim = pBody ? pBody->density().value() : 0.0;
+      const double rhoOpos = pBodyOpos->density().value();
+      const double drho = rhoPrim - rhoOpos;
+      if (drho != 0.0) {
         facet.fld_vlado(v_r, fb);
-        fb = fb * pBody->density().value();
-      } else {
-        facet.fld_vlado(v_r, fb, pBody->density_gradient(),
-                        pBody->density_at_origin().value());
+        f_grv += fb * drho;
       }
-    }
-
-    if (pBodyOpos->density_gradient().is_zero()) {
-      facet.fld_vlado(v_r, fOb);
-      fOb = fOb * pBodyOpos->density().value();
     } else {
-      facet.fld_vlado(v_r, fOb, pBodyOpos->density_gradient(),
-                      pBodyOpos->density_at_origin().value());
+      if (pBody) {
+        if (primConst) {
+          facet.fld_vlado(v_r, fb);
+          fb = fb * pBody->density().value();
+        } else {
+          facet.fld_vlado(v_r, fb, pBody->density_gradient(),
+                          pBody->density_at_origin().value());
+        }
+      }
+
+      if (oposConst) {
+        facet.fld_vlado(v_r, fOb);
+        fOb = fOb * pBodyOpos->density().value();
+      } else {
+        facet.fld_vlado(v_r, fOb, pBodyOpos->density_gradient(),
+                        pBodyOpos->density_at_origin().value());
+      }
+      f_grv += fb - fOb;
     }
-    f_grv += fb - fOb;
   }
   return true;
 }
@@ -285,23 +303,25 @@ void Facet3Pt::compute(double *gx, double *gy, double *gz, double *gxx,
     }
   }
 
-  // Magnetic field
+  // Magnetic field: evaluate FldGS once per shared facet using net magnetization contrast
   if (mx || my || mz) {
-    fMag.zero();
-    if (primary && !primary->magnetization_vector().is_zero() &&
-        primary->is_active()) {
-      fld_gs(v_r_mag, primary->magnetization_vector(), fMag, 1.0);
+    Point3D netM(0, 0, 0);
+    if (primary && primary->is_active()) {
+      netM += primary->magnetization_vector();
     }
-    if (opposite && !opposite->magnetization_vector().is_zero() &&
-        opposite->is_active()) {
-      fld_gs(v_r_mag, opposite->magnetization_vector(), fMag, -1.0);
+    if (opposite && opposite->is_active()) {
+      netM -= opposite->magnetization_vector();
     }
-    if (mx != nullptr)
-      *mx -= unit_mag * dSign * fMag.x;
-    if (my != nullptr)
-      *my -= unit_mag * dSign * fMag.y;
-    if (mz != nullptr)
-      *mz -= unit_mag * dSign * fMag.z;
+    if (!netM.is_zero()) {
+      fMag.zero();
+      fld_gs(v_r_mag, netM, fMag, 1.0);
+      if (mx != nullptr)
+        *mx -= unit_mag * dSign * fMag.x;
+      if (my != nullptr)
+        *my -= unit_mag * dSign * fMag.y;
+      if (mz != nullptr)
+        *mz -= unit_mag * dSign * fMag.z;
+    }
   }
 }
 

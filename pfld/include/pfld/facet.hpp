@@ -504,6 +504,17 @@ template <std::floating_point T, size_t N> void Facet<T, N>::Init() {
   }
 
   _n = (_pts[0] - _pts[1]).cross(_pts[1] - _pts[2]);
+  if (sz > 3 && _n.is_zero()) {
+    point newell{};
+    for (size_t i = 0; i < sz; ++i) {
+      const point &curr = _pts[i];
+      const point &next = _pts[(i + 1 == sz) ? 0 : i + 1];
+      newell.x += (curr.y - next.y) * (curr.z + next.z);
+      newell.y += (curr.z - next.z) * (curr.x + next.x);
+      newell.z += (curr.x - next.x) * (curr.y + next.y);
+    }
+    _n = newell;
+  }
   _n.normalize();
 
   if constexpr (!is_fixed) {
@@ -523,7 +534,7 @@ template <std::floating_point T, size_t N> void Facet<T, N>::Init() {
     _ni[i] = edge.cross(_n);
   }
 
-  _initialized = true;
+  _initialized = !_n.is_zero();
 }
 
 template <std::floating_point T, size_t N>
@@ -539,7 +550,8 @@ void Facet<T, N>::FldVlado(const point &r, T &f) const {
     const T w = _ni[i] * tmp;
     const T v = u + _len[i];
 
-    const T W2 = w * w + z * z;
+    const T W2 =
+        std::max(w * w + z * z, constants::eps<T> * constants::eps<T>);
     const T U = std::sqrt(u * u + W2);
     const T V = std::sqrt(v * v + W2);
     const T W = std::sqrt(W2);
@@ -549,7 +561,8 @@ void Facet<T, N>::FldVlado(const point &r, T &f) const {
     const T log_term = sign(v) * std::log((V + std::abs(v)) / W) -
                        sign(u) * std::log((U + std::abs(u)) / W);
     const T atan_denom =
-        (TT + d) * std::abs(TT - d) + static_cast<T>(2.0) * TT * z;
+        std::max((TT + d) * std::abs(TT - d) + static_cast<T>(2.0) * TT * z,
+                 constants::eps<T>);
     const T atan_term = static_cast<T>(2.0) * z *
                         std::atan((static_cast<T>(2.0) * w * d) / atan_denom);
 
@@ -608,18 +621,21 @@ void Facet<T, N>::Fld_Gz(const point &r, const point &ro, const T &ro0,
     const T v = u + _len[i];
     const T w = _ni[i] * ptTmp1;
 
-    const T W2 = w * w + z * z;
+    const T W2 =
+        std::max(w * w + z * z, constants::eps<T> * constants::eps<T>);
     const T U = std::sqrt(u * u + W2);
     const T V = std::sqrt(v * v + W2);
-    const T Tsum = U + V;
+    const T Tsum = std::max(U + V, constants::eps<T>);
     const T d = _len[i];
     const T atan_denom =
-        (Tsum + d) * std::abs(Tsum - d) + static_cast<T>(2.0) * Tsum * z;
+        std::max((Tsum + d) * std::abs(Tsum - d) + static_cast<T>(2.0) * Tsum * z,
+                 constants::eps<T>);
     const T A = -std::atan((static_cast<T>(2.0) * w * d) / atan_denom);
 
     T L{0};
     if (sign(u) == sign(v)) {
-      L = sign(v) * std::log((V + std::abs(v)) / (U + std::abs(u)));
+      L = sign(v) * std::log((V + std::abs(v)) /
+                             std::max(U + std::abs(u), constants::eps<T>));
     } else {
       L = std::log((V + std::abs(v)) * (U + std::abs(u)) / W2);
     }
@@ -658,18 +674,21 @@ void Facet<T, N>::Fld_G(const point &r, const point &ro, const T &ro0,
     const T v = u + _len[i];
     const T w = _ni[i] * ptTmp1;
 
-    const T W2 = w * w + z * z;
+    const T W2 =
+        std::max(w * w + z * z, constants::eps<T> * constants::eps<T>);
     const T U = std::sqrt(u * u + W2);
     const T V = std::sqrt(v * v + W2);
-    const T Tsum = U + V;
+    const T Tsum = std::max(U + V, constants::eps<T>);
     const T d = _len[i];
     const T atan_denom =
-        (Tsum + d) * std::abs(Tsum - d) + static_cast<T>(2.0) * Tsum * z;
+        std::max((Tsum + d) * std::abs(Tsum - d) + static_cast<T>(2.0) * Tsum * z,
+                 constants::eps<T>);
     const T A = -std::atan((static_cast<T>(2.0) * w * d) / atan_denom);
 
     T L{0};
     if (sign(u) == sign(v)) {
-      L = sign(v) * std::log((V + std::abs(v)) / (U + std::abs(u)));
+      L = sign(v) * std::log((V + std::abs(v)) /
+                             std::max(U + std::abs(u), constants::eps<T>));
     } else {
       L = std::log((V + std::abs(v)) * (U + std::abs(u)) / W2);
     }
@@ -704,8 +723,12 @@ void Facet<T, N>::FldGS(const point &r, const point &M, point &mag,
 
 template <std::floating_point T, size_t N>
 void Facet<T, N>::FldGS_M(const point &r, const point &M, point &mag) const {
+  const T s = M * _n;
+  if (std::abs(s) <= constants::eps<T>) {
+    return;
+  }
   const point f = FldGS(r);
-  mag += f * (M * _n);
+  mag += f * s;
 }
 
 template <std::floating_point T, size_t N>
@@ -775,6 +798,9 @@ Point3D<T> Facet<T, N>::FldGS(const point &r) const {
   const T dOmega = SolidAngle(spts, _n * spts[1], sz);
 
   for (size_t i = 0; i < sz; ++i) {
+    if (_len[i] <= constants::eps<T>) {
+      continue;
+    }
     const T r_len = spts[i].norm();
     const T b = static_cast<T>(2.0) * (spts[i] * _L[i]);
     const T two_len = static_cast<T>(2.0) * _len[i];
@@ -784,11 +810,16 @@ Point3D<T> Facet<T, N>::FldGS(const point &r) const {
 
     T I{0};
     if (h > constants::eps<T>) {
-      const T term =
-          std::sqrt(_len[i] * _len[i] + b + r_len * r_len) + _len[i] + b_term;
+      const T term = std::max(
+          std::sqrt(std::max(_len[i] * _len[i] + b + r_len * r_len, T{0})) +
+              _len[i] + b_term,
+          constants::eps<T>);
       I = inv_len * std::log(term / h);
     } else {
-      I = inv_len * std::log(std::abs(_len[i] - r_len) / r_len);
+      const T safe_r = std::max(r_len, constants::eps<T>);
+      const T safe_diff =
+          std::max(std::abs(_len[i] - r_len), constants::eps<T>);
+      I = inv_len * std::log(safe_diff / safe_r);
     }
 
     P += I * _L[i].x;
@@ -833,8 +864,14 @@ T Facet<T, N>::SolidAngle(std::span<const point> pts, const T inOut,
   T dFi = T{0};
   for (size_t i = 0; i < sz; ++i) {
     point n1 = pp[i + 1]->cross(*pp[i]);
+    if (n1.is_zero()) {
+      return T{0};
+    }
     n1.normalize();
     point n2 = pp[i + 2]->cross(*pp[i + 1]);
+    if (n2.is_zero()) {
+      return T{0};
+    }
     n2.normalize();
     const T dPerp = (*pp[i + 2]) * n1;
     const T b = std::clamp(n1 * n2, static_cast<T>(-1.0), static_cast<T>(1.0));

@@ -374,14 +374,48 @@ void ObservationSpace::compute_forward_field(
     grdDeltaT.zero();
   }
 
+  // Pre-compile active facet physical contrasts once outside the station loop
+  struct ActiveFacetEntry {
+    const Facet3Pt *fct{nullptr};
+    double grvScale{0.0}; // (rho_primary - rho_opposite_or_ref) * dSign
+    Point3D netMag{};     // (M_primary - M_opposite)
+    bool hasGrv{false};
+    bool hasMag{false};
+  };
+
+  std::vector<ActiveFacetEntry> activeFacets;
+  activeFacets.reserve(facets.size());
   bool hasMagnetics = false;
+  const double refDens = ref_density_.value();
+
   for (const auto &fct : facets) {
-    if ((fct.primary && fct.primary->is_active() &&
-         !fct.primary->magnetization_vector().is_zero()) ||
-        (fct.opposite && fct.opposite->is_active() &&
-         !fct.opposite->magnetization_vector().is_zero())) {
+    if (fct.is_null() || !fct.pfld_facet().is_initialized())
+      continue;
+
+    double grvScale = 0.0;
+    if (fct.primary) {
+      const double bDens = fct.primary->density().value();
+      const double oposDens =
+          fct.opposite ? fct.opposite->density().value() : refDens;
+      grvScale = (bDens - oposDens) * fct.dSign;
+    }
+
+    Point3D netMag(0.0, 0.0, 0.0);
+    if (fct.primary && fct.primary->is_active()) {
+      netMag += fct.primary->magnetization_vector();
+    }
+    if (fct.opposite && fct.opposite->is_active()) {
+      netMag -= fct.opposite->magnetization_vector();
+    }
+
+    const bool hasGrv = std::abs(grvScale) > 1e-15;
+    const bool hasMag = !netMag.is_zero();
+    if (hasMag) {
       hasMagnetics = true;
-      break;
+    }
+    if (hasGrv || hasMag) {
+      activeFacets.push_back(
+          ActiveFacetEntry{&fct, grvScale, netMag, hasGrv, hasMag});
     }
   }
 
@@ -408,31 +442,17 @@ void ObservationSpace::compute_forward_field(
     }
 
     if (validGrv || validMag) {
-      for (const auto &fct : facets) {
-        if (validGrv) {
-          double densContrast = 0.0;
-          if (fct.primary) {
-            double bDens = fct.primary->density().value();
-            double oposDens = fct.opposite ? fct.opposite->density().value()
-                                           : ref_density_.value();
-            densContrast = bDens - oposDens;
-          }
-
+      for (const auto &entry : activeFacets) {
+        const Facet3Pt &fct = *entry.fct;
+        if (validGrv && entry.hasGrv) {
           Point3D g(0.0, 0.0, 0.0);
           fct.fld_g(obsPointsGrv[p], g);
-          totalG += g * (densContrast * fct.dSign);
+          totalG += g * entry.grvScale;
         }
 
-        if (validMag) {
+        if (validMag && entry.hasMag) {
           Point3D fMag(0.0, 0.0, 0.0);
-          if (fct.primary && fct.primary->is_active() &&
-              !fct.primary->magnetization_vector().is_zero()) {
-            fct.fld_gs(rMag, fct.primary->magnetization_vector(), fMag, 1.0);
-          }
-          if (fct.opposite && fct.opposite->is_active() &&
-              !fct.opposite->magnetization_vector().is_zero()) {
-            fct.fld_gs(rMag, fct.opposite->magnetization_vector(), fMag, -1.0);
-          }
+          fct.fld_gs(rMag, entry.netMag, fMag, 1.0);
           totalM -= fMag * fct.dSign;
         }
       }
@@ -609,25 +629,84 @@ FitResult ObservationSpace::fit_density(Body *pBody,
     return FitResult{};
   }
 
-  // 1. Compute unit response (contrast = 1.0)
+  // 1. Pre-classify facets into unit response for target body `pBody` and
+  // fixed background contribution from any other bodies in `bodyFacets`.
+  // Supports both per-body facet lists and full model computation facet lists
+  // where `pBody` may appear as `primary` (+1) or `opposite` (-1).
   auto obsPoints = observation_points(comp);
   Grid grdUnit(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
+  Grid grdBg(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
+  grdUnit.zero();
+  grdBg.zero();
+
+  const double refDens = ref_density_.value();
+  struct DensityFitFacet {
+    const Facet3Pt *fct{nullptr};
+    double unitScale{0.0};
+    double bgScale{0.0};
+  };
+  std::vector<DensityFitFacet> fitFacets;
+  fitFacets.reserve(bodyFacets.size());
+
+  for (const auto &fct : bodyFacets) {
+    if (fct.is_null() || !fct.pfld_facet().is_initialized())
+      continue;
+    double unitScale = 0.0;
+    double bgScale = 0.0;
+
+    if (fct.primary == pBody) {
+      unitScale += fct.dSign;
+    } else if (fct.primary != nullptr) {
+      bgScale += (fct.primary->density().value() - refDens) * fct.dSign;
+    }
+
+    if (fct.opposite == pBody) {
+      unitScale -= fct.dSign;
+    } else if (fct.opposite != nullptr) {
+      bgScale -= (fct.opposite->density().value() - refDens) * fct.dSign;
+    }
+
+    // Fallback if caller passed unlinked facets with primary == nullptr
+    if (fct.primary == nullptr && fct.opposite == nullptr) {
+      unitScale = fct.dSign;
+    }
+
+    if (std::abs(unitScale) > 1e-15 || std::abs(bgScale) > 1e-15) {
+      fitFacets.push_back({&fct, unitScale, bgScale});
+    }
+  }
+
+  auto toUnit = [&](double valSI) -> double {
+    return (grv_field_unit_ == GravityFieldUnit::MilliGal)
+               ? units::SI_Acceleration(valSI).as<units::tag::MilliGal>().value()
+               : units::SI_Acceleration(valSI)
+                     .as<units::tag::GravityUnit>()
+                     .value();
+  };
 
   for (size_t p = 0; p < obsPoints.size(); ++p) {
-    double unitGz = 0.0;
-    for (const auto &fct : bodyFacets) {
-      Point3D g(0, 0, 0);
-      fct.fld_g(obsPoints[p], g);
-      unitGz += g.z * fct.dSign;
-    }
     size_t r = p / cols_;
     size_t c = p % cols_;
-    grdUnit(r, c) =
-        (grv_field_unit_ == GravityFieldUnit::MilliGal)
-            ? units::SI_Acceleration(unitGz).as<units::tag::MilliGal>().value()
-            : units::SI_Acceleration(unitGz)
-                  .as<units::tag::GravityUnit>()
-                  .value();
+    if (Grid::is_dummy_value(obsPoints[p].z)) {
+      grdUnit(r, c) = GRID_DUMMY;
+      grdBg(r, c) = GRID_DUMMY;
+      continue;
+    }
+    double unitG = 0.0;
+    double bgG = 0.0;
+    for (const auto &entry : fitFacets) {
+      Point3D g(0, 0, 0);
+      entry.fct->fld_g(obsPoints[p], g);
+      double compG = g.z;
+      if (comp == FieldComponent::GX)
+        compG = g.x;
+      else if (comp == FieldComponent::GY)
+        compG = g.y;
+      unitG += compG * entry.unitScale;
+      bgG += compG * entry.bgScale;
+    }
+    grdUnit(r, c) = toUnit(unitG);
+    grdBg(r, c) = toUnit(bgG);
   }
 
   // Objective function for differential density x = (dens - ref_density_)
@@ -638,7 +717,7 @@ FitResult ObservationSpace::fit_density(Body *pBody,
     for (size_t r = 0; r < rows_; ++r) {
       for (size_t c = 0; c < cols_; ++c) {
         if (!pObs->is_dummy(r, c) && !grdUnit.is_dummy(r, c)) {
-          double calcVal = x * grdUnit(r, c);
+          double calcVal = grdBg(r, c) + x * grdUnit(r, c);
           double diff = calcVal - (*pObs)(r, c);
           sumSq += diff * diff;
           count++;
@@ -670,6 +749,9 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
   if (!pObs || pObs->empty()) {
     return FitResult{};
   }
+  if (index <= 0 || index >= static_cast<int>(model.count(row, col)) - 1) {
+    return FitResult{};
+  }
 
   double originalZ = model.z(row, col, index);
   double zU = (index > 0) ? model.z(row, col, index - 1) : model.z_max_val();
@@ -677,8 +759,53 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
                   ? model.z(row, col, index + 1)
                   : model.z_min_val();
 
-  // Objective function evaluating RMS of (modeled - observed) when vertex is at
-  // z
+  // Precompute the static background field from all facet cells EXCEPT the 4
+  // cells adjacent to (row, col): (row-1, col-1), (row-1, col), (row, col-1), (row, col).
+  auto isLocalCell = [&](int r, int c) noexcept {
+    return (r == row - 1 || r == row) && (c == col - 1 || c == col);
+  };
+
+  std::vector<Facet3Pt> staticFacets;
+  for (int r = 0; r < model.rows() - 1; ++r) {
+    for (int c = 0; c < model.cols() - 1; ++c) {
+      if (isLocalCell(r, c))
+        continue;
+      if (const auto *lst = model.facet_list(r, c)) {
+        for (const auto &fct : *lst) {
+          Facet3Pt copy = fct;
+          copy.set_sign(1.0);
+          staticFacets.push_back(copy);
+        }
+      }
+    }
+  }
+
+  compute_forward_field(staticFacets, true);
+  const Grid baseGx = *modeled_grid(FieldComponent::GX);
+  const Grid baseGy = *modeled_grid(FieldComponent::GY);
+  const Grid baseGz = *modeled_grid(FieldComponent::GZ);
+  const Grid baseMx = *modeled_grid(FieldComponent::MX);
+  const Grid baseMy = *modeled_grid(FieldComponent::MY);
+  const Grid baseMz = *modeled_grid(FieldComponent::MZ);
+
+  std::vector<Facet3Pt> localFacets;
+  localFacets.reserve(64);
+  auto gatherLocalFacets = [&]() {
+    localFacets.clear();
+    for (int dr = -1; dr <= 0; ++dr) {
+      for (int dc = -1; dc <= 0; ++dc) {
+        if (const auto *lst = model.facet_list(row + dr, col + dc)) {
+          for (const auto &fct : *lst) {
+            Facet3Pt copy = fct;
+            copy.set_sign(1.0);
+            localFacets.push_back(copy);
+          }
+        }
+      }
+    }
+  };
+
+  // Objective function evaluating RMS of (modeled - observed) when vertex is at z
   auto objFunc = [&](double zVal) -> double {
     if (zVal <= zD + 1e-6 || zVal >= zU - 1e-6) {
       return 1e9;
@@ -690,10 +817,15 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
       return 1e9;
     }
 
-    std::vector<Facet3Pt> currentFacets;
-    model.facets_computation(currentFacets);
+    modeled_grids_[FieldComponent::GX] = baseGx;
+    modeled_grids_[FieldComponent::GY] = baseGy;
+    modeled_grids_[FieldComponent::GZ] = baseGz;
+    modeled_grids_[FieldComponent::MX] = baseMx;
+    modeled_grids_[FieldComponent::MY] = baseMy;
+    modeled_grids_[FieldComponent::MZ] = baseMz;
 
-    compute_forward_field(currentFacets, true);
+    gatherLocalFacets();
+    compute_forward_field(localFacets, false);
     const Grid *pMod = modeled_grid(comp);
 
     double sumSq = 0.0;
@@ -710,6 +842,8 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
     return count > 0 ? std::sqrt(sumSq / count) : 0.0;
   };
 
+  const double initialRms = objFunc(originalZ);
+
   double eps = 0.01 * std::min(zU - originalZ, originalZ - zD);
   if (eps <= 0.01)
     eps = 0.5;
@@ -722,9 +856,25 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
   FitResult res = Inversion1D::optimize(startA, startB, objFunc, method, tol,
                                         100, "Vertex inversion");
 
+  double finalZ = res.optimal_parameter;
+  if (!std::isfinite(finalZ) || finalZ <= zD + 1e-6 || finalZ >= zU - 1e-6 ||
+      res.minimum_objective > initialRms) {
+    finalZ = originalZ;
+    res.optimal_parameter = originalZ;
+    res.minimum_objective = initialRms;
+  }
+
   int vIdx = index;
-  model.move_vertex(vIdx, row, col, res.optimal_parameter,
-                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, row, col, finalZ, BodyMoveType::Constrained);
+
+  modeled_grids_[FieldComponent::GX] = baseGx;
+  modeled_grids_[FieldComponent::GY] = baseGy;
+  modeled_grids_[FieldComponent::GZ] = baseGz;
+  modeled_grids_[FieldComponent::MX] = baseMx;
+  modeled_grids_[FieldComponent::MY] = baseMy;
+  modeled_grids_[FieldComponent::MZ] = baseMz;
+  gatherLocalFacets();
+  compute_forward_field(localFacets, false);
 
   return res;
 }
