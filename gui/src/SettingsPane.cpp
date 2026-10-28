@@ -902,7 +902,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   m_chkSliceSyncProfiles->setToolTip(
       tr("Automatically synchronize profile cross-sections to the clicked "
          "position"));
-  m_chkSliceSyncProfiles->setChecked(false);
+  m_chkSliceSyncProfiles->setChecked(true);
 
   sliceOverlaysLayout->addWidget(m_chkSliceStationPoints);
   sliceOverlaysLayout->addWidget(m_chkSliceProfiles);
@@ -2866,8 +2866,10 @@ void SettingsPane::applyPhysicsData() {
     if (m_doc->model().would_vertical_range_adjust_bodies(newZMin, newZMax)) {
       const auto res = QMessageBox::warning(
           this, tr("Confirm Vertical Range Adjustment"),
-          tr("The new vertical range [%1, %2] m intersects existing model geometry.\n\n"
-             "Applying this operation will adjust model vertices to fit within the new range. "
+          tr("The new vertical range [%1, %2] m intersects existing model "
+             "geometry.\n\n"
+             "Applying this operation will adjust model vertices to fit within "
+             "the new range. "
              "Are you sure you want to proceed?")
               .arg(newZMin)
               .arg(newZMax),
