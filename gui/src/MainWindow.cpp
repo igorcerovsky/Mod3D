@@ -165,7 +165,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::updateWindowTitle() {
-    setWindowTitle(QString("Mod3D 2.5.0 - [%1]").arg(m_doc->documentTitle()));
+    setWindowTitle(QString("Mod3D 2.5.1 - [%1]").arg(m_doc->documentTitle()));
 }
 
 void MainWindow::setupConnections() {
@@ -947,7 +947,7 @@ void MainWindow::onFit1DProperties() {
 
 void MainWindow::onAbout() {
     QMessageBox::about(this, tr("About Mod3D"),
-                       tr("<h3>Mod3D 2.5.0</h3>"
+                       tr("<h3>Mod3D 2.5.1</h3>"
                           "<p>Modern Interactive 2.5D & 3D Potential Field Modeling & Inversion System.</p>"
                           "<p>Standard C++20 Core & Qt 6 Modern GUI Architecture.</p>"));
 }
