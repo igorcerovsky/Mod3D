@@ -1,6 +1,8 @@
 #pragma once
 
+#include <cmath>
 #include <functional>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -9,8 +11,10 @@ namespace mod3d {
 enum class FitMethod {
     golden = 0,
     brent = 1,
+    linear = 2,
     Golden = golden,
-    Brent = brent
+    Brent = brent,
+    Linear = linear
 };
 
 enum class FitCharacteristic {
@@ -80,6 +84,33 @@ public:
         double tol = 1e-4,
         int max_iter = 100,
         const std::string &title = "1D Optimization");
+
+    // Bounded 1D minimization (strictly confined to [ax, bx], no bracketing required)
+    static double golden_section_bounded(
+        double ax, double bx,
+        const std::function<double(double)> &func,
+        double tol,
+        double *xmin,
+        std::vector<FitIterationRecord> *history = nullptr,
+        int max_iter = 100);
+
+    static double brent_bounded(
+        double ax, double bx,
+        const std::function<double(double)> &func,
+        double tol,
+        double *xmin,
+        std::vector<FitIterationRecord> *history = nullptr,
+        int max_iter = 100,
+        double initial_guess = std::numeric_limits<double>::quiet_NaN());
+
+    static FitResult optimize_bounded(
+        double bound_min, double bound_max,
+        const std::function<double(double)> &func,
+        double initial_guess = std::numeric_limits<double>::quiet_NaN(),
+        FitMethod method = FitMethod::brent,
+        double tol = 1e-4,
+        int max_iter = 100,
+        const std::string &title = "1D Bounded Optimization");
 };
 
 } // namespace mod3d

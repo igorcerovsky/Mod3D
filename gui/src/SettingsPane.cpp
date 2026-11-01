@@ -2192,8 +2192,8 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
       return;
     std::vector<mod3d::Facet3Pt> facets;
     m_doc->model().facets_computation(facets);
-    auto method = m_rbOptBrent->isChecked() ? mod3d::FitMethod::Brent
-                                            : mod3d::FitMethod::Golden;
+    auto method = m_rbOptGolden->isChecked() ? mod3d::FitMethod::Golden
+                                             : mod3d::FitMethod::Linear;
     m_doc->observation().fit_density(b, facets, m_doc->activeField(),
                                      b->density().value(),
                                      m_spinFitTol->value(), method);
@@ -2223,7 +2223,8 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
           auto *cp = m_doc->model().at(r, c, vi);
           if (cp && cp->body_id() == bId) {
             m_doc->observation().fit_vertex(m_doc->model(), r, c, vi,
-                                            m_doc->activeField(), tol, method);
+                                            m_doc->activeField(), tol, method,
+                                            true);
           }
         }
       }

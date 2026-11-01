@@ -313,11 +313,12 @@ public:
   FitResult fit_density(Body *pBody, const std::vector<Facet3Pt> &bodyFacets,
                         FieldComponent comp = FieldComponent::GZ,
                         double initialDensity = 2670.0, double tol = 1e-4,
-                        FitMethod method = FitMethod::Brent);
+                        FitMethod method = FitMethod::linear);
 
   FitResult fit_vertex(Model &model, int row, int col, int index,
                        FieldComponent comp = FieldComponent::GZ,
-                       double tol = 1e-4, FitMethod method = FitMethod::Brent);
+                       double tol = 1e-4, FitMethod method = FitMethod::Brent,
+                       bool use_superposition = false);
 
 private:
   void ensure_grid_allocated(std::map<FieldComponent, Grid> &gridMap,

@@ -2,6 +2,8 @@
 #include "mod3d/Body.h"
 #include "mod3d/Magnetics.h"
 #include <cmath>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <utility>
 
@@ -709,6 +711,65 @@ FitResult ObservationSpace::fit_density(Body *pBody,
     grdBg(r, c) = toUnit(bgG);
   }
 
+  // Exact analytical linear least-squares solution for linear density contrast
+  if (method == FitMethod::linear || method == FitMethod::Linear) {
+    auto start_time = std::chrono::high_resolution_clock::now();
+    double sumUnitSq = 0.0;
+    double sumUnitDiff = 0.0;
+    size_t count = 0;
+
+    for (size_t r = 0; r < rows_; ++r) {
+      for (size_t c = 0; c < cols_; ++c) {
+        if (!pObs->is_dummy(r, c) && !grdUnit.is_dummy(r, c)) {
+          double u = grdUnit(r, c);
+          double d = (*pObs)(r, c) - grdBg(r, c);
+          sumUnitSq += u * u;
+          sumUnitDiff += u * d;
+          count++;
+        }
+      }
+    }
+
+    double optimalDiffDensity =
+        (sumUnitSq > 1e-20) ? (sumUnitDiff / sumUnitSq) : (initialDensity - refDens);
+    double optimalDensity = optimalDiffDensity + refDens;
+
+    double sumSq = 0.0;
+    for (size_t r = 0; r < rows_; ++r) {
+      for (size_t c = 0; c < cols_; ++c) {
+        if (!pObs->is_dummy(r, c) && !grdUnit.is_dummy(r, c)) {
+          double calcVal = grdBg(r, c) + optimalDiffDensity * grdUnit(r, c);
+          double diff = calcVal - (*pObs)(r, c);
+          sumSq += diff * diff;
+        }
+      }
+    }
+    double finalRms = (count > 0) ? std::sqrt(sumSq / count) : 0.0;
+
+    auto finish_time = std::chrono::high_resolution_clock::now();
+    double elapsed_sec =
+        std::chrono::duration<double>(finish_time - start_time).count();
+
+    FitResult res;
+    res.optimal_parameter = optimalDensity;
+    res.minimum_objective = finalRms;
+    res.iterations = 1;
+    res.converged = true;
+    res.elapsed_time_sec = elapsed_sec;
+    res.history.push_back({1, optimalDensity, finalRms, 0.0, finalRms, 0.0});
+
+    std::ostringstream log;
+    log << "Density inversion (Linear Least Squares)\n\n"
+        << "Direct analytical solution:\n"
+        << "Optimal density: " << std::setprecision(6) << optimalDensity << "\n"
+        << "RMS residual:    " << std::setprecision(10) << finalRms << "\n"
+        << "Fitting elapsed time: " << elapsed_sec << "s\n";
+    res.log = log.str();
+
+    pBody->set_density(optimalDensity);
+    return res;
+  }
+
   // Objective function for differential density x = (dens - ref_density_)
   auto objFunc = [&](double x) -> double {
     double sumSq = 0.0;
@@ -744,7 +805,8 @@ FitResult ObservationSpace::fit_density(Body *pBody,
 
 FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
                                        int index, FieldComponent comp,
-                                       double tol, FitMethod method) {
+                                       double tol, FitMethod method,
+                                       bool use_superposition) {
   const Grid *pObs = std::as_const(*this).observed_grid(comp);
   if (!pObs || pObs->empty()) {
     return FitResult{};
@@ -758,35 +820,6 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
   double zD = (index + 1 < static_cast<int>(model.count(row, col)))
                   ? model.z(row, col, index + 1)
                   : model.z_min_val();
-
-  // Precompute the static background field from all facet cells EXCEPT the 4
-  // cells adjacent to (row, col): (row-1, col-1), (row-1, col), (row, col-1), (row, col).
-  auto isLocalCell = [&](int r, int c) noexcept {
-    return (r == row - 1 || r == row) && (c == col - 1 || c == col);
-  };
-
-  std::vector<Facet3Pt> staticFacets;
-  for (int r = 0; r < model.rows() - 1; ++r) {
-    for (int c = 0; c < model.cols() - 1; ++c) {
-      if (isLocalCell(r, c))
-        continue;
-      if (const auto *lst = model.facet_list(r, c)) {
-        for (const auto &fct : *lst) {
-          Facet3Pt copy = fct;
-          copy.set_sign(1.0);
-          staticFacets.push_back(copy);
-        }
-      }
-    }
-  }
-
-  compute_forward_field(staticFacets, true);
-  const Grid baseGx = *modeled_grid(FieldComponent::GX);
-  const Grid baseGy = *modeled_grid(FieldComponent::GY);
-  const Grid baseGz = *modeled_grid(FieldComponent::GZ);
-  const Grid baseMx = *modeled_grid(FieldComponent::MX);
-  const Grid baseMy = *modeled_grid(FieldComponent::MY);
-  const Grid baseMz = *modeled_grid(FieldComponent::MZ);
 
   std::vector<Facet3Pt> localFacets;
   localFacets.reserve(64);
@@ -804,6 +837,58 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
       }
     }
   };
+
+  Grid baseGx, baseGy, baseGz, baseMx, baseMy, baseMz;
+
+  if (use_superposition && !modeled_grids_.empty() &&
+      modeled_grid(comp) != nullptr && !modeled_grid(comp)->empty()) {
+    // Fast superposition: G_static = G_full - G_local(originalZ)
+    Grid fullGx = *modeled_grid(FieldComponent::GX);
+    Grid fullGy = *modeled_grid(FieldComponent::GY);
+    Grid fullGz = *modeled_grid(FieldComponent::GZ);
+    Grid fullMx = *modeled_grid(FieldComponent::MX);
+    Grid fullMy = *modeled_grid(FieldComponent::MY);
+    Grid fullMz = *modeled_grid(FieldComponent::MZ);
+
+    gatherLocalFacets();
+    compute_forward_field(localFacets, true);
+
+    baseGx = fullGx - *modeled_grid(FieldComponent::GX);
+    baseGy = fullGy - *modeled_grid(FieldComponent::GY);
+    baseGz = fullGz - *modeled_grid(FieldComponent::GZ);
+    baseMx = fullMx - *modeled_grid(FieldComponent::MX);
+    baseMy = fullMy - *modeled_grid(FieldComponent::MY);
+    baseMz = fullMz - *modeled_grid(FieldComponent::MZ);
+  } else {
+    // Precompute the static background field from all facet cells EXCEPT the 4
+    // cells adjacent to (row, col): (row-1, col-1), (row-1, col), (row, col-1), (row, col).
+    auto isLocalCell = [&](int r, int c) noexcept {
+      return (r == row - 1 || r == row) && (c == col - 1 || c == col);
+    };
+
+    std::vector<Facet3Pt> staticFacets;
+    for (int r = 0; r < model.rows() - 1; ++r) {
+      for (int c = 0; c < model.cols() - 1; ++c) {
+        if (isLocalCell(r, c))
+          continue;
+        if (const auto *lst = model.facet_list(r, c)) {
+          for (const auto &fct : *lst) {
+            Facet3Pt copy = fct;
+            copy.set_sign(1.0);
+            staticFacets.push_back(copy);
+          }
+        }
+      }
+    }
+
+    compute_forward_field(staticFacets, true);
+    baseGx = *modeled_grid(FieldComponent::GX);
+    baseGy = *modeled_grid(FieldComponent::GY);
+    baseGz = *modeled_grid(FieldComponent::GZ);
+    baseMx = *modeled_grid(FieldComponent::MX);
+    baseMy = *modeled_grid(FieldComponent::MY);
+    baseMz = *modeled_grid(FieldComponent::MZ);
+  }
 
   // Objective function evaluating RMS of (modeled - observed) when vertex is at z
   auto objFunc = [&](double zVal) -> double {
@@ -848,13 +933,19 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
   if (eps <= 0.01)
     eps = 0.5;
 
-  double startA = originalZ;
-  double startB = originalZ + eps;
-  if (startB >= zU)
-    startB = originalZ - eps;
+  double boundMin = zD + eps;
+  double boundMax = zU - eps;
+  if (boundMin >= boundMax) {
+    boundMin = zD + 1e-4;
+    boundMax = zU - 1e-4;
+  }
+  if (boundMin > boundMax) {
+    std::swap(boundMin, boundMax);
+  }
 
-  FitResult res = Inversion1D::optimize(startA, startB, objFunc, method, tol,
-                                        100, "Vertex inversion");
+  FitResult res = Inversion1D::optimize_bounded(
+      boundMin, boundMax, objFunc, originalZ, method, tol, 100,
+      "Vertex inversion");
 
   double finalZ = res.optimal_parameter;
   if (!std::isfinite(finalZ) || finalZ <= zD + 1e-6 || finalZ >= zU - 1e-6 ||

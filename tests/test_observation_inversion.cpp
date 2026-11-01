@@ -56,6 +56,26 @@ TEST(InversionMathTest, GoldenAndBrentConvergence) {
   EXPECT_LE(resBrent.iterations, resGolden.iterations);
 }
 
+TEST(InversionMathTest, BoundedOptimizationConvergence) {
+  // Test function on [0, 5] with minimum at x = 2.75
+  auto testFunc = [](double x) { return (x - 2.75) * (x - 2.75) + 3.14; };
+
+  // 1. Golden section bounded
+  FitResult resGolden = Inversion1D::optimize_bounded(
+      0.0, 5.0, testFunc, 1.0, FitMethod::golden, 1e-5);
+  EXPECT_TRUE(resGolden.converged);
+  EXPECT_NEAR(resGolden.optimal_parameter, 2.75, 1e-4);
+  EXPECT_NEAR(resGolden.minimum_objective, 3.14, 1e-4);
+
+  // 2. Brent bounded
+  FitResult resBrent = Inversion1D::optimize_bounded(
+      0.0, 5.0, testFunc, 1.0, FitMethod::brent, 1e-5);
+  EXPECT_TRUE(resBrent.converged);
+  EXPECT_NEAR(resBrent.optimal_parameter, 2.75, 1e-5);
+  EXPECT_NEAR(resBrent.minimum_objective, 3.14, 1e-5);
+  EXPECT_LE(resBrent.iterations, resGolden.iterations);
+}
+
 // ============================================================================
 // 2. Observation Space Geometry & Elevation Modes
 // ============================================================================
@@ -321,6 +341,95 @@ TEST(Gate3InversionTest, VertexDepthRecoveryMatchesFitLogVrtx) {
   EXPECT_NEAR(model.z(2, 2, 1), trueZ, 0.1);
 
   // 2. Minimum RMS drops to near zero (< 1e-4 mGal)
+  EXPECT_LT(fitRes.minimum_objective, 1e-4);
+}
+
+TEST(Gate3InversionTest, DensityRecoveryLinearLeastSquares) {
+  const double refDensity = 2670.0;
+  const double trueDensity = 2850.0;
+  const double initialGuess = 2600.0;
+
+  Model model;
+  model.init(4, 4, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
+
+  Body *body = model.create_body();
+  body->set_density(trueDensity);
+  int bId = body->id();
+
+  for (int r = 1; r <= 2; ++r) {
+    for (int c = 1; c <= 2; ++c) {
+      model.insert_body(r, c, -400.0, 100.0, false, bId);
+    }
+  }
+  model.init_facet_list();
+
+  std::vector<Facet3Pt> trueFacets;
+  model.facets_computation(trueFacets);
+
+  ObservationSpace obs(4, 4, 0.0, 0.0, 100.0, 100.0);
+  obs.set_reference_density(refDensity);
+  obs.set_gravity_observation(ObservationMode::FlightElevation, 50.0);
+
+  obs.compute_forward_field(trueFacets, true);
+  Grid trueObsGrid = *obs.modeled_grid(FieldComponent::GZ);
+  obs.set_observed_grid(FieldComponent::GZ, trueObsGrid);
+
+  body->set_density(initialGuess);
+
+  // Run density inversion with exact analytical linear least squares
+  FitResult fitRes = obs.fit_density(body, trueFacets, FieldComponent::GZ,
+                                     initialGuess, 1e-4, FitMethod::linear);
+
+  EXPECT_TRUE(fitRes.converged);
+  EXPECT_EQ(fitRes.iterations, 1);
+  EXPECT_NEAR(fitRes.optimal_parameter, trueDensity, 1e-6);
+  EXPECT_NEAR(body->density().value(), trueDensity, 1e-6);
+  EXPECT_LT(fitRes.minimum_objective, 1e-6);
+}
+
+TEST(Gate3InversionTest, VertexDepthRecoverySuperposition) {
+  const double trueZ = -707.58;
+  const double initialZ = -686.82;
+
+  Model model;
+  model.init(4, 4, 0.0, 0.0, 200.0, 200.0, -2000.0, 0.0);
+
+  Body *body = model.create_body();
+  body->set_density(2850.0);
+  int bId = body->id();
+
+  for (int r = 1; r <= 2; ++r) {
+    for (int c = 1; c <= 2; ++c) {
+      model.insert_body(r, c, -750.0, 200.0, false, bId);
+    }
+  }
+
+  int vIdx = 1;
+  model.move_vertex(vIdx, 2, 2, trueZ, BodyMoveType::Normal);
+  model.init_facet_list();
+  std::vector<Facet3Pt> trueFacets;
+  model.facets_computation(trueFacets);
+
+  ObservationSpace obs(4, 4, 0.0, 0.0, 200.0, 200.0);
+  obs.set_gravity_observation(ObservationMode::FlightElevation, 100.0);
+  obs.compute_forward_field(trueFacets, true);
+  Grid trueObsGrid = *obs.modeled_grid(FieldComponent::GZ);
+  obs.set_observed_grid(FieldComponent::GZ, trueObsGrid);
+
+  // Move vertex to initial guess and compute forward field so modeled_grids_ matches initial model
+  model.move_vertex(vIdx, 2, 2, initialZ, BodyMoveType::Normal);
+  model.init_facet_list();
+  std::vector<Facet3Pt> initialFacets;
+  model.facets_computation(initialFacets);
+  obs.compute_forward_field(initialFacets, true);
+
+  // Run vertex depth inversion using fast superposition: use_superposition = true
+  FitResult fitRes = obs.fit_vertex(model, 2, 2, 1, FieldComponent::GZ, 1e-4,
+                                    FitMethod::brent, true);
+
+  EXPECT_TRUE(fitRes.converged);
+  EXPECT_NEAR(fitRes.optimal_parameter, trueZ, 0.1);
+  EXPECT_NEAR(model.z(2, 2, 1), trueZ, 0.1);
   EXPECT_LT(fitRes.minimum_objective, 1e-4);
 }
 
