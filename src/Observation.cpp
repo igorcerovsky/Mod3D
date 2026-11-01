@@ -2,8 +2,10 @@
 #include "mod3d/Body.h"
 #include "mod3d/Magnetics.h"
 #include "pfld/pfld_compute.hpp"
+#include <algorithm>
 #include <cmath>
 #include <iomanip>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <utility>
@@ -1197,6 +1199,763 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
   compute_forward_field(localFacets, false);
 
   return res;
+}
+
+static bool solve_linear_system(int n, std::vector<double> &A,
+                                std::vector<double> &b,
+                                std::vector<double> &x) {
+  x = b;
+  for (int i = 0; i < n; ++i) {
+    int pivot = i;
+    double maxVal = std::abs(A[i * n + i]);
+    for (int r = i + 1; r < n; ++r) {
+      double val = std::abs(A[r * n + i]);
+      if (val > maxVal) {
+        maxVal = val;
+        pivot = r;
+      }
+    }
+    if (maxVal < 1e-18) {
+      return false;
+    }
+    if (pivot != i) {
+      for (int c = i; c < n; ++c) {
+        std::swap(A[i * n + c], A[pivot * n + c]);
+      }
+      std::swap(x[i], x[pivot]);
+    }
+    double diag = A[i * n + i];
+    for (int r = i + 1; r < n; ++r) {
+      double factor = A[r * n + i] / diag;
+      for (int c = i; c < n; ++c) {
+        A[r * n + c] -= factor * A[i * n + c];
+      }
+      x[r] -= factor * x[i];
+    }
+  }
+  for (int i = n - 1; i >= 0; --i) {
+    double sum = x[i];
+    for (int c = i + 1; c < n; ++c) {
+      sum -= A[i * n + c] * x[c];
+    }
+    x[i] = sum / A[i * n + i];
+  }
+  return true;
+}
+
+NeighborhoodFitResult ObservationSpace::fit_neighborhood(
+    Model &model, int row, int col, int index, FieldComponent comp,
+    const NeighborhoodFitSettings &settings) {
+  auto start_time = std::chrono::high_resolution_clock::now();
+  NeighborhoodFitResult result;
+
+  const Grid *pObs = std::as_const(*this).observed_grid(comp);
+  if (!pObs || pObs->empty()) {
+    result.log = "Error: No observed grid data available for fitting.";
+    return result;
+  }
+
+  if (row < 0 || row >= static_cast<int>(model.rows()) ||
+      col < 0 || col >= static_cast<int>(model.cols())) {
+    result.log = "Error: Invalid seed vertex row/col coordinate.";
+    return result;
+  }
+
+  const int countSeed = static_cast<int>(model.count(row, col));
+  if (index <= 0 || index >= countSeed - 1) {
+    result.log = "Error: Seed vertex is a boundary point and cannot be inverted.";
+    return result;
+  }
+
+  const auto *seedPt = model.at(row, col, index);
+  if (!seedPt) {
+    result.log = "Error: Seed point does not exist.";
+    return result;
+  }
+  const int targetBodyId = seedPt->body_id();
+  const double seedZ = model.z(row, col, index);
+  const double seedX = model.xe_val(col);
+  const double seedY = model.ye_val(row);
+  const double modelDx = model.dx_val();
+  const double modelDy = model.dy_val();
+  const double stepSpacing = std::min(modelDx, modelDy);
+
+  auto toUnit = [&](double valSI) -> double {
+    return (grv_field_unit_ == GravityFieldUnit::MilliGal)
+               ? units::SI_Acceleration(valSI).as<units::tag::MilliGal>().value()
+               : units::SI_Acceleration(valSI)
+                     .as<units::tag::GravityUnit>()
+                     .value();
+  };
+
+  const auto obsPointsGrv = observation_points(FieldComponent::GZ);
+  const size_t nPts = obsPointsGrv.size();
+  const double refDens = ref_density_.value();
+  const Point3D ambientFld = ambient_field_vector();
+  const double magInt = mag_intensity_.value();
+  const bool isGravComp = is_gravity_component(comp);
+  const bool isMagComp = is_magnetic_component(comp);
+
+  struct ActiveFacet {
+    Facet3Pt fct{};
+    double grvScale{0.0};
+    Point3D netMag{};
+    bool hasGrv{false};
+    bool hasMag{false};
+  };
+
+  auto extractActiveFacets = [&](const std::vector<std::pair<int, int>> &cells,
+                                 std::vector<ActiveFacet> &outActive) {
+    outActive.clear();
+    for (const auto &[cr, cc] : cells) {
+      const auto *lst = model.facet_list(cr, cc);
+      if (!lst) continue;
+      for (const auto &fct : *lst) {
+        if (fct.is_null() || !fct.pfld_facet().is_initialized())
+          continue;
+        double grvScale = 0.0;
+        if (fct.primary) {
+          const double bDens = fct.primary->density().value();
+          const double oposDens =
+              fct.opposite ? fct.opposite->density().value() : refDens;
+          grvScale = (bDens - oposDens) * fct.dSign;
+        }
+        Point3D netMag(0.0, 0.0, 0.0);
+        if (isMagComp) {
+          if (fct.primary && fct.primary->is_active()) {
+            netMag += fct.primary->magnetization_vector();
+          }
+          if (fct.opposite && fct.opposite->is_active()) {
+            netMag -= fct.opposite->magnetization_vector();
+          }
+        }
+        const bool hasGrv = isGravComp && std::abs(grvScale) > 1e-15;
+        const bool hasM = isMagComp && !netMag.is_zero();
+        if (hasGrv || hasM) {
+          outActive.push_back({fct, grvScale, netMag, hasGrv, hasM});
+        }
+      }
+    }
+  };
+
+  auto evaluateStationField = [&](size_t p,
+                                  const std::vector<ActiveFacet> &activeFacets) -> double {
+    if (Grid::is_dummy_value(obsPointsGrv[p].z)) return 0.0;
+    if (comp == FieldComponent::GZ) {
+      double gz = 0.0;
+      for (const auto &entry : activeFacets) {
+        Point3D g(0, 0, 0);
+        entry.fct.fld_g(obsPointsGrv[p], g);
+        gz += g.z * entry.grvScale;
+      }
+      return toUnit(gz);
+    } else if (comp == FieldComponent::GX) {
+      double gx = 0.0;
+      for (const auto &entry : activeFacets) {
+        Point3D g(0, 0, 0);
+        entry.fct.fld_g(obsPointsGrv[p], g);
+        gx += g.x * entry.grvScale;
+      }
+      return toUnit(gx);
+    } else if (comp == FieldComponent::GY) {
+      double gy = 0.0;
+      for (const auto &entry : activeFacets) {
+        Point3D g(0, 0, 0);
+        entry.fct.fld_g(obsPointsGrv[p], g);
+        gy += g.y * entry.grvScale;
+      }
+      return toUnit(gy);
+    } else if (comp == FieldComponent::DELTA_T) {
+      Point3D rMag(obsPointsGrv[p].x + 0.001, obsPointsGrv[p].y + 0.003,
+                   obsPointsGrv[p].z);
+      Point3D localM(0, 0, 0);
+      for (const auto &entry : activeFacets) {
+        Point3D fMag(0, 0, 0);
+        entry.fct.fld_gs(rMag, entry.netMag, fMag, 1.0);
+        localM -= fMag * entry.fct.dSign;
+      }
+      return -mag_delta_t(localM.x, localM.y, localM.z, ambientFld.x,
+                          ambientFld.y, ambientFld.z, magInt);
+    }
+    return 0.0;
+  };
+
+  // 1. Determine Neighborhood Radius (Automatic or Custom)
+  double chosenRadius = 0.0;
+  if (settings.radius_mode == NeighborhoodRadiusMode::Custom) {
+    chosenRadius = std::max(0.0, settings.custom_radius_m);
+  } else {
+    // Measure peak anomaly response of seed vertex under 1.0m perturbation
+    std::vector<std::pair<int, int>> seedCells;
+    for (int dr = -1; dr <= 0; ++dr) {
+      for (int dc = -1; dc <= 0; ++dc) {
+        int cr = row + dr;
+        int cc = col + dc;
+        if (cr >= 0 && cr < static_cast<int>(model.rows()) - 1 &&
+            cc >= 0 && cc < static_cast<int>(model.cols()) - 1) {
+          seedCells.push_back({cr, cc});
+        }
+      }
+    }
+    std::vector<ActiveFacet> baseFacets;
+    extractActiveFacets(seedCells, baseFacets);
+    std::vector<double> baseStationVals(nPts, 0.0);
+    for (size_t p = 0; p < nPts; ++p) {
+      if (!Grid::is_dummy_value(obsPointsGrv[p].z)) {
+        baseStationVals[p] = evaluateStationField(p, baseFacets);
+      }
+    }
+
+    model.set_z(row, col, index, seedZ + 1.0);
+    for (const auto &[cr, cc] : seedCells) {
+      model.update_facet_column(cr, cc);
+    }
+    std::vector<ActiveFacet> pertFacets;
+    extractActiveFacets(seedCells, pertFacets);
+
+    const size_t seedStation = row * cols_ + col;
+    double s0 = 0.0;
+    if (seedStation < nPts && !Grid::is_dummy_value(obsPointsGrv[seedStation].z)) {
+      s0 = std::abs(evaluateStationField(seedStation, pertFacets) - baseStationVals[seedStation]);
+    } else {
+      for (size_t p = 0; p < nPts; ++p) {
+        if (!Grid::is_dummy_value(obsPointsGrv[p].z)) {
+          double dVal = std::abs(evaluateStationField(p, pertFacets) - baseStationVals[p]);
+          if (dVal > s0) s0 = dVal;
+        }
+      }
+    }
+
+    model.set_z(row, col, index, seedZ);
+    for (const auto &[cr, cc] : seedCells) {
+      model.update_facet_column(cr, cc);
+    }
+
+    if (s0 < 1e-12) {
+      chosenRadius = stepSpacing;
+    } else {
+      chosenRadius = stepSpacing;
+      int maxM = static_cast<int>(settings.max_radius_m / stepSpacing);
+      for (int m = 1; m <= maxM; ++m) {
+        double Rm = m * stepSpacing;
+        if (Rm > settings.max_radius_m) {
+          chosenRadius = settings.max_radius_m;
+          break;
+        }
+
+        double maxSm = 0.0;
+        bool foundCandidate = false;
+        for (int dr = -m; dr <= m; ++dr) {
+          for (int dc = -m; dc <= m; ++dc) {
+            int cr = row + dr;
+            int cc = col + dc;
+            if (cr < 0 || cr >= static_cast<int>(model.rows()) ||
+                cc < 0 || cc >= static_cast<int>(model.cols())) {
+              continue;
+            }
+            double dist = std::hypot(model.xe_val(cc) - seedX, model.ye_val(cr) - seedY);
+            if (dist < (m - 0.5) * stepSpacing || dist > (m + 0.5) * stepSpacing) {
+              continue;
+            }
+            int cnt = static_cast<int>(model.count(cr, cc));
+            for (int vi = 1; vi < cnt - 1; ++vi) {
+              const auto *cp = model.at(cr, cc, vi);
+              if (cp && cp->body_id() == targetBodyId) {
+                foundCandidate = true;
+                std::vector<std::pair<int, int>> candCells;
+                for (int cdr = -1; cdr <= 0; ++cdr) {
+                  for (int cdc = -1; cdc <= 0; ++cdc) {
+                    int ccr = cr + cdr;
+                    int ccc = cc + cdc;
+                    if (ccr >= 0 && ccr < static_cast<int>(model.rows()) - 1 &&
+                        ccc >= 0 && ccc < static_cast<int>(model.cols()) - 1) {
+                      candCells.push_back({ccr, ccc});
+                    }
+                  }
+                }
+                std::vector<ActiveFacet> fBase;
+                extractActiveFacets(candCells, fBase);
+                std::vector<double> candBaseVals(nPts, 0.0);
+                for (size_t p = 0; p < nPts; ++p) {
+                  if (!Grid::is_dummy_value(obsPointsGrv[p].z)) {
+                    candBaseVals[p] = evaluateStationField(p, fBase);
+                  }
+                }
+                double zOrig = model.z(cr, cc, vi);
+                model.set_z(cr, cc, vi, zOrig + 1.0);
+                for (const auto &[ccr, ccc] : candCells) {
+                  model.update_facet_column(ccr, ccc);
+                }
+                std::vector<ActiveFacet> fPert;
+                extractActiveFacets(candCells, fPert);
+                double dVal = 0.0;
+                if (seedStation < nPts && !Grid::is_dummy_value(obsPointsGrv[seedStation].z)) {
+                  dVal = std::abs(evaluateStationField(seedStation, fPert) - candBaseVals[seedStation]);
+                } else {
+                  for (size_t p = 0; p < nPts; ++p) {
+                    if (!Grid::is_dummy_value(obsPointsGrv[p].z)) {
+                      double diff = std::abs(evaluateStationField(p, fPert) - candBaseVals[p]);
+                      if (diff > dVal) dVal = diff;
+                    }
+                  }
+                }
+                if (dVal > maxSm) maxSm = dVal;
+                model.set_z(cr, cc, vi, zOrig);
+                for (const auto &[ccr, ccc] : candCells) {
+                  model.update_facet_column(ccr, ccc);
+                }
+                break;
+              }
+            }
+          }
+        }
+
+        if (!foundCandidate || maxSm < settings.sensitivity_cutoff * s0) {
+          chosenRadius = std::max(stepSpacing, (m - 1) * stepSpacing);
+          break;
+        }
+        chosenRadius = Rm;
+      }
+    }
+  }
+
+  // 2. Collect Neighborhood Vertices within chosenRadius
+  struct InvertibleVertex {
+    int row;
+    int col;
+    int index;
+    double original_z;
+    double current_z;
+    double z_min;
+    double z_max;
+  };
+  std::vector<InvertibleVertex> vertices;
+
+  double seedZU = (index > 0) ? model.z(row, col, index - 1) : model.z_max_val();
+  double seedZD = (index + 1 < countSeed) ? model.z(row, col, index + 1) : model.z_min_val();
+  double seedEps = std::clamp(0.01 * std::min(seedZU - seedZ, seedZ - seedZD), 0.01, 0.5);
+  vertices.push_back({row, col, index, seedZ, seedZ, seedZD + seedEps, seedZU - seedEps});
+
+  for (int r = 0; r < static_cast<int>(model.rows()); ++r) {
+    for (int c = 0; c < static_cast<int>(model.cols()); ++c) {
+      if (r == row && c == col) continue;
+      double dist = std::hypot(model.xe_val(c) - seedX, model.ye_val(r) - seedY);
+      if (dist <= chosenRadius) {
+        int bestVi = -1;
+        double minZDiff = 1e30;
+        int cCount = static_cast<int>(model.count(r, c));
+        for (int vi = 1; vi < cCount - 1; ++vi) {
+          const auto *cp = model.at(r, c, vi);
+          if (cp && cp->body_id() == targetBodyId) {
+            double diff = std::abs(model.z(r, c, vi) - seedZ);
+            if (diff < minZDiff) {
+              minZDiff = diff;
+              bestVi = vi;
+            }
+          }
+        }
+        if (bestVi > 0) {
+          double curZ = model.z(r, c, bestVi);
+          double zU = model.z(r, c, bestVi - 1);
+          double zD = model.z(r, c, bestVi + 1);
+          if (zD + 1e-4 < zU - 1e-4) {
+            double eps = std::clamp(0.01 * std::min(zU - curZ, curZ - zD), 0.01, 0.5);
+            vertices.push_back({r, c, bestVi, curZ, curZ, zD + eps, zU - eps});
+          }
+        }
+      }
+    }
+  }
+
+  const size_t K = vertices.size();
+  if (K == 0) {
+    result.log = "Error: No invertible vertices found in neighborhood.";
+    return result;
+  }
+
+  // 3. Collect Local Affected Facet Cells
+  std::set<std::pair<int, int>> localCellsSet;
+  for (const auto &v : vertices) {
+    for (int dr = -1; dr <= 0; ++dr) {
+      for (int dc = -1; dc <= 0; ++dc) {
+        int cr = v.row + dr;
+        int cc = v.col + dc;
+        if (cr >= 0 && cr < static_cast<int>(model.rows()) - 1 &&
+            cc >= 0 && cc < static_cast<int>(model.cols()) - 1) {
+          localCellsSet.insert({cr, cc});
+        }
+      }
+    }
+  }
+  std::vector<std::pair<int, int>> localCells(localCellsSet.begin(), localCellsSet.end());
+
+  // 4. Precompute Static Background Field (Superposition)
+  Grid baseField(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
+  baseField.zero();
+
+  if (!modeled_grids_.empty() && modeled_grid(comp) != nullptr &&
+      !modeled_grid(comp)->empty()) {
+    Grid fullField = *modeled_grid(comp);
+    std::vector<ActiveFacet> initLocalFacets;
+    extractActiveFacets(localCells, initLocalFacets);
+    Grid localField(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
+    localField.zero();
+    for (size_t p = 0; p < nPts; ++p) {
+      size_t r = p / cols_;
+      size_t c = p % cols_;
+      if (!Grid::is_dummy_value(obsPointsGrv[p].z)) {
+        localField(r, c) = evaluateStationField(p, initLocalFacets);
+      } else {
+        localField(r, c) = GRID_DUMMY;
+      }
+    }
+    baseField = fullField - localField;
+  } else {
+    std::vector<Facet3Pt> staticFacets;
+    for (int r = 0; r < static_cast<int>(model.rows()) - 1; ++r) {
+      for (int c = 0; c < static_cast<int>(model.cols()) - 1; ++c) {
+        if (localCellsSet.contains({r, c})) continue;
+        if (const auto *lst = model.facet_list(r, c)) {
+          for (const auto &fct : *lst) {
+            Facet3Pt copy = fct;
+            copy.set_sign(1.0);
+            staticFacets.push_back(copy);
+          }
+        }
+      }
+    }
+    compute_forward_field(staticFacets, true);
+    baseField = *modeled_grid(comp);
+  }
+
+  // 5. Forward Evaluation Helper for Local Cells
+  auto evalResidualsAndRms = [&](const std::vector<double> &zVals,
+                                 std::vector<double> &outResiduals,
+                                 double &outRms) {
+    for (size_t k = 0; k < vertices.size(); ++k) {
+      model.set_z(vertices[k].row, vertices[k].col, vertices[k].index, zVals[k]);
+    }
+    for (const auto &[cr, cc] : localCells) {
+      model.update_facet_column(cr, cc);
+    }
+    std::vector<ActiveFacet> activeFacets;
+    extractActiveFacets(localCells, activeFacets);
+
+    outResiduals.assign(nPts, 0.0);
+    double sumSq = 0.0;
+    size_t validCount = 0;
+
+    auto evalChunk = [&](size_t start_p, size_t end_p, double &sumLocal, size_t &cntLocal) {
+      for (size_t p = start_p; p < end_p; ++p) {
+        size_t r = p / cols_;
+        size_t c = p % cols_;
+        double obsVal = (*pObs)(r, c);
+        if (Grid::is_dummy_value(obsVal) || baseField.is_dummy(r, c) ||
+            Grid::is_dummy_value(obsPointsGrv[p].z)) {
+          outResiduals[p] = 0.0;
+          continue;
+        }
+        double modVal = baseField(r, c) + evaluateStationField(p, activeFacets);
+        double diff = modVal - obsVal;
+        outResiduals[p] = diff;
+        sumLocal += diff * diff;
+        cntLocal++;
+      }
+    };
+
+    const auto [tCount] = pfld::detail::calculate_partition(nPts, 64);
+    if (tCount <= 1) {
+      evalChunk(0, nPts, sumSq, validCount);
+    } else {
+      std::vector<double> threadSum(tCount, 0.0);
+      std::vector<size_t> threadCnt(tCount, 0);
+      const size_t cSize = (nPts + tCount - 1) / tCount;
+      {
+        std::vector<pfld::detail::jthread_type> threads;
+        threads.reserve(tCount);
+        for (size_t t = 0; t < tCount; ++t) {
+          size_t sp = t * cSize;
+          size_t ep = std::min(sp + cSize, nPts);
+          if (sp >= ep) break;
+          threads.emplace_back([&, t, sp, ep]() {
+            evalChunk(sp, ep, threadSum[t], threadCnt[t]);
+          });
+        }
+      }
+      for (size_t t = 0; t < tCount; ++t) {
+        sumSq += threadSum[t];
+        validCount += threadCnt[t];
+      }
+    }
+    outRms = (validCount > 0) ? std::sqrt(sumSq / validCount) : 0.0;
+  };
+
+  std::vector<double> currentZ(K);
+  for (size_t k = 0; k < K; ++k) {
+    currentZ[k] = vertices[k].original_z;
+  }
+  std::vector<double> residuals(nPts, 0.0);
+  double initialRms = 0.0;
+  evalResidualsAndRms(currentZ, residuals, initialRms);
+  double currentRms = initialRms;
+
+  // 6. Construct Laplacian Regularization Matrix L (K x K)
+  std::vector<double> L(K * K, 0.0);
+  if (K > 1) {
+    double totalWeight = 0.0;
+    for (size_t i = 0; i < K; ++i) {
+      for (size_t j = i + 1; j < K; ++j) {
+        int dr = std::abs(vertices[i].row - vertices[j].row);
+        int dc = std::abs(vertices[i].col - vertices[j].col);
+        if (dr <= 1 && dc <= 1) {
+          double dist = std::hypot(model.xe_val(vertices[i].col) - model.xe_val(vertices[j].col),
+                                   model.ye_val(vertices[i].row) - model.ye_val(vertices[j].row));
+          double w = (dist > 1e-3) ? (1.0 / (dist * dist)) : 1.0;
+          L[i * K + j] -= w;
+          L[j * K + i] -= w;
+          L[i * K + i] += w;
+          L[j * K + j] += w;
+          totalWeight += 2.0 * w;
+        }
+      }
+    }
+    if (totalWeight > 1e-12) {
+      double avgDiag = totalWeight / static_cast<double>(K);
+      for (size_t i = 0; i < K * K; ++i) {
+        L[i] /= avgDiag;
+      }
+    }
+  }
+
+  auto evalSmoothness = [&](const std::vector<double> &zVals) -> double {
+    if (K <= 1) return 0.0;
+    double cost = 0.0;
+    for (size_t i = 0; i < K; ++i) {
+      double dz_i = zVals[i] - vertices[i].original_z;
+      double rowSum = 0.0;
+      for (size_t j = 0; j < K; ++j) {
+        double dz_j = zVals[j] - vertices[j].original_z;
+        rowSum += L[i * K + j] * dz_j;
+      }
+      cost += dz_i * rowSum;
+    }
+    return 0.5 * cost;
+  };
+
+  const double alpha = settings.smoothness_weight;
+
+  // 7. Valid Observation Stations
+  std::vector<size_t> validStationIndices;
+  validStationIndices.reserve(nPts);
+  for (size_t p = 0; p < nPts; ++p) {
+    size_t r = p / cols_;
+    size_t c = p % cols_;
+    if (!Grid::is_dummy_value((*pObs)(r, c)) && !baseField.is_dummy(r, c) &&
+        !Grid::is_dummy_value(obsPointsGrv[p].z)) {
+      validStationIndices.push_back(p);
+    }
+  }
+  const size_t M = validStationIndices.size();
+  if (M == 0) {
+    result.log = "Error: No valid observation stations in survey area.";
+    return result;
+  }
+
+  // 8. Jacobian Computation: column k = dF / dz_k
+  auto computeJacobianColumn = [&](size_t k, std::vector<double> &colOut) {
+    std::vector<std::pair<int, int>> cells_k;
+    for (int dr = -1; dr <= 0; ++dr) {
+      for (int dc = -1; dc <= 0; ++dc) {
+        int cr = vertices[k].row + dr;
+        int cc = vertices[k].col + dc;
+        if (localCellsSet.contains({cr, cc})) {
+          cells_k.push_back({cr, cc});
+        }
+      }
+    }
+    std::vector<ActiveFacet> facetsBase;
+    extractActiveFacets(cells_k, facetsBase);
+    std::vector<double> baseVals(M);
+    for (size_t m = 0; m < M; ++m) {
+      baseVals[m] = evaluateStationField(validStationIndices[m], facetsBase);
+    }
+
+    double hk = std::min(1.0, 0.05 * (vertices[k].z_max - vertices[k].z_min));
+    if (hk < 1e-4) hk = 0.1;
+
+    model.set_z(vertices[k].row, vertices[k].col, vertices[k].index, currentZ[k] + hk);
+    for (const auto &[cr, cc] : cells_k) {
+      model.update_facet_column(cr, cc);
+    }
+    std::vector<ActiveFacet> facetsPert;
+    extractActiveFacets(cells_k, facetsPert);
+
+    colOut.resize(M);
+    for (size_t m = 0; m < M; ++m) {
+      size_t p = validStationIndices[m];
+      double valPert = evaluateStationField(p, facetsPert);
+      colOut[m] = (valPert - baseVals[m]) / hk;
+    }
+
+    model.set_z(vertices[k].row, vertices[k].col, vertices[k].index, currentZ[k]);
+    for (const auto &[cr, cc] : cells_k) {
+      model.update_facet_column(cr, cc);
+    }
+  };
+
+  std::vector<std::vector<double>> J_cols(K);
+  for (size_t k = 0; k < K; ++k) {
+    computeJacobianColumn(k, J_cols[k]);
+  }
+
+  // 9. Levenberg-Marquardt Multi-Parameter Inversion Loop
+  double lambda = 0.01;
+  int iter = 0;
+  bool converged = false;
+
+  for (; iter < settings.max_iter; ++iter) {
+    std::vector<double> H_data(K * K, 0.0);
+    std::vector<double> g_data(K, 0.0);
+
+    for (size_t i = 0; i < K; ++i) {
+      for (size_t j = i; j < K; ++j) {
+        double dot = 0.0;
+        for (size_t m = 0; m < M; ++m) {
+          dot += J_cols[i][m] * J_cols[j][m];
+        }
+        double val = dot / static_cast<double>(M);
+        H_data[i * K + j] = val;
+        H_data[j * K + i] = val;
+      }
+    }
+
+    double diagSum = 0.0;
+    for (size_t i = 0; i < K; ++i) {
+      diagSum += H_data[i * K + i];
+    }
+    double avgDataDiag = (K > 0 && diagSum > 1e-20) ? (diagSum / static_cast<double>(K)) : 1.0;
+    double alpha_eff = alpha * avgDataDiag;
+
+    for (size_t i = 0; i < K; ++i) {
+      double jtr = 0.0;
+      for (size_t m = 0; m < M; ++m) {
+        size_t p = validStationIndices[m];
+        jtr += J_cols[i][m] * residuals[p];
+      }
+      g_data[i] = jtr / static_cast<double>(M);
+    }
+
+    std::vector<double> H(K * K, 0.0);
+    std::vector<double> g(K, 0.0);
+    for (size_t i = 0; i < K; ++i) {
+      for (size_t j = 0; j < K; ++j) {
+        H[i * K + j] = H_data[i * K + j] + alpha_eff * L[i * K + j];
+      }
+      double l_dz = 0.0;
+      for (size_t j = 0; j < K; ++j) {
+        l_dz += L[i * K + j] * (currentZ[j] - vertices[j].original_z);
+      }
+      g[i] = g_data[i] + alpha_eff * l_dz;
+    }
+
+    std::vector<double> A = H;
+    std::vector<double> b(K);
+    for (size_t i = 0; i < K; ++i) {
+      A[i * K + i] = H[i * K + i] * (1.0 + lambda) + 1e-15;
+      b[i] = -g[i];
+    }
+
+    std::vector<double> delta_z(K, 0.0);
+    if (!solve_linear_system(static_cast<int>(K), A, b, delta_z)) {
+      lambda *= 10.0;
+      if (lambda > 1e8) break;
+      continue;
+    }
+
+    std::vector<double> candZ(K);
+    double maxStep = 0.0;
+    for (size_t k = 0; k < K; ++k) {
+      candZ[k] = std::clamp(currentZ[k] + delta_z[k], vertices[k].z_min, vertices[k].z_max);
+      maxStep = std::max(maxStep, std::abs(candZ[k] - currentZ[k]));
+    }
+
+    std::vector<double> candResiduals;
+    double candRms = 0.0;
+    evalResidualsAndRms(candZ, candResiduals, candRms);
+    double candObj = 0.5 * (candRms * candRms) + 0.5 * alpha_eff * evalSmoothness(candZ);
+    double curObj = 0.5 * (currentRms * currentRms) + 0.5 * alpha_eff * evalSmoothness(currentZ);
+
+    if (candObj < curObj) {
+      double objDecrease = curObj - candObj;
+      currentZ = candZ;
+      residuals = candResiduals;
+      currentRms = candRms;
+      lambda = std::max(lambda / 3.0, 1e-6);
+
+      if (maxStep < settings.tol || objDecrease / std::max(curObj, 1e-6) < settings.tol) {
+        converged = true;
+        iter++;
+        break;
+      }
+      for (size_t k = 0; k < K; ++k) {
+        computeJacobianColumn(k, J_cols[k]);
+      }
+    } else {
+      lambda *= 5.0;
+      if (lambda > 1e8) {
+        iter++;
+        break;
+      }
+    }
+  }
+
+  // 10. Apply Final Depths & Update Model
+  for (size_t k = 0; k < K; ++k) {
+    int vIdx = vertices[k].index;
+    model.move_vertex(vIdx, vertices[k].row, vertices[k].col, currentZ[k],
+                      BodyMoveType::Constrained);
+    result.vertex_changes.push_back({vertices[k].row, vertices[k].col,
+                                     vertices[k].index, vertices[k].original_z,
+                                     currentZ[k]});
+  }
+
+  // Synchronize Modeled Grid for target component
+  for (size_t p = 0; p < nPts; ++p) {
+    size_t r = p / cols_;
+    size_t c = p % cols_;
+    if (!baseField.is_dummy(r, c) && !pObs->is_dummy(r, c)) {
+      modeled_grids_[comp](r, c) = (*pObs)(r, c) + residuals[p];
+    }
+  }
+
+  auto finish_time = std::chrono::high_resolution_clock::now();
+  double elapsed_sec =
+      std::chrono::duration<double>(finish_time - start_time).count();
+
+  result.converged = converged || (currentRms < initialRms);
+  result.iterations = iter;
+  result.initial_rms = initialRms;
+  result.final_rms = currentRms;
+  result.elapsed_time_sec = elapsed_sec;
+  result.chosen_radius_m = chosenRadius;
+  result.vertices_fitted = K;
+
+  std::ostringstream log;
+  log << "Tier 4 Neighborhood Inversion\n\n"
+      << "Seed vertex: row=" << row << ", col=" << col << ", index=" << index << "\n"
+      << "Target body ID: " << targetBodyId << "\n"
+      << "Neighborhood radius: " << std::fixed << std::setprecision(1) << chosenRadius << " m ("
+      << (settings.radius_mode == NeighborhoodRadiusMode::Automatic ? "Automatic" : "Custom") << ")\n"
+      << "Vertices inverted simultaneously: " << K << "\n"
+      << "Iterations: " << iter << "\n"
+      << "Initial RMS: " << std::setprecision(6) << initialRms << "\n"
+      << "Final RMS:   " << std::setprecision(6) << currentRms << "\n"
+      << "RMS reduction: " << std::setprecision(2)
+      << ((initialRms > 1e-12) ? ((initialRms - currentRms) / initialRms * 100.0) : 0.0) << "%\n"
+      << "Elapsed time: " << std::setprecision(4) << elapsed_sec << "s\n";
+  result.log = log.str();
+
+  return result;
 }
 
 } // namespace mod3d

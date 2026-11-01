@@ -5,6 +5,7 @@
 #include "mod3d_gui/MapView.h"
 #include "mod3d_gui/ProfileView.h"
 #include "mod3d_gui/dialogs/BodyPropertiesDialog.h"
+#include "mod3d_gui/dialogs/FitNeighborhoodDialog.h"
 
 #include <QColorDialog>
 #include <QFormLayout>
@@ -2183,6 +2184,13 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
   btnFitRow->addWidget(m_btnFit1DVertices);
   fitLayout->addLayout(btnFitRow);
 
+  auto *btnNeighborhoodRow = new QHBoxLayout();
+  m_btnFitNeighborhood = new QPushButton(tr("⚡ Fit Neighborhood"), boxFit);
+  m_btnFitNeighborhoodProps = new QPushButton(tr("Neighborhood Properties..."), boxFit);
+  btnNeighborhoodRow->addWidget(m_btnFitNeighborhood);
+  btnNeighborhoodRow->addWidget(m_btnFitNeighborhoodProps);
+  fitLayout->addLayout(btnNeighborhoodRow);
+
   layout->addWidget(boxFit);
 
   connect(m_btnFitActiveDensity, &QPushButton::clicked, this, [this]() {
@@ -2231,6 +2239,43 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
       m_doc->setModified(true);
       m_doc->computeAll();
     }
+  });
+
+  connect(m_btnFitNeighborhood, &QPushButton::clicked, this, [this]() {
+    if (auto *pv = qobject_cast<ProfileView *>(m_activeView.data())) {
+      int profIdx = pv->profileIndex();
+      auto orient = pv->profileOrientation();
+      int bId = m_comboBodies->currentData().toInt();
+
+      int nLines = (orient == ProfileOrientation::EastWest)
+                       ? m_doc->model().cols()
+                       : m_doc->model().rows();
+      int mid = nLines / 2;
+      int r = (orient == ProfileOrientation::EastWest) ? (profIdx + 1) : mid;
+      int c = (orient == ProfileOrientation::EastWest) ? mid : (profIdx + 1);
+
+      int count = m_doc->model().count(r, c);
+      int targetVi = -1;
+      for (int vi = 1; vi < count - 1; ++vi) {
+        auto *cp = m_doc->model().at(r, c, vi);
+        if (cp && cp->body_id() == bId) {
+          targetVi = vi;
+          break;
+        }
+      }
+      if (targetVi > 0) {
+        m_doc->observation().fit_neighborhood(
+            m_doc->model(), r, c, targetVi, m_doc->activeField(),
+            m_doc->observation().neighborhood_fit_settings());
+        m_doc->setModified(true);
+        m_doc->computeAll();
+      }
+    }
+  });
+
+  connect(m_btnFitNeighborhoodProps, &QPushButton::clicked, this, [this]() {
+    FitNeighborhoodDialog dlg(m_doc, -1, -1, this);
+    dlg.exec();
   });
 
   layout->addStretch(1);

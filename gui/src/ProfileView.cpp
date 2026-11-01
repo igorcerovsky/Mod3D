@@ -2304,6 +2304,17 @@ void ProfileView::showVertexContextMenu(const QPoint &globalPos, int lineIdx,
                                     m_doc->activeField());
     m_doc->computeAll();
   });
+  menu.addAction(tr("Fit Neighborhood"), [this, vertexIdx, row, col]() {
+    m_doc->observation().fit_neighborhood(
+        m_doc->model(), row, col, vertexIdx, m_doc->activeField(),
+        m_doc->observation().neighborhood_fit_settings());
+    m_doc->setModified(true);
+    m_doc->computeAll();
+  });
+  menu.addSeparator();
+  menu.addAction(tr("Fit Neighborhood Properties..."), [this, lineIdx, vertexIdx]() {
+    emit requestFitNeighborhoodDialog(lineIdx, vertexIdx);
+  });
   menu.addAction(tr("1D Fit Properties..."), [this, lineIdx, vertexIdx]() {
     emit requestFit1DDialog(lineIdx, vertexIdx);
   });

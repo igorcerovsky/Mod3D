@@ -7,6 +7,7 @@
 #include "mod3d_gui/dialogs/ComputePropertiesDialog.h"
 #include "mod3d_gui/dialogs/ActiveGridsDialog.h"
 #include "mod3d_gui/dialogs/Fit1DDialog.h"
+#include "mod3d_gui/dialogs/FitNeighborhoodDialog.h"
 
 #include <QMenuBar>
 #include <QStatusBar>
@@ -439,6 +440,7 @@ ProfileView *MainWindow::openProfileView(ProfileOrientation orient, int profileI
     });
     connect(pv, &ProfileView::requestBodyProperties, this, &MainWindow::onBodyProperties);
     connect(pv, &ProfileView::requestFit1DDialog, this, &MainWindow::onFit1DProperties);
+    connect(pv, &ProfileView::requestFitNeighborhoodDialog, this, &MainWindow::onFitNeighborhoodProperties);
     connect(pv, &ProfileView::requestOpenPerpendicularProfile, this, [this](ProfileOrientation orient, int idx) {
         if (m_isDestroying) return;
         openProfileView(orient, idx);
@@ -942,6 +944,11 @@ void MainWindow::onBodyProperties(int bodyId) {
 
 void MainWindow::onFit1DProperties() {
     Fit1DDialog dlg(m_doc, this);
+    dlg.exec();
+}
+
+void MainWindow::onFitNeighborhoodProperties(int lineIdx, int vertexIdx) {
+    FitNeighborhoodDialog dlg(m_doc, lineIdx, vertexIdx, this);
     dlg.exec();
 }
 

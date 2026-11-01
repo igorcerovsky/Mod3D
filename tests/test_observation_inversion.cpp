@@ -601,3 +601,154 @@ TEST(ObservationSpaceTest, MultiBodyDensityInversionWithSharedInterface) {
   EXPECT_LT(res2.minimum_objective, 1e-4);
 }
 
+// ============================================================================
+// 8. Tier 4 Localized Neighborhood Inversion Tests
+// ============================================================================
+
+TEST(ObservationSpaceTest, FitNeighborhoodCustomRadius) {
+  const int rows = 15;
+  const int cols = 15;
+  const double dx = 100.0;
+  const double dy = 100.0;
+
+  Model model;
+  model.init(rows, cols, 0.0, 0.0, dx, dy, -2000.0, 0.0);
+
+  Body *body = model.create_body();
+  body->set_density(2750.0);
+  int bId = body->id();
+
+  // Create a 5x5 body layer around center (7, 7)
+  for (int r = 5; r <= 9; ++r) {
+    for (int c = 5; c <= 9; ++c) {
+      model.insert_body(r, c, -650.0, 200.0, false, bId);
+    }
+  }
+
+  // Define true geometry: an uplifted circular patch centered at (7, 7)
+  int targetRow = 7;
+  int targetCol = 7;
+  int vIdx = 1;
+
+  model.move_vertex(vIdx, targetRow, targetCol, -550.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, -550.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, -550.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, -550.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, -550.0, BodyMoveType::Normal);
+
+  model.init_facet_list();
+  std::vector<Facet3Pt> trueFacets;
+  model.facets_computation(trueFacets);
+
+  ObservationSpace obs(rows, cols, 0.0, 0.0, dx, dy);
+  obs.set_gravity_observation(ObservationMode::FlightElevation, 100.0);
+  obs.compute_forward_field(trueFacets, true);
+  Grid trueGz = *obs.modeled_grid(FieldComponent::GZ);
+  obs.set_observed_grid(FieldComponent::GZ, trueGz);
+
+  // Now perturb all 5 vertices to flat initial guess -650m
+  model.move_vertex(vIdx, targetRow, targetCol, -650.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, -650.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, -650.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, -650.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, -650.0, BodyMoveType::Normal);
+
+  model.init_facet_list();
+  std::vector<Facet3Pt> initialFacets;
+  model.facets_computation(initialFacets);
+  obs.compute_forward_field(initialFacets, true);
+
+  // Run Tier 4 neighborhood fit with custom radius 120m (covers 5 vertices: center + 4 neighbors)
+  NeighborhoodFitSettings settings;
+  settings.radius_mode = NeighborhoodRadiusMode::Custom;
+  settings.custom_radius_m = 120.0;
+  settings.smoothness_weight = 0.001;
+  settings.tol = 1e-4;
+  settings.max_iter = 15;
+
+  NeighborhoodFitResult res = obs.fit_neighborhood(
+      model, targetRow, targetCol, vIdx, FieldComponent::GZ, settings);
+
+  EXPECT_TRUE(res.converged);
+  EXPECT_EQ(res.vertices_fitted, 5);
+  EXPECT_DOUBLE_EQ(res.chosen_radius_m, 120.0);
+  EXPECT_LT(res.final_rms, res.initial_rms);
+  // Significant RMS reduction (> 70%)
+  EXPECT_LT(res.final_rms, 0.3 * res.initial_rms);
+  // Center vertex moved from -650m towards -550m
+  EXPECT_NEAR(model.z(targetRow, targetCol, vIdx), -550.0, 5.0);
+  EXPECT_LT(res.elapsed_time_sec, 1.0);
+}
+
+TEST(ObservationSpaceTest, FitNeighborhoodAutomaticRadius) {
+  const int rows = 15;
+  const int cols = 15;
+  const double dx = 100.0;
+  const double dy = 100.0;
+
+  Model model;
+  model.init(rows, cols, 0.0, 0.0, dx, dy, -2000.0, 0.0);
+
+  Body *body = model.create_body();
+  body->set_density(2750.0);
+  int bId = body->id();
+
+  for (int r = 4; r <= 10; ++r) {
+    for (int c = 4; c <= 10; ++c) {
+      model.insert_body(r, c, -650.0, 200.0, false, bId);
+    }
+  }
+
+  int targetRow = 7;
+  int targetCol = 7;
+  int vIdx = 1;
+
+  // True uplift in a neighborhood around (7, 7)
+  const double trueZ = -400.0;
+  const double initialZ = -450.0;
+  model.move_vertex(vIdx, targetRow, targetCol, trueZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, trueZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, trueZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, trueZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, trueZ, BodyMoveType::Normal);
+
+  model.init_facet_list();
+  std::vector<Facet3Pt> trueFacets;
+  model.facets_computation(trueFacets);
+
+  ObservationSpace obs(rows, cols, 0.0, 0.0, dx, dy);
+  obs.set_gravity_observation(ObservationMode::FlightElevation, 100.0);
+  obs.compute_forward_field(trueFacets, true);
+  Grid trueGz = *obs.modeled_grid(FieldComponent::GZ);
+  obs.set_observed_grid(FieldComponent::GZ, trueGz);
+
+  // Reset to initial guess
+  model.move_vertex(vIdx, targetRow, targetCol, initialZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, initialZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, initialZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, initialZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, initialZ, BodyMoveType::Normal);
+
+  model.init_facet_list();
+  std::vector<Facet3Pt> initialFacets;
+  model.facets_computation(initialFacets);
+  obs.compute_forward_field(initialFacets, true);
+
+  // Run with Automatic radius mode
+  NeighborhoodFitSettings settings;
+  settings.radius_mode = NeighborhoodRadiusMode::Automatic;
+  settings.sensitivity_cutoff = 0.05; // 5% decay
+  settings.smoothness_weight = 0.001;
+  settings.tol = 1e-4;
+
+  NeighborhoodFitResult res = obs.fit_neighborhood(
+      model, targetRow, targetCol, vIdx, FieldComponent::GZ, settings);
+
+  EXPECT_TRUE(res.converged);
+  EXPECT_GE(res.chosen_radius_m, 100.0);
+  EXPECT_GE(res.vertices_fitted, 5);
+  EXPECT_LT(res.final_rms, res.initial_rms);
+  EXPECT_NEAR(model.z(targetRow, targetCol, vIdx), trueZ, 10.0);
+  EXPECT_LT(res.elapsed_time_sec, 1.0);
+}
+

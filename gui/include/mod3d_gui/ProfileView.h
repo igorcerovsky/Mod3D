@@ -131,6 +131,7 @@ signals:
     void cursorStationChanged(int row, int col, double x, double y, double z, double fldVal);
     void requestBodyProperties(int bodyId);
     void requestFit1DDialog(int lineIdx, int vertexIdx);
+    void requestFitNeighborhoodDialog(int lineIdx, int vertexIdx);
     void profileSettingsChanged(int index, ProfileOrientation orient);
     void requestOpenPerpendicularProfile(ProfileOrientation orient, int profileIndex);
     void displaySettingsChanged();

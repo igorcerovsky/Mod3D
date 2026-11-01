@@ -72,6 +72,7 @@ private:
     void onActiveGrids();
     void onBodyProperties(int bodyId = -1);
     void onFit1DProperties();
+    void onFitNeighborhoodProperties(int lineIdx = -1, int vertexIdx = -1);
     void onAbout();
 
     ModelDocument *m_doc;

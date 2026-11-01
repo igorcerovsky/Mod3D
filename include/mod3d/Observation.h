@@ -8,6 +8,8 @@
 #include "mod3d/Units.h"
 #include <map>
 #include <numbers>
+#include <string>
+#include <tuple>
 #include <vector>
 
 namespace mod3d {
@@ -53,6 +55,34 @@ is_magnetic_component(FieldComponent comp) noexcept {
 [[nodiscard]] constexpr bool is_tensor_component(FieldComponent comp) noexcept {
   return static_cast<int>(comp) >= 20;
 }
+
+enum class NeighborhoodRadiusMode {
+  Automatic = 0,
+  Custom = 1
+};
+
+struct NeighborhoodFitSettings {
+  NeighborhoodRadiusMode radius_mode{NeighborhoodRadiusMode::Automatic};
+  double custom_radius_m{1000.0};
+  double sensitivity_cutoff{0.02}; // Stop when response decays below 2% of peak
+  double smoothness_weight{0.1};   // Laplacian regularization weight (alpha)
+  double tol{1e-4};
+  int max_iter{15};
+  double max_radius_m{10000.0};
+};
+
+struct NeighborhoodFitResult {
+  bool converged{false};
+  int iterations{0};
+  double initial_rms{0.0};
+  double final_rms{0.0};
+  double elapsed_time_sec{0.0};
+  double chosen_radius_m{0.0};
+  size_t vertices_fitted{0};
+  // row, col, vertex_index, original_z, final_z
+  std::vector<std::tuple<int, int, int, double, double>> vertex_changes;
+  std::string log;
+};
 
 /**
  * @brief Geophysical Observation Space & Forward Modeling / Inversion
@@ -320,6 +350,21 @@ public:
                        double tol = 1e-4, FitMethod method = FitMethod::Brent,
                        bool use_superposition = false);
 
+  // Localized Multi-Vertex Neighborhood Inversion (Tier 4)
+  NeighborhoodFitResult fit_neighborhood(
+      Model &model, int row, int col, int index,
+      FieldComponent comp = FieldComponent::GZ,
+      const NeighborhoodFitSettings &settings = {});
+
+  void set_neighborhood_fit_settings(
+      const NeighborhoodFitSettings &settings) noexcept {
+    neighborhood_fit_settings_ = settings;
+  }
+  [[nodiscard]] const NeighborhoodFitSettings &
+  neighborhood_fit_settings() const noexcept {
+    return neighborhood_fit_settings_;
+  }
+
 private:
   void ensure_grid_allocated(std::map<FieldComponent, Grid> &gridMap,
                              FieldComponent comp);
@@ -366,6 +411,8 @@ private:
   bool remove_observed_mean_{false};
   std::map<FieldComponent, double> observed_means_;
   std::map<FieldComponent, Grid> observed_anomaly_grids_;
+
+  NeighborhoodFitSettings neighborhood_fit_settings_{};
 };
 
 } // namespace mod3d

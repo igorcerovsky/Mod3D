@@ -279,6 +279,8 @@ private:
     QSpinBox *m_spinFitMaxIter{nullptr};
     QPushButton *m_btnFitActiveDensity{nullptr};
     QPushButton *m_btnFit1DVertices{nullptr};
+    QPushButton *m_btnFitNeighborhood{nullptr};
+    QPushButton *m_btnFitNeighborhoodProps{nullptr};
 
     // Pinned Bottom Computation Card
     QGroupBox *m_grpCompute{nullptr};
