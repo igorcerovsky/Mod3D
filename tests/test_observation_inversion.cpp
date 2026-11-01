@@ -433,6 +433,61 @@ TEST(Gate3InversionTest, VertexDepthRecoverySuperposition) {
   EXPECT_LT(fitRes.minimum_objective, 1e-4);
 }
 
+TEST(Gate3InversionTest, ParallelStationForwardAndVertexInversionBenchmark) {
+  // Benchmark with a 25x25 observation grid (625 stations)
+  const size_t rows = 25;
+  const size_t cols = 25;
+  const double trueZ = -600.0;
+  const double initialZ = -570.0;
+
+  Model model;
+  model.init(rows, cols, 0.0, 0.0, 100.0, 100.0, -2000.0, 0.0);
+
+  Body *body = model.create_body();
+  body->set_density(2750.0);
+  int bId = body->id();
+
+  for (int r = 10; r <= 15; ++r) {
+    for (int c = 10; c <= 15; ++c) {
+      model.insert_body(r, c, -650.0, 200.0, false, bId);
+    }
+  }
+
+  int targetRow = 12;
+  int targetCol = 12;
+  int vIdx = 1;
+
+  // Set to true depth and compute true observation in parallel
+  model.move_vertex(vIdx, targetRow, targetCol, trueZ, BodyMoveType::Normal);
+  model.init_facet_list();
+  std::vector<Facet3Pt> trueFacets;
+  model.facets_computation(trueFacets);
+
+  ObservationSpace obs(rows, cols, 0.0, 0.0, 100.0, 100.0);
+  obs.set_gravity_observation(ObservationMode::FlightElevation, 100.0);
+  obs.compute_forward_field(trueFacets, true);
+  Grid trueObsGrid = *obs.modeled_grid(FieldComponent::GZ);
+  obs.set_observed_grid(FieldComponent::GZ, trueObsGrid);
+
+  // Perturb to initial guess and compute initial baseline
+  model.move_vertex(vIdx, targetRow, targetCol, initialZ, BodyMoveType::Normal);
+  model.init_facet_list();
+  std::vector<Facet3Pt> initialFacets;
+  model.facets_computation(initialFacets);
+  obs.compute_forward_field(initialFacets, true);
+
+  // Fast vertex inversion with Tier 2 zero-copy & Tier 3 jthread parallelism
+  FitResult fitRes = obs.fit_vertex(model, targetRow, targetCol, vIdx,
+                                    FieldComponent::GZ, 1e-4, FitMethod::brent,
+                                    true);
+
+  EXPECT_TRUE(fitRes.converged);
+  EXPECT_NEAR(fitRes.optimal_parameter, trueZ, 0.2);
+  EXPECT_NEAR(model.z(targetRow, targetCol, vIdx), trueZ, 0.2);
+  EXPECT_LT(fitRes.minimum_objective, 1e-4);
+  EXPECT_LT(fitRes.elapsed_time_sec, 1.0);
+}
+
 // ============================================================================
 // 6. Virtual removal of the mean from the measured (observed) field
 // ============================================================================

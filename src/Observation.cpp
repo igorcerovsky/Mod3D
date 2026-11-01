@@ -1,6 +1,7 @@
 #include "mod3d/Observation.h"
 #include "mod3d/Body.h"
 #include "mod3d/Magnetics.h"
+#include "pfld/pfld_compute.hpp"
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -429,96 +430,115 @@ void ObservationSpace::compute_forward_field(
 
   const size_t nPts = obsPointsGrv.size();
 
-  for (size_t p = 0; p < nPts; ++p) {
-    Point3D totalG(0.0, 0.0, 0.0);
-    Point3D totalM(0.0, 0.0, 0.0);
+  auto processStationRange = [&](size_t start_idx, size_t end_idx) {
+    for (size_t p = start_idx; p < end_idx; ++p) {
+      Point3D totalG(0.0, 0.0, 0.0);
+      Point3D totalM(0.0, 0.0, 0.0);
 
-    bool validGrv = !Grid::is_dummy_value(obsPointsGrv[p].z);
-    bool validMag = hasMagnetics && p < obsPointsMag.size() &&
-                    !Grid::is_dummy_value(obsPointsMag[p].z);
+      bool validGrv = !Grid::is_dummy_value(obsPointsGrv[p].z);
+      bool validMag = hasMagnetics && p < obsPointsMag.size() &&
+                      !Grid::is_dummy_value(obsPointsMag[p].z);
 
-    Point3D rMag(0.0, 0.0, 0.0);
-    if (validMag) {
-      rMag = Point3D(obsPointsMag[p].x + 0.001, obsPointsMag[p].y + 0.003,
-                     obsPointsMag[p].z);
-    }
+      Point3D rMag(0.0, 0.0, 0.0);
+      if (validMag) {
+        rMag = Point3D(obsPointsMag[p].x + 0.001, obsPointsMag[p].y + 0.003,
+                       obsPointsMag[p].z);
+      }
 
-    if (validGrv || validMag) {
-      for (const auto &entry : activeFacets) {
-        const Facet3Pt &fct = *entry.fct;
-        if (validGrv && entry.hasGrv) {
-          Point3D g(0.0, 0.0, 0.0);
-          fct.fld_g(obsPointsGrv[p], g);
-          totalG += g * entry.grvScale;
-        }
+      if (validGrv || validMag) {
+        for (const auto &entry : activeFacets) {
+          const Facet3Pt &fct = *entry.fct;
+          if (validGrv && entry.hasGrv) {
+            Point3D g(0.0, 0.0, 0.0);
+            fct.fld_g(obsPointsGrv[p], g);
+            totalG += g * entry.grvScale;
+          }
 
-        if (validMag && entry.hasMag) {
-          Point3D fMag(0.0, 0.0, 0.0);
-          fct.fld_gs(rMag, entry.netMag, fMag, 1.0);
-          totalM -= fMag * fct.dSign;
+          if (validMag && entry.hasMag) {
+            Point3D fMag(0.0, 0.0, 0.0);
+            fct.fld_gs(rMag, entry.netMag, fMag, 1.0);
+            totalM -= fMag * fct.dSign;
+          }
         }
       }
-    }
 
-    size_t r = p / cols_;
-    size_t c = p % cols_;
-    Point3D scaledG = (grv_field_unit_ == GravityFieldUnit::MilliGal)
-                          ? Point3D(units::SI_Acceleration(totalG.x)
-                                        .as<units::tag::MilliGal>()
-                                        .value(),
-                                    units::SI_Acceleration(totalG.y)
-                                        .as<units::tag::MilliGal>()
-                                        .value(),
-                                    units::SI_Acceleration(totalG.z)
-                                        .as<units::tag::MilliGal>()
-                                        .value())
-                          : Point3D(units::SI_Acceleration(totalG.x)
-                                        .as<units::tag::GravityUnit>()
-                                        .value(),
-                                    units::SI_Acceleration(totalG.y)
-                                        .as<units::tag::GravityUnit>()
-                                        .value(),
-                                    units::SI_Acceleration(totalG.z)
-                                        .as<units::tag::GravityUnit>()
-                                        .value());
+      size_t r = p / cols_;
+      size_t c = p % cols_;
+      Point3D scaledG = (grv_field_unit_ == GravityFieldUnit::MilliGal)
+                            ? Point3D(units::SI_Acceleration(totalG.x)
+                                          .as<units::tag::MilliGal>()
+                                          .value(),
+                                      units::SI_Acceleration(totalG.y)
+                                          .as<units::tag::MilliGal>()
+                                          .value(),
+                                      units::SI_Acceleration(totalG.z)
+                                          .as<units::tag::MilliGal>()
+                                          .value())
+                            : Point3D(units::SI_Acceleration(totalG.x)
+                                          .as<units::tag::GravityUnit>()
+                                          .value(),
+                                      units::SI_Acceleration(totalG.y)
+                                          .as<units::tag::GravityUnit>()
+                                          .value(),
+                                      units::SI_Acceleration(totalG.z)
+                                          .as<units::tag::GravityUnit>()
+                                          .value());
 
-    if (zeroFirst) {
-      if (validGrv) {
-        grdGx(r, c) = scaledG.x;
-        grdGy(r, c) = scaledG.y;
-        grdGz(r, c) = scaledG.z;
+      if (zeroFirst) {
+        if (validGrv) {
+          grdGx(r, c) = scaledG.x;
+          grdGy(r, c) = scaledG.y;
+          grdGz(r, c) = scaledG.z;
+        } else {
+          grdGx(r, c) = GRID_DUMMY;
+          grdGy(r, c) = GRID_DUMMY;
+          grdGz(r, c) = GRID_DUMMY;
+        }
+
+        if (validMag) {
+          grdMx(r, c) = totalM.x;
+          grdMy(r, c) = totalM.y;
+          grdMz(r, c) = totalM.z;
+        } else if (hasMagnetics) {
+          grdMx(r, c) = GRID_DUMMY;
+          grdMy(r, c) = GRID_DUMMY;
+          grdMz(r, c) = GRID_DUMMY;
+        }
       } else {
-        grdGx(r, c) = GRID_DUMMY;
-        grdGy(r, c) = GRID_DUMMY;
-        grdGz(r, c) = GRID_DUMMY;
+        if (validGrv) {
+          if (!grdGx.is_dummy(r, c))
+            grdGx(r, c) += scaledG.x;
+          if (!grdGy.is_dummy(r, c))
+            grdGy(r, c) += scaledG.y;
+          if (!grdGz.is_dummy(r, c))
+            grdGz(r, c) += scaledG.z;
+        }
+        if (validMag) {
+          if (!grdMx.is_dummy(r, c))
+            grdMx(r, c) += totalM.x;
+          if (!grdMy.is_dummy(r, c))
+            grdMy(r, c) += totalM.y;
+          if (!grdMz.is_dummy(r, c))
+            grdMz(r, c) += totalM.z;
+        }
       }
+    }
+  };
 
-      if (validMag) {
-        grdMx(r, c) = totalM.x;
-        grdMy(r, c) = totalM.y;
-        grdMz(r, c) = totalM.z;
-      } else if (hasMagnetics) {
-        grdMx(r, c) = GRID_DUMMY;
-        grdMy(r, c) = GRID_DUMMY;
-        grdMz(r, c) = GRID_DUMMY;
-      }
-    } else {
-      if (validGrv) {
-        if (!grdGx.is_dummy(r, c))
-          grdGx(r, c) += scaledG.x;
-        if (!grdGy.is_dummy(r, c))
-          grdGy(r, c) += scaledG.y;
-        if (!grdGz.is_dummy(r, c))
-          grdGz(r, c) += scaledG.z;
-      }
-      if (validMag) {
-        if (!grdMx.is_dummy(r, c))
-          grdMx(r, c) += totalM.x;
-        if (!grdMy.is_dummy(r, c))
-          grdMy(r, c) += totalM.y;
-        if (!grdMz.is_dummy(r, c))
-          grdMz(r, c) += totalM.z;
-      }
+  const auto [threads_count] = pfld::detail::calculate_partition(nPts, 32);
+  if (threads_count <= 1) {
+    processStationRange(0, nPts);
+  } else {
+    const size_t chunk_size = (nPts + threads_count - 1) / threads_count;
+    std::vector<pfld::detail::jthread_type> threads;
+    threads.reserve(threads_count);
+    for (size_t i = 0; i < threads_count; ++i) {
+      const size_t start_idx = i * chunk_size;
+      const size_t end_idx = std::min(start_idx + chunk_size, nPts);
+      if (start_idx >= end_idx) break;
+      threads.emplace_back([&processStationRange, start_idx, end_idx]() {
+        processStationRange(start_idx, end_idx);
+      });
     }
   }
 
@@ -686,29 +706,49 @@ FitResult ObservationSpace::fit_density(Body *pBody,
                      .value();
   };
 
-  for (size_t p = 0; p < obsPoints.size(); ++p) {
-    size_t r = p / cols_;
-    size_t c = p % cols_;
-    if (Grid::is_dummy_value(obsPoints[p].z)) {
-      grdUnit(r, c) = GRID_DUMMY;
-      grdBg(r, c) = GRID_DUMMY;
-      continue;
+  const size_t nPts = obsPoints.size();
+  auto processDensityStationRange = [&](size_t start_p, size_t end_p) {
+    for (size_t p = start_p; p < end_p; ++p) {
+      size_t r = p / cols_;
+      size_t c = p % cols_;
+      if (Grid::is_dummy_value(obsPoints[p].z)) {
+        grdUnit(r, c) = GRID_DUMMY;
+        grdBg(r, c) = GRID_DUMMY;
+        continue;
+      }
+      double unitG = 0.0;
+      double bgG = 0.0;
+      for (const auto &entry : fitFacets) {
+        Point3D g(0, 0, 0);
+        entry.fct->fld_g(obsPoints[p], g);
+        double compG = g.z;
+        if (comp == FieldComponent::GX)
+          compG = g.x;
+        else if (comp == FieldComponent::GY)
+          compG = g.y;
+        unitG += compG * entry.unitScale;
+        bgG += compG * entry.bgScale;
+      }
+      grdUnit(r, c) = toUnit(unitG);
+      grdBg(r, c) = toUnit(bgG);
     }
-    double unitG = 0.0;
-    double bgG = 0.0;
-    for (const auto &entry : fitFacets) {
-      Point3D g(0, 0, 0);
-      entry.fct->fld_g(obsPoints[p], g);
-      double compG = g.z;
-      if (comp == FieldComponent::GX)
-        compG = g.x;
-      else if (comp == FieldComponent::GY)
-        compG = g.y;
-      unitG += compG * entry.unitScale;
-      bgG += compG * entry.bgScale;
+  };
+
+  const auto [threads_count] = pfld::detail::calculate_partition(nPts, 32);
+  if (threads_count <= 1) {
+    processDensityStationRange(0, nPts);
+  } else {
+    const size_t chunk_size = (nPts + threads_count - 1) / threads_count;
+    std::vector<pfld::detail::jthread_type> threads;
+    threads.reserve(threads_count);
+    for (size_t i = 0; i < threads_count; ++i) {
+      const size_t start_p = i * chunk_size;
+      const size_t end_p = std::min(start_p + chunk_size, nPts);
+      if (start_p >= end_p) break;
+      threads.emplace_back([&processDensityStationRange, start_p, end_p]() {
+        processDensityStationRange(start_p, end_p);
+      });
     }
-    grdUnit(r, c) = toUnit(unitG);
-    grdBg(r, c) = toUnit(bgG);
   }
 
   // Exact analytical linear least-squares solution for linear density contrast
@@ -890,7 +930,34 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
     baseMz = *modeled_grid(FieldComponent::MZ);
   }
 
-  // Objective function evaluating RMS of (modeled - observed) when vertex is at z
+  auto toUnit = [&](double valSI) -> double {
+    return (grv_field_unit_ == GravityFieldUnit::MilliGal)
+               ? units::SI_Acceleration(valSI).as<units::tag::MilliGal>().value()
+               : units::SI_Acceleration(valSI)
+                     .as<units::tag::GravityUnit>()
+                     .value();
+  };
+
+  auto obsPointsGrv = observation_points(FieldComponent::GZ);
+  const size_t nPts = obsPointsGrv.size();
+  const double refDens = ref_density_.value();
+  Point3D ambientFld = ambient_field_vector();
+  double magInt = mag_intensity_.value();
+
+  struct LocalActiveEntry {
+    const Facet3Pt *fct{nullptr};
+    double grvScale{0.0};
+    Point3D netMag{};
+    bool hasGrv{false};
+    bool hasMag{false};
+  };
+  std::vector<LocalActiveEntry> localActive;
+  localActive.reserve(64);
+
+  bool isGravComp = is_gravity_component(comp);
+  bool isMagComp = is_magnetic_component(comp);
+
+  // Fast zero-copy, single-component, parallel RMS objective function
   auto objFunc = [&](double zVal) -> double {
     if (zVal <= zD + 1e-6 || zVal >= zU - 1e-6) {
       return 1e9;
@@ -902,29 +969,191 @@ FitResult ObservationSpace::fit_vertex(Model &model, int row, int col,
       return 1e9;
     }
 
-    modeled_grids_[FieldComponent::GX] = baseGx;
-    modeled_grids_[FieldComponent::GY] = baseGy;
-    modeled_grids_[FieldComponent::GZ] = baseGz;
-    modeled_grids_[FieldComponent::MX] = baseMx;
-    modeled_grids_[FieldComponent::MY] = baseMy;
-    modeled_grids_[FieldComponent::MZ] = baseMz;
-
     gatherLocalFacets();
-    compute_forward_field(localFacets, false);
-    const Grid *pMod = modeled_grid(comp);
+    localActive.clear();
 
-    double sumSq = 0.0;
-    size_t count = 0;
-    for (size_t r = 0; r < rows_; ++r) {
-      for (size_t c = 0; c < cols_; ++c) {
-        if (!pObs->is_dummy(r, c) && !pMod->is_dummy(r, c)) {
-          double diff = (*pMod)(r, c) - (*pObs)(r, c);
-          sumSq += diff * diff;
-          count++;
+    for (const auto &fct : localFacets) {
+      if (fct.is_null() || !fct.pfld_facet().is_initialized())
+        continue;
+
+      double grvScale = 0.0;
+      if (fct.primary) {
+        const double bDens = fct.primary->density().value();
+        const double oposDens =
+            fct.opposite ? fct.opposite->density().value() : refDens;
+        grvScale = (bDens - oposDens) * fct.dSign;
+      }
+
+      Point3D netMag(0.0, 0.0, 0.0);
+      if (isMagComp) {
+        if (fct.primary && fct.primary->is_active()) {
+          netMag += fct.primary->magnetization_vector();
+        }
+        if (fct.opposite && fct.opposite->is_active()) {
+          netMag -= fct.opposite->magnetization_vector();
         }
       }
+
+      const bool hasGrv = isGravComp && std::abs(grvScale) > 1e-15;
+      const bool hasM = isMagComp && !netMag.is_zero();
+      if (hasGrv || hasM) {
+        localActive.push_back({&fct, grvScale, netMag, hasGrv, hasM});
+      }
     }
-    return count > 0 ? std::sqrt(sumSq / count) : 0.0;
+
+    auto evaluateRange = [&](size_t start_idx, size_t end_idx,
+                             double &outSumSq, size_t &outCount) {
+      double sumSqLocal = 0.0;
+      size_t countLocal = 0;
+
+      for (size_t p = start_idx; p < end_idx; ++p) {
+        size_t r = p / cols_;
+        size_t c = p % cols_;
+        double obsVal = (*pObs)(r, c);
+        if (Grid::is_dummy_value(obsVal) ||
+            Grid::is_dummy_value(obsPointsGrv[p].z)) {
+          continue;
+        }
+
+        double modeledVal = 0.0;
+
+        if (comp == FieldComponent::GZ) {
+          if (baseGz.is_dummy(r, c))
+            continue;
+          double localGz = 0.0;
+          for (const auto &entry : localActive) {
+            Point3D g(0, 0, 0);
+            entry.fct->fld_g(obsPointsGrv[p], g);
+            localGz += g.z * entry.grvScale;
+          }
+          modeledVal = baseGz(r, c) + toUnit(localGz);
+        } else if (comp == FieldComponent::GX) {
+          if (baseGx.is_dummy(r, c))
+            continue;
+          double localGx = 0.0;
+          for (const auto &entry : localActive) {
+            Point3D g(0, 0, 0);
+            entry.fct->fld_g(obsPointsGrv[p], g);
+            localGx += g.x * entry.grvScale;
+          }
+          modeledVal = baseGx(r, c) + toUnit(localGx);
+        } else if (comp == FieldComponent::GY) {
+          if (baseGy.is_dummy(r, c))
+            continue;
+          double localGy = 0.0;
+          for (const auto &entry : localActive) {
+            Point3D g(0, 0, 0);
+            entry.fct->fld_g(obsPointsGrv[p], g);
+            localGy += g.y * entry.grvScale;
+          }
+          modeledVal = baseGy(r, c) + toUnit(localGy);
+        } else if (comp == FieldComponent::G_TOT) {
+          if (baseGx.is_dummy(r, c) || baseGy.is_dummy(r, c) ||
+              baseGz.is_dummy(r, c))
+            continue;
+          Point3D localG(0, 0, 0);
+          for (const auto &entry : localActive) {
+            Point3D g(0, 0, 0);
+            entry.fct->fld_g(obsPointsGrv[p], g);
+            localG += g * entry.grvScale;
+          }
+          double gx = baseGx(r, c) + toUnit(localG.x);
+          double gy = baseGy(r, c) + toUnit(localG.y);
+          double gz = baseGz(r, c) + toUnit(localG.z);
+          modeledVal = std::sqrt(gx * gx + gy * gy + gz * gz);
+        } else if (comp == FieldComponent::DELTA_T) {
+          if (baseMx.is_dummy(r, c) || baseMy.is_dummy(r, c) ||
+              baseMz.is_dummy(r, c))
+            continue;
+          Point3D rMag(obsPointsGrv[p].x + 0.001, obsPointsGrv[p].y + 0.003,
+                       obsPointsGrv[p].z);
+          Point3D localM(0, 0, 0);
+          for (const auto &entry : localActive) {
+            Point3D fMag(0, 0, 0);
+            entry.fct->fld_gs(rMag, entry.netMag, fMag, 1.0);
+            localM -= fMag * entry.fct->dSign;
+          }
+          double mx = baseMx(r, c) + localM.x;
+          double my = baseMy(r, c) + localM.y;
+          double mz = baseMz(r, c) + localM.z;
+          modeledVal = -mag_delta_t(mx, my, mz, ambientFld.x, ambientFld.y,
+                                    ambientFld.z, magInt);
+        } else if (comp == FieldComponent::MX) {
+          if (baseMx.is_dummy(r, c))
+            continue;
+          Point3D rMag(obsPointsGrv[p].x + 0.001, obsPointsGrv[p].y + 0.003,
+                       obsPointsGrv[p].z);
+          Point3D localM(0, 0, 0);
+          for (const auto &entry : localActive) {
+            Point3D fMag(0, 0, 0);
+            entry.fct->fld_gs(rMag, entry.netMag, fMag, 1.0);
+            localM -= fMag * entry.fct->dSign;
+          }
+          modeledVal = baseMx(r, c) + localM.x;
+        } else if (comp == FieldComponent::MY) {
+          if (baseMy.is_dummy(r, c))
+            continue;
+          Point3D rMag(obsPointsGrv[p].x + 0.001, obsPointsGrv[p].y + 0.003,
+                       obsPointsGrv[p].z);
+          Point3D localM(0, 0, 0);
+          for (const auto &entry : localActive) {
+            Point3D fMag(0, 0, 0);
+            entry.fct->fld_gs(rMag, entry.netMag, fMag, 1.0);
+            localM -= fMag * entry.fct->dSign;
+          }
+          modeledVal = baseMy(r, c) + localM.y;
+        } else if (comp == FieldComponent::MZ) {
+          if (baseMz.is_dummy(r, c))
+            continue;
+          Point3D rMag(obsPointsGrv[p].x + 0.001, obsPointsGrv[p].y + 0.003,
+                       obsPointsGrv[p].z);
+          Point3D localM(0, 0, 0);
+          for (const auto &entry : localActive) {
+            Point3D fMag(0, 0, 0);
+            entry.fct->fld_gs(rMag, entry.netMag, fMag, 1.0);
+            localM -= fMag * entry.fct->dSign;
+          }
+          modeledVal = baseMz(r, c) + localM.z;
+        }
+
+        double diff = modeledVal - obsVal;
+        sumSqLocal += diff * diff;
+        countLocal++;
+      }
+      outSumSq = sumSqLocal;
+      outCount = countLocal;
+    };
+
+    const auto [threads_count] = pfld::detail::calculate_partition(nPts, 64);
+    double totalSumSq = 0.0;
+    size_t totalCount = 0;
+
+    if (threads_count <= 1) {
+      evaluateRange(0, nPts, totalSumSq, totalCount);
+    } else {
+      std::vector<double> threadSumSq(threads_count, 0.0);
+      std::vector<size_t> threadCount(threads_count, 0);
+      const size_t chunk_size = (nPts + threads_count - 1) / threads_count;
+      {
+        std::vector<pfld::detail::jthread_type> threads;
+        threads.reserve(threads_count);
+        for (size_t t = 0; t < threads_count; ++t) {
+          const size_t start_idx = t * chunk_size;
+          const size_t end_idx = std::min(start_idx + chunk_size, nPts);
+          if (start_idx >= end_idx)
+            break;
+          threads.emplace_back([&, t, start_idx, end_idx]() {
+            evaluateRange(start_idx, end_idx, threadSumSq[t], threadCount[t]);
+          });
+        }
+      }
+      for (size_t t = 0; t < threads_count; ++t) {
+        totalSumSq += threadSumSq[t];
+        totalCount += threadCount[t];
+      }
+    }
+
+    return totalCount > 0 ? std::sqrt(totalSumSq / totalCount) : 0.0;
   };
 
   const double initialRms = objFunc(originalZ);
