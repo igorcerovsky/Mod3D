@@ -1,0 +1,9 @@
+# .inv Python Sub-Project Dependencies
+torch>=2.1.0
+torchvision>=0.16.0
+numpy>=1.24.0
+scipy>=1.10.0
+onnx>=1.15.0
+onnxruntime>=1.16.0
+tqdm>=4.66.0
+matplotlib>=3.7.0

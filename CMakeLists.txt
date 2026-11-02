@@ -37,6 +37,9 @@ add_subdirectory(units)
 # Header-only physics library
 add_subdirectory(pfld)
 
+# Independent neural inversion & 3D voxel engine
+add_subdirectory(.inv)
+
 # Core static library
 add_library(mod3d_core STATIC
     src/Magnetics.cpp
@@ -50,7 +53,7 @@ add_library(mod3d_core STATIC
     src/Project.cpp
 )
 
-target_link_libraries(mod3d_core PUBLIC units pfld Threads::Threads nlohmann_json::nlohmann_json)
+target_link_libraries(mod3d_core PUBLIC units pfld inv Threads::Threads nlohmann_json::nlohmann_json)
 
 target_include_directories(mod3d_core PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
