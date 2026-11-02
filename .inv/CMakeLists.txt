@@ -20,6 +20,16 @@ endif()
 
 find_package(Threads REQUIRED)
 
+find_package(nlohmann_json 3.10 QUIET)
+if(NOT nlohmann_json_FOUND AND NOT TARGET nlohmann_json::nlohmann_json)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
 if(NOT TARGET pfld)
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../pfld")
         add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../pfld" pfld)
@@ -29,7 +39,7 @@ endif()
 # Header-only independent inversion physics and inference interface library
 add_library(inv INTERFACE)
 
-target_link_libraries(inv INTERFACE pfld Threads::Threads)
+target_link_libraries(inv INTERFACE pfld Threads::Threads nlohmann_json::nlohmann_json)
 
 target_include_directories(inv INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

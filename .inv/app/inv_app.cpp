@@ -47,7 +47,7 @@ int main(int argc, char* argv[]) {
     std::cout << "    Minimum Support (S_MS, anomalous volume measure): " << std::fixed << std::setprecision(2) << ms_true << " cells\n";
     std::cout << "    Minimum Gradient Support (S_MGS, boundary area measure): " << mgs_true << "\n\n";
 
-    // 4. Forward model surface gravity anomaly at z = -1.0 m (airborne / surface survey)
+    // 4. Forward model surface gravity anomaly using pfld::InterfaceMesh
     const std::size_t obs_nx = 21;
     const std::size_t obs_ny = 21;
     std::vector<inv::Point3D<double>> obs_points;
@@ -61,18 +61,23 @@ int main(int argc, char* argv[]) {
     std::vector<double> gz_obs;
     inv::ForwardKernel<double>::compute_gravity_field(ground_truth, obs_points, gz_obs);
 
+    std::vector<double> gz_interface_mesh;
+    inv::ForwardKernel<double>::compute_gravity_field_interface_mesh(ground_truth, {}, obs_points, gz_interface_mesh);
+
     double max_gz = 0.0;
     for (double g : gz_obs) {
         if (g > max_gz) max_gz = g;
     }
-    std::cout << "[4] Analytical Forward Modeling (Nagy Rectangular Prism Kernel):\n";
+    std::cout << "[4] Forward Modeling Kernel Comparison:\n";
     std::cout << "    Observation stations: " << obs_points.size() << " surface points\n";
-    std::cout << "    Peak gravity anomaly gz: " << std::setprecision(4) << max_gz << " mGal\n\n";
+    std::cout << "    Nagy Prism Peak gz: " << std::setprecision(4) << max_gz << " mGal\n";
+    std::cout << "    pfld::InterfaceMesh Peak gz (vertical facets skipped): " << gz_interface_mesh[10 * 21 + 10] << " mGal\n\n";
 
-    // 5. Run Inversion Engine
+    // 5. Run 3-Level Coarse-to-Fine Inversion Engine
     inv::InversionConfig cfg;
     cfg.nx = nx; cfg.ny = ny; cfg.nz = nz;
     cfg.dx = dx; cfg.dy = dy; cfg.dz = dz;
+    cfg.coarse_to_fine_levels = 3; // 3-level multiscale hierarchy
     cfg.focusing_e = 1e-3;
     cfg.focusing_e_grad = 1e-3;
 
@@ -82,8 +87,9 @@ int main(int argc, char* argv[]) {
 
     engine.invert_gravity_field(gz_obs, obs_nx, obs_ny, inverted_model, stats);
 
-    std::cout << "[5] Inversion Execution:\n";
+    std::cout << "[5] 3-Level Coarse-to-Fine Inversion Execution:\n";
     std::cout << "    Status: " << stats.message << "\n";
+    std::cout << "    Levels completed: " << stats.levels_completed << " (Coarse -> Medium -> Fine)\n";
     std::cout << "    Elapsed computation time: " << std::setprecision(2) << stats.elapsed_time_ms << " ms\n";
     std::cout << "    Inverted model S_MS: " << stats.minimum_support << "\n";
     std::cout << "    Inverted model S_MGS: " << stats.minimum_gradient_support << "\n";

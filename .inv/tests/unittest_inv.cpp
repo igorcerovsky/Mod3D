@@ -154,6 +154,7 @@ TEST(InversionEngineTest, RunInversionExecution) {
     cfg.dx = 50.0;
     cfg.dy = 50.0;
     cfg.dz = 50.0;
+    cfg.coarse_to_fine_levels = 3;
 
     inv::InversionEngine engine(cfg);
     std::vector<double> obs(8 * 8, 1.5); // uniform 1.5 mGal field
@@ -166,7 +167,63 @@ TEST(InversionEngineTest, RunInversionExecution) {
     EXPECT_EQ(out_model.nx(), 8);
     EXPECT_EQ(out_model.ny(), 8);
     EXPECT_EQ(out_model.nz(), 4);
+    EXPECT_EQ(stats.levels_completed, 3);
     EXPECT_GT(stats.elapsed_time_ms, 0.0);
     EXPECT_GE(out_model.max_value(), cfg.min_density);
     EXPECT_LE(out_model.max_value(), cfg.max_density);
+}
+
+TEST(InversionEngineTest, JsonExchangeSerialization) {
+    inv::InversionSetup setup;
+    setup.mode = "planar";
+    setup.config.nx = 16;
+    setup.config.ny = 16;
+    setup.config.nz = 8;
+    setup.config.coarse_to_fine_levels = 3;
+    setup.obs_x = {0.0, 100.0, 200.0};
+    setup.obs_y = {0.0, 100.0, 200.0};
+    setup.obs_z = {0.0, 0.0, 0.0};
+    setup.obs_gz = {1.2, 2.4, 0.8};
+
+    // Serialize to JSON and parse back
+    nlohmann::json j = setup.to_json();
+    auto loaded = inv::InversionSetup::from_json(j);
+
+    EXPECT_EQ(loaded.mode, "planar");
+    EXPECT_EQ(loaded.config.nx, 16);
+    EXPECT_EQ(loaded.config.coarse_to_fine_levels, 3);
+    EXPECT_EQ(loaded.obs_gz.size(), 3);
+    EXPECT_DOUBLE_EQ(loaded.obs_gz[1], 2.4);
+
+    // Run setup through InversionEngine
+    inv::InversionEngine engine;
+    inv::InversionResult result;
+    bool ok = engine.run_setup(loaded, result);
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(result.density_grid.nx(), 16);
+    EXPECT_EQ(result.stats.levels_completed, 3);
+
+    // Result serialization round-trip
+    nlohmann::json res_j = result.to_json();
+    auto res_loaded = inv::InversionResult::from_json(res_j);
+    EXPECT_EQ(res_loaded.density_grid.nx(), 16);
+    EXPECT_EQ(res_loaded.stats.levels_completed, 3);
+}
+
+TEST(ForwardKernelTest, InterfaceMeshEvaluation) {
+    inv::VoxelGrid<double> grid(4, 4, 4, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0, 0.0);
+    grid(1, 1, 1) = 0.5; // g/cm^3 body
+
+    std::vector<double> topo(5 * 5, 0.0); // flat 0m DEM
+    std::vector<inv::Point3D<double>> obs = {
+        {75.0, 75.0, -5.0}, // Directly above (1, 1, 1) center
+        {300.0, 300.0, -5.0} // Far point
+    };
+
+    std::vector<double> gz;
+    inv::ForwardKernel<double>::compute_gravity_field_interface_mesh(grid, topo, obs, gz);
+
+    EXPECT_EQ(gz.size(), 2);
+    EXPECT_GT(gz[0], 0.0); // Downward attraction is positive
+    EXPECT_LT(gz[1], gz[0]); // Decays with distance
 }

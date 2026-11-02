@@ -82,6 +82,58 @@ The focusing parameter $e$ is gradually **annealed** ($e_0 \to e_{min}$) over it
 
 ---
 
+### 2.4 Optimized Interface Mesh & Planar vs. Spherical Invariants
+
+> [!CAUTION]
+> **CRITICAL GEOPHYSICAL & MATHEMATICAL INVARIANT: PLANAR VS. SPHERICAL EARTH MODELING**
+> 
+> **Vertical Facet Elimination ($n_z \equiv 0$) is strictly valid ONLY for PLANAR Cartesian modeling**, where the vertical gravity vector $\mathbf{g}_z$ is everywhere parallel to the Cartesian Z-axis.
+> In planar geometry, the unit normal of any vertical facet is strictly horizontal:
+> $$\mathbf{n} = (n_x, n_y, 0) \implies n_z = 0 \implies n_z \cdot \text{FldVlado} \equiv 0$$
+> 
+> **SPHERICAL EARTH MODELING RESTRICTION (MOD3D)**:
+> On a spherical Earth (supported by Mod3D), the true local plumb line $\hat{\mathbf{r}} = \mathbf{r} / \|\mathbf{r}\|$ rotates with latitude and longitude across the globe. Across regional survey distances, the local vertical at station A is NOT parallel to station B.
+> Therefore:
+> 1. A lateral facet that is vertical in a local Cartesian projection will have a non-zero projection onto the radial vertical of distant observation stations ($n_z^{local} \ne 0$).
+> 2. **Vertical facets CANNOT be removed in spherical Earth modeling unless voxel columns are drawn from the spherical Earth surface strictly parallel to the global Z-axis within a localized map projection.**
+> On spherical Earth modeling, it is strongly recommended that voxel columns/vortices are drawn in from the spherical surface parallel to the Z-axis, or full 6-facet closed polyhedra are evaluated.
+
+#### Shared Opposite Interface Cancellation ($\Delta \rho$)
+When two vertically adjacent cells $A$ (density $\rho_A$) and $B$ (density $\rho_B$) share an interface $F$:
+$$\mathbf{g}_F = \rho_A \mathbf{F}_A + \rho_B \mathbf{F}_B = \rho_A (n_z \Phi) + \rho_B (-n_z \Phi) = (\rho_A - \rho_B) n_z \Phi = \Delta \rho \cdot n_z \Phi$$
+* **Single Evaluation**: The analytical line integral $\Phi = \text{FldVlado}(F)$ is evaluated once per interface.
+* **Homogeneous Interior Auto-Skipping**: When $\rho_A = \rho_B \implies \Delta \rho = 0$, the calculation is skipped entirely.
+* **Hybrid Topography Mesh**:
+  * **Top Surface**: 2 triangles per DEM cell conforming to terrain elevation ($n_z \ne 0, \Delta \rho = -\rho_{\text{top}}$).
+  * **Subsurface**: Horizontal rectangular quads ($z = \text{const}, n_z = +1, \Delta \rho = \rho_{\text{above}} - \rho_{\text{below}}$).
+  * **Lateral Walls**: Skipped for planar $g_z$ ($n_z = 0$).
+
+---
+
+### 2.5 3-Level Coarse-to-Fine Multiscale Inversion Hierarchy
+
+To accelerate convergence, prevent non-uniqueness trapping, and resolve deep structures without superficial noise:
+* **Level 0 (Coarse Grid: $N_x/4 \times N_y/4 \times N_z/2$)**:
+  * Fits broad regional anomalies and deep basement undulations.
+  * Rapid convergence with loose focusing threshold ($e_{L0} = 5 \times 10^{-3}$).
+* **Level 1 (Medium Grid: $N_x/2 \times N_y/2 \times N_z/2$)**:
+  * Prolongates Level 0 solution as initial prior.
+  * Resolves intermediate intrusive bodies, faults, and structural offsets ($e_{L1} = 2 \times 10^{-3}$).
+* **Level 2 (Fine Target Grid: $N_x \times N_y \times N_z$)**:
+  * Prolongates Level 1 solution.
+  * Applies tight Zhdanov focusing ($S_{MS}, S_{MGS}$) with annealed threshold ($e_{L2} = 10^{-3}$) to produce razor-sharp lithological contacts.
+
+---
+
+### 2.6 JSON Exchange Contract with Mod3D
+
+Mod3D interfaces with `.inv` through standard schema-validated JSON:
+1. **Mod3D Exports `InversionSetup` JSON**: Contains DEM relief elevations, observation stations ($x, y, z, \Delta g_{\text{obs}}$), voxel domain bounds, 3-level schedule, and focusing parameters.
+2. **`.inv` Executes Inversion**: Ingestion, 3-level coarse-to-fine solve, and export of `InversionResult` JSON.
+3. **Mod3D Imports `InversionResult` JSON**: Ingestion into `mod3d_core`, displaying 3D voxel density slices and isosurfaces in `mod3d_gui`.
+
+---
+
 ## 3. The Transformer Opportunity for 3D Inversion
 
 ```

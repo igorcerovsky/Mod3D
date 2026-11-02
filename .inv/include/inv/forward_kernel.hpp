@@ -2,6 +2,7 @@
 
 #include "point.hpp"
 #include "voxel_grid.hpp"
+#include "pfld/interface_mesh.hpp"
 #include <vector>
 #include <cmath>
 #include <cstddef>
@@ -11,7 +12,10 @@ namespace inv {
 
 /**
  * @brief Gravitational & Potential Field Forward Operator.
- * Implements exact analytical right-rectangular prism equations (Nagy, 1966).
+ * Implements:
+ * 1. pfld::InterfaceMesh with triangular DEM topography and shared horizontal quad interfaces
+ *    skipping vertical facets for planar modeling.
+ * 2. Exact analytical right-rectangular prism equations (Nagy, 1966).
  */
 template <typename T = double>
 class ForwardKernel {
@@ -20,9 +24,27 @@ public:
     static constexpr T G_SI = static_cast<T>(6.67430e-11);
     
     // Scale factor to produce gravity anomaly in mGal given coordinates in meters and density in g/cm^3
-    // 1 g/cm^3 = 1000 kg/m^3. 1 mGal = 1e-5 m/s^2.
-    // G_SI * 1000 / 1e-5 = 6.67430e-11 * 1e8 = 6.67430e-3
     static constexpr T G_MGAL = static_cast<T>(6.67430e-3);
+
+    /**
+     * @brief Computes gravity field gz across observation points using pfld::InterfaceMesh.
+     * Evaluates:
+     * - Topography DEM triangular facets (conforming to surface relief)
+     * - Horizontal rectangular quad interfaces scaled by Delta_rho = rho_above - rho_below
+     * - Skips vertical facets for planar Cartesian modeling (nz = 0).
+     */
+    static void compute_gravity_field_interface_mesh(
+        const VoxelGrid<T>& grid,
+        const std::vector<T>& topo_elevations,
+        const std::vector<Point3D<T>>& obs_pts,
+        std::vector<T>& out_gz)
+    {
+        pfld::InterfaceMesh<T> mesh;
+        mesh.build(grid.nx(), grid.ny(), grid.nz(),
+                   grid.x0(), grid.y0(), grid.dx(), grid.dy(), grid.dz(),
+                   topo_elevations, grid.data(), grid.z0(), T{0});
+        mesh.compute_gravity_z(obs_pts, out_gz);
+    }
 
     /**
      * @brief Computes vertical gravitational attraction gz (in mGal) of a single rectangular prism.

@@ -11,6 +11,7 @@
 
 #include "pfld/facet.hpp"
 #include "pfld/pfld_compute.hpp"
+#include "pfld/interface_mesh.hpp"
 #include "pfld_test_io.h"
 
 namespace {
@@ -626,6 +627,45 @@ TEST(PfldUnitsTest, ParallelComputeGravityZUnits)
 	for (size_t i = 0; i < grid_pts.size(); ++i) {
 		EXPECT_DOUBLE_EQ(results_gu[i].value(), raw_gz[i] * 2670.0 * 1.0e6);
 	}
+}
+
+TEST(PfldInterfaceMeshTest, PlanarOptimizationAndDensityDiff) {
+	// 4x4x4 voxel domain
+	const size_t nx = 4, ny = 4, nz = 4;
+	const double dx = 100.0, dy = 100.0, dz = 50.0;
+	std::vector<double> cell_densities(nx * ny * nz, 0.0);
+
+	// Embed a 2x2x2 anomaly of density 0.5 g/cm^3 (500 kg/m^3)
+	for (size_t ix = 1; ix <= 2; ++ix) {
+		for (size_t iy = 1; iy <= 2; ++iy) {
+			for (size_t iz = 1; iz <= 2; ++iz) {
+				cell_densities[(ix * ny + iy) * nz + iz] = 0.5;
+			}
+		}
+	}
+
+	pfld::InterfaceMesh<double> mesh;
+	mesh.build(nx, ny, nz, 0.0, 0.0, dx, dy, dz, {}, cell_densities, 0.0, 0.0);
+
+	// Since top layer iz=0 is density 0, there are no surface interfaces
+	// The internal interfaces exist at iz=1 (rho_above=0, rho_below=0.5 -> delta_rho = -0.5)
+	// and at iz=3 (rho_above=0.5, rho_below=0 -> delta_rho = +0.5).
+	// Within the 2x2x2 body (between iz=1 and iz=2), delta_rho = 0.5 - 0.5 = 0, so it is SKIPPED!
+	EXPECT_GT(mesh.total_active_interfaces(), 0);
+
+	// Evaluate at surface
+	std::vector<pfld::Point3Dd> obs_pts = {
+		{200.0, 200.0, -10.0},
+		{500.0, 500.0, -10.0}
+	};
+	std::vector<double> gz;
+	mesh.compute_gravity_z(obs_pts, gz);
+
+	EXPECT_EQ(gz.size(), 2);
+	// Central observation directly above anomaly must see positive downward gravity
+	EXPECT_GT(gz[0], 0.0);
+	// Far observation sees weaker field
+	EXPECT_LT(gz[1], gz[0]);
 }
 
 } // namespace
