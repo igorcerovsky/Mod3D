@@ -20,10 +20,16 @@ endif()
 
 find_package(Threads REQUIRED)
 
+if(NOT TARGET pfld)
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/../pfld")
+        add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../pfld" pfld)
+    endif()
+endif()
+
 # Header-only independent inversion physics and inference interface library
 add_library(inv INTERFACE)
 
-target_link_libraries(inv INTERFACE Threads::Threads)
+target_link_libraries(inv INTERFACE pfld Threads::Threads)
 
 target_include_directories(inv INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

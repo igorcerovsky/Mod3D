@@ -17,7 +17,7 @@ TEST(Point3DTest, BasicVectorOperations) {
     EXPECT_DOUBLE_EQ(diff.z, 3.0);
 
     EXPECT_DOUBLE_EQ(p1.dot(p2), 1.0 * 4.0 + 2.0 * 5.0 + 3.0 * 6.0);
-    EXPECT_DOUBLE_EQ(p1.squared_norm(), 1.0 + 4.0 + 9.0);
+    EXPECT_DOUBLE_EQ(p1.norm_squared(), 1.0 + 4.0 + 9.0);
     EXPECT_DOUBLE_EQ(p1.norm(), std::sqrt(14.0));
 
     auto cross = p1.cross(p2);
