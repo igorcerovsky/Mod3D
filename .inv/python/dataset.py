@@ -116,3 +116,30 @@ class SyntheticPotentialFieldDataset(Dataset):
         density_tensor = torch.from_numpy(density_model).permute(2, 0, 1).unsqueeze(0) # (1, D, H, W)
 
         return obs_tensor, density_tensor
+
+
+if __name__ == "__main__":
+    import argparse
+    import os
+
+    parser = argparse.ArgumentParser(description="Procedural 3D Geology & Potential Field Data Generator")
+    parser.add_argument("--samples", type=int, default=100, help="Number of samples to generate and verify")
+    parser.add_argument("--nx", type=int, default=64, help="Number of cells along X")
+    parser.add_argument("--ny", type=int, default=64, help="Number of cells along Y")
+    parser.add_argument("--nz", type=int, default=32, help="Number of cells along Z")
+    parser.add_argument("--output", type=str, default="", help="Optional output directory to save .npz files")
+    args = parser.parse_args()
+
+    print(f"Generating {args.samples} synthetic models ({args.nx}x{args.ny}x{args.nz})...")
+    ds = SyntheticPotentialFieldDataset(n_samples=args.samples, nx=args.nx, ny=args.ny, nz=args.nz)
+    obs, dens = ds[0]
+    print(f"Sample 0 generated successfully!")
+    print(f"Observation tensor shape: {obs.shape} | range: [{obs.min():.4f}, {obs.max():.4f}] mGal")
+    print(f"Density tensor shape:     {dens.shape} | range: [{dens.min():.4f}, {dens.max():.4f}] g/cm^3")
+
+    if args.output:
+        os.makedirs(args.output, exist_ok=True)
+        sample_path = os.path.join(args.output, "sample_preview.npz")
+        np.savez_compressed(sample_path, obs=obs.numpy(), density=dens.numpy())
+        print(f"Saved sample preview to: {sample_path}")
+

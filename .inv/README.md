@@ -167,6 +167,8 @@ target_link_libraries(mod3d_core PUBLIC inv)
 
 ### Python Training Pipeline
 
+> See [**`README-train.md`**](file:///Users/igorcerovsky/Documents/Mod3D/.inv/README-train.md) for the complete, step-by-step training, dataset synthesis, and ONNX deployment guide.
+
 ```bash
 cd .inv/python
 python3 -m venv venv
