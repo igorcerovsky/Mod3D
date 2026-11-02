@@ -302,7 +302,8 @@ When applying the model to real field data in Mod3D:
    The pre-trained Transformer takes the survey's residual gravity anomaly and predicts an initial 3D density volume $\mathbf{m}_0$.
 2. **Test-Time Optimization (TTO / 10–20 Steps)**:
    Because real surveys have local baseline shifts and regional trends, Mod3D performs a quick gradient descent directly on the project's data:
-   * Uses `pfld::InterfaceMesh` for exact terrain-conforming forward evaluations (skipping vertical facets for maximum speed).
+   * Uses `pfld::InterfaceMesh` (`PfldInterfaceMeshOperator`) as the primary forward operator for exact terrain-conforming forward evaluations with triangular DEM relief facets and horizontal shared quad interfaces (skipping vertical planar facets for maximum speed).
+   * Fast FFT block-Toeplitz operator (`ToeplitzGravityOperator`) is retained solely as an optional accelerator and benchmark baseline for flat grids (`use_fft_solver_benchmark = true`).
    * Drives the data misfit residual below $1\%$.
 3. **Drillhole & Well Locking**:
    If wells (`mod3d::Well`) or seismic guidelines (`mod3d::Guideline`) exist in the project, known geological contacts and density logs are clamped as fixed Dirichlet boundaries:

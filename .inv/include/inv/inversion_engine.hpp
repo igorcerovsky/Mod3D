@@ -75,6 +75,11 @@ struct InversionConfig {
     // Max entries of the explicit sensitivity matrix used when stations are not on a flat plane.
     double dense_max_entries{30e6};
 
+    // When false (default), pfld::InterfaceMesh is the primary forward operator across all
+    // levels and topography configurations (triangular DEM relief + shared horizontal quad interfaces).
+    // When true, uses ToeplitzGravityOperator (FFT) solely as a benchmark baseline on flat grids.
+    bool use_fft_solver_benchmark{false};
+
     bool verbose{false};             ///< per-iteration solver trace on stderr (not serialised)
 
     // Reserved: a prior is supplied through InversionSetup::prior (see python/infer_prior.py).
@@ -150,6 +155,7 @@ struct InversionSetup {
             {"scale_prior", config.scale_prior},
             {"min_density", config.min_density},
             {"max_density", config.max_density},
+            {"use_fft_solver_benchmark", config.use_fft_solver_benchmark},
             {"onnx_model_path", config.onnx_model_path}
         };
 
@@ -210,6 +216,7 @@ struct InversionSetup {
             c.scale_prior = p.value("scale_prior", c.scale_prior);
             c.min_density = p.value("min_density", c.min_density);
             c.max_density = p.value("max_density", c.max_density);
+            c.use_fft_solver_benchmark = p.value("use_fft_solver_benchmark", c.use_fft_solver_benchmark);
             c.onnx_model_path = p.value("onnx_model_path", c.onnx_model_path);
         }
 
@@ -494,8 +501,7 @@ public:
 
             // ---- forward operator ------------------------------------------------------------------
             std::unique_ptr<LinearOperator> op;
-            const std::size_t dense_entries = g.columns() * g.cells();
-            if (flat) {
+            if (c.use_fft_solver_benchmark && flat) {
                 double z_obs = zmin - c.obs_height;
                 if (!oz_level.empty()) {
                     double s = 0.0;
@@ -503,7 +509,7 @@ public:
                     z_obs = s / static_cast<double>(oz_level.size());
                 }
                 op = std::make_unique<ToeplitzGravityOperator>(g, z_obs);
-            } else if (static_cast<double>(dense_entries) <= c.dense_max_entries) {
+            } else {
                 std::vector<Point3D<double>> obs;
                 obs.reserve(g.columns());
                 for (std::size_t ix = 0; ix < g.nx; ++ix) {
@@ -513,12 +519,7 @@ public:
                         obs.emplace_back(g.xc(ix), g.yc(iy), z);
                     }
                 }
-                op = std::make_unique<DenseGravityOperator>(g, obs);
-            } else {
-                double s = 0.0;
-                for (double v : col_surface) s += v;
-                op = std::make_unique<ToeplitzGravityOperator>(g, s / static_cast<double>(col_surface.size()) - c.obs_height);
-                note += " [level " + std::to_string(l) + ": mean-surface FFT approximation of non-flat topography]";
+                op = std::make_unique<PfldInterfaceMeshOperator>(g, obs, topo_level, c.dense_max_entries);
             }
 
             // ---- prior (restricted to this level) -----------------------------------------------
@@ -604,7 +605,8 @@ public:
         stats.minimum_support = stats.levels.back().ms_volume_fraction;
         stats.minimum_gradient_support = stats.levels.back().mgs_area_fraction;
         stats.message = std::string("Completed ") + std::to_string(n_levels) + "-level coarse-to-fine " +
-                        (c.focusing_enabled ? "focusing (IRLS MS+MGS)" : "Tikhonov L2 baseline") + " inversion" + note;
+                        (c.focusing_enabled ? "focusing (IRLS MS+MGS)" : "Tikhonov L2 baseline") + " inversion using " +
+                        (c.use_fft_solver_benchmark ? "FFT Toeplitz benchmark operator" : "pfld::InterfaceMesh operator") + note;
         stats.elapsed_time_ms = std::chrono::duration<double, std::milli>(
             std::chrono::high_resolution_clock::now() - t_start).count();
         return true;

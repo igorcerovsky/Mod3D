@@ -293,6 +293,89 @@ TEST(GravityOperatorTest, ToeplitzMatchesDenseAndDirectSummation) {
     for (size_t j = 0; j < c1.size(); ++j) EXPECT_NEAR(c1[j], c2[j], 1e-12);
 }
 
+TEST(GravityOperatorTest, PfldInterfaceMeshMatchesDirectInterfaceMeshEvaluation) {
+    const inv::GridGeometry g{4, 4, 3, 0.0, 0.0, 10.0, 50.0, 40.0, 30.0};
+    std::vector<inv::Point3D<double>> obs;
+    for (std::size_t ix = 0; ix < g.nx; ++ix) {
+        for (std::size_t iy = 0; iy < g.ny; ++iy) {
+            obs.emplace_back(g.xc(ix), g.yc(iy), -10.0);
+        }
+    }
+
+    std::vector<double> topo((g.nx + 1) * (g.ny + 1));
+    for (std::size_t iy = 0; iy <= g.ny; ++iy) {
+        for (std::size_t ix = 0; ix <= g.nx; ++ix) {
+            topo[iy * (g.nx + 1) + ix] = g.z0 + 2.0 * static_cast<double>(ix) - 1.5 * static_cast<double>(iy);
+        }
+    }
+
+    inv::PfldInterfaceMeshOperator op(g, obs, topo);
+    EXPECT_TRUE(op.is_dense());
+
+    auto m = random_vec(g.cells(), 42);
+    std::vector<double> d_op;
+    op.apply(m, d_op);
+
+    // Direct evaluation via pfld::InterfaceMesh::build with densities
+    pfld::InterfaceMesh<double> direct_mesh;
+    direct_mesh.build(g.nx, g.ny, g.nz, g.x0, g.y0, g.dx, g.dy, g.dz, topo, m, g.z0, 0.0);
+    std::vector<pfld::Point3Dd> pfld_obs;
+    for (const auto& pt : obs) pfld_obs.emplace_back(pt.x, pt.y, pt.z);
+    std::vector<double> d_direct;
+    direct_mesh.compute_gravity_z(pfld_obs, d_direct);
+
+    ASSERT_EQ(d_op.size(), d_direct.size());
+    for (std::size_t i = 0; i < d_op.size(); ++i) {
+        EXPECT_NEAR(d_op[i], d_direct[i], 1e-12);
+    }
+
+    // Adjointness test: <G m, r> == <m, G^T r>
+    auto r = random_vec(g.columns(), 7);
+    std::vector<double> g_adj;
+    op.apply_transpose(r, g_adj);
+
+    double lhs = 0.0, rhs = 0.0;
+    for (std::size_t i = 0; i < d_op.size(); ++i) lhs += d_op[i] * r[i];
+    for (std::size_t j = 0; j < m.size(); ++j) rhs += m[j] * g_adj[j];
+    EXPECT_NEAR(lhs, rhs, 1e-10);
+}
+
+TEST(GravityOperatorTest, PfldInterfaceMeshMatchesNagyPrismAndToeplitzOnFlatPlane) {
+    const inv::GridGeometry g{6, 5, 4, 0.0, 0.0, 10.0, 50.0, 40.0, 30.0};
+    const double z_obs = -10.0;
+    std::vector<inv::Point3D<double>> obs;
+    for (std::size_t ix = 0; ix < g.nx; ++ix) {
+        for (std::size_t iy = 0; iy < g.ny; ++iy) {
+            obs.emplace_back(g.xc(ix), g.yc(iy), z_obs);
+        }
+    }
+
+    inv::PfldInterfaceMeshOperator op_mesh(g, obs);
+    inv::DenseGravityOperator op_dense(g, obs);
+    inv::ToeplitzGravityOperator op_toep(g, z_obs);
+
+    auto m = random_vec(g.cells(), 13);
+    std::vector<double> d_mesh, d_dense, d_toep;
+    op_mesh.apply(m, d_mesh);
+    op_dense.apply(m, d_dense);
+    op_toep.apply(m, d_toep);
+
+    // Nagy prism and pfld InterfaceMesh evaluate the exact same Newton potential;
+    // difference is only CODATA G precision (~6.7e-5 relative).
+    for (std::size_t i = 0; i < d_mesh.size(); ++i) {
+        EXPECT_NEAR(d_mesh[i], d_dense[i], 1e-3 * std::abs(d_dense[i]) + 1e-6);
+        EXPECT_NEAR(d_dense[i], d_toep[i], 1e-10);
+    }
+
+    // Column norms match
+    std::vector<double> s_mesh, s_dense;
+    op_mesh.column_norm_squared(s_mesh);
+    op_dense.column_norm_squared(s_dense);
+    for (std::size_t j = 0; j < s_mesh.size(); ++j) {
+        EXPECT_NEAR(s_mesh[j], s_dense[j], 1e-3 * s_dense[j] + 1e-8);
+    }
+}
+
 TEST(FocusingMetricsTest, PhysicalFormsAreResolutionInvariant) {
     // Same physical block (100 m cube of 0.4 g/cm^3) on a 50 m lattice and on a 25 m lattice.
     inv::VoxelGrid<double> a(8, 8, 8, 0, 0, 0, 50, 50, 50, 0.0);

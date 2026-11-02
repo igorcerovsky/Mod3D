@@ -111,8 +111,10 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │   ├── point.hpp               # 3D vector and coordinate primitives
 │   ├── voxel_grid.hpp          # 3D regular voxel domain and tensor buffer
 │   ├── forward_kernel.hpp      # Analytical Nagy rectangular prism forward operator & FFT
+│   ├── gravity_operator.hpp    # PfldInterfaceMeshOperator (primary), Toeplitz (benchmark), Dense
+│   ├── focusing_solver.hpp     # Portniaguine-Zhdanov IRLS solver with Jacobi-PCG & discrepancy cooling
 │   ├── focusing_metrics.hpp    # Zhdanov MS and MGS focusing stabilizers & IRLS weights
-│   ├── inversion_engine.hpp    # ONNX Runtime C++ neural inference & tiling wrapper
+│   ├── inversion_engine.hpp    # Multi-scale coarse-to-fine focusing engine & Mod3D JSON exchange
 │   └── inv.hpp                 # Umbrella library header
 │
 ├── app/                        # Standalone C++ command-line tool

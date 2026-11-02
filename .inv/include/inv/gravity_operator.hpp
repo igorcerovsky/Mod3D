@@ -4,6 +4,7 @@
 #include "forward_kernel.hpp"
 #include "parallel.hpp"
 #include "point.hpp"
+#include "pfld/interface_mesh.hpp"
 
 #include <algorithm>
 #include <complex>
@@ -50,6 +51,218 @@ public:
     virtual void column_norm_squared(std::vector<double>& out) const = 0;
     /// Optional hint: only cells flagged active will be non-zero in `m` (enables skipping work).
     virtual void set_active(const std::vector<char>& /*active*/) {}
+};
+
+/**
+ * @brief Primary 3D potential field forward operator based on pfld::InterfaceMesh.
+ *
+ * Evaluates gravity gz using:
+ *  1. Triangulated DEM topography facets (conforming to surface relief).
+ *  2. Horizontal rectangular quad interfaces (shared between adjacent depth layers).
+ *  3. Bottom boundary horizontal quad interfaces (z = z_max).
+ *  4. Planar vertical facet elimination (n_z = 0 facets contribute identically zero to gz
+ *     in Cartesian coordinates; skipping them avoids 66.7% of line integrals with exact precision).
+ *
+ * Represents G = K * D where D maps cell densities m to interface contrasts Delta_rho,
+ * and K evaluates the Pohanka/Vlado line integrals for each facet at unit contrast.
+ *
+ * For moderate grid sizes (rows * cols <= max_dense_entries), G is assembled in parallel
+ * once and stored as a dense matrix for maximum CG/IRLS efficiency.
+ * When rows * cols > max_dense_entries, operates matrix-free directly on the pfld facets.
+ */
+class PfldInterfaceMeshOperator final : public LinearOperator {
+public:
+    PfldInterfaceMeshOperator(const GridGeometry& g,
+                              const std::vector<Point3D<double>>& obs,
+                              const std::vector<double>& topo_elevations = {},
+                              double max_dense_entries = 30e6)
+        : g_(g), rows_(obs.size()), cols_(g.cells()), obs_(obs)
+    {
+        // 1. Build interface mesh geometry with pfld
+        mesh_.build_geometry(g.nx, g.ny, g.nz,
+                             g.x0, g.y0, g.dx, g.dy, g.dz,
+                             topo_elevations, g.z0);
+
+        const std::size_t total_dense_entries = rows_ * cols_;
+
+        if (static_cast<double>(total_dense_entries) <= max_dense_entries) {
+            is_dense_ = true;
+            g_mat_.assign(rows_ * cols_, 0.0);
+
+            // Parallel assembly over observations
+            parallel_for(rows_, [&](std::size_t i) {
+                const auto& obs_pt = obs_[i];
+                const pfld::Point3Dd p_obs(obs_pt.x, obs_pt.y, obs_pt.z);
+                double* row = g_mat_.data() + i * cols_;
+
+                for (const auto& facet : mesh_.interfaces()) {
+                    const double u = facet.evaluate_unit_gz(p_obs);
+                    if (facet.cell_above >= 0) {
+                        row[facet.cell_above] += u;
+                    }
+                    if (facet.cell_below >= 0) {
+                        row[facet.cell_below] -= u;
+                    }
+                }
+            });
+
+            // Column norms squared: sum_i G_ij^2
+            sens2_.assign(cols_, 0.0);
+            for (std::size_t i = 0; i < rows_; ++i) {
+                const double* row = g_mat_.data() + i * cols_;
+                for (std::size_t j = 0; j < cols_; ++j) {
+                    sens2_[j] += row[j] * row[j];
+                }
+            }
+        } else {
+            // Matrix-free fallback for massive grids
+            is_dense_ = false;
+            compute_matrix_free_sens2();
+        }
+    }
+
+    [[nodiscard]] std::size_t rows() const noexcept override { return rows_; }
+    [[nodiscard]] std::size_t cols() const noexcept override { return cols_; }
+    [[nodiscard]] bool is_dense() const noexcept { return is_dense_; }
+    [[nodiscard]] const pfld::InterfaceMesh<double>& mesh() const noexcept { return mesh_; }
+
+    void set_active(const std::vector<char>& active) override {
+        active_cols_.clear();
+        for (std::size_t j = 0; j < active.size(); ++j) {
+            if (active[j]) active_cols_.push_back(j);
+        }
+        use_active_ = true;
+    }
+
+    void apply(const std::vector<double>& m, std::vector<double>& d) const override {
+        d.assign(rows_, 0.0);
+        if (is_dense_) {
+            parallel_for(rows_, [&](std::size_t i) {
+                const double* row = g_mat_.data() + i * cols_;
+                double s = 0.0;
+                if (use_active_) {
+                    for (const std::size_t j : active_cols_) s += row[j] * m[j];
+                } else {
+                    for (std::size_t j = 0; j < cols_; ++j) s += row[j] * m[j];
+                }
+                d[i] = s;
+            });
+        } else {
+            // Matrix-free: evaluate d = K (D m) directly with pfld interfaces
+            const auto& facets = mesh_.interfaces();
+            std::vector<double> delta_rho(facets.size(), 0.0);
+            for (std::size_t f = 0; f < facets.size(); ++f) {
+                const auto& facet = facets[f];
+                double val = 0.0;
+                if (facet.cell_above >= 0) val += m[facet.cell_above];
+                if (facet.cell_below >= 0) val -= m[facet.cell_below];
+                delta_rho[f] = val;
+            }
+
+            parallel_for(rows_, [&](std::size_t i) {
+                const pfld::Point3Dd p_obs(obs_[i].x, obs_[i].y, obs_[i].z);
+                double s = 0.0;
+                for (std::size_t f = 0; f < facets.size(); ++f) {
+                    if (std::abs(delta_rho[f]) > 1e-12) {
+                        s += delta_rho[f] * facets[f].evaluate_unit_gz(p_obs);
+                    }
+                }
+                d[i] = s;
+            });
+        }
+    }
+
+    void apply_transpose(const std::vector<double>& r, std::vector<double>& g) const override {
+        g.assign(cols_, 0.0);
+        if (is_dense_) {
+            if (use_active_) {
+                parallel_for(active_cols_.size(), [&](std::size_t k) {
+                    const std::size_t j = active_cols_[k];
+                    double s = 0.0;
+                    for (std::size_t i = 0; i < rows_; ++i) s += g_mat_[i * cols_ + j] * r[i];
+                    g[j] = s;
+                });
+            } else {
+                for (std::size_t i = 0; i < rows_; ++i) {
+                    const double* row = g_mat_.data() + i * cols_;
+                    const double ri = r[i];
+                    for (std::size_t j = 0; j < cols_; ++j) g[j] += row[j] * ri;
+                }
+            }
+        } else {
+            // Matrix-free: g = D^T (K^T r)
+            const auto& facets = mesh_.interfaces();
+            std::vector<double> w(facets.size(), 0.0);
+            parallel_for(facets.size(), [&](std::size_t f) {
+                double wf = 0.0;
+                for (std::size_t i = 0; i < rows_; ++i) {
+                    const pfld::Point3Dd p_obs(obs_[i].x, obs_[i].y, obs_[i].z);
+                    wf += r[i] * facets[f].evaluate_unit_gz(p_obs);
+                }
+                w[f] = wf;
+            });
+
+            // Map back: g = D^T w
+            for (std::size_t f = 0; f < facets.size(); ++f) {
+                const auto& facet = facets[f];
+                if (facet.cell_above >= 0) g[facet.cell_above] += w[f];
+                if (facet.cell_below >= 0) g[facet.cell_below] -= w[f];
+            }
+            if (use_active_) {
+                for (std::size_t j = 0; j < cols_; ++j) {
+                    if (std::find(active_cols_.begin(), active_cols_.end(), j) == active_cols_.end()) {
+                        g[j] = 0.0;
+                    }
+                }
+            }
+        }
+    }
+
+    void column_norm_squared(std::vector<double>& out) const override {
+        out = sens2_;
+    }
+
+    [[nodiscard]] double element(std::size_t i, std::size_t j) const noexcept {
+        if (is_dense_) {
+            return g_mat_[i * cols_ + j];
+        }
+        const pfld::Point3Dd p_obs(obs_[i].x, obs_[i].y, obs_[i].z);
+        double s = 0.0;
+        for (const auto& facet : mesh_.interfaces()) {
+            if (facet.cell_above == static_cast<int64_t>(j)) s += facet.evaluate_unit_gz(p_obs);
+            if (facet.cell_below == static_cast<int64_t>(j)) s -= facet.evaluate_unit_gz(p_obs);
+        }
+        return s;
+    }
+
+private:
+    void compute_matrix_free_sens2() {
+        sens2_.assign(cols_, 0.0);
+        const auto& facets = mesh_.interfaces();
+        parallel_for(cols_, [&](std::size_t j) {
+            double sum_sq = 0.0;
+            for (std::size_t i = 0; i < rows_; ++i) {
+                const pfld::Point3Dd p_obs(obs_[i].x, obs_[i].y, obs_[i].z);
+                double g_ij = 0.0;
+                for (const auto& facet : facets) {
+                    if (facet.cell_above == static_cast<int64_t>(j)) g_ij += facet.evaluate_unit_gz(p_obs);
+                    if (facet.cell_below == static_cast<int64_t>(j)) g_ij -= facet.evaluate_unit_gz(p_obs);
+                }
+                sum_sq += g_ij * g_ij;
+            }
+            sens2_[j] = sum_sq;
+        });
+    }
+
+    GridGeometry g_;
+    std::size_t rows_, cols_;
+    std::vector<Point3D<double>> obs_;
+    pfld::InterfaceMesh<double> mesh_;
+    bool is_dense_{false};
+    std::vector<double> g_mat_;
+    std::vector<double> sens2_;
+    std::vector<std::size_t> active_cols_;
+    bool use_active_{false};
 };
 
 /**
