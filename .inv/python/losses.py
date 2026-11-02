@@ -1,10 +1,14 @@
-"""Physics-Informed & Zhdanov Focusing Loss Functions for 3D Potential Field Inversion.
+"""Physics-informed & Zhdanov focusing losses for 3D potential-field inversion.
 
-Implements:
-1. Data Misfit Loss (via differentiable forward approximation).
-2. Zhdanov Minimum Support (MS) loss for compact anomaly recovery.
-3. Zhdanov Minimum Gradient Support (MGS) loss for sharp blocky lithological contacts.
-4. Total compound objective with curriculum annealing.
+The focusing functionals use the SAME physical definitions as the C++ engine
+(``inv::FocusingEvaluator``): volume-weighted Minimum Support and face-based, area-weighted
+Minimum Gradient Support (jump form). On a regular lattice they are returned as fractions of the
+domain volume / interior face area, hence independent of the grid resolution:
+
+    S_MS  = sum_j V_j x_j^2 / (x_j^2 + e^2)  /  sum_j V_j,                x = m - m_ref
+    S_MGS = sum_f A_f D_f^2 / (D_f^2 + e^2)  /  sum_f A_f,                D = jump across face f
+
+Tensors are (B, 1, D=nz, H=nx, W=ny) with spacings (dz, dx, dy).
 
 References:
 - Portniaguine, O. & Zhdanov, M. S. (1999). Focusing geophysical inversion images.
@@ -12,100 +16,84 @@ References:
 """
 
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
 class ZhdanovFocusingLoss(nn.Module):
-    """Computes Portniaguine & Zhdanov's Minimum Support and Minimum Gradient Support."""
-
-    def __init__(self, e=1e-3, e_grad=1e-3):
+    def __init__(self, spacing=(1.0, 1.0, 1.0)):
         super().__init__()
-        self.e = e
-        self.e_grad = e_grad
+        self.dz, self.dx, self.dy = spacing
 
-    def minimum_support(self, m: torch.Tensor, e: float = None) -> torch.Tensor:
-        """S_MS(m) = sum (m^2 / (m^2 + e^2)) / M
+    def minimum_support(self, m, e, m_ref=None):
+        x = m if m_ref is None else m - m_ref
+        x2 = x * x
+        return torch.mean(x2 / (x2 + e * e))  # uniform lattice: volume weights cancel
 
-        Approximates the anomalous volume (L0 pseudo-norm).
-        """
-        eps = e if e is not None else self.e
-        m2 = m ** 2
-        return torch.mean(m2 / (m2 + eps ** 2))
+    def minimum_gradient_support(self, m, e, m_ref=None):
+        x = m if m_ref is None else m - m_ref
+        e2 = e * e
+        faces = (
+            (x[:, :, 1:, :, :] - x[:, :, :-1, :, :], self.dx * self.dy),   # z-normal faces
+            (x[:, :, :, 1:, :] - x[:, :, :, :-1, :], self.dz * self.dy),   # x-normal faces
+            (x[:, :, :, :, 1:] - x[:, :, :, :, :-1], self.dz * self.dx),   # y-normal faces
+        )
+        num, den = 0.0, 0.0
+        for d, area in faces:
+            d2 = d * d
+            num = num + area * torch.sum(d2 / (d2 + e2))
+            den = den + area * d.numel()
+        return num / den
 
-    def minimum_gradient_support(self, m: torch.Tensor, e_grad: float = None) -> torch.Tensor:
-        """S_MGS(m) = sum (||grad m||^2 / (||grad m||^2 + e_grad^2)) / M
-
-        Penalizes transition zone area, creating blocky, razor-sharp boundaries.
-        """
-        eps_grad = e_grad if e_grad is not None else self.e_grad
-
-        # 3D spatial finite differences: (B, C, D, H, W)
-        grad_d = m[:, :, 1:, :, :] - m[:, :, :-1, :, :]
-        grad_h = m[:, :, :, 1:, :] - m[:, :, :, :-1, :]
-        grad_w = m[:, :, :, :, 1:] - m[:, :, :, :, :-1]
-
-        # Pad to match dimensions
-        grad_d = F.pad(grad_d, (0, 0, 0, 0, 0, 1))
-        grad_h = F.pad(grad_h, (0, 0, 0, 1, 0, 0))
-        grad_w = F.pad(grad_w, (0, 1, 0, 0, 0, 0))
-
-        grad_norm_sq = grad_d ** 2 + grad_h ** 2 + grad_w ** 2
-        return torch.mean(grad_norm_sq / (grad_norm_sq + eps_grad ** 2))
-
-    def forward(self, m_pred: torch.Tensor, e: float = None, e_grad: float = None):
-        ms = self.minimum_support(m_pred, e)
-        mgs = self.minimum_gradient_support(m_pred, e_grad)
-        return ms, mgs
+    def forward(self, m, e, e_jump=None, m_ref=None):
+        return (self.minimum_support(m, e, m_ref),
+                self.minimum_gradient_support(m, e if e_jump is None else e_jump, m_ref))
 
 
 class CompoundInversionLoss(nn.Module):
-    """Compound objective combining:
+    """Supervised + physics data misfit + Zhdanov focusing, with a curriculum on e.
 
-    1. Supervised Model Loss (L1/L2 vs Ground Truth if available)
-    2. Data Misfit Loss (Forward response vs Observed field)
-    3. Zhdanov Minimum Support Loss (Compactness)
-    4. Zhdanov Minimum Gradient Support Loss (Sharp edges)
+    1. Weighted L1 to the ground truth (anomalous cells weighted ``1 + anomaly_boost``): L1, not
+       smooth-L1/L2, so the network is not pulled towards blurred means.
+    2. Relative data misfit ``||G m_pred - d_obs||^2 / ||d_obs||^2`` through the physical forward
+       operator ``forward_op`` (per sample, averaged over the batch). Disabled if forward_op is None.
+    3. S_MS and S_MGS with e annealed geometrically e_start -> e_end over the epochs [g/cm^3].
     """
 
-    def __init__(self, lambda_sup=1.0, lambda_data=0.5, lambda_ms=0.05, lambda_mgs=0.02):
+    def __init__(self, lambda_sup=1.0, lambda_data=1.0, lambda_ms=0.02, lambda_mgs=0.01,
+                 e_start=0.1, e_end=0.005, anomaly_boost=4.0, spacing=(1.0, 1.0, 1.0),
+                 forward_op=None):
         super().__init__()
-        self.lambda_sup = lambda_sup
-        self.lambda_data = lambda_data
-        self.lambda_ms = lambda_ms
-        self.lambda_mgs = lambda_mgs
-        self.focusing = ZhdanovFocusingLoss()
+        self.lambda_sup, self.lambda_data = lambda_sup, lambda_data
+        self.lambda_ms, self.lambda_mgs = lambda_ms, lambda_mgs
+        self.e_start, self.e_end = e_start, e_end
+        self.anomaly_boost = anomaly_boost
+        self.forward_op = forward_op
+        self.focusing = ZhdanovFocusingLoss(spacing)
 
-    def forward(self, m_pred, m_true, d_obs=None, d_pred=None, epoch=1, total_epochs=50):
-        # 1. Supervised loss
-        l_sup = F.smooth_l1_loss(m_pred, m_true)
-
-        # 2. Data misfit loss (if forward field provided)
-        l_data = torch.tensor(0.0, device=m_pred.device)
-        if d_obs is not None and d_pred is not None:
-            l_data = F.mse_loss(d_pred, d_obs)
-
-        # 3. Annealing curriculum for Zhdanov focusing threshold e:
-        # e decreases over epochs: 0.1 -> 0.001
+    def e_at(self, epoch, total_epochs):
         progress = min(1.0, max(0.0, (epoch - 1) / max(1, total_epochs - 1)))
-        e_curr = 0.1 * math.pow(0.01, progress) # Exponential decay
-        e_grad_curr = 0.1 * math.pow(0.01, progress)
+        return self.e_start * math.pow(self.e_end / self.e_start, progress)
 
-        ms_loss, mgs_loss = self.focusing(m_pred, e=e_curr, e_grad=e_grad_curr)
+    def forward(self, m_pred, m_true, d_obs=None, epoch=1, total_epochs=50):
+        weights = 1.0 + self.anomaly_boost * (m_true.abs() > 0.05).float()
+        l_sup = torch.mean(weights * (m_pred - m_true).abs())
 
-        total_loss = (
-            self.lambda_sup * l_sup
-            + self.lambda_data * l_data
-            + self.lambda_ms * ms_loss
-            + self.lambda_mgs * mgs_loss
-        )
+        l_data = torch.zeros((), device=m_pred.device)
+        if self.forward_op is not None and d_obs is not None:
+            d_pred = self.forward_op(m_pred)
+            num = ((d_pred - d_obs) ** 2).flatten(1).sum(dim=1)
+            den = (d_obs ** 2).flatten(1).sum(dim=1) + 1e-12
+            l_data = torch.mean(num / den)
 
-        return total_loss, {
-            "loss_total": total_loss.item(),
-            "loss_sup": l_sup.item(),
-            "loss_data": l_data.item(),
-            "loss_ms": ms_loss.item(),
-            "loss_mgs": mgs_loss.item(),
-            "annealed_e": e_curr,
+        e_curr = self.e_at(epoch, total_epochs)
+        ms_loss, mgs_loss = self.focusing(m_pred, e_curr)
+
+        total = (self.lambda_sup * l_sup + self.lambda_data * l_data
+                 + self.lambda_ms * ms_loss + self.lambda_mgs * mgs_loss)
+        return total, {
+            "loss_total": total.item(), "loss_sup": l_sup.item(), "loss_data": l_data.item(),
+            "loss_ms": ms_loss.item(), "loss_mgs": mgs_loss.item(), "annealed_e": e_curr,
         }

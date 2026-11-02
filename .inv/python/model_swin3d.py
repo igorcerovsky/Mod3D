@@ -163,6 +163,8 @@ class PotentialFieldTransformer3D(nn.Module):
         x_3d = self.block1(x_3d)
         x_3d = self.block2(x_3d)
 
-        # Output density contrast: (B, 1, D, H, W) scaled to [-0.6, +0.8] g/cm^3
-        density = self.upsample(x_3d) * 0.7 + 0.1
+        # Output density contrast: (B, 1, D, H, W) in [-0.7, +0.7] g/cm^3, centred on ZERO so that
+        # the background can be represented exactly (a +0.1 offset would make zero density unreachable
+        # and fight the Minimum Support stabiliser).
+        density = self.upsample(x_3d) * 0.7
         return density

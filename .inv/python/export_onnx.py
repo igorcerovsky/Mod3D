@@ -25,7 +25,10 @@ def main():
     os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
 
     print(f"[1] Instantiating 3D Swin Transformer architecture...")
-    model = PotentialFieldTransformer3D(in_channels=1, out_depth=32, embed_dim=96, num_heads=4)
+    grid = {"nx": 64, "ny": 64, "nz": 32}
+    if args.checkpoint and os.path.exists(args.checkpoint):
+        grid = torch.load(args.checkpoint, map_location="cpu").get("grid", grid)
+    model = PotentialFieldTransformer3D(in_channels=1, out_depth=grid["nz"], embed_dim=96, num_heads=4)
 
     if args.checkpoint and os.path.exists(args.checkpoint):
         print(f"[2] Loading weights from checkpoint: {args.checkpoint}...")
@@ -38,7 +41,7 @@ def main():
     model.eval()
 
     # Dummy input: (Batch=1, Channels=1, Height=64, Width=64)
-    dummy_input = torch.randn(1, 1, 64, 64, dtype=torch.float32)
+    dummy_input = torch.randn(1, 1, grid["nx"], grid["ny"], dtype=torch.float32)
 
     print(f"[3] Exporting model to ONNX format at: {args.output}...")
     torch.onnx.export(
