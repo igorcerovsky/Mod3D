@@ -227,3 +227,284 @@ TEST(ForwardKernelTest, InterfaceMeshEvaluation) {
     EXPECT_GT(gz[0], 0.0); // Downward attraction is positive
     EXPECT_LT(gz[1], gz[0]); // Decays with distance
 }
+
+// ======================================================================================
+// Focusing inversion: operators, functionals, recovery, coarse-to-fine, prior, topography
+// ======================================================================================
+#include <random>
+
+namespace {
+std::vector<double> random_vec(std::size_t n, unsigned seed) {
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd;
+    std::vector<double> v(n);
+    for (auto& x : v) x = nd(rng);
+    return v;
+}
+} // namespace
+
+TEST(FftTest, RoundTripAndConvolutionTheorem) {
+    inv::Fft2D fft(8, 4);
+    auto re = random_vec(32, 3);
+    std::vector<std::complex<double>> a(32);
+    for (size_t i = 0; i < 32; ++i) a[i] = re[i];
+    auto b = a;
+    fft.forward(b);
+    fft.inverse(b);
+    for (size_t i = 0; i < 32; ++i) EXPECT_NEAR(std::abs(b[i] - a[i]), 0.0, 1e-12);
+}
+
+TEST(GravityOperatorTest, ToeplitzMatchesDenseAndDirectSummation) {
+    inv::GridGeometry g{6, 5, 4, 0, 0, 0, 50, 40, 30};
+    const double z_obs = -10.0;
+    inv::ToeplitzGravityOperator T(g, z_obs);
+    std::vector<inv::Point3D<double>> obs;
+    for (size_t i = 0; i < g.nx; ++i)
+        for (size_t j = 0; j < g.ny; ++j) obs.emplace_back(g.xc(i), g.yc(j), z_obs);
+    inv::DenseGravityOperator D(g, obs);
+
+    auto m = random_vec(g.cells(), 1);
+    std::vector<double> dt, dd, dref;
+    T.apply(m, dt);
+    D.apply(m, dd);
+    inv::VoxelGrid<double> vg(g.nx, g.ny, g.nz, 0, 0, 0, 50, 40, 30, 0.0);
+    vg.data() = m;
+    inv::ForwardKernel<double>::compute_gravity_field(vg, obs, dref);
+    for (size_t i = 0; i < dt.size(); ++i) {
+        EXPECT_NEAR(dt[i], dd[i], 1e-10);
+        EXPECT_NEAR(dd[i], dref[i], 1e-10);
+    }
+
+    auto r = random_vec(g.columns(), 2);
+    std::vector<double> gt, gd;
+    T.apply_transpose(r, gt);
+    D.apply_transpose(r, gd);
+    for (size_t j = 0; j < gt.size(); ++j) EXPECT_NEAR(gt[j], gd[j], 1e-10);
+
+    // adjointness <Gm, r> == <m, G^T r>
+    double lhs = 0, rhs = 0;
+    for (size_t i = 0; i < dt.size(); ++i) lhs += dt[i] * r[i];
+    for (size_t j = 0; j < m.size(); ++j) rhs += m[j] * gt[j];
+    EXPECT_NEAR(lhs, rhs, 1e-9);
+
+    std::vector<double> c1, c2;
+    T.column_norm_squared(c1);
+    D.column_norm_squared(c2);
+    for (size_t j = 0; j < c1.size(); ++j) EXPECT_NEAR(c1[j], c2[j], 1e-12);
+}
+
+TEST(FocusingMetricsTest, PhysicalFormsAreResolutionInvariant) {
+    // Same physical block (100 m cube of 0.4 g/cm^3) on a 50 m lattice and on a 25 m lattice.
+    inv::VoxelGrid<double> a(8, 8, 8, 0, 0, 0, 50, 50, 50, 0.0);
+    inv::VoxelGrid<double> b(16, 16, 16, 0, 0, 0, 25, 25, 25, 0.0);
+    for (size_t ix = 3; ix < 5; ++ix) for (size_t iy = 3; iy < 5; ++iy) for (size_t iz = 3; iz < 5; ++iz) a(ix, iy, iz) = 0.4;
+    for (size_t ix = 6; ix < 10; ++ix) for (size_t iy = 6; iy < 10; ++iy) for (size_t iz = 6; iz < 10; ++iz) b(ix, iy, iz) = 0.4;
+    using FE = inv::FocusingEvaluator<double>;
+    const double va = FE::compute_minimum_support_volume(a, 1e-3);
+    const double vb = FE::compute_minimum_support_volume(b, 1e-3);
+    EXPECT_NEAR(va, 100.0 * 100.0 * 100.0, 1e-3 * 1e6);
+    EXPECT_NEAR(va, vb, 1e-6 * va);
+    // contact area of a 100 m cube = 6 * 100^2 (face based, jump form)
+    EXPECT_NEAR(FE::compute_minimum_gradient_support_area(a, 1e-3), 6.0 * 100.0 * 100.0, 1.0);
+    EXPECT_NEAR(FE::compute_minimum_gradient_support_area(b, 1e-3), 6.0 * 100.0 * 100.0, 1.0);
+    // interior face count: 3 * n^2 * (n-1) faces
+    EXPECT_NEAR(FE::interface_area(a), 3.0 * 8 * 8 * 7 * 2500.0, 1e-6);
+}
+
+namespace {
+struct Prism {
+    inv::InversionConfig cfg;
+    inv::VoxelGrid<double> truth;
+    std::vector<double> data;
+    double sigma{0};
+};
+
+Prism make_prism(size_t n, size_t nz, double noise_frac, unsigned seed) {
+    Prism p;
+    p.cfg.nx = n; p.cfg.ny = n; p.cfg.nz = nz;
+    p.cfg.dx = p.cfg.dy = p.cfg.dz = 50.0;
+    p.truth = inv::VoxelGrid<double>(n, n, nz, 0, 0, 0, 50, 50, 50, 0.0);
+    const size_t h = n / 10;
+    for (size_t ix = n / 2 - h; ix < n / 2 + h; ++ix)
+        for (size_t iy = n / 2 - h; iy < n / 2 + h; ++iy)
+            for (size_t iz = nz / 5; iz < nz / 5 + nz / 4; ++iz) p.truth(ix, iy, iz) = 0.4;
+    inv::GridGeometry g{n, n, nz, 0, 0, 0, 50, 50, 50};
+    inv::ToeplitzGravityOperator T(g, -p.cfg.obs_height);
+    T.apply(p.truth.data(), p.data);
+    double mx = 0;
+    for (double v : p.data) mx = std::max(mx, std::abs(v));
+    std::mt19937 rng(seed);
+    std::normal_distribution<double> nd(0.0, noise_frac * mx);
+    for (auto& v : p.data) v += nd(rng);
+    p.sigma = noise_frac * mx;
+    p.cfg.noise_sigma = p.sigma;
+    return p;
+}
+
+double positive_centroid_depth(const inv::VoxelGrid<double>& m) {
+    double sw = 0, sz = 0;
+    for (size_t ix = 0; ix < m.nx(); ++ix)
+        for (size_t iy = 0; iy < m.ny(); ++iy)
+            for (size_t iz = 0; iz < m.nz(); ++iz) {
+                const double v = std::max(0.0, m(ix, iy, iz));
+                sw += v;
+                sz += v * (iz + 0.5) * m.dz();
+            }
+    return sw > 0 ? sz / sw : 0.0;
+}
+
+size_t support_cells(const inv::VoxelGrid<double>& m, double frac_of_max = 0.05) {
+    const double thr = frac_of_max * std::max(m.max_value(), -m.min_value());
+    size_t c = 0;
+    for (size_t i = 0; i < m.total_cells(); ++i) c += (std::abs(m[i]) > thr);
+    return c;
+}
+} // namespace
+
+TEST(FocusingInversionTest, RecoversCompactPrismAndBeatsL2Baseline) {
+    // 32 x 32 x 16 cells, truth = 0.4 g/cm^3 prism (6x6x4 cells) centred at z = 250 m, 2 % noise.
+    Prism p = make_prism(32, 16, 0.02, 7);
+
+    inv::InversionConfig fc = p.cfg;           // focused, 3 levels
+    inv::VoxelGrid<double> focused;
+    inv::InversionStats fs;
+    ASSERT_TRUE(inv::InversionEngine(fc).invert_columns(p.data, focused, fs));
+
+    inv::InversionConfig bc = p.cfg;           // Tikhonov L2 baseline, 1 level
+    bc.focusing_enabled = false;
+    bc.coarse_to_fine_levels = 1;
+    inv::VoxelGrid<double> l2;
+    inv::InversionStats bs;
+    ASSERT_TRUE(inv::InversionEngine(bc).invert_columns(p.data, l2, bs));
+
+    // Data are fitted near the noise level (discrepancy principle).
+    EXPECT_LT(fs.final_chi_rms, 1.5);
+    EXPECT_GT(fs.final_chi_rms, 0.5);
+    EXPECT_EQ(fs.levels.size(), 3u);
+    EXPECT_LT(fs.final_data_rms, fs.initial_data_rms);
+
+    // Focusing recovers a compact body near the true depth; the L2 solution is smeared and too deep.
+    const double zc_f = positive_centroid_depth(focused);
+    const double zc_b = positive_centroid_depth(l2);
+    EXPECT_NEAR(zc_f, 250.0, 100.0);
+    EXPECT_LT(std::abs(zc_f - 250.0), std::abs(zc_b - 250.0));
+    EXPECT_LT(support_cells(focused), support_cells(l2) / 4);
+    EXPECT_LT(support_cells(focused), 600u);   // truth: 144 cells of 16384
+
+    // Peak amplitude is recovered far better than with L2 (which underestimates it).
+    EXPECT_GT(focused.max_value(), 1.5 * l2.max_value());
+    EXPECT_LE(focused.max_value(), p.cfg.max_density + 1e-12);
+}
+
+TEST(FocusingInversionTest, CoarseToFineActuallyChangesAndRefinesTheSolution) {
+    Prism p = make_prism(32, 16, 0.02, 11);
+    inv::InversionConfig c1 = p.cfg;
+    c1.coarse_to_fine_levels = 1;
+    inv::InversionConfig c3 = p.cfg;
+    inv::VoxelGrid<double> m1, m3;
+    inv::InversionStats s1, s3;
+    ASSERT_TRUE(inv::InversionEngine(c1).invert_columns(p.data, m1, s1));
+    ASSERT_TRUE(inv::InversionEngine(c3).invert_columns(p.data, m3, s3));
+
+    // Regression for the old engine, where every level overwrote the previous one (diff == 0).
+    double diff = 0;
+    for (size_t i = 0; i < m1.total_cells(); ++i) diff = std::max(diff, std::abs(m1[i] - m3[i]));
+    EXPECT_GT(diff, 1e-3);
+
+    // Levels have the expected sizes and the adaptive refinement shrinks the active set.
+    ASSERT_EQ(s3.levels.size(), 3u);
+    EXPECT_EQ(s3.levels[0].nx, 8u);
+    EXPECT_EQ(s3.levels[1].nx, 16u);
+    EXPECT_EQ(s3.levels[2].nx, 32u);
+    EXPECT_LT(s3.levels[2].active_cells, 32u * 32u * 16u);
+    EXPECT_LT(s3.levels[2].time_ms, 5.0 * s1.levels[0].time_ms + 1000.0);
+
+    // No adaptivity -> all fine cells active.
+    inv::InversionConfig cn = p.cfg;
+    cn.adaptive_refinement = false;
+    inv::VoxelGrid<double> mn;
+    inv::InversionStats sn;
+    ASSERT_TRUE(inv::InversionEngine(cn).invert_columns(p.data, mn, sn));
+    EXPECT_EQ(sn.levels[2].active_cells, 32u * 32u * 16u);
+}
+
+TEST(FocusingInversionTest, PriorIsScaledAndImprovesStart) {
+    Prism p = make_prism(32, 16, 0.02, 5);
+    // A prior with the right shape but half the amplitude.
+    std::vector<double> prior = p.truth.data();
+    for (auto& v : prior) v *= 0.5;
+
+    inv::InversionConfig c = p.cfg;
+    inv::VoxelGrid<double> m;
+    inv::InversionStats s;
+    ASSERT_TRUE(inv::InversionEngine(c).invert_columns(p.data, m, s, {}, {}, &prior));
+    EXPECT_TRUE(s.used_neural_transformer);
+    EXPECT_LT(s.final_chi_rms, 1.5);
+    EXPECT_NEAR(positive_centroid_depth(m), 250.0, 60.0);
+    EXPECT_NEAR(m.max_value(), 0.4, 0.15);   // amplitude corrected by the data-driven rescale
+}
+
+TEST(FocusingInversionTest, TopographyMasksCellsAboveSurfaceAndUsesDensePath) {
+    inv::InversionConfig c;
+    c.nx = 8; c.ny = 8; c.nz = 4;
+    c.dx = c.dy = c.dz = 50.0;
+    c.z0 = 0.0;
+    c.coarse_to_fine_levels = 2;
+    // DEM sloping from z = 0 (west) to z = 100 m (east) -> terrain is LOWER to the east (z down).
+    std::vector<double> topo(9 * 9);
+    for (size_t iy = 0; iy < 9; ++iy)
+        for (size_t ix = 0; ix < 9; ++ix) topo[iy * 9 + ix] = 12.5 * static_cast<double>(ix);
+    std::vector<double> d(64);
+    for (size_t ix = 0; ix < 8; ++ix)
+        for (size_t iy = 0; iy < 8; ++iy) d[ix * 8 + iy] = std::exp(-0.5 * (std::pow(ix - 3.5, 2) + std::pow(iy - 3.5, 2)) / 2.0);
+    inv::InversionEngine e(c);
+    inv::VoxelGrid<double> m;
+    inv::InversionStats s;
+    ASSERT_TRUE(e.invert_columns(d, m, s, topo));
+    size_t checked = 0;
+    for (size_t ix = 0; ix < 8; ++ix)
+        for (size_t iy = 0; iy < 8; ++iy)
+            for (size_t iz = 0; iz < 4; ++iz) {
+                const double zs = 12.5 * (ix + 0.5);          // mean of the 4 corner nodes
+                if ((iz + 0.5) * 50.0 < zs) { EXPECT_EQ(m(ix, iy, iz), 0.0); ++checked; }
+            }
+    EXPECT_GT(checked, 0u);
+    EXPECT_GT(s.levels.back().active_cells, 0u);
+}
+
+TEST(InversionEngineTest, RunSetupWithScatteredStationsAndPriorJson) {
+    inv::InversionSetup setup;
+    setup.config.nx = 16; setup.config.ny = 16; setup.config.nz = 8;
+    setup.config.irls_iterations = 4;
+    std::mt19937 rng(2);
+    std::uniform_real_distribution<double> u(0.0, 800.0);
+    for (int i = 0; i < 300; ++i) {
+        const double x = u(rng), y = u(rng);
+        setup.obs_x.push_back(x);
+        setup.obs_y.push_back(y);
+        setup.obs_z.push_back(-10.0);
+        setup.obs_gz.push_back(0.5 * std::exp(-(std::pow(x - 400, 2) + std::pow(y - 400, 2)) / (2 * 120.0 * 120.0)));
+    }
+    setup.prior.assign(16 * 16 * 8, 0.0);
+    nlohmann::json j = setup.to_json();
+    auto loaded = inv::InversionSetup::from_json(j);
+    EXPECT_EQ(loaded.prior.size(), 16u * 16u * 8u);
+    EXPECT_EQ(loaded.config.irls_iterations, 4);
+
+    inv::InversionEngine eng;
+    inv::InversionResult r;
+    ASSERT_TRUE(eng.run_setup(loaded, r));
+    EXPECT_EQ(r.stats.levels.size(), 3u);
+    EXPECT_GT(r.density_grid.max_value(), 0.0);
+
+    auto rj = inv::InversionResult::from_json(r.to_json());
+    EXPECT_EQ(rj.stats.levels.size(), 3u);
+    EXPECT_NEAR(rj.stats.final_chi_rms, r.stats.final_chi_rms, 1e-12);
+
+    inv::InversionSetup empty = loaded;
+    empty.obs_x = {-1e6};
+    empty.obs_y = {-1e6};
+    empty.obs_gz = {1.0};
+    empty.obs_z = {};
+    EXPECT_FALSE(inv::InversionEngine().run_setup(empty, r));
+}
