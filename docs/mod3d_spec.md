@@ -356,26 +356,88 @@ Mod3D incorporates an automated 1D optimization engine for rapid structural and 
 
 ```mermaid
 graph TD
-    Start["User Selects Vertex or Body"] --> Init["Set Bracket [a, b] & Parameter (Z or rho)"]
-    Init --> Eval["Compute Forward Model & Misfit Phi(p)"]
+    Start["User Selects Vertex or Body"] --> Init["Set Hard Stratigraphic Bounds [zD + eps, zU - eps]"]
+    Init --> CheckMethod{"Method?"}
+    CheckMethod -- Linear Least Squares --> Direct["Compute Optimal Density Closed-Form O(1)"]
+    CheckMethod -- Bounded Brent --> Superpos["Cache Static Background G_static = G_full - G_local(z0)"]
+    Superpos --> Eval["Evaluate Local Prism Cells & Station Residuals"]
     Eval --> CheckConv{"|b - a| < Tol OR Iter >= MaxIter?"}
-    CheckConv -- No --> Update["Brent Parabolic Step / Golden Section Step"]
+    CheckConv -- No --> Update["Bounded Brent Parabolic Step / Golden Section Fallback"]
     Update --> Eval
     CheckConv -- Yes --> Done["Update Geometry / Density & Redraw Views"]
+    Direct --> Done
 ```
 
 #### Parameter Modes
-1. **Vertex Depth Fitting**: Optimizes the vertical elevation $Z_{k}$ of an individual body vertex along its column line.
-2. **Body Density Fitting**: Optimizes the homogeneous density $\rho_b$ of an entire body.
+1. **Vertex Depth Fitting**: Optimizes the vertical elevation $Z_{k}$ of an individual body vertex along its column line. Uses fast superposition subtraction $G_{\text{static}} = G_{\text{full}} - G_{\text{local}}(z_{\text{old}})$ so only the 4 local prism cells touching the vertex are evaluated during line search.
+2. **Body Density Fitting**: Optimizes the homogeneous density $\rho_b$ of an entire body. Evaluates the globally optimal density contrast analytically via single-pass linear least-squares (`FitMethod::linear`):
+   $$\Delta \rho^* = \frac{\sum_{p} u_p (d_p - b_p)}{\sum_{p} u_p^2}$$
+   where $u_p$ is unit body response, $d_p$ is observed anomaly, and $b_p$ is background field.
 
 #### Optimization Algorithms
-- **Brent's Method**: Combines golden section search with parabolic inverse interpolation for superlinear convergence near minima.
-- **Golden Section Search**: Robust, derivative-free interval reduction.
+- **Bounded Brent's Method (`brent_bounded`)**: Parabolic interpolation with golden section fallback strictly bounded within stratigraphic contact limits $[z_D + \epsilon, z_U - \epsilon]$, avoiding unphysical horizon crossing.
+- **Bounded Golden Section Search (`golden_section_bounded`)**: Robust interval reduction within collision bounds.
+- **Analytical Linear Least Squares**: Exact $\mathcal{O}(1)$ direct solver for linear density contrast.
 
-#### Objective Functions ($\Phi$)
-- **Global RMS**: Minimizes the survey-wide root-mean-square anomaly error.
-- **Global Derivative**: Minimizes spatial error gradients across the difference grid.
-- **Local Derivative**: Minimizes error curvature specifically at stations directly above the modified column.
+#### Performance & Parallelism (Tiers 2 & 3)
+- **Zero-Copy Component Evaluation**: Isolates the requested component (e.g. $G_z$), bypassing unused tensor or magnetic components and avoiding intermediate grid allocations.
+- **C++20 `std::jthread` Station Parallelism**: Splits survey stations across CPU threads with chunk partitioning, evaluating dense surveys in sub-40 ms.
+
+---
+
+### 4.4 Localized Multi-Vertex Circular Neighborhood Inversion (Tier 4)
+
+Mod3D provides localized multi-parameter inversion that simultaneously optimizes a circular cluster of neighboring vertices around any selected seed vertex $(r_0, c_0, index_0)$.
+
+```mermaid
+graph TD
+    Seed["Select Seed Vertex (r0, c0)"] --> Footprint{"Footprint Mode?"}
+    Footprint -- Automatic --> Expand["Concentric Rings R_m: Stop when facet sensitivity < Cutoff * S0"]
+    Footprint -- Custom --> Fixed["Use Configured Circular Diameter D = 2*R"]
+    Expand --> Collect["Gather K Neighborhood Vertices & Affected Prism Cells"]
+    Fixed --> Collect
+    Collect --> Superpos["Precompute Static Background G_static"]
+    Superpos --> BuildJac["Compute Jacobian J (M x K) via Local Cell Perturbation"]
+    BuildJac --> LM["Solve Levenberg-Marquardt with Graph Laplacian Smoothness"]
+    LM --> Clamp["Clamp Steps to Stratigraphic Bounds [zD + eps, zU - eps]"]
+    Clamp --> CheckLM{"Accepted & Converged?"}
+    CheckLM -- No & Improve --> LM
+    CheckLM -- Yes --> Apply["Apply Optimal Depths to Model & Synchronize Grids"]
+```
+
+#### 1. Footprint Diameter Determination
+- **Automatic Sensitivity Decay Mode**:
+  Evaluates the peak station response $S_0 = |\Delta F_0(P_{\text{seed}})|$ from a 1.0 m perturbation at the seed vertex. Expands concentric rings $R_m = m \cdot \Delta s$ and tests candidate vertices. Expansion terminates when the anomaly response of facets in ring $m$ drops below a user-defined threshold $\epsilon_{\text{cutoff}}$ (default 2%):
+  $$\max_{v \in \text{Ring } m} \frac{|\Delta F_m(P_{\text{seed}})|}{S_0} < \epsilon_{\text{cutoff}}$$
+  This automatically adapts the circular inversion diameter to target depth (shallow structures produce tight footprints; deep bodies produce broad footprints).
+- **Custom Diameter Mode**:
+  User-configured circular search radius $R$ in horizontal meters (diameter $D = 2R$).
+
+#### 2. Localized Superposition Background Field
+Let $\mathcal{C}_{\text{local}}$ be the set of prism facet cells adjacent to any of the $K$ neighborhood vertices. The static regional background field is precomputed once:
+$$\mathbf{G}_{\text{static}} = \mathbf{G}_{\text{modeled}} - \mathbf{G}_{\text{local}}(\mathbf{z}_0)$$
+During optimization iterations, only the localized facets in $\mathcal{C}_{\text{local}}$ are updated and evaluated.
+
+#### 3. Regularized Levenberg-Marquardt Multi-Parameter Solver
+- **Jacobian Matrix**: $J \in \mathbb{R}^{M \times K}$, where column $k$ is computed by perturbing vertex $k$ and evaluating only its 4 adjacent prism cells across $M$ valid stations.
+- **Surface Graph Laplacian Regularization**:
+  To prevent unphysical jagged spikes or high-frequency checkerboard oscillations, a graph Laplacian surface curvature penalty is incorporated:
+  $$E_{\text{smooth}}(\mathbf{z}) = \frac{1}{2} (\mathbf{z} - \mathbf{z}_0)^T L (\mathbf{z} - \mathbf{z}_0)$$
+  where $L_{i, j} = -w_{ij}$ for adjacent columns ($|r_i - r_j| \le 1, |c_i - c_j| \le 1$), $L_{i, i} = \sum_{j \ne i} w_{ij}$, and $w_{ij} = 1 / d_{ij}^2$.
+  The regularization parameter is scaled by the average data Hessian diagonal to ensure scale-invariance across arbitrary depths and field units:
+  $$\alpha_{\text{eff}} = \alpha \cdot \frac{1}{K}\operatorname{Tr}(J^T J / M)$$
+- **Normal Equations**:
+  $$\left( \frac{1}{M} J^T J + \alpha_{\text{eff}} L + \lambda \operatorname{diag}\left(\frac{1}{M} J^T J + \alpha_{\text{eff}} L + 10^{-15} I\right) \right) \Delta \mathbf{z} = -\left( \frac{1}{M} J^T \mathbf{r} + \alpha_{\text{eff}} L (\mathbf{z} - \mathbf{z}_0) \right)$$
+- **Box Constraints & Backtracking**:
+  Each candidate vertex is strictly clamped to $[z_{D, k} + \epsilon, z_{U, k} - \epsilon]$. If the combined objective $\Phi = \frac{1}{2}\text{RMS}^2 + \frac{1}{2}\alpha_{\text{eff}} E_{\text{smooth}}$ decreases, the step is accepted and damping $\lambda$ decreased; otherwise $\lambda$ is increased.
+
+#### 4. GUI & Context Menu Integration
+- **ProfileView Context Menu**:
+  - `Fit`: Runs 1D single-vertex bounded Brent inversion.
+  - `Fit Neighborhood`: Immediately inverts the circular neighborhood around the clicked vertex using current settings.
+  - `Fit Neighborhood Properties...`: Opens `FitNeighborhoodDialog`.
+- **`FitNeighborhoodDialog`**: Dedicated Qt dialog with radio toggles for Automatic decay cutoff (%) vs. Custom radius (m), smoothness weight $\alpha$, convergence tolerance, max iterations, and live "⚡ Fit Neighborhood Now" execution with real-time RMS statistics.
+- **SettingsPane**: Added `⚡ Fit Neighborhood` and `Neighborhood Properties...` buttons in the Physics/Inversion tab.
 
 ---
 
@@ -600,6 +662,7 @@ The GUI encompasses 38 dedicated dialogs and property sheets:
 36. `BodyExportDialog` (`IDD_DLG_BODY_EXPORT`): Body geometry exporter.
 37. `FieldImportExportDialog` (`IDD_DLG_FIELD_IMPEXP`): Matrix format selector for field exchange.
 38. `AboutDialog` (`IDD_DLG_ABOUT`): Version, build info, credits, and scientific licensing.
+39. `FitNeighborhoodDialog` (`IDD_DLG_FIT_NEIGHBORHOOD`): Localized circular neighborhood multi-vertex inversion properties (Automatic sensitivity decay cutoff vs. Custom diameter, graph Laplacian surface smoothness regularization, and live solver execution).
 
 ---
 
@@ -643,7 +706,7 @@ Mod3D/
 │   ├── PotField.h               # Potential field kernels (Pohánka, Guptasarma-Singh)
 │   ├── Grid.h                   # 2D regular matrix and interpolation
 │   ├── Observation.h            # Observation space and multi-channel fields
-│   ├── Inversion1D.h            # Brent & Golden Section 1D inversion
+│   ├── Inversion.h              # Analytical least-squares, bounded 1D solvers & neighborhood inversion
 │   ├── Well.h                   # Borehole trajectory and log channels
 │   └── Guideline.h              # Structural vector traces
 │
@@ -655,7 +718,7 @@ Mod3D/
 │   ├── PotField.cpp             # Vladimír Pohánka & Guptasarma-Singh kernels
 │   ├── Grid.cpp
 │   ├── Observation.cpp
-│   └── Inversion1D.cpp
+│   └── Inversion.cpp
 │
 ├── pfld/                        # Secondary / Validation Physics Engine
 │   ├── g3d_poly.c               # Götze-Petersen polyhedron kernel
@@ -671,9 +734,9 @@ Mod3D/
 │   │   ├── HorizontalSliceView.h/.cpp # Planar horizontal depth-slice canvas
 │   │   ├── GL3DView.h/.cpp      # Hardware-accelerated OpenGL 3D view
 │   │   └── SpreadsheetView.h/.cpp # Numerical data grid view
-│   └── dialogs/                 # Qt 6 Dialog Implementations (38 Dialogs)
+│   └── dialogs/                 # Qt 6 Dialog Implementations (39 Dialogs)
 │
-└── tests/                       # Automated Test Suite (Catch2 / GoogleTest)
+└── tests/                       # Automated Test Suite (GoogleTest, 200 tests)
     ├── test_body.cpp
     ├── test_column_point.cpp
     ├── test_grid.cpp

@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-180%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-200%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -52,8 +52,17 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
   - **Unified Settings Inspector**: 5-tab docked controls (**Display**, **Profiles**, **Modelling**, **Bodies**, **Physics/Inversion**):
     - **Modelling Tab (`🛠 Modelling`)**: Context-aware modeling controls that adapt dynamically to the active view (Profile, Horizontal Slice, Map, 3D), active body selection, customizable vertical step size, **"Global movement" mode** checkbox (switches between moving the active profile slice vs. moving the whole 3D body across all profiles stopping on obstacle hit), one-click action buttons for Entire Body / Upper Boundary / Lower Boundary (Until Hit & Step Up/Down), and an integrated **Modelling Shortcuts & Fast Help** quick-reference guide.
     - **Bodies & Physics Tabs**: Strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
-- 🎯 **Automated Inversion**:
-  - Built-in 1D least-squares automated density contrast inversion to match calculated anomalies to observed field surveys.
+- 🎯 **Automated Inversion Suite (Tiers 1–4)**:
+  - **Single-Pass Analytical Density Inversion (Tier 1)**: Evaluates globally optimal density contrast $\Delta\rho^*$ in closed form $\mathcal{O}(1)$ via linear least-squares, bypassing iterative numerical minimization.
+  - **Fast Superposition Background Subtraction (Tier 1)**: Isolates single-vertex structural depth variations by caching the static background field $G_{\text{static}} = G_{\text{full}} - G_{\text{local}}(z_{\text{old}})$, updating only the 4 local prism cells touching the target vertex.
+  - **Bounded Stratigraphic Solvers (Tier 1)**: Robust bounded Brent and bounded Golden Section algorithms enforcing strict stratigraphic interval non-crossing bounds $[z_D + \epsilon, z_U - \epsilon]$.
+  - **Zero-Copy Single-Component Kernel (Tier 2)**: Targets specific components (e.g. $G_z$), eliminating unused tensor/magnetic calculations and intermediate grid allocations.
+  - **Multi-Threaded Station Parallelism (Tier 3)**: Multi-threaded C++20 `std::jthread` chunking across observation stations, delivering 30–40 ms inversion runtimes across dense surveys.
+  - **Localized Multi-Vertex Circular Neighborhood Inversion (Tier 4)**: Simultaneously inverts a circular cluster of neighboring body vertices around any seed vertex:
+    - **Automatic Sensitivity Decay Footprint**: Concentric ring expansion automatically determines the circular footprint diameter when candidate facet sensitivity decays below a configurable cutoff (e.g. 2% of peak response).
+    - **Custom Diameter / Radius**: User-configurable circular search diameter in horizontal meters.
+    - **Regularized Levenberg-Marquardt Solver**: Solves $(J^T J + \alpha L + \lambda \mathbf{D})\Delta \mathbf{z} = -(J^T \mathbf{r} + \alpha L \Delta \mathbf{z}_0)$ with a scale-invariant surface graph Laplacian curvature penalty $\alpha L$, ensuring smooth geological contacts and preventing unphysical oscillations.
+    - **Context Menu & Dedicated Dialog**: Direct right-click `"Fit Neighborhood"` action in Profile View, and dedicated `FitNeighborhoodDialog` for tuning footprint parameters, regularization, and live execution.
 - 🌐 **Modern C++20 & Qt 6 Design**:
   - Decoupled `mod3d_core` static library (zero GUI dependencies) and hardware-accelerated Qt 6 GUI.
   - Dynamic responsive auto-resizing MDI layout that scales client subwindows smoothly.
@@ -111,13 +120,13 @@ Mod3D/
 │   ├── Model.h            # 3D geological model & facet difference caching
 │   ├── Observation.h      # Survey points, measured & calculated fields
 │   ├── PotField.h         # Analytical potential field engine
-│   └── Inversion.h        # Least-squares 1D density contrast inversion
+│   └── Inversion.h        # Analytical least-squares, bounded 1D solvers & neighborhood inversion
 ├── src/                   # Implementation of mod3d_core
 ├── pfld/                  # Header-only analytical physics kernel
 ├── gui/                   # Modern Qt 6 desktop application (mod3d_gui)
 │   ├── include/mod3d_gui/ # Views: ProfileView, MapView, HorizontalSliceView, GL3DView, SettingsPane
 │   └── src/               # Rendering, interaction, and undo/redo controllers
-├── tests/                 # Comprehensive Google Test suite (177 tests)
+├── tests/                 # Comprehensive Google Test suite (200 tests)
 └── examples/              # Sample models (.mod3d) & legacy models (.m3d)
 ```
 
@@ -195,6 +204,8 @@ ctest --test-dir build -C Release --output-on-failure
 | `Tile V` / `Tile H` | **Tile Views** | Arrange Profile, Map, Slice, and 3D views automatically |
 | `Ctrl + Wheel` | **Zoom 2D** | Smooth proportional zoom on profile, map, or slice view |
 | `Left Drag` (Profile) | **Move Vertex** | Interactively move geological boundary vertices |
+| `Right-Click` (Vertex) | **Vertex Menu** | Context menu: Unsnap Contact, Fit (1D Brent), Fit Neighborhood (LM), Inversion Properties |
+| `Fit Neighborhood` (Profile) | **Neighborhood Inversion** | Simultaneously inverts circular cluster of neighboring vertices using regularized Levenberg-Marquardt |
 | `Left Drag` (Slice Center) | **Paint Body** | Draw/paint active body across cells at current slice depth |
 | `Left Drag` (Boundary Edge) | **Extend / Collapse** | Drag outer body boundary outward to extend or inward to collapse |
 | `Double-Click` (Empty) | **Create Body** | Create brand new body with unique ID & open Body Properties |
