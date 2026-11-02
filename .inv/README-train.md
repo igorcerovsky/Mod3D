@@ -118,24 +118,110 @@ The network architecture in `.inv/python/model_swin3d.py` combines four speciali
 
 ---
 
-### Step 3: Physics-Guided Loss & Zhdanov Annealing
+### Step 3: Physics-Guided Loss & Zhdanov Focusing Stabilizers ($S_{MS}$ and $S_{MGS}$)
 
 The loss formulation in `.inv/python/losses.py` ensures both data fit and boundary sharpness:
 
 $$\mathcal{L}_{\text{total}} = \lambda_{\text{sup}} \mathcal{L}_{\text{sup}}(\hat{m}, m_{\text{true}}) + \lambda_{\text{data}} \|G(\hat{m}) - \mathbf{d}_{\text{obs}}\|_2^2 + \lambda_{MS} S_{MS}(\hat{m}) + \lambda_{MGS} S_{MGS}(\hat{m})$$
 
-#### Zhdanov Focusing Stabilizers
-* **Minimum Support ($S_{MS}$)**:
-  $$S_{MS}(\hat{m}) = \frac{1}{M} \sum_{j=1}^M \frac{\hat{m}_j^2}{\hat{m}_j^2 + e^2}$$
-  Acts as a smooth proxy for the $L_0$ pseudo-norm, driving background diffuse noise to zero and shrinking anomalous sources into **compact volumes**.
-* **Minimum Gradient Support ($S_{MGS}$)**:
-  $$S_{MGS}(\hat{m}) = \frac{1}{M} \sum_{j=1}^M \frac{\|\nabla \hat{m}_j\|^2}{\|\nabla \hat{m}_j\|^2 + e_{\text{grad}}^2}$$
-  Penalizes gradient transition zones, forcing gradual ramps into **razor-sharp, blocky lithological contacts**.
+**$S_{MS}$** and **$S_{MGS}$** are **Focusing Stabilizers** introduced by **Michael S. Zhdanov and Oleg Portniaguine (1999, 2002)**. They solve the single biggest problem with traditional potential field inversion: **the blurry, diffuse "clouds" caused by classical Tikhonov $L_2$ regularization**.
 
-#### Curriculum Annealing Schedule
-* **Epochs 1–10 (Structural Warmup)**: $e = 0.1$, stabilizing global geometry and background fit.
-* **Epochs 11–25 (Focusing Activation)**: $e$ decays exponentially ($0.1 \to 0.01$). Diffuse halos contract into compact bodies.
-* **Epochs 26–40 (Contact Sharpening)**: $e = 10^{-3}, e_{\text{grad}} = 10^{-3}$. Sharp geological fault steps and contact boundaries crystallize.
+| Metric | Full Name | What it Measures | Geological Effect |
+| :--- | :--- | :--- | :--- |
+| **$S_{MS}$** | **Minimum Support** | **Anomalous Volume** (approximates $L_0$ norm of $m$) | Shrinks diffuse halos; produces **compact, isolated bodies** (ore pockets, plutons). |
+| **$S_{MGS}$** | **Minimum Gradient Support** | **Contact Area** (approximates $L_0$ norm of $\nabla m$) | Eliminates gradual ramps; produces **sharp, blocky lithological contacts** (fault scarps, dyke walls). |
+
+---
+
+#### 1. Why Classical $L_2$ Regularization Fails in Geology
+
+In standard Tikhonov $L_2$ inversion, the regularizer penalizes $\|m\|_2^2 = \sum m_i^2$ or $\|\nabla m\|_2^2 = \sum (\nabla m_i)^2$. 
+
+Because $L_2$ squares the values, having one cell with a large density anomaly (e.g., $+0.4\text{ g/cm}^3$) incurs a penalty of $0.4^2 = 0.16$. If that same mass is smeared across 10 cells at $+0.04\text{ g/cm}^3$, the penalty drops tenfold to $10 \times 0.04^2 = 0.016$. 
+
+Therefore, **$L_2$ regularization mathematically prefers wide, spread-out, blurry clouds** over sharp, realistic geological bodies.
+
+---
+
+#### 2. $S_{MS}$: Minimum Support (Compactness / Volume Minimizer)
+
+##### Mathematical Formulation
+$$S_{MS}(\mathbf{m}) = \sum_{j=1}^M \frac{(m_j - m_{0,j})^2}{(m_j - m_{0,j})^2 + e^2}$$
+
+where:
+* $m_j$ is the density contrast of voxel cell $j$.
+* $m_{0,j}$ is the prior / background value (typically $0.0$).
+* $e$ is a small focusing threshold parameter (e.g., $10^{-3}$).
+
+##### How It Works Mechanically
+Look at how the term $f(x) = \frac{x^2}{x^2 + e^2}$ behaves where $x = m_j - m_{0,j}$:
+* **Inside the target body** ($|x| \gg e$, e.g., $\Delta \rho = 0.40$ and $e = 0.001$):
+  $$\frac{0.40^2}{0.40^2 + 0.001^2} = \frac{0.16}{0.160001} \approx \mathbf{0.99999 \approx 1}$$
+* **In background rock** ($|x| \ll e$, e.g., $\Delta \rho = 0.0001$ and $e = 0.001$):
+  $$\frac{0.0001^2}{0.0001^2 + 0.001^2} = \frac{10^{-8}}{10^{-6}} \approx \mathbf{0.01 \approx 0}$$
+
+##### The Mathematical Insight ($L_0$ Pseudo-Norm)
+Every cell with a real anomaly contributes $\approx 1$, while near-zero background cells contribute $\approx 0$. 
+Therefore, **$S_{MS}$ literally counts the number of anomalous cells** (the geometric volume of the body's mathematical *support*):
+$$\lim_{e \to 0} S_{MS}(\mathbf{m}) = \text{Volume of anomalous bodies} = \|\mathbf{m} - \mathbf{m}_0\|_0$$
+
+Minimizing $S_{MS}$ forces the inversion to concentrate mass into the **smallest possible volume** that still satisfies the observed potential field.
+
+---
+
+#### 3. $S_{MGS}$: Minimum Gradient Support (Sharp Blocky Boundaries)
+
+##### Mathematical Formulation
+$$S_{MGS}(\mathbf{m}) = \sum_{j=1}^M \frac{\|\nabla m_j\|^2}{\|\nabla m_j\|^2 + e_{\text{grad}}^2}$$
+
+where $\nabla m_j = (\partial_x m, \partial_y m, \partial_z m)$ is the 3D spatial gradient vector computed across adjacent voxels.
+
+##### How It Works Mechanically
+Instead of evaluating the property value, $S_{MGS}$ evaluates the **spatial gradient** (the rate of change between adjacent cells):
+* **Inside a homogeneous body or background**: $|\nabla m| \approx 0 \implies \text{term} \approx 0$.
+* **Across a sharp, single-cell fault step**: $|\nabla m| \gg e_{\text{grad}} \implies \text{term} \approx 1$ (only for the cells right at the contact).
+* **Across a wide, smooth transition ramp**: Many cells have small non-zero gradients $|\nabla m| > e_{\text{grad}}$. Each cell adds $\approx 1$, creating a massive penalty!
+
+##### The Geological Insight
+Minimizing $S_{MGS}$ penalizes diffuse gradient transition zones. It forces property changes to occur across **the minimum possible boundary surface area**, creating **razor-sharp, piecewise-constant blocky geology** (such as fault contacts, dykes, and layered formations).
+
+---
+
+#### 4. Visual Comparison of the Three Approaches
+
+```text
+TRUE GEOLOGY               TIKHONOV L2                ZHDANOV S_MS & S_MGS
+(Sharp ore body)           (Smooth blur)              (Focused inversion)
+
+    Density                    Density                    Density
+   ^                          ^                          ^
+   |       +-------+          |         .---.            |       +-------+
+   |       |       |          |        /     \           |       |       |
+   |       |       |          |       /       \          |       |       |
+0.0+-------+-------+-->    0.0+------'         '-->   0.0+-------+-------+-->
+   0       X1      X2         0       X1      X2         0       X1      X2
+
+- Crisp contacts           - Spread over space        - Crisp boundaries
+- Uniform core             - Underestimates peak      - True amplitude preserved
+                           - Blurry halos             - Zero background noise
+```
+
+---
+
+#### 5. The Critical Role of Threshold $e$ & Curriculum Annealing
+
+The parameter $e$ controls how "sharp" the focusing is:
+* **When $e$ is large ($e = 0.5\text{–}1.0$)**:
+  $$\frac{x^2}{x^2 + e^2} \approx \frac{x^2}{e^2} \propto x^2$$
+  The functional behaves like standard quadratic $L_2$ Tikhonov. Gradients are smooth and stable.
+* **When $e$ is small ($e = 0.001$)**:
+  The functional acts as a sharp step function ($L_0$ counting).
+
+##### Why We Use Annealing in `train.py`
+If training starts with $e = 0.001$ immediately, gradients are too non-linear and the network gets trapped in poor local minima. In `.inv/python/train.py`, we implement an **annealing curriculum**:
+1. **Epochs 1–10 (Structural Warmup, $e = 0.10$)**: Smooth $L_2$-like regime to guide global location and mass of structures.
+2. **Epochs 11–25 (Focusing Activation, $e: 0.10 \to 0.01$)**: Focusing activates; diffuse halos contract into compact cores ($S_{MS}$ drops).
+3. **Epochs 26–35 (Contact Sharpening, $e: 0.01 \to 0.001$)**: Minimum Gradient Support ($S_{MGS}$) takes over, locking in razor-sharp geological contacts.
 
 ---
 
@@ -180,6 +266,14 @@ Epoch [35/35] Loss: 0.0189 | S_MS: 0.0340 | S_MGS: 0.0450 | Focus e: 0.0010 | LR
 
 [4] Training Complete! Best Checkpoint saved to: ./checkpoints/best_swin3d.pt
 ```
+
+#### How to Interpret Focusing Metrics in Training Logs
+
+During training, `train.py` outputs live metrics for each epoch and mini-batch step:
+* **`Loss` decreasing ($0.184 \to 0.018$)**: Measures overall objective convergence across supervised priors, forward physics data fit, and focusing regularizers.
+* **`S_MS` decreasing ($0.241 \to 0.034$)**: Confirms that the model has stopped predicting diffuse density clouds across the volume and concentrated anomalous mass into compact bodies (occupying $\approx 3.4\%$ of the domain).
+* **`S_MGS` decreasing ($0.312 \to 0.045$)**: Confirms that fuzzy boundary gradients are disappearing, replaced by razor-sharp, blocky lithological contacts and fault interfaces.
+* **`Focus e` decaying ($0.100 \to 0.001$)**: Verifies that the curriculum schedule is actively transitioning the network from smooth global convergence to sharp $L_0$-proximal focusing.
 
 ---
 
