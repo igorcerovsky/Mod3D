@@ -11,6 +11,7 @@ References:
 - Zhdanov, M. S. (2002). Geophysical Inverse Theory and Regularization Problems.
 """
 
+import math
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

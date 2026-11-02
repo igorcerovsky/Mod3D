@@ -8,6 +8,7 @@ import argparse
 import os
 import torch
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from dataset import SyntheticPotentialFieldDataset
 from model_swin3d import PotentialFieldTransformer3D
 from losses import CompoundInversionLoss
@@ -18,7 +19,8 @@ def parse_args():
     parser.add_argument("--epochs", type=int, default=30, help="Number of training epochs")
     parser.add_argument("--batch-size", type=int, default=8, help="Batch size")
     parser.add_argument("--lr", type=float, default=2e-4, help="Learning rate")
-    parser.add_argument("--n-samples", type=int, default=2000, help="Number of synthetic samples")
+    parser.add_argument("--n-samples", type=int, default=2000, help="Number of synthetic samples per epoch")
+    parser.add_argument("--num-workers", type=int, default=0, help="Number of DataLoader CPU worker processes")
     parser.add_argument("--save-dir", type=str, default="./checkpoints", help="Directory to save checkpoints")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     return parser.parse_args()
@@ -31,12 +33,19 @@ def main():
     print("==================================================================")
     print("  .inv: Training 3D Potential Field Inversion Transformer         ")
     print(f"  Device: {args.device} | Epochs: {args.epochs} | Batch size: {args.batch_size}")
+    print("  Mode: Option A (On-the-Fly Procedural Geology Generation)")
     print("==================================================================")
 
-    # 1. Dataset & DataLoader
+    # 1. Dataset & DataLoader (Option A: Generates on the fly)
     print("[1] Initializing Procedural 3D Geology Dataset...")
     dataset = SyntheticPotentialFieldDataset(n_samples=args.n_samples, nx=64, ny=64, nz=32)
-    loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    loader = DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.num_workers,
+        pin_memory=(args.device == "cuda")
+    )
 
     # 2. Model
     print("[2] Initializing 3D Swin Transformer...")
@@ -58,7 +67,8 @@ def main():
         epoch_ms = 0.0
         epoch_mgs = 0.0
 
-        for i, (obs_field, density_true) in enumerate(loader):
+        pbar = tqdm(loader, desc=f"Epoch {epoch:02d}/{args.epochs:02d}", leave=False)
+        for i, (obs_field, density_true) in enumerate(pbar):
             obs_field = obs_field.to(args.device)
             density_true = density_true.to(args.device)
 
@@ -73,6 +83,13 @@ def main():
             epoch_loss += metrics["loss_total"]
             epoch_ms += metrics["loss_ms"]
             epoch_mgs += metrics["loss_mgs"]
+
+            pbar.set_postfix({
+                "loss": f"{metrics['loss_total']:.4f}",
+                "S_MS": f"{metrics['loss_ms']:.3f}",
+                "S_MGS": f"{metrics['loss_mgs']:.3f}",
+                "e": f"{metrics['annealed_e']:.3f}"
+            })
 
         scheduler.step()
         n_batches = len(loader)

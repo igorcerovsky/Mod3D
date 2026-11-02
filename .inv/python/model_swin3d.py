@@ -48,8 +48,8 @@ class CrossAttention2Dto3DLifting(nn.Module):
         self.v_proj = nn.Linear(embed_dim, embed_dim)
         self.out_proj = nn.Linear(embed_dim, embed_dim)
 
-        # Learnable depth query embeddings for each depth slice
-        self.depth_queries = nn.Parameter(torch.randn(1, target_depth, 1, embed_dim) * 0.02)
+        # Learnable depth query embeddings for each depth slice: (1, D, 1, 1, C)
+        self.depth_queries = nn.Parameter(torch.randn(1, target_depth, 1, 1, embed_dim) * 0.02)
 
     def forward(self, tokens_2d, H_patches, W_patches):
         # tokens_2d: (B, N_2d, C) where N_2d = H_patches * W_patches
@@ -59,7 +59,7 @@ class CrossAttention2Dto3DLifting(nn.Module):
         feat_2d = tokens_2d.view(B, H_patches, W_patches, C)
 
         # Broadcast depth queries to form 3D grid queries: (B, D, H_p, W_p, C)
-        q_3d = feat_2d.unsqueeze(1).expand(-1, self.target_depth, -1, -1, -1) + self.depth_queries
+        q_3d = feat_2d.unsqueeze(1) + self.depth_queries
         q_3d = q_3d.view(B, self.target_depth * N_2d, C)
 
         Q = self.q_proj(q_3d).view(B, -1, self.num_heads, C // self.num_heads).transpose(1, 2)

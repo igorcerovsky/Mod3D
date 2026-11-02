@@ -37,5 +37,14 @@ _UpgradeReport_Files/
 .DS_Store
 ._*
 
+# Python & ML artifacts
+__pycache__/
+*.pyc
+.venv/
+checkpoints/
+models/
+*.pt
+*.onnx
+
 /legacy/
 examples_old
