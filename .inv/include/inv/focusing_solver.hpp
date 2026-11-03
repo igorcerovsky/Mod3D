@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdio>
+#include <functional>
 #include <vector>
 
 namespace inv {
@@ -53,6 +54,13 @@ struct SolverParams {
     double density_scale{0.5};    ///< typical anomaly amplitude [g/cm^3]
 
     bool verbose{false};          ///< print one diagnostic line per IRLS iteration to stderr
+
+    /// Optional progress callback: return false to abort/cancel early.
+    /// Args: (int iter, int total_iters, double rms_mgal, double chi_rms)
+    std::function<bool(int iter, int total_iters, double rms_mgal, double chi_rms)> progress_callback;
+
+    /// Optional cancel callback: return true to abort immediately.
+    std::function<bool()> cancel_check;
 };
 
 /**
@@ -86,7 +94,7 @@ struct SolverParams {
  */
 class FocusingSolver {
 public:
-    static void solve(const GridGeometry& g, LinearOperator& op, const std::vector<double>& d,
+    static bool solve(const GridGeometry& g, LinearOperator& op, const std::vector<double>& d,
                       std::vector<double>& m, const std::vector<char>& active,
                       const std::vector<double>* m_ref, const SolverParams& p, LevelStats& st)
     {
@@ -155,6 +163,17 @@ public:
         double e_rel = p.e_start_rel;
         const double e_decay = (iters > 1) ? std::pow(p.e_end_rel / p.e_start_rel, 1.0 / (iters - 1)) : 1.0;
         for (int k = 0; k < iters; ++k) {
+            if (p.cancel_check && p.cancel_check()) {
+                st.irls_iterations = iters_done;
+                st.cg_iterations = total_cg;
+                st.chi_rms = chi;
+                st.rho_end = rho;
+                st.e_end = e_k;
+                st.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+                m = m_cur;
+                return false;
+            }
+
             // ---- focusing threshold --------------------------------------------------------------
             double amp = 0.0;
             for (std::size_t j = 0; j < n; ++j) amp = std::max(amp, std::sqrt(w2[j]) * std::abs(delta[j]));
@@ -230,7 +249,7 @@ public:
             };
 
             x = delta;
-            total_cg += pcg(matvec, prec_inv, rhs, x, p.cg_max_iterations, p.cg_tolerance, n);
+            total_cg += pcg(matvec, prec_inv, rhs, x, p.cg_max_iterations, p.cg_tolerance, n, p.cancel_check);
 
             // ---- projection onto density bounds ----------------------------------------------------
             double dnorm = 0.0, dchg = 0.0;
@@ -259,6 +278,20 @@ public:
                 std::fprintf(stderr, "  [irls %2d] e=%.4f rho=%.3e chi=%.3f cg=%d amp_w=%.3f\n",
                              k, e_k, rho, chi, total_cg, amp);
             }
+
+            if (p.progress_callback) {
+                if (!p.progress_callback(k + 1, iters, st.rms_mgal, chi)) {
+                    st.irls_iterations = iters_done;
+                    st.cg_iterations = total_cg;
+                    st.chi_rms = chi;
+                    st.rho_end = rho;
+                    st.e_end = e_k;
+                    st.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+                    m = m_cur;
+                    return false;
+                }
+            }
+
             const bool in_band = (chi > 0.8 * p.target_chi && chi < 1.2 * p.target_chi);
             if (chi <= 1.2 * p.target_chi) e_rel = std::max(p.e_end_rel, e_rel * e_decay);
             const double change = std::sqrt(dchg) / (std::sqrt(dnorm) + 1e-30);
@@ -277,12 +310,14 @@ public:
         st.e_end = e_k;
 
         st.time_ms = std::chrono::duration<double, std::milli>(std::chrono::high_resolution_clock::now() - t0).count();
+        return true;
     }
 
 private:
     template <typename MatVec>
     static int pcg(MatVec&& A, const std::vector<double>& minv, const std::vector<double>& b,
-                   std::vector<double>& x, int max_iter, double tol, std::size_t n)
+                   std::vector<double>& x, int max_iter, double tol, std::size_t n,
+                   const std::function<bool()>& cancel_check = nullptr)
     {
         std::vector<double> r(n), z(n), p(n), Ap(n);
         A(x, Ap);
@@ -295,6 +330,7 @@ private:
         for (std::size_t j = 0; j < n; ++j) rz += r[j] * z[j];
         int it = 0;
         for (; it < max_iter; ++it) {
+            if (cancel_check && cancel_check()) break;
             double rn = 0.0;
             for (std::size_t j = 0; j < n; ++j) rn += r[j] * r[j];
             if (std::sqrt(rn) <= tol * bnorm) break;

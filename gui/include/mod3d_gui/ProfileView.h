@@ -100,6 +100,9 @@ public:
     bool showProfileIntersections() const noexcept { return m_showProfileIntersections; }
     void setShowProfileIntersections(bool show);
 
+    bool showInversionDensitySlice() const noexcept { return m_showInversionDensitySlice; }
+    void setShowInversionDensitySlice(bool show);
+
     // View-specific Field Curves & Primary Y-Axis Field
     mod3d::FieldComponent mainFieldComponent() const noexcept { return m_mainField; }
     void setMainFieldComponent(mod3d::FieldComponent comp);
@@ -191,6 +194,8 @@ private:
     void drawGridLines(QPainter &painter);
     void drawProfileIntersections(QPainter &painter);
     void drawHorizontalSliceIndicator(QPainter &painter);
+    void drawInversionDensitySlice(QPainter &painter, const QRect &canvas);
+    void drawInversionDensityLegend(QPainter &painter, const QRect &canvas, double maxAbsRho);
     void drawReliefAndBottom(QPainter &painter);
     void drawBodies(QPainter &painter);
     void drawGhostBodies(QPainter &painter, int ghostProfileIdx, const QPen &pen);
@@ -262,6 +267,7 @@ private:
     bool m_showObservationPoints{true};
     bool m_showRelief{true};
     bool m_showProfileIntersections{true};
+    bool m_showInversionDensitySlice{true};
 };
 
 } // namespace mod3d_gui

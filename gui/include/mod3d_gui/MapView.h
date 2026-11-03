@@ -68,7 +68,8 @@ public:
         Observed = 1,
         Difference = 2,
         Relief = 3,
-        None = 4
+        InversionDensity = 4,
+        None = 5
     };
 
     MapRasterMode rasterMode() const noexcept { return m_rasterMode; }

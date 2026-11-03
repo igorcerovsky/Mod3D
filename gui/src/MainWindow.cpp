@@ -8,6 +8,7 @@
 #include "mod3d_gui/dialogs/ActiveGridsDialog.h"
 #include "mod3d_gui/dialogs/Fit1DDialog.h"
 #include "mod3d_gui/dialogs/FitNeighborhoodDialog.h"
+#include "mod3d_gui/dialogs/Inversion3DDialog.h"
 
 #include <QMenuBar>
 #include <QStatusBar>
@@ -377,6 +378,8 @@ void MainWindow::setupMenus() {
     actRealTime->setCheckable(true);
     actRealTime->setChecked(m_doc->isRealTimeCompute());
     menuCompute->addSeparator();
+    menuCompute->addAction(tr("3D Focusing Inversion..."), this, &MainWindow::onInversion3D);
+    menuCompute->addSeparator();
     menuCompute->addAction(tr("Properties..."), this, &MainWindow::onComputeProperties);
     menuCompute->addAction(tr("Active Field..."), this, &MainWindow::onActiveGrids);
     menuCompute->addAction(tr("Vertex Fit Properties..."), this, &MainWindow::onFit1DProperties);
@@ -508,10 +511,14 @@ HorizontalSliceView *MainWindow::openHorizontalSliceView(double initialZ) {
         m_statusBarMgr->setZ(z);
         if (hv && hv->rasterMode() != HorizontalSliceView::SliceRasterMode::None) {
             QString compName = ModelDocument::componentName(hv->fieldComponent());
+            QString compUnit = ModelDocument::componentUnit(hv->fieldComponent());
             if (hv->rasterMode() == HorizontalSliceView::SliceRasterMode::Difference) {
                 compName = "d" + compName;
+            } else if (hv->rasterMode() == HorizontalSliceView::SliceRasterMode::InversionDensity) {
+                compName = QString::fromUtf8("Δρ");
+                compUnit = "g/cm³";
             }
-            m_statusBarMgr->setFieldValue(compName, fldVal, ModelDocument::componentUnit(hv->fieldComponent()));
+            m_statusBarMgr->setFieldValue(compName, fldVal, compUnit);
         }
     });
     connect(hv, &HorizontalSliceView::requestBodyProperties, this, &MainWindow::onBodyProperties);
@@ -918,6 +925,11 @@ void MainWindow::onInducingField() {
 
 void MainWindow::onComputeProperties() {
     ComputePropertiesDialog dlg(m_doc, this);
+    dlg.exec();
+}
+
+void MainWindow::onInversion3D() {
+    Inversion3DDialog dlg(m_doc, this);
     dlg.exec();
 }
 

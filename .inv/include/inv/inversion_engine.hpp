@@ -84,6 +84,13 @@ struct InversionConfig {
 
     // Reserved: a prior is supplied through InversionSetup::prior (see python/infer_prior.py).
     std::string onnx_model_path{""};
+
+    /// Optional progress callback: return false to abort/cancel early.
+    /// Args: (int level, int total_levels, int iter, int total_iters, double rms_mgal, double chi_rms)
+    std::function<bool(int level, int total_levels, int iter, int total_iters, double rms_mgal, double chi_rms)> progress_callback;
+
+    /// Optional cancel callback: return true to abort immediately.
+    std::function<bool()> cancel_check;
 };
 
 struct InversionStats {
@@ -246,6 +253,7 @@ struct InversionResult {
     std::string version{"1.0"};
     InversionStats stats{};
     VoxelGrid<double> density_grid{};
+    std::vector<double> modeled_gz{}; ///< Modeled vertical gravity anomaly (mGal) at column stations
 
     [[nodiscard]] nlohmann::json to_json() const {
         nlohmann::json j;
@@ -259,6 +267,7 @@ struct InversionResult {
         j["minimum_gradient_support"] = stats.minimum_gradient_support;
         j["used_prior"] = stats.used_neural_transformer;
         j["message"] = stats.message;
+        j["modeled_gz"] = modeled_gz;
 
         nlohmann::json lv = nlohmann::json::array();
         for (const auto& l : stats.levels) {
@@ -338,6 +347,10 @@ struct InversionResult {
                 r.density_grid.data() = g["values"].get<std::vector<double>>();
             }
         }
+
+        if (j.contains("modeled_gz") && j["modeled_gz"].is_array()) {
+            r.modeled_gz = j["modeled_gz"].get<std::vector<double>>();
+        }
         return r;
     }
 };
@@ -404,7 +417,8 @@ public:
                         InversionStats& stats,
                         const std::vector<double>& topo_nodes = {},
                         const std::vector<double>& obs_z_cols = {},
-                        const std::vector<double>* prior = nullptr)
+                        const std::vector<double>* prior = nullptr,
+                        std::vector<double>* out_modeled_gz = nullptr)
     {
         const auto t_start = std::chrono::high_resolution_clock::now();
         const InversionConfig& c = config_;
@@ -441,6 +455,10 @@ public:
         std::vector<double> m_level;
 
         for (int l = 0; l < n_levels; ++l) {
+            if (c.cancel_check && c.cancel_check()) {
+                stats.message = "Inversion cancelled by user";
+                return false;
+            }
             const std::size_t fx = choose_factor(c.nx, targets[l]);
             const std::size_t fy = choose_factor(c.ny, targets[l]);
             const std::size_t fz = choose_factor(c.nz, targets[l]);
@@ -572,12 +590,29 @@ public:
             sp.density_scale = 0.5 * (c.max_density - c.min_density);
             sp.verbose = c.verbose;
 
+            sp.progress_callback = [&](int iter, int total_iters, double rms, double chi) -> bool {
+                if (c.progress_callback) {
+                    return c.progress_callback(l + 1, n_levels, iter, total_iters, rms, chi);
+                }
+                return true;
+            };
+            sp.cancel_check = c.cancel_check;
+
             LevelStats ls;
             ls.level = l;
             ls.nx = g.nx; ls.ny = g.ny; ls.nz = g.nz;
             const std::vector<double>* ref = (has_prior && c.prior_as_reference) ? &prior_level : nullptr;
-            FocusingSolver::solve(g, *op, d_level, m_level, active, ref, sp, ls);
+            if (!FocusingSolver::solve(g, *op, d_level, m_level, active, ref, sp, ls)) {
+                stats.message = "Inversion cancelled by user";
+                return false;
+            }
             rho = ls.rho_end;
+
+            // Compute modeled gravity on finest level if requested
+            if (l == n_levels - 1 && out_modeled_gz) {
+                out_modeled_gz->resize(g.columns());
+                op->apply(m_level, *out_modeled_gz);
+            }
 
             // Focusing diagnostics (physical units), normalised by the topography-active domain so
             // that adaptive refinement does not change the denominator.
@@ -631,7 +666,7 @@ public:
             observation::scattered_to_columns(setup.obs_x, setup.obs_y, setup.obs_z, gf, oz);
         }
         const std::vector<double>* prior = setup.prior.empty() ? nullptr : &setup.prior;
-        return invert_columns(cols, result.density_grid, result.stats, setup.topo_elevations, oz, prior);
+        return invert_columns(cols, result.density_grid, result.stats, setup.topo_elevations, oz, prior, &result.modeled_gz);
     }
 
     // JSON file helpers for Mod3D export/import

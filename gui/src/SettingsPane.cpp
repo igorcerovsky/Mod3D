@@ -70,6 +70,9 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow,
     updateViewContext();
     updateObservedMeanLabel();
   });
+  connect(m_doc, &ModelDocument::inversionResultChanged, this, [this]() {
+    updateViewContext();
+  });
   connect(m_doc, &ModelDocument::profileChanged, this,
           [this](int idx, ProfileOrientation orient) {
             if (!m_blockSync) {
@@ -413,6 +416,10 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
       new QCheckBox(tr("Ghost Outlines Prev (-1)"), boxPvOverlays);
   m_chkProfGhostNext =
       new QCheckBox(tr("Ghost Outlines Next (+1)"), boxPvOverlays);
+  m_chkProfShowInversionSlice =
+      new QCheckBox(tr("3D Inversion Density Slice"), boxPvOverlays);
+  m_chkProfShowInversionSlice->setChecked(true);
+  m_chkProfShowInversionSlice->setEnabled(false);
 
   pvOverlaysLayout->addWidget(m_chkProfShowStationPts);
   pvOverlaysLayout->addWidget(m_chkProfGrid);
@@ -420,6 +427,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   pvOverlaysLayout->addWidget(m_chkProfShowIntersects);
   pvOverlaysLayout->addWidget(m_chkProfGhostPrev);
   pvOverlaysLayout->addWidget(m_chkProfGhostNext);
+  pvOverlaysLayout->addWidget(m_chkProfShowInversionSlice);
   pvLayout->addWidget(boxPvOverlays);
 
   auto updatePvOverlays = [this]() {
@@ -432,6 +440,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
       pv->setShowProfileIntersections(m_chkProfShowIntersects->isChecked());
       pv->setShowPreviousProfile(m_chkProfGhostPrev->isChecked());
       pv->setShowNextProfile(m_chkProfGhostNext->isChecked());
+      pv->setShowInversionDensitySlice(m_chkProfShowInversionSlice->isChecked());
     }
     // Keep Profiles Tab Show Checks synchronized
     m_blockSync = true;
@@ -441,6 +450,9 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     m_chkProfTabIntersects->setChecked(m_chkProfShowIntersects->isChecked());
     m_chkProfTabGhostPrev->setChecked(m_chkProfGhostPrev->isChecked());
     m_chkProfTabGhostNext->setChecked(m_chkProfGhostNext->isChecked());
+    if (m_chkProfTabInversionSlice) {
+      m_chkProfTabInversionSlice->setChecked(m_chkProfShowInversionSlice->isChecked());
+    }
     m_blockSync = false;
   };
   connect(m_chkProfShowStationPts, &QCheckBox::toggled, this, updatePvOverlays);
@@ -449,6 +461,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   connect(m_chkProfShowIntersects, &QCheckBox::toggled, this, updatePvOverlays);
   connect(m_chkProfGhostPrev, &QCheckBox::toggled, this, updatePvOverlays);
   connect(m_chkProfGhostNext, &QCheckBox::toggled, this, updatePvOverlays);
+  connect(m_chkProfShowInversionSlice, &QCheckBox::toggled, this, updatePvOverlays);
 
   layout->addWidget(m_paneProfileFields);
 
@@ -504,6 +517,9 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
       new QRadioButton(tr("Measured / Observed Bitmap"), boxRaster);
   m_rbMapDiff = new QRadioButton(tr("Difference Field Bitmap"), boxRaster);
   m_rbMapRelief = new QRadioButton(tr("Topography / DEM Bitmap"), boxRaster);
+  m_rbMapInversion =
+      new QRadioButton(tr("3D Inversion Density Slice"), boxRaster);
+  m_rbMapInversion->setEnabled(false);
   m_rbMapNone = new QRadioButton(tr("None (Grid Only)"), boxRaster);
 
   m_grpMapRaster->addButton(m_rbMapModeled,
@@ -514,6 +530,9 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
       m_rbMapDiff, static_cast<int>(MapView::MapRasterMode::Difference));
   m_grpMapRaster->addButton(m_rbMapRelief,
                             static_cast<int>(MapView::MapRasterMode::Relief));
+  m_grpMapRaster->addButton(
+      m_rbMapInversion,
+      static_cast<int>(MapView::MapRasterMode::InversionDensity));
   m_grpMapRaster->addButton(m_rbMapNone,
                             static_cast<int>(MapView::MapRasterMode::None));
 
@@ -521,6 +540,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   rasterLayout->addWidget(m_rbMapObserved);
   rasterLayout->addWidget(m_rbMapDiff);
   rasterLayout->addWidget(m_rbMapRelief);
+  rasterLayout->addWidget(m_rbMapInversion);
   rasterLayout->addWidget(m_rbMapNone);
   mvLayout->addWidget(boxRaster);
 
@@ -851,6 +871,9 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
       new QRadioButton(tr("Measured / Observed Bitmap"), boxSliceRaster);
   m_rbSliceDiff =
       new QRadioButton(tr("Difference Field Bitmap"), boxSliceRaster);
+  m_rbSliceInversion =
+      new QRadioButton(tr("3D Inversion Density Slice"), boxSliceRaster);
+  m_rbSliceInversion->setEnabled(false);
   m_rbSliceNone = new QRadioButton(tr("None (Grid Only)"), boxSliceRaster);
 
   m_grpSliceRaster->addButton(
@@ -863,12 +886,16 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
       m_rbSliceDiff,
       static_cast<int>(HorizontalSliceView::SliceRasterMode::Difference));
   m_grpSliceRaster->addButton(
+      m_rbSliceInversion,
+      static_cast<int>(HorizontalSliceView::SliceRasterMode::InversionDensity));
+  m_grpSliceRaster->addButton(
       m_rbSliceNone,
       static_cast<int>(HorizontalSliceView::SliceRasterMode::None));
 
   sliceRasterLayout->addWidget(m_rbSliceModeled);
   sliceRasterLayout->addWidget(m_rbSliceObserved);
   sliceRasterLayout->addWidget(m_rbSliceDiff);
+  sliceRasterLayout->addWidget(m_rbSliceInversion);
   sliceRasterLayout->addWidget(m_rbSliceNone);
   sliceLayout->addWidget(boxSliceRaster);
 
@@ -1116,6 +1143,10 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
       new QCheckBox(tr("Ghost Previous Profile (-1)"), boxChecks);
   m_chkProfTabGhostNext =
       new QCheckBox(tr("Ghost Next Profile (+1)"), boxChecks);
+  m_chkProfTabInversionSlice =
+      new QCheckBox(tr("3D Inversion Density Slice"), boxChecks);
+  m_chkProfTabInversionSlice->setChecked(true);
+  m_chkProfTabInversionSlice->setEnabled(false);
 
   chkLayout->addWidget(m_chkProfTabGrid);
   chkLayout->addWidget(m_chkProfTabStationPts);
@@ -1123,6 +1154,7 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
   chkLayout->addWidget(m_chkProfTabIntersects);
   chkLayout->addWidget(m_chkProfTabGhostPrev);
   chkLayout->addWidget(m_chkProfTabGhostNext);
+  chkLayout->addWidget(m_chkProfTabInversionSlice);
   layout->addWidget(boxChecks);
 
   auto updateFromTabChecks = [this]() {
@@ -1135,6 +1167,7 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
       pv->setShowProfileIntersections(m_chkProfTabIntersects->isChecked());
       pv->setShowPreviousProfile(m_chkProfTabGhostPrev->isChecked());
       pv->setShowNextProfile(m_chkProfTabGhostNext->isChecked());
+      pv->setShowInversionDensitySlice(m_chkProfTabInversionSlice->isChecked());
     }
     m_blockSync = true;
     m_chkProfGrid->setChecked(m_chkProfTabGrid->isChecked());
@@ -1143,6 +1176,7 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
     m_chkProfShowIntersects->setChecked(m_chkProfTabIntersects->isChecked());
     m_chkProfGhostPrev->setChecked(m_chkProfTabGhostPrev->isChecked());
     m_chkProfGhostNext->setChecked(m_chkProfTabGhostNext->isChecked());
+    m_chkProfShowInversionSlice->setChecked(m_chkProfTabInversionSlice->isChecked());
     m_blockSync = false;
   };
   connect(m_chkProfTabGrid, &QCheckBox::toggled, this, updateFromTabChecks);
@@ -1154,6 +1188,8 @@ void SettingsPane::setupProfilesTab(QWidget *container) {
   connect(m_chkProfTabGhostPrev, &QCheckBox::toggled, this,
           updateFromTabChecks);
   connect(m_chkProfTabGhostNext, &QCheckBox::toggled, this,
+          updateFromTabChecks);
+  connect(m_chkProfTabInversionSlice, &QCheckBox::toggled, this,
           updateFromTabChecks);
 
   // 4. Profile Operations & Tools
@@ -2388,6 +2424,16 @@ void SettingsPane::updateViewContext() {
     return;
   m_blockSync = true;
 
+  const bool hasInv = m_doc && m_doc->hasInversionResult();
+  if (m_chkProfShowInversionSlice)
+    m_chkProfShowInversionSlice->setEnabled(hasInv);
+  if (m_chkProfTabInversionSlice)
+    m_chkProfTabInversionSlice->setEnabled(hasInv);
+  if (m_rbMapInversion)
+    m_rbMapInversion->setEnabled(hasInv);
+  if (m_rbSliceInversion)
+    m_rbSliceInversion->setEnabled(hasInv);
+
   if (auto *pv = qobject_cast<ProfileView *>(m_activeView.data())) {
     QString dirStr = (pv->profileOrientation() == ProfileOrientation::EastWest)
                          ? "E-W"
@@ -2450,6 +2496,9 @@ void SettingsPane::updateViewContext() {
     m_chkProfShowIntersects->setChecked(pv->showProfileIntersections());
     m_chkProfGhostPrev->setChecked(pv->showPreviousProfile());
     m_chkProfGhostNext->setChecked(pv->showNextProfile());
+    bool hasInv = m_doc && m_doc->hasInversionResult();
+    m_chkProfShowInversionSlice->setEnabled(hasInv);
+    m_chkProfShowInversionSlice->setChecked(pv->showInversionDensitySlice());
 
     // Sync Profiles Tab
     m_btnProfTabOrientEW->setChecked(pv->profileOrientation() ==
@@ -2486,6 +2535,10 @@ void SettingsPane::updateViewContext() {
     m_chkProfTabIntersects->setChecked(pv->showProfileIntersections());
     m_chkProfTabGhostPrev->setChecked(pv->showPreviousProfile());
     m_chkProfTabGhostNext->setChecked(pv->showNextProfile());
+    if (m_chkProfTabInversionSlice) {
+      m_chkProfTabInversionSlice->setEnabled(hasInv);
+      m_chkProfTabInversionSlice->setChecked(pv->showInversionDensitySlice());
+    }
 
     m_btnContinuousDrawing->setChecked(pv->continuousDrawingMode());
 
@@ -2524,9 +2577,17 @@ void SettingsPane::updateViewContext() {
             ? QString()
             : tr("No measured field available for difference calculation"));
 
+    bool hasMapInv = m_doc && m_doc->hasInversionResult();
+    m_rbMapInversion->setEnabled(hasMapInv);
+    m_rbMapInversion->setToolTip(
+        hasMapInv ? QString() : tr("No 3D inversion result available"));
+
     if (!hasMapMeasured &&
         (mv->rasterMode() == MapView::MapRasterMode::Observed ||
          mv->rasterMode() == MapView::MapRasterMode::Difference)) {
+      mv->setRasterMode(MapView::MapRasterMode::Modeled);
+    }
+    if (!hasMapInv && mv->rasterMode() == MapView::MapRasterMode::InversionDensity) {
       mv->setRasterMode(MapView::MapRasterMode::Modeled);
     }
     if (auto *btn =
@@ -2644,11 +2705,20 @@ void SettingsPane::updateViewContext() {
             ? QString()
             : tr("No measured field available for difference calculation"));
 
+    bool hasSliceInv = m_doc && m_doc->hasInversionResult();
+    m_rbSliceInversion->setEnabled(hasSliceInv);
+    m_rbSliceInversion->setToolTip(
+        hasSliceInv ? QString() : tr("No 3D inversion result available"));
+
     if (!hasSliceMeasured &&
         (hv->rasterMode() == HorizontalSliceView::SliceRasterMode::Observed ||
          hv->rasterMode() ==
              HorizontalSliceView::SliceRasterMode::Difference)) {
       hv->setRasterMode(HorizontalSliceView::SliceRasterMode::Modeled);
+    }
+    if (!hasSliceInv &&
+        hv->rasterMode() == HorizontalSliceView::SliceRasterMode::InversionDensity) {
+      hv->setRasterMode(HorizontalSliceView::SliceRasterMode::None);
     }
     if (auto *btn =
             m_grpSliceRaster->button(static_cast<int>(hv->rasterMode()))) {

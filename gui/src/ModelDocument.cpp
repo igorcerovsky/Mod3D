@@ -46,6 +46,7 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
     m_modified = false;
     m_showMeasured = false;
     m_showDiff = false;
+    m_lastInversionResult.reset();
 
     computeAll();
 
@@ -81,6 +82,7 @@ bool ModelDocument::newProjectFromReliefGrid(const mod3d::Grid &reliefGrid, doub
     m_modified = false;
     m_showMeasured = false;
     m_showDiff = false;
+    m_lastInversionResult.reset();
 
     computeAll();
 
@@ -1212,6 +1214,20 @@ void ModelDocument::setGlobalMovement(bool enabled) {
     if (m_globalMovement != enabled) {
         m_globalMovement = enabled;
         emit globalMovementChanged(m_globalMovement);
+    }
+}
+
+void ModelDocument::setInversionResult(const inv::InversionResult &result) {
+    m_lastInversionResult = result;
+    setModified(true);
+    emit inversionResultChanged();
+}
+
+void ModelDocument::clearInversionResult() {
+    if (m_lastInversionResult.has_value()) {
+        m_lastInversionResult.reset();
+        setModified(true);
+        emit inversionResultChanged();
     }
 }
 

@@ -25,6 +25,7 @@ set(GUI_HEADERS
     include/mod3d_gui/dialogs/ActiveGridsDialog.h
     include/mod3d_gui/dialogs/Fit1DDialog.h
     include/mod3d_gui/dialogs/FitNeighborhoodDialog.h
+    include/mod3d_gui/dialogs/Inversion3DDialog.h
     include/mod3d_gui/SettingsPane.h
 )
 
@@ -47,6 +48,7 @@ set(GUI_SOURCES
     src/dialogs/ActiveGridsDialog.cpp
     src/dialogs/Fit1DDialog.cpp
     src/dialogs/FitNeighborhoodDialog.cpp
+    src/dialogs/Inversion3DDialog.cpp
 )
 
 add_library(mod3d_gui_lib STATIC

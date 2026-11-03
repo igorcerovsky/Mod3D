@@ -40,6 +40,8 @@ ProfileView::ProfileView(ModelDocument *doc, ProfileOrientation orient,
           QOverload<>::of(&QWidget::update));
   connect(m_doc, &ModelDocument::fieldDisplayToggled, this,
           QOverload<>::of(&QWidget::update));
+  connect(m_doc, &ModelDocument::inversionResultChanged, this,
+          QOverload<>::of(&QWidget::update));
   connect(m_doc, &ModelDocument::activeFieldChanged, this,
           [this](mod3d::FieldComponent) {
             if (!hasMeasuredField()) {
@@ -371,6 +373,14 @@ void ProfileView::setShowRelief(bool show) {
 void ProfileView::setShowProfileIntersections(bool show) {
   if (m_showProfileIntersections != show) {
     m_showProfileIntersections = show;
+    emit displaySettingsChanged();
+    update();
+  }
+}
+
+void ProfileView::setShowInversionDensitySlice(bool show) {
+  if (m_showInversionDensitySlice != show) {
+    m_showInversionDensitySlice = show;
     emit displaySettingsChanged();
     update();
   }
@@ -971,6 +981,10 @@ void ProfileView::drawGeologicalSection(QPainter &painter) {
   painter.setPen(QColor(170, 170, 180));
   painter.drawRect(canvas);
 
+  if (m_showInversionDensitySlice) {
+    drawInversionDensitySlice(painter, canvas);
+  }
+
   drawSectionAxes(painter);
 
   if (m_showGridLines) {
@@ -994,6 +1008,169 @@ void ProfileView::drawGeologicalSection(QPainter &painter) {
   drawBodies(painter);
 
   painter.restore();
+}
+
+void ProfileView::drawInversionDensitySlice(QPainter &painter, const QRect &canvas) {
+  if (!m_doc || !m_doc->hasInversionResult())
+    return;
+  const auto &resultOpt = m_doc->inversionResult();
+  if (!resultOpt.has_value())
+    return;
+
+  const auto &res = *resultOpt;
+  const auto &densityGrid = res.density_grid;
+  if (densityGrid.total_cells() == 0)
+    return;
+
+  const size_t nx = densityGrid.nx();
+  const size_t ny = densityGrid.ny();
+  const size_t nz = densityGrid.nz();
+  const double dx = densityGrid.dx();
+  const double dy = densityGrid.dy();
+  const double dz = densityGrid.dz();
+
+  const double zDomainTop = m_doc->model().z_max().value();
+
+  // Find maximum anomaly amplitude for diverging colormap normalization
+  double maxAbsRho = 0.0;
+  for (double val : densityGrid.data()) {
+    maxAbsRho = std::max(maxAbsRho, std::abs(val));
+  }
+  if (maxAbsRho <= 0.0)
+    maxAbsRho = 0.5;
+
+  auto getDensityColor = [](double deltaRho, double maxVal) -> QColor {
+    double norm = std::clamp(deltaRho / maxVal, -1.0, 1.0);
+    if (norm < 0.0) {
+      double t = -norm; // 0 to 1
+      int r = static_cast<int>(255 * (1.0 - 0.85 * t));
+      int g = static_cast<int>(255 * (1.0 - 0.60 * t));
+      int b = static_cast<int>(255 * (1.0 - 0.05 * t));
+      int a = static_cast<int>(180 * std::min(1.0, t * 1.5 + 0.15));
+      return QColor(r, g, b, a);
+    } else {
+      double t = norm; // 0 to 1
+      int r = static_cast<int>(255 * (1.0 - 0.05 * t));
+      int g = static_cast<int>(255 * (1.0 - 0.75 * t));
+      int b = static_cast<int>(255 * (1.0 - 0.85 * t));
+      int a = static_cast<int>(180 * std::min(1.0, t * 1.5 + 0.15));
+      return QColor(r, g, b, a);
+    }
+  };
+
+  painter.save();
+  painter.setClipRect(canvas);
+
+  if (m_profileOrient == ProfileOrientation::EastWest) {
+    const int iy = m_profileIndex;
+    if (iy >= 0 && iy < static_cast<int>(ny)) {
+      int nLines = profileColumnLineCount();
+      for (int i = 0; i < nLines && static_cast<size_t>(i) < nx; ++i) {
+        double xw = columnCoordinate(i);
+        int sx1 = worldToScreenX(xw - 0.5 * dx);
+        int sx2 = worldToScreenX(xw + 0.5 * dx);
+        int cellW = std::max(1, std::abs(sx2 - sx1));
+        int sx = std::min(sx1, sx2);
+
+        int r = 0, c = 0;
+        getRowCol(i, r, c);
+        double topoZ = m_doc->model().z(r, c, 0);
+
+        for (size_t iz = 0; iz < nz; ++iz) {
+          double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
+          double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+
+          if (zLayerBot >= topoZ)
+            continue; // above surface
+
+          double zCellTop = std::min(zLayerTop, topoZ);
+          int sy1 = worldToScreenZ(zCellTop);
+          int sy2 = worldToScreenZ(zLayerBot);
+          int cellH = std::max(1, std::abs(sy2 - sy1));
+          int sy = std::min(sy1, sy2);
+
+          double rho = densityGrid(i, iy, iz);
+          if (std::abs(rho) < 1e-4)
+            continue;
+
+          painter.fillRect(sx, sy, cellW, cellH, getDensityColor(rho, maxAbsRho));
+        }
+      }
+    }
+  } else {
+    // South-North profile
+    const int ix = m_profileIndex;
+    if (ix >= 0 && ix < static_cast<int>(nx)) {
+      int nLines = profileColumnLineCount();
+      for (int i = 0; i < nLines && static_cast<size_t>(i) < ny; ++i) {
+        double yw = columnCoordinate(i);
+        int sy1 = worldToScreenX(yw - 0.5 * dy);
+        int sy2 = worldToScreenX(yw + 0.5 * dy);
+        int cellW = std::max(1, std::abs(sy2 - sy1));
+        int sx = std::min(sy1, sy2);
+
+        int r = 0, c = 0;
+        getRowCol(i, r, c);
+        double topoZ = m_doc->model().z(r, c, 0);
+
+        for (size_t iz = 0; iz < nz; ++iz) {
+          double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
+          double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+
+          if (zLayerBot >= topoZ)
+            continue;
+
+          double zCellTop = std::min(zLayerTop, topoZ);
+          int sz1 = worldToScreenZ(zCellTop);
+          int sz2 = worldToScreenZ(zLayerBot);
+          int cellH = std::max(1, std::abs(sz2 - sz1));
+          int sy = std::min(sz1, sz2);
+
+          double rho = densityGrid(ix, i, iz);
+          if (std::abs(rho) < 1e-4)
+            continue;
+
+          painter.fillRect(sx, sy, cellW, cellH, getDensityColor(rho, maxAbsRho));
+        }
+      }
+    }
+  }
+
+  drawInversionDensityLegend(painter, canvas, maxAbsRho);
+  painter.restore();
+}
+
+void ProfileView::drawInversionDensityLegend(QPainter &painter, const QRect &canvas, double maxAbsRho) {
+  const int legendW = 150;
+  const int legendH = 30;
+  const int lx = canvas.right() - legendW - 8;
+  const int ly = canvas.top() + 8;
+  QRect lRect(lx, ly, legendW, legendH);
+
+  painter.fillRect(lRect, QColor(255, 255, 255, 220));
+  painter.setPen(QColor(180, 180, 190));
+  painter.drawRect(lRect);
+
+  // Gradient bar
+  QLinearGradient grad(lx + 6, ly + 14, lx + legendW - 12, ly + 14);
+  grad.setColorAt(0.0, QColor(30, 90, 220, 220));
+  grad.setColorAt(0.5, QColor(245, 245, 245, 220));
+  grad.setColorAt(1.0, QColor(220, 40, 40, 220));
+  painter.fillRect(lx + 6, ly + 12, legendW - 12, 7, grad);
+
+  QFont font = painter.font();
+  font.setPointSize(8);
+  font.setBold(true);
+  painter.setFont(font);
+  painter.setPen(QColor(40, 40, 50));
+  painter.drawText(QRect(lx + 4, ly + 1, legendW - 8, 11), Qt::AlignCenter,
+                   QString("3D Inversion Δρ (g/cm³)"));
+
+  font.setBold(false);
+  font.setPointSize(7);
+  painter.setFont(font);
+  painter.drawText(lx + 6, ly + 28, QString("-%1").arg(maxAbsRho, 0, 'f', 2));
+  painter.drawText(lx + legendW - 36, ly + 28, QString("+%1").arg(maxAbsRho, 0, 'f', 2));
 }
 
 void ProfileView::drawSectionAxes(QPainter &painter) {
@@ -2044,6 +2221,16 @@ void ProfileView::showBackgroundContextMenu(const QPoint &globalPos) {
       tr("Show Next"), [this]() { setShowNextProfile(!m_showNextProfile); });
   actNext->setCheckable(true);
   actNext->setChecked(m_showNextProfile);
+  menu.addSeparator();
+  auto *actInv = menu.addAction(
+      tr("Show 3D Inversion Density Slice"), [this]() {
+        setShowInversionDensitySlice(!m_showInversionDensitySlice);
+      });
+  actInv->setCheckable(true);
+  actInv->setChecked(m_showInversionDensitySlice);
+  if (!m_doc || !m_doc->hasInversionResult()) {
+    actInv->setEnabled(false);
+  }
   menu.addSeparator();
   menu.addAction(tr("Jump to Extreme\tE"), [this]() { jumpToExtreme(); });
   menu.addAction(tr("Jump to Min\tI"), [this]() { jumpToMin(); });

@@ -69,6 +69,7 @@ private:
     void onChangeVerticalRange();
     void onInducingField();
     void onComputeProperties();
+    void onInversion3D();
     void onActiveGrids();
     void onBodyProperties(int bodyId = -1);
     void onFit1DProperties();

@@ -79,7 +79,8 @@ public:
     None = 0,
     Modeled = 1,
     Observed = 2,
-    Difference = 3
+    Difference = 3,
+    InversionDensity = 4
   };
 
   [[nodiscard]] SliceRasterMode rasterMode() const noexcept {

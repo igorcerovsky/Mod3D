@@ -20,6 +20,9 @@
 #include "mod3d_gui/dialogs/BodyPropertiesDialog.h"
 #include "mod3d_gui/dialogs/DefineObservationDialog.h"
 #include "mod3d_gui/dialogs/VerticalRangeDialog.h"
+#include "mod3d_gui/dialogs/Inversion3DDialog.h"
+#include "inv/inversion_engine.hpp"
+#include <thread>
 
 using namespace mod3d_gui;
 
@@ -4978,4 +4981,330 @@ TEST_F(GuiDocumentTest, GL3DViewOctantCutBoundaryTriangleClipping) {
       }
     }
   }
+}
+
+TEST_F(GuiDocumentTest, Inversion3DVoxelCenteringAndProfileAlignment) {
+  // Verifies the user requirement:
+  // "make sure center of a voxel in horizontal plane is 'at' grid point (xi, yi, zi)
+  // and voxel is in (xi+-dx/2, yi+-dy/2, zi). in other words voxel center lie in the profile plane."
+  const size_t rows = 5;
+  const size_t cols = 7;
+  const double x0 = 1000.0;
+  const double y0 = 2000.0;
+  const double dx = 100.0;
+  const double dy = 80.0;
+  const double dz = 50.0;
+  const size_t nz = 6;
+
+  mod3d::Grid obsGrid(rows, cols, x0, y0, dx, dy);
+
+  // Inversion grid geometry setup matching Inversion3DDialog:
+  const double x0_geom = obsGrid.x0().value() - 0.5 * dx;
+  const double y0_geom = obsGrid.y0().value() - 0.5 * dy;
+  const double z0_geom = 0.0;
+
+  inv::GridGeometry geom{cols, rows, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
+
+  for (size_t ix = 0; ix < cols; ++ix) {
+    for (size_t iy = 0; iy < rows; ++iy) {
+      // 1. Grid point in Mod3D
+      const double xi = obsGrid.x(iy, ix).value();
+      const double yi = obsGrid.y(iy, ix).value();
+
+      EXPECT_DOUBLE_EQ(xi, x0 + static_cast<double>(ix) * dx);
+      EXPECT_DOUBLE_EQ(yi, y0 + static_cast<double>(iy) * dy);
+
+      // 2. Voxel center in inv::GridGeometry
+      const double xc = geom.xc(ix);
+      const double yc = geom.yc(iy);
+
+      // Center of voxel in horizontal plane is "at" grid point (xi, yi)
+      EXPECT_DOUBLE_EQ(xc, xi);
+      EXPECT_DOUBLE_EQ(yc, yi);
+
+      // 3. Voxel bounding box: [xi - dx/2, xi + dx/2] x [yi - dy/2, yi + dy/2]
+      const double x_min = x0_geom + static_cast<double>(ix) * dx;
+      const double x_max = x_min + dx;
+      const double y_min = y0_geom + static_cast<double>(iy) * dy;
+      const double y_max = y_min + dy;
+
+      EXPECT_DOUBLE_EQ(x_min, xi - 0.5 * dx);
+      EXPECT_DOUBLE_EQ(x_max, xi + 0.5 * dx);
+      EXPECT_DOUBLE_EQ(y_min, yi - 0.5 * dy);
+      EXPECT_DOUBLE_EQ(y_max, yi + 0.5 * dy);
+
+      // 4. Mod3D Profile Plane intersection:
+      // East-West profile at row iy has plane y = yi. Voxel center lies EXACTLY on this plane:
+      EXPECT_DOUBLE_EQ(yc, yi);
+      // South-North profile at col ix has plane x = xi. Voxel center lies EXACTLY on this plane:
+      EXPECT_DOUBLE_EQ(xc, xi);
+    }
+  }
+}
+
+TEST_F(GuiDocumentTest, Inversion3DJThreadCancellation) {
+  // Verifies background execution with std::jthread and cooperative std::stop_token
+  inv::InversionConfig cfg;
+  cfg.nx = 8;
+  cfg.ny = 8;
+  cfg.nz = 6;
+  cfg.dx = 50.0;
+  cfg.dy = 50.0;
+  cfg.dz = 50.0;
+  cfg.coarse_to_fine_levels = 2;
+  cfg.irls_iterations = 20;
+
+  std::vector<double> d(cfg.nx * cfg.ny, 1.5);
+  std::atomic<bool> threadStarted{false};
+  std::atomic<bool> threadFinished{false};
+  bool invertResult = true;
+  std::string resultMsg;
+
+  {
+    std::jthread worker([&](std::stop_token st) {
+      threadStarted = true;
+      inv::InversionEngine engine(cfg);
+      auto &ecfg = const_cast<inv::InversionConfig &>(engine.config());
+      ecfg.cancel_check = [&st]() { return st.stop_requested(); };
+      ecfg.progress_callback = [&st](int, int, int, int, double, double) {
+        return !st.stop_requested();
+      };
+
+      inv::VoxelGrid<double> out_m;
+      inv::InversionStats stats;
+      invertResult = engine.invert_columns(d, out_m, stats);
+      resultMsg = stats.message;
+      threadFinished = true;
+    });
+
+    // Wait until worker thread starts
+    while (!threadStarted) {
+      std::this_thread::yield();
+    }
+
+    // Request stop cooperatively
+    worker.request_stop();
+  } // worker joins here automatically
+
+  EXPECT_TRUE(threadFinished);
+  EXPECT_FALSE(invertResult);
+  EXPECT_EQ(resultMsg, "Inversion cancelled by user");
+}
+
+TEST_F(GuiDocumentTest, ModelDocumentInversionResultStateAndApplication) {
+  ModelDocument doc;
+  doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -2000.0, 500.0);
+  EXPECT_FALSE(doc.hasInversionResult());
+
+  int signalCount = 0;
+  QObject::connect(&doc, &ModelDocument::inversionResultChanged, [&]() {
+    ++signalCount;
+  });
+
+  // Create dummy inversion result
+  inv::InversionResult res;
+  res.stats.elapsed_time_ms = 42.0;
+  res.stats.levels_completed = 3;
+  res.stats.initial_data_rms = 5.0;
+  res.stats.final_data_rms = 0.2;
+  res.stats.final_chi_rms = 1.0;
+  res.density_grid = inv::VoxelGrid<double>(11, 11, 8, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.25);
+  res.modeled_gz.resize(11 * 11, 1.23);
+
+  doc.setInversionResult(res);
+  EXPECT_TRUE(doc.hasInversionResult());
+  EXPECT_EQ(signalCount, 1);
+  EXPECT_DOUBLE_EQ(doc.inversionResult()->stats.final_data_rms, 0.2);
+
+  // Apply to document modeled and difference grids
+  mod3d::Grid modGrid(11, 11, 0.0, 0.0, 100.0, 100.0);
+  for (size_t ix = 0; ix < 11; ++ix) {
+    for (size_t iy = 0; iy < 11; ++iy) {
+      modGrid(iy, ix) = res.modeled_gz[ix * 11 + iy];
+    }
+  }
+  doc.observation().set_modeled_grid(mod3d::FieldComponent::GZ, modGrid);
+  doc.observation().compute_difference(mod3d::FieldComponent::GZ);
+
+  const auto *pMod = doc.modeledGrid(mod3d::FieldComponent::GZ);
+  ASSERT_NE(pMod, nullptr);
+  EXPECT_DOUBLE_EQ((*pMod)(5, 5), 1.23);
+
+  doc.clearInversionResult();
+  EXPECT_FALSE(doc.hasInversionResult());
+  EXPECT_EQ(signalCount, 2);
+}
+
+TEST_F(GuiDocumentTest, Inversion3DDialogLifecycle) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  // Setup observed grid
+  mod3d::Grid obs(9, 9, 0.0, 0.0, 100.0, 100.0);
+  for (size_t r = 0; r < 9; ++r) {
+    for (size_t c = 0; c < 9; ++c) {
+      obs(r, c) = 2.0;
+    }
+  }
+  doc->observation().set_observed_grid(mod3d::FieldComponent::GZ, obs);
+  doc->setActiveField(mod3d::FieldComponent::GZ);
+
+  Inversion3DDialog dlg(doc, &mw);
+  EXPECT_FALSE(dlg.windowTitle().isEmpty());
+}
+
+TEST_F(GuiDocumentTest, ProfileViewInversionDensitySliceAndContextMenu) {
+  ModelDocument doc;
+  doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  // Set synthetic inversion result
+  inv::InversionResult res;
+  res.density_grid = inv::VoxelGrid<double>(9, 9, 10, -50.0, -50.0, 0.0, 100.0, 100.0, 100.0, 0.35);
+  // Introduce a positive and a negative density anomaly
+  res.density_grid(4, 4, 3) = 0.65;
+  res.density_grid(4, 4, 4) = -0.45;
+  doc.setInversionResult(res);
+
+  // 1. East-West profile
+  ProfileView pvEW(&doc, ProfileOrientation::EastWest);
+  pvEW.resize(400, 300);
+  EXPECT_TRUE(pvEW.showInversionDensitySlice());
+
+  QPixmap pixEW(400, 300);
+  pixEW.fill(Qt::white);
+  QPainter pEW(&pixEW);
+  pvEW.render(&pEW);
+  pEW.end();
+
+  // Toggle off
+  pvEW.setShowInversionDensitySlice(false);
+  EXPECT_FALSE(pvEW.showInversionDensitySlice());
+
+  // 2. South-North profile
+  ProfileView pvSN(&doc, ProfileOrientation::SouthNorth);
+  pvSN.resize(400, 300);
+  EXPECT_TRUE(pvSN.showInversionDensitySlice());
+
+  QPixmap pixSN(400, 300);
+  pixSN.fill(Qt::white);
+  QPainter pSN(&pixSN);
+  pvSN.render(&pSN);
+  pSN.end();
+}
+
+TEST_F(GuiDocumentTest, MapViewInversionDensityRasterAndLegend) {
+  ModelDocument doc;
+  doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  MapView mv(&doc);
+  mv.resize(400, 400);
+
+  // Without inversion result, InversionDensity falls back to Modeled
+  mv.setRasterMode(MapView::MapRasterMode::InversionDensity);
+  EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::Modeled);
+
+  // Set inversion result
+  inv::InversionResult res;
+  res.density_grid = inv::VoxelGrid<double>(9, 9, 10, -50.0, -50.0, 0.0, 100.0, 100.0, 100.0, 0.0);
+  res.density_grid(4, 4, 2) = 0.5;
+  doc.setInversionResult(res);
+
+  // Now InversionDensity should be accepted
+  mv.setRasterMode(MapView::MapRasterMode::InversionDensity);
+  EXPECT_EQ(mv.rasterMode(), MapView::MapRasterMode::InversionDensity);
+
+  // Render to pixmap (executes drawBackgroundRaster and drawColorScaleLegend)
+  QPixmap pix(400, 400);
+  pix.fill(Qt::white);
+  QPainter p(&pix);
+  mv.render(&p);
+  p.end();
+
+  // Change active slice elevation and re-render
+  doc.setActiveSliceElevation(300.0);
+  QPixmap pix2(400, 400);
+  pix2.fill(Qt::white);
+  QPainter p2(&pix2);
+  mv.render(&p2);
+  p2.end();
+}
+
+TEST_F(GuiDocumentTest, HorizontalSliceViewInversionDensityRasterAndCursorTracking) {
+  ModelDocument doc;
+  doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  // Add a filled bright yellow body
+  int bodyId = doc.insertBodyAt(2, -500.0, 300.0);
+  EXPECT_GT(bodyId, 0);
+  if (auto *b = doc.model().body(bodyId)) {
+    b->set_color({255, 255, 0}); // Bright yellow body
+    b->set_filled(true);
+  }
+
+  HorizontalSliceView hv(&doc, 250.0);
+  hv.resize(400, 400);
+
+  // Without inversion result, InversionDensity falls back to None
+  hv.setRasterMode(HorizontalSliceView::SliceRasterMode::InversionDensity);
+  EXPECT_EQ(hv.rasterMode(), HorizontalSliceView::SliceRasterMode::None);
+
+  // Set inversion result with negative anomaly, zero host rock, and positive anomaly
+  inv::InversionResult res;
+  res.density_grid = inv::VoxelGrid<double>(9, 9, 10, -50.0, -50.0, 0.0, 100.0, 100.0, 100.0, 0.0);
+  res.density_grid(2, 2, 2) = -0.6; // Negative anomaly (blue)
+  res.density_grid(4, 4, 2) = 0.8;  // Positive anomaly (red)
+  doc.setInversionResult(res);
+
+  // Now InversionDensity should be accepted
+  hv.setRasterMode(HorizontalSliceView::SliceRasterMode::InversionDensity);
+  EXPECT_EQ(hv.rasterMode(), HorizontalSliceView::SliceRasterMode::InversionDensity);
+
+  // Render to pixmap
+  QPixmap pix(400, 400);
+  pix.fill(Qt::white);
+  QPainter p(&pix);
+  hv.render(&p);
+  p.end();
+
+  // Test elevation change
+  hv.setSliceElevation(350.0);
+  EXPECT_DOUBLE_EQ(hv.sliceElevation(), 350.0);
+}
+
+TEST_F(GuiDocumentTest, SettingsPaneInversionControlsSync) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  SettingsPane *sp = mw.settingsPane();
+  ASSERT_NE(sp, nullptr);
+
+  // Verify getters exist
+  EXPECT_NE(sp->mapInversionRadioButton(), nullptr);
+  EXPECT_NE(sp->sliceInversionRadioButton(), nullptr);
+  EXPECT_NE(sp->profileInversionSliceCheckBox(), nullptr);
+
+  // Initially no inversion result -> controls disabled
+  EXPECT_FALSE(doc->hasInversionResult());
+  EXPECT_FALSE(sp->mapInversionRadioButton()->isEnabled());
+  EXPECT_FALSE(sp->sliceInversionRadioButton()->isEnabled());
+  EXPECT_FALSE(sp->profileInversionSliceCheckBox()->isEnabled());
+
+  // Set inversion result -> controls enabled
+  inv::InversionResult res;
+  res.density_grid = inv::VoxelGrid<double>(9, 9, 10, -50.0, -50.0, 0.0, 100.0, 100.0, 100.0, 0.1);
+  doc->setInversionResult(res);
+
+  EXPECT_TRUE(sp->mapInversionRadioButton()->isEnabled());
+  EXPECT_TRUE(sp->sliceInversionRadioButton()->isEnabled());
+  EXPECT_TRUE(sp->profileInversionSliceCheckBox()->isEnabled());
+
+  // Clear inversion result -> controls disabled again
+  doc->clearInversionResult();
+  EXPECT_FALSE(sp->mapInversionRadioButton()->isEnabled());
+  EXPECT_FALSE(sp->sliceInversionRadioButton()->isEnabled());
+  EXPECT_FALSE(sp->profileInversionSliceCheckBox()->isEnabled());
 }

@@ -4,6 +4,7 @@
 #include "mod3d/Model.h"
 #include "mod3d/Observation.h"
 #include "mod3d/Grid.h"
+#include "inv/inversion_engine.hpp"
 #include <QObject>
 #include <QString>
 #include <QUndoStack>
@@ -304,6 +305,12 @@ public:
     [[nodiscard]] bool globalMovement() const noexcept { return m_globalMovement; }
     void setGlobalMovement(bool enabled);
 
+    // 3D Focusing Inversion Results
+    [[nodiscard]] const std::optional<inv::InversionResult> &inversionResult() const noexcept { return m_lastInversionResult; }
+    [[nodiscard]] bool hasInversionResult() const noexcept { return m_lastInversionResult.has_value(); }
+    void setInversionResult(const inv::InversionResult &result);
+    void clearInversionResult();
+
 signals:
     void documentModifiedChanged(bool modified);
     void documentReset();
@@ -318,6 +325,7 @@ signals:
     void activeSliceElevationChanged(double z);
     void activeBodyChanged(int id);
     void globalMovementChanged(bool enabled);
+    void inversionResultChanged();
 
 private:
     void ensureProfileIndexValid();
@@ -344,6 +352,7 @@ private:
     bool m_showNext{false};
     bool m_showGridLines{true};
     double m_activeSliceZ{0.0};
+    std::optional<inv::InversionResult> m_lastInversionResult;
 };
 
 } // namespace mod3d_gui

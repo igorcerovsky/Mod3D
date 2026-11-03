@@ -61,11 +61,14 @@ public:
 
     QCheckBox *measuredCurveCheckBox() const { return m_chkProfMeasured; }
     QCheckBox *differenceCurveCheckBox() const { return m_chkProfDiff; }
+    QCheckBox *profileInversionSliceCheckBox() const { return m_chkProfShowInversionSlice; }
     QRadioButton *mapObservedRadioButton() const { return m_rbMapObserved; }
     QRadioButton *mapDifferenceRadioButton() const { return m_rbMapDiff; }
+    QRadioButton *mapInversionRadioButton() const { return m_rbMapInversion; }
     QRadioButton *sliceModeledRadioButton() const { return m_rbSliceModeled; }
     QRadioButton *sliceObservedRadioButton() const { return m_rbSliceObserved; }
     QRadioButton *sliceDifferenceRadioButton() const { return m_rbSliceDiff; }
+    QRadioButton *sliceInversionRadioButton() const { return m_rbSliceInversion; }
     QRadioButton *sliceNoneRadioButton() const { return m_rbSliceNone; }
     QComboBox *sliceFieldComboBox() const { return m_comboSliceField; }
     QCheckBox *sliceBodyOutlinesCheckBox() const { return m_chkSliceBodyOutlines; }
@@ -137,6 +140,7 @@ private:
     QCheckBox *m_chkProfShowIntersects{nullptr};
     QCheckBox *m_chkProfGhostPrev{nullptr};
     QCheckBox *m_chkProfGhostNext{nullptr};
+    QCheckBox *m_chkProfShowInversionSlice{nullptr};
 
     // Map View Display Controls
     QWidget *m_paneMapFields{nullptr};
@@ -146,6 +150,7 @@ private:
     QRadioButton *m_rbMapObserved{nullptr};
     QRadioButton *m_rbMapDiff{nullptr};
     QRadioButton *m_rbMapRelief{nullptr};
+    QRadioButton *m_rbMapInversion{nullptr};
     QRadioButton *m_rbMapNone{nullptr};
     QCheckBox *m_chkMapStationPoints{nullptr};
     QCheckBox *m_chkMapProfiles{nullptr};
@@ -183,6 +188,7 @@ private:
     QRadioButton *m_rbSliceModeled{nullptr};
     QRadioButton *m_rbSliceObserved{nullptr};
     QRadioButton *m_rbSliceDiff{nullptr};
+    QRadioButton *m_rbSliceInversion{nullptr};
     QRadioButton *m_rbSliceNone{nullptr};
     QCheckBox *m_chkSliceStationPoints{nullptr};
     QCheckBox *m_chkSliceProfiles{nullptr};
@@ -207,6 +213,7 @@ private:
     QCheckBox *m_chkProfTabIntersects{nullptr};
     QCheckBox *m_chkProfTabGhostPrev{nullptr};
     QCheckBox *m_chkProfTabGhostNext{nullptr};
+    QCheckBox *m_chkProfTabInversionSlice{nullptr};
     QPushButton *m_btnCopyBodyPrev{nullptr};
     QPushButton *m_btnCopyBodyNext{nullptr};
     QPushButton *m_btnOpenPerpendicular{nullptr};
