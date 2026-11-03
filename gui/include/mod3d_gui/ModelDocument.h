@@ -305,11 +305,14 @@ public:
     [[nodiscard]] bool globalMovement() const noexcept { return m_globalMovement; }
     void setGlobalMovement(bool enabled);
 
-    // 3D Focusing Inversion Results
+    // 3D Focusing Inversion Results & Settings
     [[nodiscard]] const std::optional<inv::InversionResult> &inversionResult() const noexcept { return m_lastInversionResult; }
     [[nodiscard]] bool hasInversionResult() const noexcept { return m_lastInversionResult.has_value(); }
     void setInversionResult(const inv::InversionResult &result);
     void clearInversionResult();
+
+    [[nodiscard]] const mod3d::InversionSettings3D &inversionSettings() const noexcept { return m_project.settings().inversion; }
+    void setInversionSettings(const mod3d::InversionSettings3D &settings);
 
 signals:
     void documentModifiedChanged(bool modified);

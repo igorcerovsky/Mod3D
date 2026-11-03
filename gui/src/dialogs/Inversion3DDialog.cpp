@@ -1,4 +1,6 @@
 #include "mod3d_gui/dialogs/Inversion3DDialog.h"
+#include "mod3d/Units.h"
+#include "inv/neural_prior.hpp"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -23,6 +25,7 @@ Inversion3DDialog::Inversion3DDialog(ModelDocument *doc, QWidget *parent)
 
     setupUi();
     updateDomainFromDocument();
+    loadSettingsFromDocument();
 }
 
 Inversion3DDialog::~Inversion3DDialog() {
@@ -31,11 +34,27 @@ Inversion3DDialog::~Inversion3DDialog() {
     }
 }
 
+void Inversion3DDialog::waitForCompletion() {
+    while (m_btnCancel && m_btnCancel->isEnabled()) {
+        QCoreApplication::processEvents();
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+}
+
 void Inversion3DDialog::closeEvent(QCloseEvent *event) {
+    saveSettingsToDocument();
     if (m_workerThread.joinable()) {
         m_workerThread.request_stop();
     }
     event->accept();
+}
+
+void Inversion3DDialog::done(int r) {
+    saveSettingsToDocument();
+    if (m_workerThread.joinable()) {
+        m_workerThread.request_stop();
+    }
+    QDialog::done(r);
 }
 
 void Inversion3DDialog::setupUi() {
@@ -47,13 +66,17 @@ void Inversion3DDialog::setupUi() {
     setupDomainTab(domainTab);
     m_tabWidget->addTab(domainTab, tr("1. Domain && Grid"));
 
-    auto *paramsTab = new QWidget(this);
-    setupParametersTab(paramsTab);
-    m_tabWidget->addTab(paramsTab, tr("2. Focusing && Regularization"));
+    auto *focusTab = new QWidget(this);
+    setupFocusingTab(focusTab);
+    m_tabWidget->addTab(focusTab, tr("2. Focusing && Solver"));
+
+    auto *priorsTab = new QWidget(this);
+    setupPriorsTab(priorsTab);
+    m_tabWidget->addTab(priorsTab, tr("3. Priors && Refinement"));
 
     auto *execTab = new QWidget(this);
     setupExecutionTab(execTab);
-    m_tabWidget->addTab(execTab, tr("3. Convergence && Execution"));
+    m_tabWidget->addTab(execTab, tr("4. Convergence && Monitor"));
 
     mainLayout->addWidget(m_tabWidget);
 
@@ -62,6 +85,9 @@ void Inversion3DDialog::setupUi() {
     m_btnRun = new QPushButton(tr("Run Inversion"), this);
     m_btnRun->setDefault(true);
     m_btnRun->setStyleSheet("font-weight: bold; padding: 6px 14px;");
+
+    m_btnColdStart = new QPushButton(tr("Run Cold Start"), this);
+    m_btnColdStart->setToolTip(tr("Run a fresh inversion from scratch across all coarse-to-fine levels (ignores previous model)"));
 
     m_btnCancel = new QPushButton(tr("Cancel"), this);
     m_btnCancel->setEnabled(false);
@@ -78,6 +104,7 @@ void Inversion3DDialog::setupUi() {
     m_btnClose = new QPushButton(tr("Close"), this);
 
     btnLayout->addWidget(m_btnRun);
+    btnLayout->addWidget(m_btnColdStart);
     btnLayout->addWidget(m_btnCancel);
     btnLayout->addSpacing(12);
     btnLayout->addWidget(m_btnApply);
@@ -89,6 +116,7 @@ void Inversion3DDialog::setupUi() {
     mainLayout->addLayout(btnLayout);
 
     connect(m_btnRun, &QPushButton::clicked, this, &Inversion3DDialog::onRunClicked);
+    connect(m_btnColdStart, &QPushButton::clicked, this, &Inversion3DDialog::onRunColdStartClicked);
     connect(m_btnCancel, &QPushButton::clicked, this, &Inversion3DDialog::onCancelClicked);
     connect(m_btnApply, &QPushButton::clicked, this, &Inversion3DDialog::onApplyClicked);
     connect(m_btnExportVtk, &QPushButton::clicked, this, &Inversion3DDialog::onExportVtkClicked);
@@ -171,7 +199,7 @@ void Inversion3DDialog::setupDomainTab(QWidget *parent) {
     });
 }
 
-void Inversion3DDialog::setupParametersTab(QWidget *parent) {
+void Inversion3DDialog::setupFocusingTab(QWidget *parent) {
     auto *layout = new QVBoxLayout(parent);
 
     auto *grpFocus = new QGroupBox(tr("Zhdanov Regularization & Multiscale"), parent);
@@ -220,18 +248,18 @@ void Inversion3DDialog::setupParametersTab(QWidget *parent) {
 
     auto *densityLayout = new QHBoxLayout();
     m_spinMinDensity = new QDoubleSpinBox(parent);
-    m_spinMinDensity->setRange(-10.0, 10.0);
-    m_spinMinDensity->setDecimals(3);
-    m_spinMinDensity->setSingleStep(0.05);
-    m_spinMinDensity->setSuffix(" g/cm³");
-    m_spinMinDensity->setValue(-0.5);
+    m_spinMinDensity->setRange(-10000.0, 10000.0);
+    m_spinMinDensity->setDecimals(1);
+    m_spinMinDensity->setSingleStep(50.0);
+    m_spinMinDensity->setSuffix(QString(" %1").arg(QString::fromUtf8(units::KgPerM3::unit_symbol().data())));
+    m_spinMinDensity->setValue(-500.0);
 
     m_spinMaxDensity = new QDoubleSpinBox(parent);
-    m_spinMaxDensity->setRange(-10.0, 10.0);
-    m_spinMaxDensity->setDecimals(3);
-    m_spinMaxDensity->setSingleStep(0.05);
-    m_spinMaxDensity->setSuffix(" g/cm³");
-    m_spinMaxDensity->setValue(0.6);
+    m_spinMaxDensity->setRange(-10000.0, 10000.0);
+    m_spinMaxDensity->setDecimals(1);
+    m_spinMaxDensity->setSingleStep(50.0);
+    m_spinMaxDensity->setSuffix(QString(" %1").arg(QString::fromUtf8(units::KgPerM3::unit_symbol().data())));
+    m_spinMaxDensity->setValue(600.0);
 
     densityLayout->addWidget(new QLabel(tr("Min:"), parent));
     densityLayout->addWidget(m_spinMinDensity);
@@ -267,17 +295,92 @@ void Inversion3DDialog::setupParametersTab(QWidget *parent) {
     iterLayout->addWidget(m_spinCgMaxIters);
     formPhys->addRow(tr("Max Iterations:"), iterLayout);
 
-    auto *priorLayout = new QHBoxLayout();
+    layout->addWidget(grpPhysics);
+    layout->addStretch();
+}
+
+void Inversion3DDialog::setupPriorsTab(QWidget *parent) {
+    auto *layout = new QVBoxLayout(parent);
+
+    // Iterative Model Refinement (Warm Start) Group
+    m_grpRefinement = new QGroupBox(tr("Iterative Model Refinement (Warm Start)"), parent);
+    auto *vRefine = new QVBoxLayout(m_grpRefinement);
+
+    m_chkRefinePrevious = new QCheckBox(tr("Refine previous inversion result (warm start and reference prior)"), parent);
+    m_chkRefinePrevious->setChecked(true);
+    vRefine->addWidget(m_chkRefinePrevious);
+
+    m_lblRefineInfo = new QLabel(parent);
+    m_lblRefineInfo->setWordWrap(true);
+    m_lblRefineInfo->setStyleSheet("color: #4b5563; font-size: 11px;");
+    vRefine->addWidget(m_lblRefineInfo);
+
+    layout->addWidget(m_grpRefinement);
+
+    // AI Neural Prior (3D Swin Transformer) Group
+    m_grpNeural = new QGroupBox(tr("AI Neural Model (3D Swin Transformer)"), parent);
+    auto *vNeural = new QVBoxLayout(m_grpNeural);
+
+    m_chkUseNeuralPrior = new QCheckBox(tr("Enable 3D Swin Transformer as Inversion Prior"), parent);
+    m_chkUseNeuralPrior->setChecked(inv::NeuralPriorInference::is_available());
+    vNeural->addWidget(m_chkUseNeuralPrior);
+
+    m_lblNeuralStatus = new QLabel(parent);
+    if (inv::NeuralPriorInference::is_available()) {
+        m_lblNeuralStatus->setText(tr("✔ ONNX Runtime acceleration active (Apple Silicon / CoreML / CPU)."));
+        m_lblNeuralStatus->setStyleSheet("color: #15803d; font-weight: bold; font-size: 11px;");
+    } else {
+        m_lblNeuralStatus->setText(tr("✖ ONNX Runtime not available in this build."));
+        m_lblNeuralStatus->setStyleSheet("color: #b91c1c; font-size: 11px;");
+        m_chkUseNeuralPrior->setEnabled(false);
+    }
+    vNeural->addWidget(m_lblNeuralStatus);
+
+    auto *priorPathLayout = new QHBoxLayout();
     m_txtPriorPath = new QLineEdit(parent);
-    m_txtPriorPath->setPlaceholderText(tr("Optional: path to prior ONNX / JSON model"));
+    std::string defaultModelPath = inv::NeuralPriorInference::default_model_path();
+    m_txtPriorPath->setText(QString::fromStdString(defaultModelPath));
+    m_txtPriorPath->setPlaceholderText(tr("Path to inv_swin3d.onnx model"));
     m_btnBrowsePrior = new QPushButton(tr("Browse..."), parent);
-    priorLayout->addWidget(m_txtPriorPath);
-    priorLayout->addWidget(m_btnBrowsePrior);
-    formPhys->addRow(tr("Prior Density Model:"), priorLayout);
+    priorPathLayout->addWidget(new QLabel(tr("Model File:"), parent));
+    priorPathLayout->addWidget(m_txtPriorPath);
+    priorPathLayout->addWidget(m_btnBrowsePrior);
+    vNeural->addLayout(priorPathLayout);
+
+    auto *aiActionLayout = new QHBoxLayout();
+    m_btnInstantAi = new QPushButton(tr("⚡ Run Instant AI Prediction (~50 ms)"), parent);
+    m_btnInstantAi->setStyleSheet("font-weight: bold; color: #1e3a8a; background-color: #e0f2fe; border: 1px solid #7dd3fc; padding: 6px 12px; border-radius: 4px;");
+    m_btnInstantAi->setEnabled(inv::NeuralPriorInference::is_available());
+    aiActionLayout->addWidget(m_btnInstantAi);
+
+    m_chkPriorAsRef = new QCheckBox(tr("Focusing reference model (S_MS / S_MGS)"), parent);
+    m_chkPriorAsRef->setChecked(true);
+    aiActionLayout->addSpacing(16);
+    aiActionLayout->addWidget(m_chkPriorAsRef);
+    aiActionLayout->addStretch();
+    vNeural->addLayout(aiActionLayout);
 
     connect(m_btnBrowsePrior, &QPushButton::clicked, this, &Inversion3DDialog::onBrowsePriorClicked);
+    connect(m_btnInstantAi, &QPushButton::clicked, this, &Inversion3DDialog::onInstantAiClicked);
 
-    layout->addWidget(grpPhysics);
+    connect(m_chkRefinePrevious, &QCheckBox::toggled, this, [this](bool checked) {
+        if (m_comboLevels) {
+            m_comboLevels->setEnabled(!checked);
+        }
+        if (m_btnRun) {
+            m_btnRun->setText(checked ? tr("Refine Previous Result") : tr("Run Inversion"));
+        }
+        if (checked && m_chkUseNeuralPrior && m_chkUseNeuralPrior->isChecked()) {
+            m_chkUseNeuralPrior->setChecked(false);
+        }
+    });
+    connect(m_chkUseNeuralPrior, &QCheckBox::toggled, this, [this](bool checked) {
+        if (checked && m_chkRefinePrevious && m_chkRefinePrevious->isEnabled() && m_chkRefinePrevious->isChecked()) {
+            m_chkRefinePrevious->setChecked(false);
+        }
+    });
+
+    layout->addWidget(m_grpNeural);
     layout->addStretch();
 }
 
@@ -359,10 +462,136 @@ void Inversion3DDialog::updateDomainFromDocument() {
 
     m_spinObsHeight->setValue(m_doc->observation().gravity_height().value());
     m_btnRun->setEnabled(true);
+    if (m_btnColdStart) {
+        m_btnColdStart->setEnabled(true);
+    }
+    updateRefinementState();
+}
+
+void Inversion3DDialog::updateRefinementState() {
+    if (!m_chkRefinePrevious || !m_lblRefineInfo) return;
+
+    const inv::InversionResult *prev = nullptr;
+    if (m_currentResult.has_value()) {
+        prev = &(*m_currentResult);
+    } else if (m_doc && m_doc->hasInversionResult()) {
+        prev = &(*m_doc->inversionResult());
+    }
+
+    if (prev && prev->density_grid.total_cells() > 0) {
+        m_chkRefinePrevious->setEnabled(true);
+        m_chkRefinePrevious->setChecked(m_doc ? m_doc->inversionSettings().refine_previous : true);
+        m_lblRefineInfo->setText(tr("✔ Previous inversion result available: %1 &times; %2 &times; %3 (%4 cells, RMS = %5 mGal).\n"
+                                    "When checked, re-inversion refines only the final level directly with your updated parameters.")
+            .arg(prev->density_grid.nx())
+            .arg(prev->density_grid.ny())
+            .arg(prev->density_grid.nz())
+            .arg(prev->density_grid.total_cells())
+            .arg(prev->stats.final_data_rms, 0, 'f', 3));
+        m_lblRefineInfo->setStyleSheet("color: #15803d; font-weight: bold; font-size: 11px;");
+        if (m_comboLevels) {
+            m_comboLevels->setEnabled(!m_chkRefinePrevious->isChecked());
+        }
+        if (m_btnRun) {
+            m_btnRun->setText(m_chkRefinePrevious->isChecked() ? tr("Refine Previous Result") : tr("Run Inversion"));
+        }
+        if (m_btnColdStart) {
+            m_btnColdStart->setEnabled(true);
+        }
+    } else {
+        m_chkRefinePrevious->setEnabled(false);
+        m_chkRefinePrevious->setChecked(false);
+        m_lblRefineInfo->setText(tr("No previous inversion result available in document to refine."));
+        m_lblRefineInfo->setStyleSheet("color: #6b7280; font-size: 11px; font-style: italic;");
+        if (m_comboLevels) {
+            m_comboLevels->setEnabled(true);
+        }
+        if (m_btnRun) {
+            m_btnRun->setText(tr("Run Inversion"));
+        }
+        if (m_btnColdStart) {
+            m_btnColdStart->setEnabled(true);
+        }
+    }
+}
+
+void Inversion3DDialog::loadSettingsFromDocument() {
+    if (!m_doc) return;
+    const auto &s = m_doc->inversionSettings();
+    if (s.nz > 0) {
+        m_spinNz->blockSignals(true);
+        m_spinNz->setValue(s.nz);
+        m_spinNz->blockSignals(false);
+    }
+    if (s.dz > 0.0) {
+        m_spinDz->blockSignals(true);
+        m_spinDz->setValue(s.dz);
+        m_spinDz->blockSignals(false);
+    }
+    m_spinObsHeight->setValue(s.obs_height);
+    m_chkFocusing->setChecked(s.focusing_enabled);
+
+    for (int i = 0; i < m_comboLevels->count(); ++i) {
+        if (m_comboLevels->itemData(i).toInt() == s.coarse_to_fine_levels) {
+            m_comboLevels->setCurrentIndex(i);
+            break;
+        }
+    }
+
+    m_chkAdaptiveRefine->setChecked(s.adaptive_refinement);
+    m_spinMsWeight->setValue(s.ms_weight);
+    m_spinMgsWeight->setValue(s.mgs_weight);
+    m_spinDepthExp->setValue(s.depth_weight_exponent);
+    m_spinMinDensity->setValue(s.min_density);
+    m_spinMaxDensity->setValue(s.max_density);
+    if (s.forward_operator >= 0 && s.forward_operator < m_comboOperator->count()) {
+        m_comboOperator->setCurrentIndex(s.forward_operator);
+    }
+    m_spinNoiseRel->setValue(s.noise_rel);
+    m_spinIrlsIters->setValue(s.irls_iterations);
+    m_spinCgMaxIters->setValue(s.cg_max_iterations);
+    m_chkUseNeuralPrior->setChecked(s.use_neural_prior && inv::NeuralPriorInference::is_available());
+    if (!s.onnx_model_path.empty()) {
+        m_txtPriorPath->setText(QString::fromStdString(s.onnx_model_path));
+    }
+    m_chkPriorAsRef->setChecked(s.prior_as_reference);
+
+    updateRefinementState();
+    if (m_chkRefinePrevious->isEnabled()) {
+        m_chkRefinePrevious->setChecked(s.refine_previous);
+    }
+}
+
+void Inversion3DDialog::saveSettingsToDocument() {
+    if (!m_doc) return;
+    mod3d::InversionSettings3D s;
+    s.nz = m_spinNz->value();
+    s.dz = m_spinDz->value();
+    s.obs_height = m_spinObsHeight->value();
+    s.focusing_enabled = m_chkFocusing->isChecked();
+    s.coarse_to_fine_levels = m_comboLevels->currentData().toInt();
+    s.adaptive_refinement = m_chkAdaptiveRefine->isChecked();
+    s.ms_weight = m_spinMsWeight->value();
+    s.mgs_weight = m_spinMgsWeight->value();
+    s.depth_weight_exponent = m_spinDepthExp->value();
+    s.min_density = m_spinMinDensity->value();
+    s.max_density = m_spinMaxDensity->value();
+    s.forward_operator = m_comboOperator->currentIndex();
+    s.noise_rel = m_spinNoiseRel->value();
+    s.irls_iterations = m_spinIrlsIters->value();
+    s.cg_max_iterations = m_spinCgMaxIters->value();
+    s.use_neural_prior = m_chkUseNeuralPrior->isChecked();
+    s.onnx_model_path = m_txtPriorPath->text().toStdString();
+    s.prior_as_reference = m_chkPriorAsRef->isChecked();
+    s.refine_previous = m_chkRefinePrevious->isChecked();
+    m_doc->setInversionSettings(s);
 }
 
 void Inversion3DDialog::setRunningState(bool running) {
     m_btnRun->setEnabled(!running);
+    if (m_btnColdStart) {
+        m_btnColdStart->setEnabled(!running);
+    }
     m_btnCancel->setEnabled(running);
     m_btnClose->setEnabled(!running);
     m_tabWidget->tabBar()->setEnabled(!running);
@@ -374,6 +603,14 @@ void Inversion3DDialog::appendLog(const QString &text) {
 }
 
 void Inversion3DDialog::onRunClicked() {
+    startInversion(false);
+}
+
+void Inversion3DDialog::onRunColdStartClicked() {
+    startInversion(true);
+}
+
+void Inversion3DDialog::startInversion(bool forceColdStart) {
     if (!m_doc) return;
     const mod3d::Grid *obsGrid = m_doc->activeObservedGrid();
     if (!obsGrid || obsGrid->empty()) {
@@ -411,13 +648,15 @@ void Inversion3DDialog::onRunClicked() {
     setup.config.ms_weight = m_spinMsWeight->value();
     setup.config.mgs_weight = m_spinMgsWeight->value();
     setup.config.depth_weight_exponent = m_spinDepthExp->value();
-    setup.config.min_density = m_spinMinDensity->value();
-    setup.config.max_density = m_spinMaxDensity->value();
+    // Use units library for conversion safety: GUI kg/m³ -> solver g/cm³
+    setup.config.min_density = units::KgPerM3(m_spinMinDensity->value()).in<units::GPerCm3>();
+    setup.config.max_density = units::KgPerM3(m_spinMaxDensity->value()).in<units::GPerCm3>();
     setup.config.use_fft_solver_benchmark = (m_comboOperator->currentIndex() == 1);
     setup.config.noise_rel = m_spinNoiseRel->value() * 0.01;
     setup.config.irls_iterations = m_spinIrlsIters->value();
     setup.config.cg_max_iterations = m_spinCgMaxIters->value();
-    setup.config.obs_height = m_spinObsHeight->value();
+    setup.config.obs_height = units::Meters(m_spinObsHeight->value()).in<units::Meters>();
+    setup.config.dz = units::Meters(m_spinDz->value()).in<units::Meters>();
     setup.config.onnx_model_path = m_txtPriorPath->text().toStdString();
 
     // Collect observation raster: index ix * ny + iy
@@ -450,7 +689,7 @@ void Inversion3DDialog::onRunClicked() {
     setup.topo_elevations = std::move(topo_nodes);
 
     // Switch to execution tab & clear previous stats
-    m_tabWidget->setCurrentIndex(2);
+    m_tabWidget->setCurrentIndex(3);
     m_txtLog->clear();
     m_progressBar->setValue(0);
     m_currentResult.reset();
@@ -465,9 +704,69 @@ void Inversion3DDialog::onRunClicked() {
     appendLog(tr("Forward operator: %1").arg(setup.config.use_fft_solver_benchmark ? "Toeplitz FFT benchmark" : "pfld::InterfaceMesh DEM facets"));
 
     m_lastSetup = setup;
+    saveSettingsToDocument();
+
+    const bool refinePrev = !forceColdStart && m_chkRefinePrevious && m_chkRefinePrevious->isChecked() && m_chkRefinePrevious->isEnabled();
+    const inv::InversionResult *prevRes = nullptr;
+    if (refinePrev) {
+        if (m_currentResult.has_value()) {
+            prevRes = &(*m_currentResult);
+        } else if (m_doc && m_doc->hasInversionResult()) {
+            prevRes = &(*m_doc->inversionResult());
+        }
+    }
+
+    std::vector<double> prior_values;
+    bool isRefining = false;
+    if (refinePrev && prevRes && prevRes->density_grid.total_cells() > 0) {
+        isRefining = true;
+        inv::VoxelGrid<double> resampled = prevRes->density_grid.resample(
+            nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz);
+        prior_values = std::move(resampled.data());
+        setup.config.scale_prior = false;
+        setup.config.prior_as_reference = true;
+        setup.config.refine_previous = true;
+        setup.config.coarse_to_fine_levels = 1; // Don't apply all levels; refine only last level with new params
+        appendLog(tr("==> Refinement Mode: Warm start initialized from previous inversion result (%1 cells resampled to %2x%3x%4).")
+            .arg(prevRes->density_grid.total_cells()).arg(nx).arg(ny).arg(nz));
+        appendLog(tr("    Refining only final level directly with updated parameters (coarse-to-fine skipped)."));
+        appendLog(tr("    Previous RMS: %1 mGal -> Starting from previous solution and focusing relative to it.")
+            .arg(prevRes->stats.final_data_rms, 0, 'f', 4));
+    } else if (forceColdStart) {
+        appendLog(tr("==> Cold Start Mode: Starting fresh inversion from scratch across all %1 coarse-to-fine levels (zero initial model).")
+            .arg(setup.config.coarse_to_fine_levels));
+    }
+
+    const bool useNeural = (m_chkUseNeuralPrior && m_chkUseNeuralPrior->isChecked() && inv::NeuralPriorInference::is_available());
 
     // Launch background worker using C++20 std::jthread
-    m_workerThread = std::jthread([this, setup = std::move(setup), d_fine = std::move(d_fine)](std::stop_token st) mutable {
+    m_workerThread = std::jthread([this, setup = std::move(setup), d_fine = std::move(d_fine),
+                                   prior_values = std::move(prior_values), isRefining, useNeural](std::stop_token st) mutable {
+        if (!isRefining && useNeural) {
+            std::string modelPath = setup.config.onnx_model_path;
+            if (modelPath.empty()) {
+                modelPath = inv::NeuralPriorInference::default_model_path();
+            }
+            inv::VoxelGrid<double> prior_grid;
+            std::string err;
+            if (inv::NeuralPriorInference::predict(
+                    d_fine, setup.config.nx, setup.config.ny, setup.config.nz,
+                    setup.config.x0, setup.config.y0, setup.config.z0,
+                    setup.config.dx, setup.config.dy, setup.config.dz,
+                    prior_grid, err, modelPath)) {
+                prior_values = std::move(prior_grid.data());
+                QMetaObject::invokeMethod(this, [this, n = prior_values.size()]() {
+                    appendLog(tr("  [AI Prior] Swin 3D Transformer prior evaluated (%1 cells) and loaded as reference.")
+                        .arg(n));
+                }, Qt::QueuedConnection);
+            } else {
+                QMetaObject::invokeMethod(this, [this, msg = QString::fromStdString(err)]() {
+                    appendLog(tr("  [AI Prior Warning] Could not evaluate ONNX prior: %1. Proceeding with standard focusing.")
+                        .arg(msg));
+                }, Qt::QueuedConnection);
+            }
+        }
+
         inv::InversionEngine engine(setup.config);
         inv::InversionConfig &cfg = const_cast<inv::InversionConfig&>(engine.config());
 
@@ -495,7 +794,9 @@ void Inversion3DDialog::onRunClicked() {
 
         inv::InversionResult result;
         const bool ok = engine.invert_columns(d_fine, result.density_grid, result.stats,
-                                              setup.topo_elevations, {}, nullptr, &result.modeled_gz);
+                                              setup.topo_elevations, {},
+                                              prior_values.empty() ? nullptr : &prior_values,
+                                              &result.modeled_gz);
 
         QMetaObject::invokeMethod(this, [this, ok, res = std::move(result), st_req = st.stop_requested()]() mutable {
             setRunningState(false);
@@ -505,6 +806,7 @@ void Inversion3DDialog::onRunClicked() {
             } else if (ok) {
                 m_progressBar->setValue(100);
                 m_currentResult = std::move(res);
+                updateRefinementState();
                 m_btnApply->setEnabled(true);
                 m_btnExportVtk->setEnabled(true);
                 m_btnExportJson->setEnabled(true);
@@ -525,6 +827,13 @@ void Inversion3DDialog::onRunClicked() {
                     .arg(m_currentResult->stats.minimum_support * 100.0, 0, 'f', 2));
                 appendLog(tr("    Minimum Gradient Support (Interface Area Fraction): %1%")
                     .arg(m_currentResult->stats.minimum_gradient_support * 100.0, 0, 'f', 2));
+                const double minDensKg = units::GPerCm3(m_currentResult->density_grid.min_value()).in<units::KgPerM3>();
+                const double maxDensKg = units::GPerCm3(m_currentResult->density_grid.max_value()).in<units::KgPerM3>();
+                const QString densUnit = QString::fromUtf8(units::KgPerM3::unit_symbol().data());
+                appendLog(tr("    Recovered Density Contrast: [%1, %2] %3")
+                    .arg(minDensKg, 0, 'f', 1)
+                    .arg(maxDensKg, 0, 'f', 1)
+                    .arg(densUnit));
                 appendLog(tr("    Elapsed Time: %1 ms").arg(m_currentResult->stats.elapsed_time_ms, 0, 'f', 1));
             } else {
                 m_lblStatus->setText(tr("Inversion failed: %1").arg(QString::fromStdString(res.stats.message)));
@@ -546,6 +855,8 @@ void Inversion3DDialog::onApplyClicked() {
 
     // 1. Store the full 3D inversion result in the document
     m_doc->setInversionResult(*m_currentResult);
+    saveSettingsToDocument();
+    updateRefinementState();
 
     // 2. Populate modeled gravity grid and difference grid in document
     const auto *obsGrid = m_doc->activeObservedGrid();
@@ -566,9 +877,11 @@ void Inversion3DDialog::onApplyClicked() {
         m_doc->emit computationFinished();
         m_doc->setModified(true);
 
-        QMessageBox::information(this, tr("Applied to Document"),
-            tr("3D Inversion result applied successfully.\n\n"
-               "Modeled Gz field and difference grid have been updated and are now visible across Map and Profile views."));
+        if (isVisible()) {
+            QMessageBox::information(this, tr("Applied to Document"),
+                tr("3D Inversion result applied successfully.\n\n"
+                   "Modeled Gz field and difference grid have been updated and are now visible across Map and Profile views."));
+        }
     }
 }
 
@@ -580,10 +893,14 @@ void Inversion3DDialog::onExportVtkClicked() {
     if (path.isEmpty()) return;
 
     if (m_currentResult->density_grid.export_vtk_structured_points(path.toStdString(), "density_contrast")) {
-        QMessageBox::information(this, tr("Export Successful"),
-            tr("3D density volume exported successfully to:\n%1").arg(path));
+        if (isVisible()) {
+            QMessageBox::information(this, tr("Export Successful"),
+                tr("3D density volume exported successfully to:\n%1").arg(path));
+        }
     } else {
-        QMessageBox::critical(this, tr("Export Error"), tr("Failed to write VTK file."));
+        if (isVisible()) {
+            QMessageBox::critical(this, tr("Export Error"), tr("Failed to write VTK file."));
+        }
     }
 }
 
@@ -595,10 +912,14 @@ void Inversion3DDialog::onExportJsonClicked() {
     if (path.isEmpty()) return;
 
     if (inv::InversionEngine::save_result_to_json(path.toStdString(), *m_currentResult)) {
-        QMessageBox::information(this, tr("Export Successful"),
-            tr("Inversion result exported successfully to:\n%1").arg(path));
+        if (isVisible()) {
+            QMessageBox::information(this, tr("Export Successful"),
+                tr("Inversion result exported successfully to:\n%1").arg(path));
+        }
     } else {
-        QMessageBox::critical(this, tr("Export Error"), tr("Failed to write JSON file."));
+        if (isVisible()) {
+            QMessageBox::critical(this, tr("Export Error"), tr("Failed to write JSON file."));
+        }
     }
 }
 
@@ -608,6 +929,161 @@ void Inversion3DDialog::onBrowsePriorClicked() {
     if (!path.isEmpty()) {
         m_txtPriorPath->setText(path);
     }
+}
+
+void Inversion3DDialog::onInstantAiClicked() {
+    if (!m_doc) return;
+
+    // Check observation grid
+    const auto *obsGrid = m_doc->observedGrid(mod3d::FieldComponent::GZ);
+    if (!obsGrid || obsGrid->empty()) {
+        obsGrid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
+    }
+    if (!obsGrid || obsGrid->empty()) {
+        QMessageBox::warning(this, tr("Observation Missing"),
+                             tr("3D Inversion requires an active observed gravity grid (gz or g_tot)."));
+        return;
+    }
+
+    const size_t nx = m_doc->model().cols();
+    const size_t ny = m_doc->model().rows();
+    const size_t nz = static_cast<size_t>(m_spinNz->value());
+    const double dx = m_doc->model().x_size().value();
+    const double dy = m_doc->model().y_size().value();
+    const double dz = m_spinDz->value();
+
+    const double x0_geom = m_doc->model().xd_val(1);
+    const double y0_geom = m_doc->model().yd_val(1);
+    const double z0_geom = 0.0;
+
+    std::vector<double> d_fine(nx * ny, 0.0);
+    double dmax = 0.0, dsum2 = 0.0;
+    for (size_t ix = 0; ix < nx; ++ix) {
+        for (size_t iy = 0; iy < ny; ++iy) {
+            const double v = (*obsGrid)(iy, ix);
+            double val = (v == mod3d::GRID_DUMMY || std::isnan(v)) ? 0.0 : v;
+            d_fine[ix * ny + iy] = val;
+            dsum2 += val * val;
+            dmax = std::max(dmax, std::abs(val));
+        }
+    }
+    const double init_rms = std::sqrt(dsum2 / (nx * ny));
+
+    // Switch to execution tab & reset
+    m_tabWidget->setCurrentIndex(3);
+    m_txtLog->clear();
+    m_progressBar->setValue(0);
+    m_currentResult.reset();
+    m_btnApply->setEnabled(false);
+    m_btnExportVtk->setEnabled(false);
+    m_btnExportJson->setEnabled(false);
+
+    appendLog(tr("⚡ Running Instant 3D Swin Transformer Inference (%1x%2x%3 voxels)...").arg(nx).arg(ny).arg(nz));
+
+    const auto t_start = std::chrono::high_resolution_clock::now();
+    inv::VoxelGrid<double> pred_grid;
+    std::string err;
+    std::string modelPath = m_txtPriorPath->text().toStdString();
+    if (modelPath.empty()) {
+        modelPath = inv::NeuralPriorInference::default_model_path();
+    }
+
+    bool ok = inv::NeuralPriorInference::predict(
+        d_fine, nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz,
+        pred_grid, err, modelPath);
+
+    const auto t_end = std::chrono::high_resolution_clock::now();
+    const double elapsed_ms = std::chrono::duration<double, std::milli>(t_end - t_start).count();
+
+    if (!ok) {
+        m_progressBar->setValue(0);
+        m_lblStatus->setText(tr("Neural inference failed: %1").arg(QString::fromStdString(err)));
+        appendLog(tr("==> Failed: %1").arg(QString::fromStdString(err)));
+        QMessageBox::critical(this, tr("AI Inference Error"), QString::fromStdString(err));
+        return;
+    }
+
+    inv::InversionConfig cfg;
+    cfg.nx = nx; cfg.ny = ny; cfg.nz = nz;
+    cfg.dx = dx; cfg.dy = dy; cfg.dz = dz;
+    cfg.x0 = x0_geom; cfg.y0 = y0_geom; cfg.z0 = z0_geom;
+    cfg.obs_height = m_spinObsHeight->value();
+    cfg.use_fft_solver_benchmark = (m_comboOperator->currentIndex() == 1);
+
+    inv::InversionResult result;
+    result.density_grid = std::move(pred_grid);
+    result.stats.elapsed_time_ms = elapsed_ms;
+    result.stats.levels_completed = 1;
+    result.stats.initial_data_rms = init_rms;
+    result.stats.used_neural_transformer = true;
+    result.stats.message = "Instant 3D Swin Transformer Inference";
+
+    // Compute forward response
+    inv::GridGeometry g{nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
+    std::unique_ptr<inv::LinearOperator> op;
+    if (cfg.use_fft_solver_benchmark) {
+        op = std::make_unique<inv::ToeplitzGravityOperator>(g, -cfg.obs_height);
+    } else {
+        std::vector<inv::Point3D<double>> obs;
+        obs.reserve(g.columns());
+        for (std::size_t ix = 0; ix < g.nx; ++ix) {
+            for (std::size_t iy = 0; iy < g.ny; ++iy) {
+                obs.emplace_back(g.xc(ix), g.yc(iy), -cfg.obs_height);
+            }
+        }
+        op = std::make_unique<inv::PfldInterfaceMeshOperator>(g, obs, std::vector<double>{}, cfg.dense_max_entries);
+    }
+
+    if (op) {
+        result.modeled_gz.resize(nx * ny, 0.0);
+        op->apply(result.density_grid.data(), result.modeled_gz);
+
+        double fit2 = 0.0;
+        for (size_t i = 0; i < nx * ny; ++i) {
+            double diff = result.modeled_gz[i] - d_fine[i];
+            fit2 += diff * diff;
+        }
+        result.stats.final_data_rms = std::sqrt(fit2 / (nx * ny));
+        result.stats.final_chi_rms = (init_rms > 1e-9) ? (result.stats.final_data_rms / init_rms) : 1.0;
+    }
+
+    result.stats.minimum_support = (result.density_grid.total_cells() > 0)
+        ? (inv::FocusingEvaluator<double>::compute_minimum_support(result.density_grid, 1e-4) / static_cast<double>(result.density_grid.total_cells()))
+        : 0.0;
+    result.stats.minimum_gradient_support = (result.density_grid.total_cells() > 0)
+        ? (inv::FocusingEvaluator<double>::compute_minimum_gradient_support(result.density_grid, 1e-4) / static_cast<double>(result.density_grid.total_cells()))
+        : 0.0;
+
+    m_currentResult = std::move(result);
+    updateRefinementState();
+    m_progressBar->setValue(100);
+    m_btnApply->setEnabled(true);
+    m_btnExportVtk->setEnabled(true);
+    m_btnExportJson->setEnabled(true);
+
+    m_lblStatus->setText(tr("AI Inference completed in %1 ms.").arg(elapsed_ms, 0, 'f', 1));
+    const double minDensKg = units::GPerCm3(m_currentResult->density_grid.min_value()).in<units::KgPerM3>();
+    const double maxDensKg = units::GPerCm3(m_currentResult->density_grid.max_value()).in<units::KgPerM3>();
+    const QString densUnit = QString::fromUtf8(units::KgPerM3::unit_symbol().data());
+
+    m_lblCurrentStats->setText(tr("Instant AI | Time: %1 ms | Data RMS: %2 mGal -> %3 mGal | Density: [%4, %5] %6")
+        .arg(elapsed_ms, 0, 'f', 1)
+        .arg(m_currentResult->stats.initial_data_rms, 0, 'f', 3)
+        .arg(m_currentResult->stats.final_data_rms, 0, 'f', 3)
+        .arg(minDensKg, 0, 'f', 1)
+        .arg(maxDensKg, 0, 'f', 1)
+        .arg(densUnit));
+
+    appendLog(tr("==> AI Inference Finished Successfully in %1 ms!").arg(elapsed_ms, 0, 'f', 1));
+    appendLog(tr("    Model: 3D Swin Transformer (4-stage hierarchical shifted-window cross-attention)"));
+    appendLog(tr("    Density Range: [%1, %2] %3")
+        .arg(minDensKg, 0, 'f', 1)
+        .arg(maxDensKg, 0, 'f', 1)
+        .arg(densUnit));
+    appendLog(tr("    Observed Data RMS: %1 mGal -> Modeled RMS: %2 mGal")
+        .arg(m_currentResult->stats.initial_data_rms, 0, 'f', 4)
+        .arg(m_currentResult->stats.final_data_rms, 0, 'f', 4));
+    appendLog(tr("    Click 'Apply to Document' to inspect 3D density in Profile, Horizontal Slice, and 3D views."));
 }
 
 } // namespace mod3d_gui

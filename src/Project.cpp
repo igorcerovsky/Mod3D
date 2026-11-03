@@ -1,4 +1,5 @@
 #include "mod3d/Project.h"
+#include "mod3d/Units.h"
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
@@ -236,6 +237,7 @@ void Project::clear() {
   settings_ = ProjectSettings();
   model_.clear();
   observation_ = ObservationSpace();
+  inversion_result_json_.clear();
 }
 
 std::string Project::to_json_string(int indent) const {
@@ -373,6 +375,34 @@ std::string Project::to_json_string(int indent) const {
   jObs["observed_grids"] = jObserved;
 
   root["observation"] = jObs;
+
+  // Inversion Settings
+  root["inversion_settings"] = {
+      {"nz", settings_.inversion.nz},
+      {"dz", settings_.inversion.dz},
+      {"obs_height", settings_.inversion.obs_height},
+      {"focusing_enabled", settings_.inversion.focusing_enabled},
+      {"coarse_to_fine_levels", settings_.inversion.coarse_to_fine_levels},
+      {"adaptive_refinement", settings_.inversion.adaptive_refinement},
+      {"ms_weight", settings_.inversion.ms_weight},
+      {"mgs_weight", settings_.inversion.mgs_weight},
+      {"depth_weight_exponent", settings_.inversion.depth_weight_exponent},
+      {"min_density", settings_.inversion.min_density},
+      {"max_density", settings_.inversion.max_density},
+      {"forward_operator", settings_.inversion.forward_operator},
+      {"noise_rel", settings_.inversion.noise_rel},
+      {"irls_iterations", settings_.inversion.irls_iterations},
+      {"cg_max_iterations", settings_.inversion.cg_max_iterations},
+      {"use_neural_prior", settings_.inversion.use_neural_prior},
+      {"onnx_model_path", settings_.inversion.onnx_model_path},
+      {"prior_as_reference", settings_.inversion.prior_as_reference},
+      {"refine_previous", settings_.inversion.refine_previous}};
+
+  if (!inversion_result_json_.empty()) {
+    try {
+      root["inversion_result"] = nlohmann::json::parse(inversion_result_json_);
+    } catch (...) {}
+  }
 
   return (indent >= 0) ? root.dump(indent) : root.dump();
 }
@@ -596,6 +626,46 @@ bool Project::from_json_string(std::string_view jsonStr) {
     model_.compute_body_magnetization_vector(observation_.inclination_deg(),
                                              observation_.declination_deg(),
                                              observation_.magnetic_intensity());
+
+    // Inversion Settings
+    if (root.contains("inversion_settings") && root["inversion_settings"].is_object()) {
+      const auto &ji = root["inversion_settings"];
+      settings_.inversion.nz = ji.value("nz", settings_.inversion.nz);
+      settings_.inversion.dz = ji.value("dz", settings_.inversion.dz);
+      settings_.inversion.obs_height = ji.value("obs_height", settings_.inversion.obs_height);
+      settings_.inversion.focusing_enabled = ji.value("focusing_enabled", settings_.inversion.focusing_enabled);
+      settings_.inversion.coarse_to_fine_levels = ji.value("coarse_to_fine_levels", settings_.inversion.coarse_to_fine_levels);
+      settings_.inversion.adaptive_refinement = ji.value("adaptive_refinement", settings_.inversion.adaptive_refinement);
+      settings_.inversion.ms_weight = ji.value("ms_weight", settings_.inversion.ms_weight);
+      settings_.inversion.mgs_weight = ji.value("mgs_weight", settings_.inversion.mgs_weight);
+      settings_.inversion.depth_weight_exponent = ji.value("depth_weight_exponent", settings_.inversion.depth_weight_exponent);
+      settings_.inversion.min_density = ji.value("min_density", settings_.inversion.min_density);
+      settings_.inversion.max_density = ji.value("max_density", settings_.inversion.max_density);
+
+      // Unit safety & backward compatibility: if density bounds were stored in legacy g/cm^3 (|val| <= 10.0 and != 0.0),
+      // convert to kg/m^3 using the units library.
+      if (std::abs(settings_.inversion.min_density) <= 10.0 && settings_.inversion.min_density != 0.0) {
+        settings_.inversion.min_density = units::GPerCm3(settings_.inversion.min_density).in<units::KgPerM3>();
+      }
+      if (std::abs(settings_.inversion.max_density) <= 10.0 && settings_.inversion.max_density != 0.0) {
+        settings_.inversion.max_density = units::GPerCm3(settings_.inversion.max_density).in<units::KgPerM3>();
+      }
+      settings_.inversion.forward_operator = ji.value("forward_operator", settings_.inversion.forward_operator);
+      settings_.inversion.noise_rel = ji.value("noise_rel", settings_.inversion.noise_rel);
+      settings_.inversion.irls_iterations = ji.value("irls_iterations", settings_.inversion.irls_iterations);
+      settings_.inversion.cg_max_iterations = ji.value("cg_max_iterations", settings_.inversion.cg_max_iterations);
+      settings_.inversion.use_neural_prior = ji.value("use_neural_prior", settings_.inversion.use_neural_prior);
+      settings_.inversion.onnx_model_path = ji.value("onnx_model_path", settings_.inversion.onnx_model_path);
+      settings_.inversion.prior_as_reference = ji.value("prior_as_reference", settings_.inversion.prior_as_reference);
+      settings_.inversion.refine_previous = ji.value("refine_previous", settings_.inversion.refine_previous);
+    }
+
+    // Inversion Result
+    if (root.contains("inversion_result") && !root["inversion_result"].is_null()) {
+      inversion_result_json_ = root["inversion_result"].dump();
+    } else {
+      inversion_result_json_.clear();
+    }
 
     return true;
   } catch (const std::exception &ex) {

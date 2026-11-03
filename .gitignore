@@ -46,4 +46,5 @@ checkpoints/
 *.onnx
 
 /legacy/
+/private/
 examples_old

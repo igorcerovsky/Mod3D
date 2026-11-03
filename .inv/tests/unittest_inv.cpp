@@ -591,3 +591,55 @@ TEST(InversionEngineTest, RunSetupWithScatteredStationsAndPriorJson) {
     empty.obs_z = {};
     EXPECT_FALSE(inv::InversionEngine().run_setup(empty, r));
 }
+
+TEST(InversionEngineTest, RefinePreviousRunsOnlyLastLevel) {
+    inv::InversionSetup setup;
+    setup.config.nx = 8; setup.config.ny = 8; setup.config.nz = 4;
+    setup.config.coarse_to_fine_levels = 3;
+    setup.config.refine_previous = true;
+    setup.config.irls_iterations = 2;
+    setup.config.cg_max_iterations = 20;
+
+    for (std::size_t ix = 0; ix < 8; ++ix) {
+        for (std::size_t iy = 0; iy < 8; ++iy) {
+            setup.obs_x.push_back(ix * 50.0);
+            setup.obs_y.push_back(iy * 50.0);
+            setup.obs_z.push_back(-10.0);
+            setup.obs_gz.push_back(2.0);
+        }
+    }
+    setup.prior.assign(8 * 8 * 4, 0.2);
+
+    inv::InversionEngine eng;
+    inv::InversionResult r;
+    ASSERT_TRUE(eng.run_setup(setup, r));
+    // Must refine ONLY the last level (single level), bypassing coarse levels
+    EXPECT_EQ(r.stats.levels_completed, 1);
+    EXPECT_EQ(r.stats.levels.size(), 1u);
+}
+
+TEST(NeuralPriorTest, Swin3DOnnxInferenceEvaluatesObservationField) {
+    EXPECT_TRUE(inv::NeuralPriorInference::is_available());
+    std::string model_path = inv::NeuralPriorInference::default_model_path();
+    ASSERT_FALSE(model_path.empty());
+
+    const std::size_t nx = 16, ny = 16, nz = 8;
+    std::vector<double> obs(nx * ny, 0.0);
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) {
+            double dx = static_cast<double>(ix) - 8.0;
+            double dy = static_cast<double>(iy) - 8.0;
+            obs[ix * ny + iy] = 3.0 * std::exp(-(dx * dx + dy * dy) / 8.0);
+        }
+    }
+
+    inv::VoxelGrid<double> prior;
+    std::string err;
+    bool ok = inv::NeuralPriorInference::predict(obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0, prior, err, model_path);
+    ASSERT_TRUE(ok) << "Error: " << err;
+    EXPECT_EQ(prior.nx(), nx);
+    EXPECT_EQ(prior.ny(), ny);
+    EXPECT_EQ(prior.nz(), nz);
+    EXPECT_EQ(prior.total_cells(), nx * ny * nz);
+    EXPECT_GT(prior.max_value(), 0.0);
+}

@@ -5,6 +5,7 @@
 
 #include <QDialog>
 #include <QTabWidget>
+#include <QGroupBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QCheckBox>
@@ -40,24 +41,35 @@ public:
     explicit Inversion3DDialog(ModelDocument *doc, QWidget *parent = nullptr);
     ~Inversion3DDialog() override;
 
+    void waitForCompletion();
+
 protected:
     void closeEvent(QCloseEvent *event) override;
+    void done(int r) override;
 
-private slots:
+public slots:
     void onRunClicked();
+    void onRunColdStartClicked();
     void onCancelClicked();
     void onApplyClicked();
     void onExportVtkClicked();
     void onExportJsonClicked();
     void onBrowsePriorClicked();
+    void onInstantAiClicked();
 
 private:
     void setupUi();
     void setupDomainTab(QWidget *parent);
-    void setupParametersTab(QWidget *parent);
+    void setupFocusingTab(QWidget *parent);
+    void setupPriorsTab(QWidget *parent);
     void setupExecutionTab(QWidget *parent);
 
+    void startInversion(bool forceColdStart);
+
     void updateDomainFromDocument();
+    void updateRefinementState();
+    void loadSettingsFromDocument();
+    void saveSettingsToDocument();
     void setRunningState(bool running);
     void appendLog(const QString &text);
 
@@ -87,8 +99,20 @@ private:
     QDoubleSpinBox *m_spinNoiseRel{nullptr};
     QSpinBox *m_spinIrlsIters{nullptr};
     QSpinBox *m_spinCgMaxIters{nullptr};
+
+    // Iterative Refinement Widgets
+    QGroupBox *m_grpRefinement{nullptr};
+    QCheckBox *m_chkRefinePrevious{nullptr};
+    QLabel *m_lblRefineInfo{nullptr};
+
+    // Neural Model (3D Swin Transformer) Widgets
+    QGroupBox *m_grpNeural{nullptr};
+    QCheckBox *m_chkUseNeuralPrior{nullptr};
+    QLabel *m_lblNeuralStatus{nullptr};
     QLineEdit *m_txtPriorPath{nullptr};
     QPushButton *m_btnBrowsePrior{nullptr};
+    QPushButton *m_btnInstantAi{nullptr};
+    QCheckBox *m_chkPriorAsRef{nullptr};
 
     // Execution & Monitoring Widgets
     QLabel *m_lblStatus{nullptr};
@@ -96,6 +120,7 @@ private:
     QLabel *m_lblCurrentStats{nullptr};
     QTextEdit *m_txtLog{nullptr};
     QPushButton *m_btnRun{nullptr};
+    QPushButton *m_btnColdStart{nullptr};
     QPushButton *m_btnCancel{nullptr};
     QPushButton *m_btnApply{nullptr};
     QPushButton *m_btnExportVtk{nullptr};

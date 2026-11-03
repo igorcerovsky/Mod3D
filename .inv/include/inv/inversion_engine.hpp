@@ -67,6 +67,7 @@ struct InversionConfig {
     double refine_threshold{0.1};    ///< support = |m| >= threshold * max|m|
     bool prior_as_reference{true};   ///< apply focusing relative to the (scaled) prior model
     bool scale_prior{true};          ///< least-squares rescale of the prior to the data
+    bool refine_previous{false};     ///< refine only the last (finest) level from previous result
 
     // Physical bounds for density contrast (g/cm^3)
     double min_density{-0.5};
@@ -160,6 +161,7 @@ struct InversionSetup {
             {"refine_threshold", config.refine_threshold},
             {"prior_as_reference", config.prior_as_reference},
             {"scale_prior", config.scale_prior},
+            {"refine_previous", config.refine_previous},
             {"min_density", config.min_density},
             {"max_density", config.max_density},
             {"use_fft_solver_benchmark", config.use_fft_solver_benchmark},
@@ -221,6 +223,7 @@ struct InversionSetup {
             c.refine_threshold = p.value("refine_threshold", c.refine_threshold);
             c.prior_as_reference = p.value("prior_as_reference", c.prior_as_reference);
             c.scale_prior = p.value("scale_prior", c.scale_prior);
+            c.refine_previous = p.value("refine_previous", c.refine_previous);
             c.min_density = p.value("min_density", c.min_density);
             c.max_density = p.value("max_density", c.max_density);
             c.use_fft_solver_benchmark = p.value("use_fft_solver_benchmark", c.use_fft_solver_benchmark);
@@ -429,7 +432,7 @@ public:
         const bool has_prior = prior && prior->size() == c.nx * c.ny * c.nz;
 
         GridGeometry gf{c.nx, c.ny, c.nz, c.x0, c.y0, c.z0, c.dx, c.dy, c.dz};
-        const int n_levels = std::clamp(c.coarse_to_fine_levels, 1, 3);
+        const int n_levels = (c.refine_previous && has_prior) ? 1 : std::clamp(c.coarse_to_fine_levels, 1, 3);
         const std::vector<std::size_t> targets =
             (n_levels == 1) ? std::vector<std::size_t>{1}
           : (n_levels == 2) ? std::vector<std::size_t>{2, 1}

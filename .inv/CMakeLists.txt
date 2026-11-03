@@ -47,6 +47,33 @@ target_include_directories(inv INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 
+# Optional ONNX Runtime support for 3D Swin Transformer neural inference
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(ONNXRUNTIME QUIET IMPORTED_TARGET libonnxruntime)
+endif()
+
+if(TARGET PkgConfig::ONNXRUNTIME)
+    message(STATUS "ONNX Runtime found via pkg-config (imported target)")
+    target_compile_definitions(inv INTERFACE MOD3D_HAS_ONNX=1)
+    target_link_libraries(inv INTERFACE PkgConfig::ONNXRUNTIME)
+else()
+    find_path(ONNXRUNTIME_INCLUDE_DIR onnxruntime_cxx_api.h
+        HINTS /opt/homebrew/include/onnxruntime /usr/local/include/onnxruntime
+              /opt/homebrew/Cellar/onnxruntime/*/include/onnxruntime)
+    find_library(ONNXRUNTIME_LIBRARY onnxruntime
+        HINTS /opt/homebrew/lib /usr/local/lib
+              /opt/homebrew/Cellar/onnxruntime/*/lib)
+    if(ONNXRUNTIME_INCLUDE_DIR AND ONNXRUNTIME_LIBRARY)
+        message(STATUS "ONNX Runtime found via find_library: ${ONNXRUNTIME_LIBRARY}")
+        target_compile_definitions(inv INTERFACE MOD3D_HAS_ONNX=1)
+        target_include_directories(inv INTERFACE ${ONNXRUNTIME_INCLUDE_DIR})
+        target_link_libraries(inv INTERFACE ${ONNXRUNTIME_LIBRARY})
+    else()
+        message(STATUS "ONNX Runtime NOT found - AI neural inference disabled")
+    endif()
+endif()
+
 # Standalone application
 add_executable(inv_app
     app/inv_app.cpp

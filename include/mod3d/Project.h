@@ -19,12 +19,35 @@ struct ProjectMetadata {
     std::string version{"2.5.4"};
 };
 
+struct InversionSettings3D {
+    int nz{24};
+    double dz{100.0};
+    double obs_height{10.0};
+    bool focusing_enabled{true};
+    int coarse_to_fine_levels{3};
+    bool adaptive_refinement{true};
+    double ms_weight{1.0};
+    double mgs_weight{1.0};
+    double depth_weight_exponent{0.75};
+    double min_density{-500.0}; // kg/m^3 (matching BodyPropertiesDialog)
+    double max_density{600.0};  // kg/m^3 (matching BodyPropertiesDialog)
+    int forward_operator{0};
+    double noise_rel{2.0};
+    int irls_iterations{10};
+    int cg_max_iterations{80};
+    bool use_neural_prior{false};
+    std::string onnx_model_path{""};
+    bool prior_as_reference{true};
+    bool refine_previous{true};
+};
+
 struct ProjectSettings {
     bool compute_real_time{false};
     bool remove_observed_mean{false};
     int gravity_formula{0};
     int magnetic_formula{0};
     std::vector<std::string> active_components;
+    InversionSettings3D inversion{};
 };
 
 /**
@@ -74,6 +97,11 @@ public:
     // Legacy Windows MFC .m3d Binary Archive Deserializer
     bool load_legacy_m3d(const std::filesystem::path &filePath);
 
+    // 3D Inversion Result Serialization Cache
+    [[nodiscard]] const std::string &inversion_result_json() const noexcept { return inversion_result_json_; }
+    void set_inversion_result_json(std::string json) { inversion_result_json_ = std::move(json); }
+    [[nodiscard]] bool has_inversion_result_json() const noexcept { return !inversion_result_json_.empty(); }
+
     // Clear project state
     void clear();
 
@@ -82,6 +110,7 @@ private:
     ProjectSettings settings_;
     Model model_;
     ObservationSpace observation_;
+    std::string inversion_result_json_;
 };
 
 } // namespace mod3d

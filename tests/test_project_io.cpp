@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include "mod3d/Project.h"
+#include <nlohmann/json.hpp>
 #include <filesystem>
 #include <fstream>
 
@@ -178,4 +179,81 @@ TEST(ProjectIOTest, FullModelAndObservationJsonRoundtrip) {
     ASSERT_NE(loadedObsGz, nullptr);
     EXPECT_DOUBLE_EQ((*loadedObsGz)(1, 1), 18.2);
     EXPECT_DOUBLE_EQ((*loadedObsGz)(0, 0), 12.5);
+}
+
+TEST(ProjectIOTest, InversionSettingsAndResultSerializationRoundTrip) {
+    Project proj;
+
+    auto &inv = proj.settings().inversion;
+    inv.nz = 32;
+    inv.dz = 125.0;
+    inv.obs_height = 15.0;
+    inv.focusing_enabled = true;
+    inv.coarse_to_fine_levels = 2;
+    inv.adaptive_refinement = false;
+    inv.ms_weight = 2.5;
+    inv.mgs_weight = 1.8;
+    inv.depth_weight_exponent = 0.8;
+    inv.min_density = -400.0; // kg/m^3
+    inv.max_density = 500.0;  // kg/m^3
+    inv.forward_operator = 1;
+    inv.noise_rel = 3.5;
+    inv.irls_iterations = 15;
+    inv.cg_max_iterations = 120;
+    inv.use_neural_prior = true;
+    inv.onnx_model_path = "/models/custom_swin.onnx";
+    inv.prior_as_reference = false;
+    inv.refine_previous = true;
+
+    nlohmann::json dummyResult;
+    dummyResult["initial_rms"] = 5.25;
+    dummyResult["final_rms"] = 0.82;
+    dummyResult["final_chi_rms"] = 1.05;
+    proj.set_inversion_result_json(dummyResult.dump());
+
+    std::string jsonStr = proj.to_json_string(2);
+    EXPECT_NE(jsonStr.find("inversion_settings"), std::string::npos);
+    EXPECT_NE(jsonStr.find("inversion_result"), std::string::npos);
+
+    Project loaded;
+    ASSERT_TRUE(loaded.from_json_string(jsonStr));
+
+    const auto &lInv = loaded.settings().inversion;
+    EXPECT_EQ(lInv.nz, 32);
+    EXPECT_DOUBLE_EQ(lInv.dz, 125.0);
+    EXPECT_DOUBLE_EQ(lInv.obs_height, 15.0);
+    EXPECT_TRUE(lInv.focusing_enabled);
+    EXPECT_EQ(lInv.coarse_to_fine_levels, 2);
+    EXPECT_FALSE(lInv.adaptive_refinement);
+    EXPECT_DOUBLE_EQ(lInv.ms_weight, 2.5);
+    EXPECT_DOUBLE_EQ(lInv.mgs_weight, 1.8);
+    EXPECT_DOUBLE_EQ(lInv.depth_weight_exponent, 0.8);
+    EXPECT_DOUBLE_EQ(lInv.min_density, -400.0);
+    EXPECT_DOUBLE_EQ(lInv.max_density, 500.0);
+    EXPECT_EQ(lInv.forward_operator, 1);
+    EXPECT_DOUBLE_EQ(lInv.noise_rel, 3.5);
+    EXPECT_EQ(lInv.irls_iterations, 15);
+    EXPECT_EQ(lInv.cg_max_iterations, 120);
+    EXPECT_TRUE(lInv.use_neural_prior);
+    EXPECT_EQ(lInv.onnx_model_path, "/models/custom_swin.onnx");
+    EXPECT_FALSE(lInv.prior_as_reference);
+    EXPECT_TRUE(lInv.refine_previous);
+
+    EXPECT_TRUE(loaded.has_inversion_result_json());
+    auto parsedRes = nlohmann::json::parse(loaded.inversion_result_json());
+    EXPECT_DOUBLE_EQ(parsedRes["initial_rms"].get<double>(), 5.25);
+    EXPECT_DOUBLE_EQ(parsedRes["final_rms"].get<double>(), 0.82);
+
+    // Verify unit safety conversion for legacy files saved with g/cm^3
+    std::string legacyJson = R"({
+        "format": "Mod3D",
+        "inversion_settings": {
+            "min_density": -0.4,
+            "max_density": 0.5
+        }
+    })";
+    Project legacyLoaded;
+    ASSERT_TRUE(legacyLoaded.from_json_string(legacyJson));
+    EXPECT_DOUBLE_EQ(legacyLoaded.settings().inversion.min_density, -400.0);
+    EXPECT_DOUBLE_EQ(legacyLoaded.settings().inversion.max_density, 500.0);
 }

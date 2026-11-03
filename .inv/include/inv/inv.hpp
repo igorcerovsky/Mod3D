@@ -14,4 +14,5 @@
 #include "observation.hpp"
 #include "focusing_metrics.hpp"
 #include "focusing_solver.hpp"
+#include "neural_prior.hpp"
 #include "inversion_engine.hpp"

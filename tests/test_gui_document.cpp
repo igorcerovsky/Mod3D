@@ -1,5 +1,7 @@
 #include <QAction>
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QMdiArea>
 #include <QMdiSubWindow>
 #include <QPainter>
@@ -5153,6 +5155,66 @@ TEST_F(GuiDocumentTest, Inversion3DDialogLifecycle) {
 
   Inversion3DDialog dlg(doc, &mw);
   EXPECT_FALSE(dlg.windowTitle().isEmpty());
+
+  auto *tabs = dlg.findChild<QTabWidget*>();
+  ASSERT_NE(tabs, nullptr);
+  EXPECT_EQ(tabs->count(), 4);
+  EXPECT_TRUE(tabs->tabText(0).contains("Domain"));
+  EXPECT_TRUE(tabs->tabText(1).contains("Focusing"));
+  EXPECT_TRUE(tabs->tabText(2).contains("Priors"));
+  EXPECT_TRUE(tabs->tabText(3).contains("Convergence") || tabs->tabText(3).contains("Monitor"));
+
+  // Test Instant AI Inference via 3D Swin Transformer
+  dlg.onInstantAiClicked();
+  dlg.onApplyClicked();
+  EXPECT_TRUE(doc->hasInversionResult());
+  EXPECT_NE(doc->modeledGrid(mod3d::FieldComponent::GZ), nullptr);
+  EXPECT_FALSE(doc->modeledGrid(mod3d::FieldComponent::GZ)->empty());
+  EXPECT_TRUE(doc->inversionResult()->stats.used_neural_transformer);
+
+  // Close first dialog - settings should persist to doc
+  dlg.close();
+
+  // Test persistent settings and refinement in a second dialog instance
+  {
+    Inversion3DDialog dlgRefine(doc, &mw);
+    // Since doc already has inversion result, refinement should be enabled and warm-started
+    dlgRefine.onRunClicked();
+    dlgRefine.waitForCompletion();
+    dlgRefine.onApplyClicked();
+    EXPECT_TRUE(doc->hasInversionResult());
+    // Refinement must refine only the last (finest) level, bypassing coarse levels
+    EXPECT_EQ(doc->inversionResult()->stats.levels_completed, 1);
+    EXPECT_DOUBLE_EQ(doc->inversionSettings().min_density, -500.0);
+    EXPECT_DOUBLE_EQ(doc->inversionSettings().max_density, 600.0);
+    dlgRefine.close();
+  }
+
+  // Test Cold Start button: runs full coarse-to-fine levels even when previous result exists
+  {
+    Inversion3DDialog dlgCold(doc, &mw);
+    dlgCold.onRunColdStartClicked();
+    dlgCold.waitForCompletion();
+    dlgCold.onApplyClicked();
+    EXPECT_TRUE(doc->hasInversionResult());
+    // Cold start runs all coarse-to-fine levels (default = 3)
+    EXPECT_EQ(doc->inversionResult()->stats.levels_completed, 3);
+    dlgCold.close();
+  }
+
+  // Test persistence across save and reload
+  const QString tempProj = QDir::temp().filePath("test_inversion_persistence.mod3d");
+  EXPECT_TRUE(doc->saveFile(tempProj));
+
+  {
+    ModelDocument loadedDoc;
+    EXPECT_TRUE(loadedDoc.openFile(tempProj));
+    EXPECT_TRUE(loadedDoc.hasInversionResult());
+    EXPECT_FALSE(loadedDoc.inversionResult()->density_grid.data().empty());
+    EXPECT_EQ(loadedDoc.inversionSettings().nz, doc->inversionSettings().nz);
+    EXPECT_DOUBLE_EQ(loadedDoc.inversionSettings().dz, doc->inversionSettings().dz);
+  }
+  QFile::remove(tempProj);
 }
 
 TEST_F(GuiDocumentTest, ProfileViewInversionDensitySliceAndContextMenu) {

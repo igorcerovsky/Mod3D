@@ -204,6 +204,17 @@ bool ModelDocument::openFile(const QString &path) {
         m_showMeasured = hasObs;
         m_showDiff = hasObs;
 
+        if (m_project.has_inversion_result_json()) {
+            try {
+                auto j = nlohmann::json::parse(m_project.inversion_result_json());
+                m_lastInversionResult = inv::InversionResult::from_json(j);
+            } catch (...) {
+                m_lastInversionResult.reset();
+            }
+        } else {
+            m_lastInversionResult.reset();
+        }
+
         computeAll();
         emit documentReset();
         emit profileChanged(m_profileIndex, m_profileOrient);
@@ -217,6 +228,14 @@ bool ModelDocument::saveFile(const QString &path) {
     QString savePath = path.isEmpty() ? m_filePath : path;
     if (savePath.isEmpty()) {
         return false;
+    }
+
+    if (m_lastInversionResult.has_value()) {
+        try {
+            m_project.set_inversion_result_json(m_lastInversionResult->to_json().dump());
+        } catch (...) {}
+    } else {
+        m_project.set_inversion_result_json("");
     }
 
     bool ok = m_project.save_json(savePath.toStdString());
@@ -1219,6 +1238,9 @@ void ModelDocument::setGlobalMovement(bool enabled) {
 
 void ModelDocument::setInversionResult(const inv::InversionResult &result) {
     m_lastInversionResult = result;
+    try {
+        m_project.set_inversion_result_json(result.to_json().dump());
+    } catch (...) {}
     setModified(true);
     emit inversionResultChanged();
 }
@@ -1226,9 +1248,15 @@ void ModelDocument::setInversionResult(const inv::InversionResult &result) {
 void ModelDocument::clearInversionResult() {
     if (m_lastInversionResult.has_value()) {
         m_lastInversionResult.reset();
+        m_project.set_inversion_result_json("");
         setModified(true);
         emit inversionResultChanged();
     }
+}
+
+void ModelDocument::setInversionSettings(const mod3d::InversionSettings3D &settings) {
+    m_project.settings().inversion = settings;
+    setModified(true);
 }
 
 } // namespace mod3d_gui

@@ -133,6 +133,66 @@ public:
         return std::sqrt(sum);
     }
 
+    [[nodiscard]] VoxelGrid<T> resample(size_type target_nx, size_type target_ny, size_type target_nz,
+                                        T target_x0, T target_y0, T target_z0,
+                                        T target_dx, T target_dy, T target_dz) const
+    {
+        if (nx_ == target_nx && ny_ == target_ny && nz_ == target_nz &&
+            std::abs(x0_ - target_x0) < 1e-6 && std::abs(y0_ - target_y0) < 1e-6 && std::abs(z0_ - target_z0) < 1e-6 &&
+            std::abs(dx_ - target_dx) < 1e-6 && std::abs(dy_ - target_dy) < 1e-6 && std::abs(dz_ - target_dz) < 1e-6) {
+            return *this;
+        }
+
+        VoxelGrid<T> dst(target_nx, target_ny, target_nz,
+                         target_x0, target_y0, target_z0,
+                         target_dx, target_dy, target_dz, T{0});
+        if (nx_ == 0 || ny_ == 0 || nz_ == 0) return dst;
+
+        for (size_type ix = 0; ix < target_nx; ++ix) {
+            double u = (target_nx > 1) ? static_cast<double>(ix) / (target_nx - 1) : 0.0;
+            double src_x = u * (nx_ - 1);
+            size_type sx0 = std::clamp(static_cast<size_type>(src_x), size_type{0}, nx_ - 1);
+            size_type sx1 = std::min(sx0 + 1, nx_ - 1);
+            double fx = src_x - sx0;
+
+            for (size_type iy = 0; iy < target_ny; ++iy) {
+                double v = (target_ny > 1) ? static_cast<double>(iy) / (target_ny - 1) : 0.0;
+                double src_y = v * (ny_ - 1);
+                size_type sy0 = std::clamp(static_cast<size_type>(src_y), size_type{0}, ny_ - 1);
+                size_type sy1 = std::min(sy0 + 1, ny_ - 1);
+                double fy = src_y - sy0;
+
+                for (size_type iz = 0; iz < target_nz; ++iz) {
+                    double w = (target_nz > 1) ? static_cast<double>(iz) / (target_nz - 1) : 0.0;
+                    double src_z = w * (nz_ - 1);
+                    size_type sz0 = std::clamp(static_cast<size_type>(src_z), size_type{0}, nz_ - 1);
+                    size_type sz1 = std::min(sz0 + 1, nz_ - 1);
+                    double fz = src_z - sz0;
+
+                    double c000 = (*this)(sx0, sy0, sz0);
+                    double c100 = (*this)(sx1, sy0, sz0);
+                    double c010 = (*this)(sx0, sy1, sz0);
+                    double c110 = (*this)(sx1, sy1, sz0);
+                    double c001 = (*this)(sx0, sy0, sz1);
+                    double c101 = (*this)(sx1, sy0, sz1);
+                    double c011 = (*this)(sx0, sy1, sz1);
+                    double c111 = (*this)(sx1, sy1, sz1);
+
+                    double c00 = c000 * (1.0 - fx) + c100 * fx;
+                    double c10 = c010 * (1.0 - fx) + c110 * fx;
+                    double c01 = c001 * (1.0 - fx) + c101 * fx;
+                    double c11 = c011 * (1.0 - fx) + c111 * fx;
+
+                    double c0 = c00 * (1.0 - fy) + c10 * fy;
+                    double c1 = c01 * (1.0 - fy) + c11 * fy;
+
+                    dst(ix, iy, iz) = static_cast<T>(c0 * (1.0 - fz) + c1 * fz);
+                }
+            }
+        }
+        return dst;
+    }
+
     bool export_vtk_structured_points(const std::string& filepath, const std::string& field_name = "property") const {
         std::ofstream out(filepath);
         if (!out) return false;
