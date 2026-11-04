@@ -39,6 +39,8 @@ struct InversionSettings3D {
     std::string onnx_model_path{""};
     bool prior_as_reference{true};
     bool refine_previous{true};
+    int background_trend_mode{1}; // 0: None, 1: ConstantShift, 2: PlanarRamp, 3: BorderPlanar
+    bool auto_tune_params{false};
 };
 
 struct ProjectSettings {

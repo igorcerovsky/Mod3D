@@ -96,6 +96,8 @@ private:
     QDoubleSpinBox *m_spinMinDensity{nullptr};
     QDoubleSpinBox *m_spinMaxDensity{nullptr};
     QComboBox *m_comboOperator{nullptr};
+    QComboBox *m_comboTrendMode{nullptr};
+    QCheckBox *m_chkAutoTune{nullptr};
     QDoubleSpinBox *m_spinNoiseRel{nullptr};
     QSpinBox *m_spinIrlsIters{nullptr};
     QSpinBox *m_spinCgMaxIters{nullptr};

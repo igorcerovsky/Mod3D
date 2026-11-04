@@ -273,6 +273,15 @@ void Inversion3DDialog::setupFocusingTab(QWidget *parent) {
     m_comboOperator->setCurrentIndex(0);
     formPhys->addRow(tr("Forward Operator:"), m_comboOperator);
 
+    m_comboTrendMode = new QComboBox(parent);
+    m_comboTrendMode->addItem(tr("None (Assume zero background datum)"), 0);
+    m_comboTrendMode->addItem(tr("Constant Shift c0 (Variable Projection, Recommended)"), 1);
+    m_comboTrendMode->addItem(tr("Planar Regional Trend (c0 + gx·x + gy·y Joint Projection)"), 2);
+    m_comboTrendMode->addItem(tr("Border-Fitted Regional Plane + Constant Shift c0"), 3);
+    m_comboTrendMode->setCurrentIndex(1);
+    m_comboTrendMode->setToolTip(tr("Eliminates constant DC shift or linear regional trend between computed pfld field and measured field"));
+    formPhys->addRow(tr("Background / Trend Removal:"), m_comboTrendMode);
+
     m_spinNoiseRel = new QDoubleSpinBox(parent);
     m_spinNoiseRel->setRange(0.01, 50.0);
     m_spinNoiseRel->setDecimals(2);
@@ -294,6 +303,11 @@ void Inversion3DDialog::setupFocusingTab(QWidget *parent) {
     iterLayout->addWidget(new QLabel(tr("PCG:"), parent));
     iterLayout->addWidget(m_spinCgMaxIters);
     formPhys->addRow(tr("Max Iterations:"), iterLayout);
+
+    m_chkAutoTune = new QCheckBox(tr("Auto-Tune Hyperparameters (Nz, Density Bounds, \xce\xb3, \xce\xb1_reg, e_end)"), parent);
+    m_chkAutoTune->setChecked(false);
+    m_chkAutoTune->setToolTip(tr("Runs a fast multi-stage coarse-grid tournament to optimize vertical layers (Nz), density contrast bounds, depth exponent (\xce\xb3), regularization (\xce\xb1), and focusing sharpness (e_end)"));
+    formPhys->addRow(m_chkAutoTune);
 
     layout->addWidget(grpPhysics);
     layout->addStretch();
@@ -547,9 +561,20 @@ void Inversion3DDialog::loadSettingsFromDocument() {
     if (s.forward_operator >= 0 && s.forward_operator < m_comboOperator->count()) {
         m_comboOperator->setCurrentIndex(s.forward_operator);
     }
+    if (m_comboTrendMode) {
+        for (int i = 0; i < m_comboTrendMode->count(); ++i) {
+            if (m_comboTrendMode->itemData(i).toInt() == s.background_trend_mode) {
+                m_comboTrendMode->setCurrentIndex(i);
+                break;
+            }
+        }
+    }
     m_spinNoiseRel->setValue(s.noise_rel);
     m_spinIrlsIters->setValue(s.irls_iterations);
     m_spinCgMaxIters->setValue(s.cg_max_iterations);
+    if (m_chkAutoTune) {
+        m_chkAutoTune->setChecked(s.auto_tune_params);
+    }
     m_chkUseNeuralPrior->setChecked(s.use_neural_prior && inv::NeuralPriorInference::is_available());
     if (!s.onnx_model_path.empty()) {
         m_txtPriorPath->setText(QString::fromStdString(s.onnx_model_path));
@@ -577,9 +602,11 @@ void Inversion3DDialog::saveSettingsToDocument() {
     s.min_density = m_spinMinDensity->value();
     s.max_density = m_spinMaxDensity->value();
     s.forward_operator = m_comboOperator->currentIndex();
+    s.background_trend_mode = m_comboTrendMode ? m_comboTrendMode->currentData().toInt() : 1;
     s.noise_rel = m_spinNoiseRel->value();
     s.irls_iterations = m_spinIrlsIters->value();
     s.cg_max_iterations = m_spinCgMaxIters->value();
+    s.auto_tune_params = m_chkAutoTune ? m_chkAutoTune->isChecked() : false;
     s.use_neural_prior = m_chkUseNeuralPrior->isChecked();
     s.onnx_model_path = m_txtPriorPath->text().toStdString();
     s.prior_as_reference = m_chkPriorAsRef->isChecked();
@@ -652,6 +679,8 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     setup.config.min_density = units::KgPerM3(m_spinMinDensity->value()).in<units::GPerCm3>();
     setup.config.max_density = units::KgPerM3(m_spinMaxDensity->value()).in<units::GPerCm3>();
     setup.config.use_fft_solver_benchmark = (m_comboOperator->currentIndex() == 1);
+    setup.config.background_trend_mode = m_comboTrendMode ? m_comboTrendMode->currentData().toInt() : 1;
+    setup.config.auto_tune_params = m_chkAutoTune ? m_chkAutoTune->isChecked() : false;
     setup.config.noise_rel = m_spinNoiseRel->value() * 0.01;
     setup.config.irls_iterations = m_spinIrlsIters->value();
     setup.config.cg_max_iterations = m_spinCgMaxIters->value();
@@ -687,6 +716,24 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
         }
     }
     setup.topo_elevations = std::move(topo_nodes);
+
+    // Optional per-column station depths for FlightElevation or ElevationGrid modes
+    std::vector<double> obs_z_cols;
+    const auto grvMode = m_doc->observation().gravity_mode();
+    if (grvMode == mod3d::ObservationMode::FlightElevation) {
+        obs_z_cols.assign(nx * ny, zDomainTop - setup.config.obs_height);
+    } else if (grvMode == mod3d::ObservationMode::ElevationGrid &&
+               !m_doc->observation().gravity_elevation_grid().empty()) {
+        const auto &eg = m_doc->observation().gravity_elevation_grid();
+        obs_z_cols.resize(nx * ny, 0.0);
+        for (size_t ix = 0; ix < nx; ++ix) {
+            for (size_t iy = 0; iy < ny; ++iy) {
+                double ez = (iy < eg.rows() && ix < eg.cols()) ? eg(iy, ix) : setup.config.obs_height;
+                if (ez == mod3d::GRID_DUMMY || std::isnan(ez)) ez = setup.config.obs_height;
+                obs_z_cols[ix * ny + iy] = zDomainTop - ez;
+            }
+        }
+    }
 
     // Switch to execution tab & clear previous stats
     m_tabWidget->setCurrentIndex(3);
@@ -741,6 +788,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
     // Launch background worker using C++20 std::jthread
     m_workerThread = std::jthread([this, setup = std::move(setup), d_fine = std::move(d_fine),
+                                   obs_z_cols = std::move(obs_z_cols),
                                    prior_values = std::move(prior_values), isRefining, useNeural](std::stop_token st) mutable {
         if (!isRefining && useNeural) {
             std::string modelPath = setup.config.onnx_model_path;
@@ -794,7 +842,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
         inv::InversionResult result;
         const bool ok = engine.invert_columns(d_fine, result.density_grid, result.stats,
-                                              setup.topo_elevations, {},
+                                              setup.topo_elevations, obs_z_cols,
                                               prior_values.empty() ? nullptr : &prior_values,
                                               &result.modeled_gz);
 
@@ -827,6 +875,39 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                     .arg(m_currentResult->stats.minimum_support * 100.0, 0, 'f', 2));
                 appendLog(tr("    Minimum Gradient Support (Interface Area Fraction): %1%")
                     .arg(m_currentResult->stats.minimum_gradient_support * 100.0, 0, 'f', 2));
+                if (m_currentResult->stats.auto_tuned) {
+                    const double tunedMinKg = units::GPerCm3(m_currentResult->stats.tuned_min_density).in<units::KgPerM3>();
+                    const double tunedMaxKg = units::GPerCm3(m_currentResult->stats.tuned_max_density).in<units::KgPerM3>();
+                    const QString densUnit = QString::fromUtf8(units::KgPerM3::unit_symbol().data());
+                    m_spinNz->blockSignals(true);
+                    m_spinNz->setValue(static_cast<int>(m_currentResult->stats.tuned_nz));
+                    m_spinNz->blockSignals(false);
+                    m_spinDz->blockSignals(true);
+                    m_spinDz->setValue(m_currentResult->stats.tuned_dz);
+                    m_spinDz->blockSignals(false);
+                    m_spinMinDensity->setValue(tunedMinKg);
+                    m_spinMaxDensity->setValue(tunedMaxKg);
+                    m_spinDepthExp->setValue(m_currentResult->stats.tuned_depth_exponent);
+                    saveSettingsToDocument();
+                    appendLog(tr("    Auto-Tuned Parameters (%1 trials): Nz = %2 (dz = %3 m), Bounds = [%4, %5] %6, \xce\xb3 = %7, \xce\xb1_reg = %8, e_end = %9")
+                        .arg(m_currentResult->stats.tuning_trials_evaluated)
+                        .arg(m_currentResult->stats.tuned_nz)
+                        .arg(m_currentResult->stats.tuned_dz, 0, 'f', 1)
+                        .arg(tunedMinKg, 0, 'f', 1)
+                        .arg(tunedMaxKg, 0, 'f', 1)
+                        .arg(densUnit)
+                        .arg(m_currentResult->stats.tuned_depth_exponent, 0, 'f', 2)
+                        .arg(m_currentResult->stats.tuned_alpha_reg, 0, 'f', 2)
+                        .arg(m_currentResult->stats.tuned_focusing_e_end_rel, 0, 'f', 4));
+                }
+                if (std::abs(m_currentResult->stats.baseline_shift_mgal) > 1e-6 ||
+                    std::abs(m_currentResult->stats.trend_gx_mgal_per_km) > 1e-6 ||
+                    std::abs(m_currentResult->stats.trend_gy_mgal_per_km) > 1e-6) {
+                    appendLog(tr("    Background Alignment: Shift c0 = %1 mGal, Regional Slope = (%2, %3) mGal/km")
+                        .arg(m_currentResult->stats.baseline_shift_mgal, 0, 'f', 4)
+                        .arg(m_currentResult->stats.trend_gx_mgal_per_km, 0, 'f', 4)
+                        .arg(m_currentResult->stats.trend_gy_mgal_per_km, 0, 'f', 4));
+                }
                 const double minDensKg = units::GPerCm3(m_currentResult->density_grid.min_value()).in<units::KgPerM3>();
                 const double maxDensKg = units::GPerCm3(m_currentResult->density_grid.max_value()).in<units::KgPerM3>();
                 const QString densUnit = QString::fromUtf8(units::KgPerM3::unit_symbol().data());
@@ -1018,25 +1099,73 @@ void Inversion3DDialog::onInstantAiClicked() {
     result.stats.used_neural_transformer = true;
     result.stats.message = "Instant 3D Swin Transformer Inference";
 
-    // Compute forward response
+    // Compute forward response using pfld::InterfaceMesh with relief & background alignment
     inv::GridGeometry g{nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
+    const double zDomainTop = m_doc->model().z_max().value();
+    const auto &relief = m_doc->observation().surface_relief();
+    const bool hasRelief = !relief.empty() && relief.rows() >= 2 && relief.cols() >= 2;
+    std::vector<double> topo_nodes((nx + 1) * (ny + 1), 0.0);
+    for (size_t iy = 0; iy <= ny; ++iy) {
+        const double y_c = y0_geom + static_cast<double>(iy) * dy;
+        for (size_t ix = 0; ix <= nx; ++ix) {
+            const double x_c = x0_geom + static_cast<double>(ix) * dx;
+            double elev = 0.0;
+            if (hasRelief) {
+                elev = relief.sample(x_c, y_c);
+                if (elev == mod3d::GRID_DUMMY || std::isnan(elev)) elev = relief.mean();
+            }
+            topo_nodes[iy * (nx + 1) + ix] = std::max(0.0, zDomainTop - elev);
+        }
+    }
+
+    std::vector<char> active(g.cells(), 1);
+    std::vector<double> col_surface(g.columns(), z0_geom);
+    double zmin = 1e300, zmax = -1e300;
+    for (std::size_t ix = 0; ix < g.nx; ++ix) {
+        for (std::size_t iy = 0; iy < g.ny; ++iy) {
+            const double zs = inv::column_surface_z(topo_nodes, g.nx, g.ny, ix, iy, z0_geom);
+            col_surface[ix * g.ny + iy] = zs;
+            zmin = std::min(zmin, zs);
+            zmax = std::max(zmax, zs);
+            for (std::size_t iz = 0; iz < g.nz; ++iz) {
+                if (g.zc(iz) < zs) {
+                    active[g.cell_index(ix, iy, iz)] = 0;
+                    result.density_grid.data()[g.cell_index(ix, iy, iz)] = 0.0;
+                }
+            }
+        }
+    }
+    const bool flat = (zmax - zmin) < 1e-6;
+
     std::unique_ptr<inv::LinearOperator> op;
-    if (cfg.use_fft_solver_benchmark) {
-        op = std::make_unique<inv::ToeplitzGravityOperator>(g, -cfg.obs_height);
+    if (cfg.use_fft_solver_benchmark && flat) {
+        op = std::make_unique<inv::ToeplitzGravityOperator>(g, zmin - cfg.obs_height);
     } else {
         std::vector<inv::Point3D<double>> obs;
         obs.reserve(g.columns());
         for (std::size_t ix = 0; ix < g.nx; ++ix) {
             for (std::size_t iy = 0; iy < g.ny; ++iy) {
-                obs.emplace_back(g.xc(ix), g.yc(iy), -cfg.obs_height);
+                obs.emplace_back(g.xc(ix), g.yc(iy), col_surface[ix * g.ny + iy] - cfg.obs_height);
             }
         }
-        op = std::make_unique<inv::PfldInterfaceMeshOperator>(g, obs, std::vector<double>{}, cfg.dense_max_entries);
+        op = std::make_unique<inv::PfldInterfaceMeshOperator>(g, obs, topo_nodes, cfg.dense_max_entries);
     }
 
     if (op) {
+        op->set_active(active);
         result.modeled_gz.resize(nx * ny, 0.0);
         op->apply(result.density_grid.data(), result.modeled_gz);
+
+        const int bg_mode = m_comboTrendMode ? m_comboTrendMode->currentData().toInt() : 1;
+        if (bg_mode != 0) {
+            std::vector<double> diff(nx * ny, 0.0);
+            for (size_t i = 0; i < nx * ny; ++i) diff[i] = d_fine[i] - result.modeled_gz[i];
+            inv::BackgroundBasis bg(g, static_cast<inv::BackgroundTrendMode>(bg_mode == 3 ? 1 : bg_mode));
+            std::vector<double> bg_field;
+            bg.evaluate(diff, bg_field, result.stats.baseline_shift_mgal,
+                        result.stats.trend_gx_mgal_per_km, result.stats.trend_gy_mgal_per_km);
+            for (size_t i = 0; i < nx * ny; ++i) result.modeled_gz[i] += bg_field[i];
+        }
 
         double fit2 = 0.0;
         for (size_t i = 0; i < nx * ny; ++i) {

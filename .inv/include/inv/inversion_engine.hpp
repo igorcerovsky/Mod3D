@@ -52,6 +52,13 @@ struct InversionConfig {
     // The absolute alpha is cooled by the discrepancy principle (see FocusingSolver).
     double alpha_reg{1.0};
 
+    // Background / regional trend removal mode:
+    // 0 = None, 1 = ConstantShift (joint c0), 2 = PlanarRamp (joint c0 + cx*x + cy*y), 3 = BorderPlanar
+    int background_trend_mode{1};
+
+    // Outer hyperparameter optimization loop (auto-tunes Nz, density bounds, gamma, alpha_reg, e_end_rel)
+    bool auto_tune_params{false};
+
     // ---- IRLS / CG ---------------------------------------------------------------------
     int irls_iterations{10};         ///< iterations on the finest level (+3 per coarser level)
     int cg_max_iterations{80};
@@ -98,10 +105,22 @@ struct InversionStats {
     double elapsed_time_ms{0.0};
     int levels_completed{0};
     double initial_data_rms{0.0};    ///< rms(d), i.e. misfit of the zero model [mGal]
-    double final_data_rms{0.0};      ///< rms(G m - d) on the finest level [mGal]
+    double final_data_rms{0.0};      ///< rms(G m + bg - d) on the finest level [mGal]
     double final_chi_rms{0.0};       ///< weighted misfit, 1.0 == noise level
     double minimum_support{0.0};     ///< S_MS volume fraction of the final model
     double minimum_gradient_support{0.0}; ///< S_MGS face-area fraction of the final model
+    double baseline_shift_mgal{0.0}; ///< Fitted constant datum shift c0 [mGal]
+    double trend_gx_mgal_per_km{0.0}; ///< Fitted regional planar trend slope along X [mGal/km]
+    double trend_gy_mgal_per_km{0.0}; ///< Fitted regional planar trend slope along Y [mGal/km]
+    bool auto_tuned{false};
+    int tuning_trials_evaluated{0};
+    std::size_t tuned_nz{0};
+    double tuned_dz{0.0};
+    double tuned_min_density{0.0};
+    double tuned_max_density{0.0};
+    double tuned_depth_exponent{0.0};
+    double tuned_alpha_reg{0.0};
+    double tuned_focusing_e_end_rel{0.0};
     bool used_neural_transformer{false};
     std::string message;
     std::vector<LevelStats> levels;
@@ -165,6 +184,8 @@ struct InversionSetup {
             {"min_density", config.min_density},
             {"max_density", config.max_density},
             {"use_fft_solver_benchmark", config.use_fft_solver_benchmark},
+            {"background_trend_mode", config.background_trend_mode},
+            {"auto_tune_params", config.auto_tune_params},
             {"onnx_model_path", config.onnx_model_path}
         };
 
@@ -227,6 +248,8 @@ struct InversionSetup {
             c.min_density = p.value("min_density", c.min_density);
             c.max_density = p.value("max_density", c.max_density);
             c.use_fft_solver_benchmark = p.value("use_fft_solver_benchmark", c.use_fft_solver_benchmark);
+            c.background_trend_mode = p.value("background_trend_mode", c.background_trend_mode);
+            c.auto_tune_params = p.value("auto_tune_params", c.auto_tune_params);
             c.onnx_model_path = p.value("onnx_model_path", c.onnx_model_path);
         }
 
@@ -268,6 +291,18 @@ struct InversionResult {
         j["final_chi_rms"] = stats.final_chi_rms;
         j["minimum_support"] = stats.minimum_support;
         j["minimum_gradient_support"] = stats.minimum_gradient_support;
+        j["baseline_shift_mgal"] = stats.baseline_shift_mgal;
+        j["trend_gx_mgal_per_km"] = stats.trend_gx_mgal_per_km;
+        j["trend_gy_mgal_per_km"] = stats.trend_gy_mgal_per_km;
+        j["auto_tuned"] = stats.auto_tuned;
+        j["tuning_trials_evaluated"] = stats.tuning_trials_evaluated;
+        j["tuned_nz"] = stats.tuned_nz;
+        j["tuned_dz"] = stats.tuned_dz;
+        j["tuned_min_density"] = stats.tuned_min_density;
+        j["tuned_max_density"] = stats.tuned_max_density;
+        j["tuned_depth_exponent"] = stats.tuned_depth_exponent;
+        j["tuned_alpha_reg"] = stats.tuned_alpha_reg;
+        j["tuned_focusing_e_end_rel"] = stats.tuned_focusing_e_end_rel;
         j["used_prior"] = stats.used_neural_transformer;
         j["message"] = stats.message;
         j["modeled_gz"] = modeled_gz;
@@ -280,7 +315,9 @@ struct InversionResult {
                 {"cg_iterations", l.cg_iterations}, {"chi_rms", l.chi_rms}, {"rms_mgal", l.rms_mgal},
                 {"rho_end", l.rho_end}, {"e_end", l.e_end},
                 {"ms_volume_fraction", l.ms_volume_fraction},
-                {"mgs_area_fraction", l.mgs_area_fraction}, {"time_ms", l.time_ms}
+                {"mgs_area_fraction", l.mgs_area_fraction},
+                {"baseline_shift_mgal", l.baseline_shift_mgal},
+                {"time_ms", l.time_ms}
             });
         }
         j["levels"] = lv;
@@ -310,6 +347,18 @@ struct InversionResult {
         if (j.contains("final_chi_rms")) r.stats.final_chi_rms = j["final_chi_rms"].get<double>();
         if (j.contains("minimum_support")) r.stats.minimum_support = j["minimum_support"].get<double>();
         if (j.contains("minimum_gradient_support")) r.stats.minimum_gradient_support = j["minimum_gradient_support"].get<double>();
+        if (j.contains("baseline_shift_mgal")) r.stats.baseline_shift_mgal = j["baseline_shift_mgal"].get<double>();
+        if (j.contains("trend_gx_mgal_per_km")) r.stats.trend_gx_mgal_per_km = j["trend_gx_mgal_per_km"].get<double>();
+        if (j.contains("trend_gy_mgal_per_km")) r.stats.trend_gy_mgal_per_km = j["trend_gy_mgal_per_km"].get<double>();
+        if (j.contains("auto_tuned")) r.stats.auto_tuned = j["auto_tuned"].get<bool>();
+        if (j.contains("tuning_trials_evaluated")) r.stats.tuning_trials_evaluated = j["tuning_trials_evaluated"].get<int>();
+        if (j.contains("tuned_nz")) r.stats.tuned_nz = j["tuned_nz"].get<std::size_t>();
+        if (j.contains("tuned_dz")) r.stats.tuned_dz = j["tuned_dz"].get<double>();
+        if (j.contains("tuned_min_density")) r.stats.tuned_min_density = j["tuned_min_density"].get<double>();
+        if (j.contains("tuned_max_density")) r.stats.tuned_max_density = j["tuned_max_density"].get<double>();
+        if (j.contains("tuned_depth_exponent")) r.stats.tuned_depth_exponent = j["tuned_depth_exponent"].get<double>();
+        if (j.contains("tuned_alpha_reg")) r.stats.tuned_alpha_reg = j["tuned_alpha_reg"].get<double>();
+        if (j.contains("tuned_focusing_e_end_rel")) r.stats.tuned_focusing_e_end_rel = j["tuned_focusing_e_end_rel"].get<double>();
         if (j.contains("used_prior")) r.stats.used_neural_transformer = j["used_prior"].get<bool>();
         if (j.contains("message")) r.stats.message = j["message"].get<std::string>();
 
@@ -329,6 +378,7 @@ struct InversionResult {
                 s.e_end = l.value("e_end", 0.0);
                 s.ms_volume_fraction = l.value("ms_volume_fraction", 0.0);
                 s.mgs_area_fraction = l.value("mgs_area_fraction", 0.0);
+                s.baseline_shift_mgal = l.value("baseline_shift_mgal", 0.0);
                 s.time_ms = l.value("time_ms", 0.0);
                 r.stats.levels.push_back(s);
             }
@@ -424,11 +474,39 @@ public:
                         std::vector<double>* out_modeled_gz = nullptr)
     {
         const auto t_start = std::chrono::high_resolution_clock::now();
-        const InversionConfig& c = config_;
-        if (c.nx < 2 || c.ny < 2 || c.nz < 1 || d_fine.size() != c.nx * c.ny) {
+        if (config_.nx < 2 || config_.ny < 2 || config_.nz < 1 || d_fine.size() != config_.nx * config_.ny) {
             stats.message = "grid/data size mismatch";
             return false;
         }
+
+        // Optional outer hyperparameter optimization loop (auto-tunes Nz, dz, density bounds, gamma, alpha_reg, e_end_rel)
+        bool did_auto_tune = false;
+        int tuning_trials = 0;
+        std::vector<double> resampled_prior_buf;
+        if (config_.auto_tune_params && !config_.refine_previous) {
+            if (!run_auto_tune(d_fine, topo_nodes, obs_z_cols, tuning_trials)) {
+                stats.message = "Inversion cancelled by user";
+                return false;
+            }
+            did_auto_tune = true;
+            if (prior && !prior->empty() && prior->size() != config_.nx * config_.ny * config_.nz) {
+                const std::size_t orig_nz = prior->size() / (config_.nx * config_.ny);
+                if (orig_nz >= 1 && orig_nz * config_.nx * config_.ny == prior->size()) {
+                    const double H = static_cast<double>(config_.nz) * config_.dz;
+                    VoxelGrid<double> pg(config_.nx, config_.ny, orig_nz,
+                                         config_.x0, config_.y0, config_.z0,
+                                         config_.dx, config_.dy, H / static_cast<double>(orig_nz), 0.0);
+                    pg.data() = *prior;
+                    VoxelGrid<double> rg = pg.resample(config_.nx, config_.ny, config_.nz,
+                                                       config_.x0, config_.y0, config_.z0,
+                                                       config_.dx, config_.dy, config_.dz);
+                    resampled_prior_buf = std::move(rg.data());
+                    prior = &resampled_prior_buf;
+                }
+            }
+        }
+
+        const InversionConfig& c = config_;
         const bool has_prior = prior && prior->size() == c.nx * c.ny * c.nz;
 
         GridGeometry gf{c.nx, c.ny, c.nz, c.x0, c.y0, c.z0, c.dx, c.dy, c.dz};
@@ -438,13 +516,42 @@ public:
           : (n_levels == 2) ? std::vector<std::size_t>{2, 1}
                             : std::vector<std::size_t>{4, 2, 1};
 
-        // noise level
+        // If BorderPlanar mode (3), estimate linear regional tilt from perimeter stations
+        // on the finest grid and subtract the tilt from the working data, while keeping
+        // ConstantShift (1) inside the variable-projection solver for exact DC datum alignment.
+        std::vector<double> d_work = d_fine;
+        std::vector<double> border_tilt_fine(d_fine.size(), 0.0);
+        int solver_bg_mode = c.background_trend_mode;
+        double border_gx_km = 0.0, border_gy_km = 0.0;
+        if (c.background_trend_mode == static_cast<int>(BackgroundTrendMode::BorderPlanar)) {
+            BackgroundBasis::fit_border_tilt(gf, d_fine, border_tilt_fine, border_gx_km, border_gy_km);
+            for (std::size_t i = 0; i < d_work.size(); ++i) d_work[i] -= border_tilt_fine[i];
+            solver_bg_mode = static_cast<int>(BackgroundTrendMode::ConstantShift);
+        }
+
+        // Noise level & initial anomaly RMS (invariant to constant datum shift / regional ramp)
+        std::vector<double> d_anom = d_work;
+        if (solver_bg_mode > 0) {
+            BackgroundBasis bg_init(gf, static_cast<BackgroundTrendMode>(solver_bg_mode));
+            bg_init.project_out(d_anom);
+            d_work = d_anom;
+        }
         double dmax = 0.0, dsum2 = 0.0;
-        for (double v : d_fine) { dmax = std::max(dmax, std::abs(v)); dsum2 += v * v; }
-        const double sigma = (c.noise_sigma > 0.0) ? c.noise_sigma : std::max(c.noise_rel * dmax, 1e-9);
+        double anom_min = 1e300, anom_max = -1e300, anom_sum2 = 0.0;
+        for (std::size_t i = 0; i < d_fine.size(); ++i) {
+            dmax = std::max(dmax, std::abs(d_fine[i]));
+            dsum2 += d_fine[i] * d_fine[i];
+            anom_min = std::min(anom_min, d_anom[i]);
+            anom_max = std::max(anom_max, d_anom[i]);
+            anom_sum2 += d_anom[i] * d_anom[i];
+        }
+        const double effective_dmax = (solver_bg_mode > 0 && anom_max > anom_min)
+            ? std::max(anom_max - anom_min, std::max(std::abs(anom_max), std::abs(anom_min)))
+            : dmax;
+        const double sigma = (c.noise_sigma > 0.0) ? c.noise_sigma : std::max(c.noise_rel * effective_dmax, 1e-9);
 
         stats = InversionStats{};
-        stats.initial_data_rms = std::sqrt(dsum2 / static_cast<double>(d_fine.size()));
+        stats.initial_data_rms = std::sqrt(((solver_bg_mode > 0 && anom_sum2 > 0.0) ? anom_sum2 : dsum2) / static_cast<double>(d_fine.size()));
         stats.used_neural_transformer = has_prior;
 
         const bool has_topo = topo_nodes.size() == (c.nx + 1) * (c.ny + 1);
@@ -470,7 +577,7 @@ public:
 
             // ---- level data ------------------------------------------------------------------
             std::vector<double> d_level;
-            observation::block_average_columns(d_fine, c.nx, c.ny, fx, fy, d_level);
+            observation::block_average_columns(d_work, c.nx, c.ny, fx, fy, d_level);
             std::vector<double> oz_level;
             if (obs_z_cols.size() == c.nx * c.ny) {
                 observation::block_average_columns(obs_z_cols, c.nx, c.ny, fx, fy, oz_level);
@@ -549,12 +656,16 @@ public:
                 observation::block_average_cells(prior_fine, gf, fx, fy, fz, prior_level);
                 for (std::size_t j = 0; j < prior_level.size(); ++j) if (!active[j]) prior_level[j] = 0.0;
                 if (l == 0 && c.scale_prior) {
-                    // 1-D least-squares amplitude of the prior against the data.
+                    // 1-D least-squares amplitude of the prior against the data (in trend-free subspace).
                     op->set_active(active);
                     std::vector<double> gp;
                     op->apply(prior_level, gp);
+                    std::vector<double> d_proj = d_level;
+                    BackgroundBasis bg_prior(g, static_cast<BackgroundTrendMode>(solver_bg_mode));
+                    bg_prior.project_out(gp);
+                    bg_prior.project_out(d_proj);
                     double num = 0.0, den = 0.0;
-                    for (std::size_t i = 0; i < gp.size(); ++i) { num += gp[i] * d_level[i]; den += gp[i] * gp[i]; }
+                    for (std::size_t i = 0; i < gp.size(); ++i) { num += gp[i] * d_proj[i]; den += gp[i] * gp[i]; }
                     if (den > 0.0) {
                         const double s = std::clamp(num / den, 0.05, 20.0);
                         for (auto& v : prior_fine) v *= s;
@@ -591,6 +702,7 @@ public:
             sp.min_density = c.min_density;
             sp.max_density = c.max_density;
             sp.density_scale = 0.5 * (c.max_density - c.min_density);
+            sp.background_trend_mode = solver_bg_mode;
             sp.verbose = c.verbose;
 
             sp.progress_callback = [&](int iter, int total_iters, double rms, double chi) -> bool {
@@ -611,10 +723,29 @@ public:
             }
             rho = ls.rho_end;
 
-            // Compute modeled gravity on finest level if requested
-            if (l == n_levels - 1 && out_modeled_gz) {
-                out_modeled_gz->resize(g.columns());
-                op->apply(m_level, *out_modeled_gz);
+            // Compute modeled gravity and background shift/trend on finest level
+            if (l == n_levels - 1) {
+                std::vector<double> gm_fine(g.columns(), 0.0);
+                op->apply(m_level, gm_fine);
+                std::vector<double> diff(g.columns(), 0.0);
+                for (std::size_t i = 0; i < g.columns(); ++i) diff[i] = d_fine[i] - gm_fine[i];
+
+                BackgroundBasis bg_fine(g, static_cast<BackgroundTrendMode>(c.background_trend_mode));
+                std::vector<double> bg_field;
+                double c0_mgal = 0.0, gx_km = 0.0, gy_km = 0.0;
+                bg_fine.evaluate(diff, bg_field, c0_mgal, gx_km, gy_km);
+
+                ls.baseline_shift_mgal = c0_mgal;
+                stats.baseline_shift_mgal = c0_mgal;
+                stats.trend_gx_mgal_per_km = gx_km;
+                stats.trend_gy_mgal_per_km = gy_km;
+
+                if (out_modeled_gz) {
+                    out_modeled_gz->resize(g.columns());
+                    for (std::size_t i = 0; i < g.columns(); ++i) {
+                        (*out_modeled_gz)[i] = gm_fine[i] + bg_field[i];
+                    }
+                }
             }
 
             // Focusing diagnostics (physical units), normalised by the topography-active domain so
@@ -642,6 +773,18 @@ public:
         stats.final_chi_rms = stats.levels.back().chi_rms;
         stats.minimum_support = stats.levels.back().ms_volume_fraction;
         stats.minimum_gradient_support = stats.levels.back().mgs_area_fraction;
+        stats.auto_tuned = did_auto_tune;
+        stats.tuning_trials_evaluated = tuning_trials;
+        stats.tuned_nz = c.nz;
+        stats.tuned_dz = c.dz;
+        stats.tuned_min_density = c.min_density;
+        stats.tuned_max_density = c.max_density;
+        stats.tuned_depth_exponent = c.depth_weight_exponent;
+        stats.tuned_alpha_reg = c.alpha_reg;
+        stats.tuned_focusing_e_end_rel = c.focusing_e_end_rel;
+        if (did_auto_tune) {
+            note += " [Auto-tuned Nz=" + std::to_string(c.nz) + ", gamma=" + std::to_string(c.depth_weight_exponent) + "]";
+        }
         stats.message = std::string("Completed ") + std::to_string(n_levels) + "-level coarse-to-fine " +
                         (c.focusing_enabled ? "focusing (IRLS MS+MGS)" : "Tikhonov L2 baseline") + " inversion using " +
                         (c.use_fft_solver_benchmark ? "FFT Toeplitz benchmark operator" : "pfld::InterfaceMesh operator") + note;
@@ -756,6 +899,264 @@ private:
             for (std::size_t iy = 0; iy < gf.ny; ++iy)
                 for (std::size_t iz = 0; iz < gf.nz; ++iz)
                     if (!dil[gc.cell_index(ix / fx, iy / fy, iz / fz)]) active[gf.cell_index(ix, iy, iz)] = 0;
+    }
+
+    /**
+     * @brief Multi-stage surrogate / coarse-grid hyperparameter optimization loop.
+     *
+     * Optimizes:
+     *  - Phase A: Depth weighting exponent (gamma), initial regularization ratio (alpha_reg),
+     *             and focusing sharpness (focusing_e_end_rel)
+     *  - Phase B: Physical density contrast bounds ([min_density, max_density])
+     *  - Phase C: Vertical discretization layers (nz and dz = H / nz)
+     */
+    bool run_auto_tune(const std::vector<double>& d_fine,
+                       const std::vector<double>& topo_nodes,
+                       const std::vector<double>& obs_z_cols,
+                       int& out_trials)
+    {
+        out_trials = 0;
+        const InversionConfig base = config_;
+        const double H_total = std::max(1.0, static_cast<double>(base.nz) * base.dz);
+
+        // Detrend data on fine grid to inspect anomaly sign distribution and noise scale
+        GridGeometry gf_base{base.nx, base.ny, base.nz, base.x0, base.y0, base.z0, base.dx, base.dy, base.dz};
+        std::vector<double> d_anom = d_fine;
+        if (base.background_trend_mode > 0) {
+            BackgroundBasis bg0(gf_base, static_cast<BackgroundTrendMode>(base.background_trend_mode));
+            bg0.project_out(d_anom);
+        }
+        double anom_min = 1e300, anom_max = -1e300;
+        for (double v : d_anom) {
+            anom_min = std::min(anom_min, v);
+            anom_max = std::max(anom_max, v);
+        }
+
+        // Screening horizontal factor (coarse proxy grid with at least 4x4 horizontal cells)
+        const std::size_t target_fxy = (base.nx >= 32 && base.ny >= 32) ? 4 : ((base.nx >= 12 && base.ny >= 12) ? 2 : 1);
+        const std::size_t fx = choose_factor(base.nx, target_fxy);
+        const std::size_t fy = choose_factor(base.ny, target_fxy);
+
+        auto eval_candidate = [&](std::size_t cand_nz, double cand_min_d, double cand_max_d,
+                                  double cand_gamma, double cand_alpha, double cand_e_end,
+                                  double& score_out) -> bool {
+            if (base.cancel_check && base.cancel_check()) return false;
+            ++out_trials;
+
+            const std::size_t fz = choose_factor(cand_nz, std::min<std::size_t>(fx, 2));
+            const std::size_t g_nz = std::max<std::size_t>(2, cand_nz / fz);
+            const double cand_dz = H_total / static_cast<double>(cand_nz);
+            GridGeometry g{base.nx / fx, base.ny / fy, g_nz, base.x0, base.y0, base.z0,
+                           base.dx * static_cast<double>(fx), base.dy * static_cast<double>(fy),
+                           H_total / static_cast<double>(g_nz)};
+
+            std::vector<double> d_level;
+            observation::block_average_columns(d_anom, base.nx, base.ny, fx, fy, d_level);
+            std::vector<double> oz_level;
+            if (obs_z_cols.size() == base.nx * base.ny) {
+                observation::block_average_columns(obs_z_cols, base.nx, base.ny, fx, fy, oz_level);
+            }
+
+            const bool has_topo = topo_nodes.size() == (base.nx + 1) * (base.ny + 1);
+            std::vector<double> topo_level;
+            if (has_topo) {
+                topo_level.resize((g.nx + 1) * (g.ny + 1));
+                for (std::size_t iy = 0; iy <= g.ny; ++iy)
+                    for (std::size_t ix = 0; ix <= g.nx; ++ix)
+                        topo_level[iy * (g.nx + 1) + ix] = topo_nodes[(iy * fy) * (base.nx + 1) + ix * fx];
+            }
+
+            std::vector<double> col_surface(g.columns(), base.z0);
+            std::vector<char> active(g.cells(), 1);
+            if (has_topo) {
+                for (std::size_t ix = 0; ix < g.nx; ++ix) {
+                    for (std::size_t iy = 0; iy < g.ny; ++iy) {
+                        const double zs = column_surface_z(topo_level, g.nx, g.ny, ix, iy, base.z0);
+                        col_surface[ix * g.ny + iy] = zs;
+                        for (std::size_t iz = 0; iz < g.nz; ++iz) {
+                            if (g.zc(iz) < zs) active[g.cell_index(ix, iy, iz)] = 0;
+                        }
+                    }
+                }
+            }
+
+            std::vector<Point3D<double>> obs;
+            obs.reserve(g.columns());
+            for (std::size_t ix = 0; ix < g.nx; ++ix) {
+                for (std::size_t iy = 0; iy < g.ny; ++iy) {
+                    const std::size_t col = ix * g.ny + iy;
+                    const double z = oz_level.empty() ? col_surface[col] - base.obs_height : oz_level[col];
+                    obs.emplace_back(g.xc(ix), g.yc(iy), z);
+                }
+            }
+            PfldInterfaceMeshOperator op(g, obs, topo_level, base.dense_max_entries);
+
+            const double eff_dmax = std::max(anom_max - anom_min, std::max(std::abs(anom_max), std::abs(anom_min)));
+            const double sigma = (base.noise_sigma > 0.0) ? base.noise_sigma : std::max(base.noise_rel * eff_dmax, 1e-9);
+
+            SolverParams sp;
+            sp.irls_iterations = std::clamp(base.irls_iterations / 2 + 2, 4, 7);
+            sp.cg_max_iterations = std::min(base.cg_max_iterations, 45);
+            sp.cg_tolerance = std::max(base.cg_tolerance, 5e-4);
+            sp.e_start_rel = std::max(1e-4, base.focusing_e_start_rel);
+            sp.e_end_rel = cand_e_end;
+            sp.e_abs_min = std::max(base.focusing_e, 1e-12);
+            sp.rho_start = cand_alpha;
+            sp.sigma = sigma;
+            sp.focusing = base.focusing_enabled;
+            sp.ms_weight = base.ms_weight;
+            sp.mgs_weight = base.mgs_weight;
+            sp.depth_exponent = cand_gamma;
+            sp.min_density = cand_min_d;
+            sp.max_density = cand_max_d;
+            sp.density_scale = std::max(1e-4, 0.5 * (cand_max_d - cand_min_d));
+            sp.background_trend_mode = (base.background_trend_mode == static_cast<int>(BackgroundTrendMode::BorderPlanar))
+                ? static_cast<int>(BackgroundTrendMode::ConstantShift)
+                : base.background_trend_mode;
+            sp.cancel_check = base.cancel_check;
+
+            std::vector<double> m_cand(g.cells(), 0.0);
+            LevelStats ls;
+            if (!FocusingSolver::solve(g, op, d_level, m_cand, active, nullptr, sp, ls)) {
+                return false;
+            }
+
+            // Evaluate composite geophysical objective J(theta)
+            VoxelGrid<double> gm(g.nx, g.ny, g.nz, g.x0, g.y0, g.z0, g.dx, g.dy, g.dz, 0.0);
+            gm.data() = m_cand;
+            using FE = FocusingEvaluator<double>;
+            const double vol = FE::active_volume(gm, &active);
+            const double area = FE::interface_area(gm, &active);
+            const double ms_frac = vol > 0 ? FE::compute_minimum_support_volume(gm, ls.e_end, 0.0, &active) / vol : 1.0;
+            const double mgs_frac = area > 0 ? FE::compute_minimum_gradient_support_area(gm, ls.e_end, &active) / area : 1.0;
+
+            // Bound saturation & depth concentration diagnostics
+            std::size_t n_act = 0, n_clipped = 0;
+            double top_energy = 0.0, bot_energy = 0.0, tot_energy = 0.0;
+            const double span = std::max(1e-6, cand_max_d - cand_min_d);
+            for (std::size_t ix = 0; ix < g.nx; ++ix) {
+                for (std::size_t iy = 0; iy < g.ny; ++iy) {
+                    for (std::size_t iz = 0; iz < g.nz; ++iz) {
+                        const std::size_t j = g.cell_index(ix, iy, iz);
+                        if (!active[j]) continue;
+                        ++n_act;
+                        const double v = m_cand[j];
+                        if ((cand_max_d > 1e-6 && v >= cand_max_d - 0.01 * span) ||
+                            (cand_min_d < -1e-6 && v <= cand_min_d + 0.01 * span)) {
+                            ++n_clipped;
+                        }
+                        const double e2 = v * v;
+                        tot_energy += e2;
+                        if (iz == 0) top_energy += e2;
+                        if (iz + 1 == g.nz) bot_energy += e2;
+                    }
+                }
+            }
+            const double clip_frac = n_act > 0 ? static_cast<double>(n_clipped) / static_cast<double>(n_act) : 0.0;
+            const double top_frac = tot_energy > 1e-20 ? (top_energy / tot_energy) : 0.0;
+            const double bot_frac = tot_energy > 1e-20 ? (bot_energy / tot_energy) : 0.0;
+
+            // Aspect ratio penalty for vertical cell thickness vs horizontal step
+            const double dxy = 0.5 * (base.dx + base.dy);
+            const double aspect = std::log(std::max(0.1, cand_dz / std::max(1.0, dxy)));
+
+            const double chi_diff = ls.chi_rms - 1.0;
+            const double underfit_pen = (ls.chi_rms > 1.15) ? 2.5 * (ls.chi_rms - 1.15) * (ls.chi_rms - 1.15) : 0.0;
+            const double overfit_pen = (ls.chi_rms < 0.75) ? 1.5 * (0.75 - ls.chi_rms) * (0.75 - ls.chi_rms) : 0.0;
+            // Penalize shallow skin-effect concentration in iz == 0 (which artificially lowers MS volume
+            // when gamma is too small) and bottom-boundary piling (when gamma is too large).
+            const double boundary_pen = 0.75 * top_frac + 0.75 * std::max(0.0, bot_frac - 0.30);
+            const double gamma_prior = 0.20 * (cand_gamma - 0.80) * (cand_gamma - 0.80);
+            const double sat_pen = 2.0 * std::max(0.0, clip_frac - 0.03);
+
+            score_out = chi_diff * chi_diff + underfit_pen + overfit_pen
+                      + 0.45 * ms_frac + 0.35 * mgs_frac
+                      + boundary_pen + gamma_prior + sat_pen + 0.08 * aspect * aspect;
+            return true;
+        };
+
+        double best_gamma = std::clamp(base.depth_weight_exponent, 0.60, 1.10);
+        double best_alpha = base.alpha_reg;
+        double best_e_end = base.focusing_e_end_rel;
+        double best_min_d = base.min_density;
+        double best_max_d = base.max_density;
+        std::size_t best_nz = base.nz;
+        double best_score = 1e300;
+
+        // Phase A: Joint search over (gamma, alpha_reg, focusing_e_end_rel)
+        struct PhaseACand { double gamma; double alpha; double e_end; };
+        const std::vector<PhaseACand> phase_a = {
+            {best_gamma, base.alpha_reg, base.focusing_e_end_rel},
+            {0.65, 0.5, 0.005},
+            {0.75, 1.0, 0.005},
+            {0.85, 1.0, 0.003},
+            {0.95, 1.5, 0.005},
+            {0.75, 0.35, 0.010},
+            {0.85, 2.5, 0.002}
+        };
+        for (const auto& ca : phase_a) {
+            double sc = 1e300;
+            if (!eval_candidate(best_nz, best_min_d, best_max_d, ca.gamma, ca.alpha, ca.e_end, sc)) return false;
+            if (sc < best_score) {
+                best_score = sc;
+                best_gamma = ca.gamma;
+                best_alpha = ca.alpha;
+                best_e_end = ca.e_end;
+            }
+        }
+
+        // Phase B: Density contrast bounds [min_density, max_density]
+        std::vector<std::pair<double, double>> bound_cands = {
+            {base.min_density * 0.8, base.max_density * 0.8},
+            {base.min_density * 1.25, base.max_density * 1.25}
+        };
+        if (anom_max > 2.5 * std::abs(anom_min) && base.min_density < 0.0 && base.max_density > 0.0) {
+            bound_cands.push_back({0.15 * base.min_density, base.max_density});
+            bound_cands.push_back({0.0, base.max_density * 1.15});
+        } else if (std::abs(anom_min) > 2.5 * std::max(0.0, anom_max) && base.min_density < 0.0 && base.max_density > 0.0) {
+            bound_cands.push_back({base.min_density, 0.15 * base.max_density});
+            bound_cands.push_back({base.min_density * 1.15, 0.0});
+        }
+        for (const auto& bc : bound_cands) {
+            if (bc.second <= bc.first + 1e-4) continue;
+            double sc = 1e300;
+            if (!eval_candidate(best_nz, bc.first, bc.second, best_gamma, best_alpha, best_e_end, sc)) return false;
+            if (sc < best_score) {
+                best_score = sc;
+                best_min_d = bc.first;
+                best_max_d = bc.second;
+            }
+        }
+
+        // Phase C: Vertical discretization layers Nz (keeping total depth extent H_total = nz * dz constant)
+        const std::size_t mult = (base.coarse_to_fine_levels >= 3) ? 4 : ((base.coarse_to_fine_levels == 2) ? 2 : 1);
+        auto round_mult = [mult](std::size_t v) -> std::size_t {
+            std::size_t r = ((v + mult / 2) / mult) * mult;
+            return std::clamp<std::size_t>(r, std::max<std::size_t>(4, mult), 64);
+        };
+        const std::vector<std::size_t> nz_cands = {
+            round_mult( std::max<std::size_t>(4, (base.nz * 3) / 4) ),
+            round_mult( base.nz ),
+            round_mult( (base.nz * 5) / 4 )
+        };
+        for (std::size_t nz_c : nz_cands) {
+            if (nz_c == best_nz) continue;
+            double sc = 1e300;
+            if (!eval_candidate(nz_c, best_min_d, best_max_d, best_gamma, best_alpha, best_e_end, sc)) return false;
+            if (sc < best_score) {
+                best_score = sc;
+                best_nz = nz_c;
+            }
+        }
+
+        config_.depth_weight_exponent = best_gamma;
+        config_.alpha_reg = best_alpha;
+        config_.focusing_e_end_rel = best_e_end;
+        config_.min_density = best_min_d;
+        config_.max_density = best_max_d;
+        config_.nz = best_nz;
+        config_.dz = H_total / static_cast<double>(best_nz);
+        return true;
     }
 };
 

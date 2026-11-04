@@ -168,16 +168,37 @@ public:
             return (ix * ny + iy) * nz + iz;
         };
 
+        // Topmost active subsurface layer per column (ix * ny + iy):
+        // First iz in [0, nz) whose cell center z0 + (iz + 0.5) * dz >= zs (mean column DEM depth).
+        std::vector<std::size_t> col_iz_top(nx * ny, nz);
+        for (std::size_t ix = 0; ix < nx; ++ix) {
+            for (std::size_t iy = 0; iy < ny; ++iy) {
+                const T zs = static_cast<T>(0.25) * (get_topo(ix, iy) + get_topo(ix + 1, iy) +
+                                                     get_topo(ix + 1, iy + 1) + get_topo(ix, iy + 1));
+                for (std::size_t iz = 0; iz < nz; ++iz) {
+                    if (z0 + (static_cast<T>(iz) + static_cast<T>(0.5)) * dz >= zs) {
+                        col_iz_top[ix * ny + iy] = iz;
+                        break;
+                    }
+                }
+            }
+        }
+
         // --------------------------------------------------------------------
         // 1. TOPOGRAPHY SURFACE: Triangulated Facets (2 triangles per column)
         // --------------------------------------------------------------------
-        // Normal points outward (upward into air).
+        // Normal points downwards (+Z). cell_above = -1 (air), cell_below = iz_top.
         // Delta_rho = 0.0 - rho_top = -rho_top (air density = 0).
         for (std::size_t ix = 0; ix < nx; ++ix) {
             const T x_l = x0 + static_cast<T>(ix) * dx;
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
+                const std::size_t iz_top = col_iz_top[ix * ny + iy];
+                if (iz_top >= nz) {
+                    continue;
+                }
+
                 const T y_b = y0 + static_cast<T>(iy) * dy;
                 const T y_t = y_b + dy;
 
@@ -191,17 +212,18 @@ public:
                 const Point p11(x_r, y_t, z11);
                 const Point p01(x_l, y_t, z01);
 
-                const T rho_top = cell_densities[cell_idx(ix, iy, 0)];
+                const std::size_t top_cell = cell_idx(ix, iy, iz_top);
+                const T rho_top = cell_densities[top_cell];
 
                 if (std::abs(rho_top) > static_cast<T>(1e-9)) {
                     // Triangle 1: p00 -> p10 -> p11
                     InterfaceFacet<T> f1;
                     f1.type = InterfaceFacetType::TopographyTriangle;
                     f1.tri = Facet<T, 3>({p00, p10, p11}, true);
-                    f1.delta_rho = -rho_top; // outward normal points into air
+                    f1.delta_rho = -rho_top;
                     f1.nz = f1.tri.normal().z;
                     f1.cell_above = -1;
-                    f1.cell_below = static_cast<int64_t>(cell_idx(ix, iy, 0));
+                    f1.cell_below = static_cast<int64_t>(top_cell);
                     interfaces_.push_back(std::move(f1));
 
                     // Triangle 2: p00 -> p11 -> p01
@@ -211,7 +233,7 @@ public:
                     f2.delta_rho = -rho_top;
                     f2.nz = f2.tri.normal().z;
                     f2.cell_above = -1;
-                    f2.cell_below = static_cast<int64_t>(cell_idx(ix, iy, 0));
+                    f2.cell_below = static_cast<int64_t>(top_cell);
                     interfaces_.push_back(std::move(f2));
                 }
             }
@@ -220,7 +242,7 @@ public:
         // --------------------------------------------------------------------
         // 2. SUBSURFACE INTERNAL HORIZONTAL INTERFACES (Rectangular Quads)
         // --------------------------------------------------------------------
-        // Shared between cell (ix, iy, iz) and cell (ix, iy, iz+1).
+        // Shared between cell (ix, iy, iz) and cell (ix, iy, iz+1) for iz >= iz_top.
         // Normal points downwards (+Z). Delta_rho = rho_above - rho_below.
         // Lateral vertical walls are SKIPPED (n_z = 0 in planar modeling).
         for (std::size_t iz = 0; iz + 1 < nz; ++iz) {
@@ -231,6 +253,10 @@ public:
                 const T x_r = x_l + dx;
 
                 for (std::size_t iy = 0; iy < ny; ++iy) {
+                    if (iz < col_iz_top[ix * ny + iy]) {
+                        continue; // Above DEM surface (air)
+                    }
+
                     const T y_b = y0 + static_cast<T>(iy) * dy;
                     const T y_t = y_b + dy;
 
@@ -272,6 +298,10 @@ public:
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
+                if (col_iz_top[ix * ny + iy] >= nz) {
+                    continue;
+                }
+
                 const T y_b = y0 + static_cast<T>(iy) * dy;
                 const T y_t = y_b + dy;
 
@@ -330,12 +360,31 @@ public:
             return static_cast<int64_t>((ix * ny + iy) * nz + iz);
         };
 
+        std::vector<std::size_t> col_iz_top(nx * ny, nz);
+        for (std::size_t ix = 0; ix < nx; ++ix) {
+            for (std::size_t iy = 0; iy < ny; ++iy) {
+                const T zs = static_cast<T>(0.25) * (get_topo(ix, iy) + get_topo(ix + 1, iy) +
+                                                     get_topo(ix + 1, iy + 1) + get_topo(ix, iy + 1));
+                for (std::size_t iz = 0; iz < nz; ++iz) {
+                    if (z0 + (static_cast<T>(iz) + static_cast<T>(0.5)) * dz >= zs) {
+                        col_iz_top[ix * ny + iy] = iz;
+                        break;
+                    }
+                }
+            }
+        }
+
         // 1. TOPOGRAPHY SURFACE: Triangulated Facets (2 triangles per column)
         for (std::size_t ix = 0; ix < nx; ++ix) {
             const T x_l = x0 + static_cast<T>(ix) * dx;
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
+                const std::size_t iz_top = col_iz_top[ix * ny + iy];
+                if (iz_top >= nz) {
+                    continue;
+                }
+
                 const T y_b = y0 + static_cast<T>(iy) * dy;
                 const T y_t = y_b + dy;
 
@@ -349,7 +398,7 @@ public:
                 const Point p11(x_r, y_t, z11);
                 const Point p01(x_l, y_t, z01);
 
-                const int64_t c_top = cell_idx(ix, iy, 0);
+                const int64_t c_top = cell_idx(ix, iy, iz_top);
 
                 // Triangle 1: p00 -> p10 -> p11
                 InterfaceFacet<T> f1;
@@ -382,6 +431,10 @@ public:
                 const T x_r = x_l + dx;
 
                 for (std::size_t iy = 0; iy < ny; ++iy) {
+                    if (iz < col_iz_top[ix * ny + iy]) {
+                        continue; // Above DEM surface (air)
+                    }
+
                     const T y_b = y0 + static_cast<T>(iy) * dy;
                     const T y_t = y_b + dy;
 
@@ -409,6 +462,10 @@ public:
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
+                if (col_iz_top[ix * ny + iy] >= nz) {
+                    continue;
+                }
+
                 const T y_b = y0 + static_cast<T>(iy) * dy;
                 const T y_t = y_b + dy;
 

@@ -643,3 +643,174 @@ TEST(NeuralPriorTest, Swin3DOnnxInferenceEvaluatesObservationField) {
     EXPECT_EQ(prior.total_cells(), nx * ny * nz);
     EXPECT_GT(prior.max_value(), 0.0);
 }
+
+TEST(SensitivityKernelTest, PfldInterfaceMeshWithDeepReliefTopographyMatchesSubsurface) {
+    // Regression test for Mod3D projects where zDomainTop > surface relief so zs > 0.5 * dz.
+    // Specifically: 8x8x6 grid with z0 = 0, dz = 50 m, and flat surface relief at depth zs = 100 m
+    // (so layers iz = 0 and iz = 1 are air above the DEM, and iz_top = 2 is the topmost active layer).
+    inv::GridGeometry g_deep{8, 8, 6, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0};
+    std::vector<double> topo_deep(9 * 9, 100.0);
+    std::vector<char> active_deep(g_deep.cells(), 1);
+    for (std::size_t ix = 0; ix < 8; ++ix)
+        for (std::size_t iy = 0; iy < 8; ++iy)
+            for (std::size_t iz = 0; iz < 2; ++iz)
+                active_deep[g_deep.cell_index(ix, iy, iz)] = 0;
+
+    // Equivalent 8x8x4 grid starting directly at z0 = 100 m with flat surface at zs = 100 m.
+    inv::GridGeometry g_ref{8, 8, 4, 0.0, 0.0, 100.0, 50.0, 50.0, 50.0};
+    std::vector<double> topo_ref(9 * 9, 100.0);
+
+    std::vector<inv::Point3D<double>> obs;
+    for (std::size_t ix = 0; ix < 8; ++ix)
+        for (std::size_t iy = 0; iy < 8; ++iy)
+            obs.emplace_back(g_deep.xc(ix), g_deep.yc(iy), 90.0); // 10 m above surface at z = 100 m
+
+    inv::PfldInterfaceMeshOperator op_deep(g_deep, obs, topo_deep);
+    op_deep.set_active(active_deep);
+    inv::PfldInterfaceMeshOperator op_ref(g_ref, obs, topo_ref);
+
+    std::vector<double> m_deep(g_deep.cells(), 0.0);
+    std::vector<double> m_ref(g_ref.cells(), 0.0);
+    for (std::size_t ix = 2; ix < 6; ++ix)
+        for (std::size_t iy = 2; iy < 6; ++iy)
+            for (std::size_t iz = 0; iz < 2; ++iz) {
+                m_deep[g_deep.cell_index(ix, iy, iz + 2)] = 0.5;
+                m_ref[g_ref.cell_index(ix, iy, iz)] = 0.5;
+            }
+
+    std::vector<double> gz_deep, gz_ref;
+    op_deep.apply(m_deep, gz_deep);
+    op_ref.apply(m_ref, gz_ref);
+
+    ASSERT_EQ(gz_deep.size(), gz_ref.size());
+    for (std::size_t i = 0; i < gz_deep.size(); ++i) {
+        EXPECT_GT(gz_deep[i], 0.0);
+        EXPECT_NEAR(gz_deep[i], gz_ref[i], 1e-9);
+    }
+}
+
+TEST(FocusingInversionTest, ConstantShiftAndPlanarTrendEliminatedFromComputedField) {
+    // 16 x 16 x 8 grid with a 4x4x3 prism of 0.4 g/cm^3
+    inv::InversionConfig c;
+    c.nx = 16; c.ny = 16; c.nz = 8;
+    c.dx = c.dy = c.dz = 50.0;
+    c.use_fft_solver_benchmark = false; // Primary pfld::InterfaceMesh operator
+    c.noise_rel = 0.02;
+
+    inv::VoxelGrid<double> truth(16, 16, 8, 0, 0, 0, 50, 50, 50, 0.0);
+    for (size_t ix = 6; ix < 10; ++ix)
+        for (size_t iy = 6; iy < 10; ++iy)
+            for (size_t iz = 1; iz < 4; ++iz)
+                truth(ix, iy, iz) = 0.4;
+
+    inv::GridGeometry g{16, 16, 8, 0, 0, 0, 50, 50, 50};
+    std::vector<inv::Point3D<double>> obs;
+    for (size_t ix = 0; ix < 16; ++ix)
+        for (size_t iy = 0; iy < 16; ++iy)
+            obs.emplace_back(g.xc(ix), g.yc(iy), -c.obs_height);
+    inv::PfldInterfaceMeshOperator op(g, obs);
+    std::vector<double> d_clean;
+    op.apply(truth.data(), d_clean);
+
+    // 1. Baseline inversion without shift
+    c.background_trend_mode = static_cast<int>(inv::BackgroundTrendMode::ConstantShift);
+    inv::VoxelGrid<double> model_base;
+    inv::InversionStats stats_base;
+    std::vector<double> gz_base;
+    ASSERT_TRUE(inv::InversionEngine(c).invert_columns(d_clean, model_base, stats_base, {}, {}, nullptr, &gz_base));
+
+    // 2. Add a +25.0 mGal constant DC offset to the observed gravity data
+    const double dc_offset = 25.0;
+    std::vector<double> d_shifted = d_clean;
+    for (double& v : d_shifted) v += dc_offset;
+
+    inv::VoxelGrid<double> model_shifted;
+    inv::InversionStats stats_shifted;
+    std::vector<double> gz_shifted;
+    ASSERT_TRUE(inv::InversionEngine(c).invert_columns(d_shifted, model_shifted, stats_shifted, {}, {}, nullptr, &gz_shifted));
+
+    // Recovered 3D density model must be invariant to constant datum shift (within CG tolerance)!
+    for (std::size_t i = 0; i < model_base.total_cells(); ++i) {
+        EXPECT_NEAR(model_shifted[i], model_base[i], 5e-4);
+    }
+    EXPECT_NEAR(stats_shifted.baseline_shift_mgal - stats_base.baseline_shift_mgal, dc_offset, 1e-4);
+
+    // Computed field gz_shifted must have zero mean residual against d_shifted
+    ASSERT_EQ(gz_shifted.size(), d_shifted.size());
+    double mean_residual = 0.0;
+    for (std::size_t i = 0; i < gz_shifted.size(); ++i) {
+        mean_residual += (gz_shifted[i] - d_shifted[i]);
+    }
+    mean_residual /= static_cast<double>(gz_shifted.size());
+    EXPECT_NEAR(mean_residual, 0.0, 1e-9);
+    EXPECT_GT(model_shifted.max_value(), 0.25);
+
+    // 3. Add a planar regional ramp (+25 mGal + 2.0 mGal/km * x - 1.5 mGal/km * y) and invert with PlanarRamp
+    c.background_trend_mode = static_cast<int>(inv::BackgroundTrendMode::PlanarRamp);
+    const double xm = 0.5 * 16.0 * 50.0;
+    const double ym = 0.5 * 16.0 * 50.0;
+    std::vector<double> d_ramp = d_clean;
+    for (size_t ix = 0; ix < 16; ++ix) {
+        for (size_t iy = 0; iy < 16; ++iy) {
+            d_ramp[ix * 16 + iy] += dc_offset + 0.002 * (g.xc(ix) - xm) - 0.0015 * (g.yc(iy) - ym);
+        }
+    }
+    inv::VoxelGrid<double> model_ramp;
+    inv::InversionStats stats_ramp;
+    std::vector<double> gz_ramp;
+    ASSERT_TRUE(inv::InversionEngine(c).invert_columns(d_ramp, model_ramp, stats_ramp, {}, {}, nullptr, &gz_ramp));
+
+    double mean_res_ramp = 0.0;
+    for (std::size_t i = 0; i < gz_ramp.size(); ++i) {
+        mean_res_ramp += (gz_ramp[i] - d_ramp[i]);
+    }
+    mean_res_ramp /= static_cast<double>(gz_ramp.size());
+    EXPECT_NEAR(mean_res_ramp, 0.0, 1e-9);
+    EXPECT_NEAR(stats_ramp.trend_gx_mgal_per_km, 2.0, 0.2);
+    EXPECT_NEAR(stats_ramp.trend_gy_mgal_per_km, -1.5, 0.2);
+    EXPECT_GT(model_ramp.max_value(), 0.25);
+}
+
+TEST(FocusingInversionTest, AutoTuneHyperparametersOptimizesLayersBoundsAndGamma) {
+    // Start with suboptimal user parameters: Nz = 10 (not divisible by 4), overly wide negative bound
+    // [-1.2, +0.4] on a purely positive prism anomaly, and suboptimal gamma = 0.45.
+    inv::InversionConfig c;
+    c.nx = 12; c.ny = 12; c.nz = 10;
+    c.dx = c.dy = 50.0;
+    c.dz = 40.0; // Total depth extent H = 400 m
+    c.depth_weight_exponent = 0.45;
+    c.min_density = -1.2;
+    c.max_density = 0.4;
+    c.auto_tune_params = true;
+    c.use_fft_solver_benchmark = false;
+
+    inv::VoxelGrid<double> truth(12, 12, 8, 0, 0, 0, 50, 50, 50, 0.0);
+    for (size_t ix = 4; ix < 8; ++ix)
+        for (size_t iy = 4; iy < 8; ++iy)
+            for (size_t iz = 1; iz < 4; ++iz)
+                truth(ix, iy, iz) = 0.4;
+
+    inv::GridGeometry g_true{12, 12, 8, 0, 0, 0, 50, 50, 50};
+    std::vector<inv::Point3D<double>> obs;
+    for (size_t ix = 0; ix < 12; ++ix)
+        for (size_t iy = 0; iy < 12; ++iy)
+            obs.emplace_back(g_true.xc(ix), g_true.yc(iy), -c.obs_height);
+    inv::PfldInterfaceMeshOperator op(g_true, obs);
+    std::vector<double> d_obs;
+    op.apply(truth.data(), d_obs);
+    for (double& v : d_obs) v += 15.0; // Include +15 mGal constant shift
+
+    inv::InversionEngine eng(c);
+    inv::VoxelGrid<double> model;
+    inv::InversionStats stats;
+    std::vector<double> modeled_gz;
+    ASSERT_TRUE(eng.invert_columns(d_obs, model, stats, {}, {}, nullptr, &modeled_gz));
+
+    EXPECT_TRUE(stats.auto_tuned);
+    EXPECT_GT(stats.tuning_trials_evaluated, 8);
+    EXPECT_EQ(model.nz(), stats.tuned_nz);
+    EXPECT_NEAR(static_cast<double>(stats.tuned_nz) * stats.tuned_dz, 400.0, 1e-6);
+    EXPECT_GT(stats.tuned_min_density, -1.2); // Tightened negative bound on positive anomaly
+    EXPECT_GT(stats.tuned_depth_exponent, 0.5);
+    EXPECT_GT(model.max_value(), 0.25);
+}

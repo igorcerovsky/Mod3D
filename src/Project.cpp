@@ -396,7 +396,9 @@ std::string Project::to_json_string(int indent) const {
       {"use_neural_prior", settings_.inversion.use_neural_prior},
       {"onnx_model_path", settings_.inversion.onnx_model_path},
       {"prior_as_reference", settings_.inversion.prior_as_reference},
-      {"refine_previous", settings_.inversion.refine_previous}};
+      {"refine_previous", settings_.inversion.refine_previous},
+      {"background_trend_mode", settings_.inversion.background_trend_mode},
+      {"auto_tune_params", settings_.inversion.auto_tune_params}};
 
   if (!inversion_result_json_.empty()) {
     try {
@@ -658,6 +660,8 @@ bool Project::from_json_string(std::string_view jsonStr) {
       settings_.inversion.onnx_model_path = ji.value("onnx_model_path", settings_.inversion.onnx_model_path);
       settings_.inversion.prior_as_reference = ji.value("prior_as_reference", settings_.inversion.prior_as_reference);
       settings_.inversion.refine_previous = ji.value("refine_previous", settings_.inversion.refine_previous);
+      settings_.inversion.background_trend_mode = ji.value("background_trend_mode", settings_.inversion.background_trend_mode);
+      settings_.inversion.auto_tune_params = ji.value("auto_tune_params", settings_.inversion.auto_tune_params);
     }
 
     // Inversion Result
