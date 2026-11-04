@@ -11,6 +11,7 @@
 #include <QFontDatabase>
 #include <QDateTime>
 #include <QCloseEvent>
+#include <QCoreApplication>
 #include <cmath>
 
 namespace mod3d_gui {
