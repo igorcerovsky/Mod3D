@@ -44,6 +44,7 @@ __pycache__/
 checkpoints/
 *.pt
 *.onnx
+!.inv/python/models/*.onnx
 
 /legacy/
 /private/

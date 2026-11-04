@@ -29,14 +29,32 @@ public:
     }
 
     static std::string default_model_path() {
+        std::error_code ec;
+        auto cur = std::filesystem::current_path(ec);
+        if (!ec) {
+            for (int i = 0; i < 6; ++i) {
+                auto candidate = cur / ".inv" / "python" / "models" / "inv_swin3d.onnx";
+                if (std::filesystem::exists(candidate, ec) && std::filesystem::exists(candidate.string() + ".data", ec)) {
+                    return std::filesystem::absolute(candidate).string();
+                }
+                auto candidate2 = cur / "models" / "inv_swin3d.onnx";
+                if (std::filesystem::exists(candidate2, ec) && std::filesystem::exists(candidate2.string() + ".data", ec)) {
+                    return std::filesystem::absolute(candidate2).string();
+                }
+                if (!cur.has_parent_path() || cur == cur.parent_path()) break;
+                cur = cur.parent_path();
+            }
+        }
+
         const std::vector<std::string> candidates = {
             ".inv/python/models/inv_swin3d.onnx",
             "../.inv/python/models/inv_swin3d.onnx",
             "../../.inv/python/models/inv_swin3d.onnx",
-            "models/inv_swin3d.onnx"
+            "../../../.inv/python/models/inv_swin3d.onnx",
+            "models/inv_swin3d.onnx",
+            "../models/inv_swin3d.onnx"
         };
         for (const auto& p : candidates) {
-            std::error_code ec;
             if (std::filesystem::exists(p, ec) && std::filesystem::exists(p + ".data", ec)) {
                 return std::filesystem::absolute(p).string();
             }
