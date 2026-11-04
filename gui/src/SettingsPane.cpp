@@ -734,10 +734,15 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   modeLayout->addWidget(m_combo3DInversionRenderMode);
   inv3DLayout->addLayout(modeLayout);
 
+  m_chk3DInversionProgressiveOpacity = new QCheckBox(tr("Progressive Cell Opacity (0 to max)"), boxInversion3D);
+  m_chk3DInversionProgressiveOpacity->setChecked(true);
+  m_chk3DInversionProgressiveOpacity->setToolTip(tr("Increases cell opacity progressively with |Δρ|, from 0 (completely transparent) up to the opacity slider max"));
+  inv3DLayout->addWidget(m_chk3DInversionProgressiveOpacity);
+
   auto *threshLayout = new QHBoxLayout();
   threshLayout->addWidget(new QLabel(tr("Threshold:"), boxInversion3D));
   m_spin3DInversionThreshold = new QDoubleSpinBox(boxInversion3D);
-  m_spin3DInversionThreshold->setRange(0.0001, 10.0);
+  m_spin3DInversionThreshold->setRange(0.0, 10.0);
   m_spin3DInversionThreshold->setSingleStep(0.01);
   m_spin3DInversionThreshold->setDecimals(3);
   m_spin3DInversionThreshold->setSuffix(tr(" g/cm³"));
@@ -847,6 +852,13 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
                   m_combo3DInversionRenderMode->itemData(idx).toInt());
               glv->setInversionRenderMode(mode);
             }
+          });
+  connect(m_chk3DInversionProgressiveOpacity, &QCheckBox::toggled, this,
+          [this](bool c) {
+            if (m_blockSync)
+              return;
+            if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
+              glv->setInversionProgressiveOpacity(c);
           });
   connect(m_spin3DInversionThreshold,
           QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
@@ -2487,6 +2499,8 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
                &SettingsPane::updateViewContext);
     disconnect(oldGlv, &GL3DView::inversionOpacityChanged, this,
                &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::inversionProgressiveOpacityChanged, this,
+               &SettingsPane::updateViewContext);
     disconnect(oldGlv, &GL3DView::inversionSlicesChanged, this,
                &SettingsPane::updateViewContext);
   }
@@ -2513,6 +2527,8 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
     connect(newGlv, &GL3DView::inversionThresholdChanged, this,
             &SettingsPane::updateViewContext, Qt::UniqueConnection);
     connect(newGlv, &GL3DView::inversionOpacityChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::inversionProgressiveOpacityChanged, this,
             &SettingsPane::updateViewContext, Qt::UniqueConnection);
     connect(newGlv, &GL3DView::inversionSlicesChanged, this,
             &SettingsPane::updateViewContext, Qt::UniqueConnection);
@@ -2745,6 +2761,9 @@ void SettingsPane::updateViewContext() {
     if (renderModeIdx >= 0) {
       m_combo3DInversionRenderMode->setCurrentIndex(renderModeIdx);
     }
+    bool isRayCasting = (glv->inversionRenderMode() == GL3DView::InversionRenderMode::RayCasting);
+    m_chk3DInversionProgressiveOpacity->setEnabled(hasInv && glv->showInversionVoxels() && isRayCasting);
+    m_chk3DInversionProgressiveOpacity->setChecked(glv->inversionProgressiveOpacity());
     m_spin3DInversionThreshold->setEnabled(hasInv && glv->showInversionVoxels());
     m_spin3DInversionThreshold->setValue(glv->inversionThreshold());
     m_slider3DInversionOpacity->setEnabled(hasInv && glv->showInversionVoxels());

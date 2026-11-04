@@ -1213,6 +1213,7 @@ void GL3DView::initShaders() {
       "uniform float u_threshold;\n"
       "uniform float u_maxAbsRho;\n"
       "uniform float u_opacity;\n"
+      "uniform bool u_progressiveOpacity;\n"
       "uniform float u_stepSize;\n"
       "uniform float u_baseStepSize;\n"
       "uniform bool u_cutActive;\n"
@@ -1286,7 +1287,7 @@ void GL3DView::initShaders() {
       "        if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0 && w >= 0.0 && w <= 1.0) {\n"
       "            float rho = texture(u_volumeTex, vec3(u, v, w)).r;\n"
       "            float absRho = abs(rho);\n"
-      "            if (absRho >= u_threshold) {\n"
+      "            if (absRho >= u_threshold && absRho > 0.0) {\n"
       "                float norm = clamp(rho / max(0.0001, u_maxAbsRho), -1.0, 1.0);\n"
       "                vec3 col;\n"
       "                if (norm < 0.0) {\n"
@@ -1296,9 +1297,11 @@ void GL3DView::initShaders() {
       "                    float t_norm = norm;\n"
       "                    col = vec3(1.0 - 0.05 * t_norm, 1.0 - 0.75 * t_norm, 1.0 - 0.85 * t_norm);\n"
       "                }\n"
-      "                float valFraction = clamp((absRho - u_threshold) / max(0.0001, u_maxAbsRho - u_threshold), 0.0, 1.0);\n"
-      "                float sampleAlpha = clamp(u_opacity * pow(valFraction, 0.5), 0.0, 1.0);\n"
-      "                float stepAlpha = 1.0 - pow(1.0 - min(sampleAlpha, 0.99), dt / max(0.001, u_baseStepSize));\n"
+      "                float valFraction = (u_threshold > 0.0 && u_threshold < u_maxAbsRho)\n"
+      "                    ? clamp((absRho - u_threshold) / max(0.0001, u_maxAbsRho - u_threshold), 0.0, 1.0)\n"
+      "                    : clamp(absRho / max(0.0001, u_maxAbsRho), 0.0, 1.0);\n"
+      "                float cellAlpha = u_progressiveOpacity ? (u_opacity * valFraction) : u_opacity;\n"
+      "                float stepAlpha = 1.0 - pow(1.0 - min(cellAlpha, 0.99), (dt / max(0.001, u_baseStepSize)) * 0.4);\n"
       "                accum.rgb += (1.0 - accum.a) * col * stepAlpha;\n"
       "                accum.a += (1.0 - accum.a) * stepAlpha;\n"
       "            }\n"
@@ -4475,7 +4478,7 @@ void GL3DView::setInversionRenderMode(InversionRenderMode mode) {
 }
 
 void GL3DView::setInversionThreshold(double threshold) {
-  threshold = std::max(0.0001, threshold);
+  threshold = std::max(0.0, threshold);
   if (std::abs(m_inversionThreshold - threshold) > 1e-5) {
     m_inversionThreshold = threshold;
     m_inversionVboDirty = true;
@@ -4491,6 +4494,14 @@ void GL3DView::setInversionOpacity(double opacity) {
     m_inversionVboDirty = true;
     m_inversionSlicesDirty = true;
     emit inversionOpacityChanged(m_inversionOpacity);
+    update();
+  }
+}
+
+void GL3DView::setInversionProgressiveOpacity(bool enable) {
+  if (m_inversionProgressiveOpacity != enable) {
+    m_inversionProgressiveOpacity = enable;
+    emit inversionProgressiveOpacityChanged(m_inversionProgressiveOpacity);
     update();
   }
 }
@@ -4941,6 +4952,7 @@ void GL3DView::drawInversionRayCast() {
   m_rayCastShaderProg->setUniformValue("u_threshold", static_cast<float>(m_inversionThreshold));
   m_rayCastShaderProg->setUniformValue("u_maxAbsRho", static_cast<float>(maxAbsRho));
   m_rayCastShaderProg->setUniformValue("u_opacity", static_cast<float>(m_inversionOpacity));
+  m_rayCastShaderProg->setUniformValue("u_progressiveOpacity", m_inversionProgressiveOpacity);
   m_rayCastShaderProg->setUniformValue("u_stepSize", baseStepSize);
   m_rayCastShaderProg->setUniformValue("u_baseStepSize", baseStepSize);
 

@@ -141,6 +141,11 @@ public:
   }
   void setInversionOpacity(double opacity);
 
+  [[nodiscard]] bool inversionProgressiveOpacity() const noexcept {
+    return m_inversionProgressiveOpacity;
+  }
+  void setInversionProgressiveOpacity(bool enable);
+
   [[nodiscard]] bool showInversionSlices() const noexcept {
     return m_showInversionSlices;
   }
@@ -511,6 +516,7 @@ signals:
   void inversionRenderModeChanged(InversionRenderMode mode);
   void inversionThresholdChanged(double threshold);
   void inversionOpacityChanged(double opacity);
+  void inversionProgressiveOpacityChanged(bool enabled);
   void inversionSlicesChanged(bool enabled);
 
 protected:
@@ -636,6 +642,7 @@ private:
   InversionRenderMode m_inversionRenderMode{InversionRenderMode::RayCasting};
   double m_inversionThreshold{0.02}; // g/cm³
   double m_inversionOpacity{0.80};
+  bool m_inversionProgressiveOpacity{true};
   bool m_showInversionSlices{false};
 
   // Ray-Casting DVR members

@@ -5382,17 +5382,20 @@ TEST_F(GuiDocumentTest, GL3DViewInversionVoxelsAndSlicesRendering) {
   GL3DView glv(doc);
   EXPECT_TRUE(glv.showInversionVoxels());
   EXPECT_EQ(glv.inversionRenderMode(), GL3DView::InversionRenderMode::RayCasting);
+  EXPECT_TRUE(glv.inversionProgressiveOpacity());
   EXPECT_NEAR(glv.inversionThreshold(), 0.02, 1e-4);
   EXPECT_NEAR(glv.inversionOpacity(), 0.80, 1e-4);
   EXPECT_FALSE(glv.showInversionSlices());
 
   // Signal emission checks
-  bool voxChanged = true, slicesChanged = false;
+  bool voxChanged = true, slicesChanged = false, progOpacityChanged = false;
   GL3DView::InversionRenderMode receivedMode = GL3DView::InversionRenderMode::RayCasting;
   double newThresh = 0.0, newOpacity = 0.0;
   QObject::connect(&glv, &GL3DView::inversionVoxelsChanged, [&](bool v) { voxChanged = v; });
   QObject::connect(&glv, &GL3DView::inversionRenderModeChanged,
                    [&](GL3DView::InversionRenderMode m) { receivedMode = m; });
+  QObject::connect(&glv, &GL3DView::inversionProgressiveOpacityChanged,
+                   [&](bool p) { progOpacityChanged = p; });
   QObject::connect(&glv, &GL3DView::inversionThresholdChanged, [&](double th) { newThresh = th; });
   QObject::connect(&glv, &GL3DView::inversionOpacityChanged, [&](double op) { newOpacity = op; });
   QObject::connect(&glv, &GL3DView::inversionSlicesChanged, [&](bool s) { slicesChanged = s; });
@@ -5401,9 +5404,20 @@ TEST_F(GuiDocumentTest, GL3DViewInversionVoxelsAndSlicesRendering) {
   EXPECT_FALSE(glv.showInversionVoxels());
   EXPECT_FALSE(voxChanged);
 
+  glv.setInversionProgressiveOpacity(false);
+  EXPECT_FALSE(glv.inversionProgressiveOpacity());
+  EXPECT_FALSE(progOpacityChanged);
+  glv.setInversionProgressiveOpacity(true);
+  EXPECT_TRUE(glv.inversionProgressiveOpacity());
+  EXPECT_TRUE(progOpacityChanged);
+
   glv.setInversionRenderMode(GL3DView::InversionRenderMode::BlockModel);
   EXPECT_EQ(glv.inversionRenderMode(), GL3DView::InversionRenderMode::BlockModel);
   EXPECT_EQ(receivedMode, GL3DView::InversionRenderMode::BlockModel);
+
+  glv.setInversionThreshold(0.0);
+  EXPECT_NEAR(glv.inversionThreshold(), 0.0, 1e-5);
+  EXPECT_NEAR(newThresh, 0.0, 1e-5);
 
   glv.setInversionThreshold(0.15);
   EXPECT_NEAR(glv.inversionThreshold(), 0.15, 1e-4);
@@ -5470,7 +5484,10 @@ TEST_F(GuiDocumentTest, GL3DViewInversionVoxelsAndSlicesRendering) {
   EXPECT_NE(sp->inversionVoxelsCheckBox3D(), nullptr);
   EXPECT_NE(sp->inversionRenderModeComboBox3D(), nullptr);
   EXPECT_EQ(sp->inversionRenderModeComboBox3D()->count(), 2);
+  EXPECT_NE(sp->inversionProgressiveOpacityCheckBox3D(), nullptr);
+  EXPECT_TRUE(sp->inversionProgressiveOpacityCheckBox3D()->isChecked());
   EXPECT_NE(sp->inversionThresholdSpinBox3D(), nullptr);
+  EXPECT_NEAR(sp->inversionThresholdSpinBox3D()->minimum(), 0.0, 1e-5);
   EXPECT_NE(sp->inversionOpacitySlider3D(), nullptr);
   EXPECT_NE(sp->inversionSlicesCheckBox3D(), nullptr);
 }
