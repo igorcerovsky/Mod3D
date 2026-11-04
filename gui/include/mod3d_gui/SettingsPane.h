@@ -89,6 +89,10 @@ public:
     QCheckBox *octantCutCheckBox3D() const { return m_chk3DOctantCut; }
     QCheckBox *quadrantCutCheckBox3D() const { return octantCutCheckBox3D(); }
     QCheckBox *planarPlaneCheckBox3D() const { return m_chk3DPlanarSlice; }
+    QCheckBox *inversionVoxelsCheckBox3D() const { return m_chk3DInversionVoxels; }
+    QDoubleSpinBox *inversionThresholdSpinBox3D() const { return m_spin3DInversionThreshold; }
+    QSlider *inversionOpacitySlider3D() const { return m_slider3DInversionOpacity; }
+    QCheckBox *inversionSlicesCheckBox3D() const { return m_chk3DInversionSlices; }
     QCheckBox *removeObservedMeanCheckBox() const { return m_chkRemoveObservedMean; }
     QLabel *observedMeanLabel() const { return m_lblObservedMean; }
 
@@ -179,6 +183,10 @@ private:
     QCheckBox *m_chk3DTransparentSlices{nullptr};
     QCheckBox *m_chk3DPlanarSlice{nullptr};
     QCheckBox *m_chk3DOctantCut{nullptr};
+    QCheckBox *m_chk3DInversionVoxels{nullptr};
+    QDoubleSpinBox *m_spin3DInversionThreshold{nullptr};
+    QSlider *m_slider3DInversionOpacity{nullptr};
+    QCheckBox *m_chk3DInversionSlices{nullptr};
 
     // Horizontal Slice View Display Controls
     QWidget *m_paneSliceFields{nullptr};

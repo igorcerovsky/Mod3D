@@ -114,6 +114,37 @@ public:
   [[nodiscard]] bool quadrantCut() const noexcept { return octantCut(); }
   void setQuadrantCut(bool enable) { setOctantCut(enable); }
 
+  [[nodiscard]] bool showInversionVoxels() const noexcept {
+    return m_showInversionVoxels;
+  }
+  void setShowInversionVoxels(bool show);
+
+  [[nodiscard]] double inversionThreshold() const noexcept {
+    return m_inversionThreshold;
+  }
+  void setInversionThreshold(double threshold);
+
+  [[nodiscard]] double inversionOpacity() const noexcept {
+    return m_inversionOpacity;
+  }
+  void setInversionOpacity(double opacity);
+
+  [[nodiscard]] bool showInversionSlices() const noexcept {
+    return m_showInversionSlices;
+  }
+  void setShowInversionSlices(bool show);
+
+  [[nodiscard]] int inversionVertexCount() const noexcept {
+    return m_inversionVertexCount;
+  }
+
+  [[nodiscard]] int inversionSlicesVertexCount() const noexcept {
+    return m_inversionSlicesVertexCount;
+  }
+
+  void updateInversionBuffers();
+  void updateInversionSliceBuffers();
+
   struct OctantCutState {
     bool active{false};
 
@@ -452,6 +483,10 @@ signals:
   void reliefModeChanged(ReliefMode mode);
   void octantCutChanged(bool enabled);
   void quadrantCutChanged(bool enabled);
+  void inversionVoxelsChanged(bool enabled);
+  void inversionThresholdChanged(double threshold);
+  void inversionOpacityChanged(double opacity);
+  void inversionSlicesChanged(bool enabled);
 
 protected:
   void initializeGL() override;
@@ -484,6 +519,8 @@ private:
 
   void drawBoundingBox();
   void drawBodies();
+  void drawInversionVoxels();
+  void drawInversionSlices();
   void drawProfilePlane();
   void drawPlanarPlane();
   void drawRelief();
@@ -570,6 +607,22 @@ private:
   bool m_octantCut{false};
   OctantCutState m_cachedCutState{};
   QPointer<ProfileView> m_lastActiveProfileView{nullptr};
+
+  // 3D Inversion Voxels & Slices
+  bool m_showInversionVoxels{true};
+  double m_inversionThreshold{0.02}; // g/cm³
+  double m_inversionOpacity{0.80};
+  bool m_showInversionSlices{false};
+
+  QOpenGLVertexArrayObject m_inversionVao;
+  QOpenGLBuffer m_inversionVbo{QOpenGLBuffer::VertexBuffer};
+  int m_inversionVertexCount{0};
+  bool m_inversionVboDirty{true};
+
+  QOpenGLVertexArrayObject m_inversionSlicesVao;
+  QOpenGLBuffer m_inversionSlicesVbo{QOpenGLBuffer::VertexBuffer};
+  int m_inversionSlicesVertexCount{0};
+  bool m_inversionSlicesDirty{true};
 };
 
 } // namespace mod3d_gui

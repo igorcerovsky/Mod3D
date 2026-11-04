@@ -389,15 +389,24 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
     update();
   });
   connect(m_doc, &ModelDocument::profileChanged, this,
-          [this](int, ProfileOrientation) { update(); });
+          [this](int, ProfileOrientation) {
+            m_inversionSlicesDirty = true;
+            update();
+          });
   connect(m_doc, &ModelDocument::activeSliceElevationChanged, this,
           [this](double) {
+            m_inversionSlicesDirty = true;
             if (m_octantCut) {
               m_cachedCutState = computeOctantCutState();
               m_meshDirty = true;
             }
             update();
           });
+  connect(m_doc, &ModelDocument::inversionResultChanged, this, [this]() {
+    m_inversionVboDirty = true;
+    m_inversionSlicesDirty = true;
+    update();
+  });
   connect(m_doc, &ModelDocument::activeProfileCursorChanged, this,
           [this](const ModelDocument::ProfileCursorPoint &pt) {
             if (pt.bodyId >= 0 && pt.bodyId != m_selectedBodyId) {
@@ -443,6 +452,14 @@ GL3DView::~GL3DView() {
       m_flatTrisVao.destroy();
     if (m_flatTrisVbo.isCreated())
       m_flatTrisVbo.destroy();
+    if (m_inversionVao.isCreated())
+      m_inversionVao.destroy();
+    if (m_inversionVbo.isCreated())
+      m_inversionVbo.destroy();
+    if (m_inversionSlicesVao.isCreated())
+      m_inversionSlicesVao.destroy();
+    if (m_inversionSlicesVbo.isCreated())
+      m_inversionSlicesVbo.destroy();
     delete m_shaderProg;
     m_shaderProg = nullptr;
     delete m_flatShaderProg;
@@ -1228,6 +1245,50 @@ void GL3DView::initBuffers() {
   m_flatTrisVao.release();
   m_flatTrisVbo.release();
 
+  // Inversion Voxels VAO & VBO
+  m_inversionVao.create();
+  m_inversionVao.bind();
+  m_inversionVbo.create();
+  m_inversionVbo.bind();
+  m_inversionVbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        reinterpret_cast<void *>(offsetof(Vertex3D, x)));
+
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        reinterpret_cast<void *>(offsetof(Vertex3D, nx)));
+
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        reinterpret_cast<void *>(offsetof(Vertex3D, r)));
+
+  m_inversionVao.release();
+  m_inversionVbo.release();
+
+  // Inversion Slices VAO & VBO
+  m_inversionSlicesVao.create();
+  m_inversionSlicesVao.bind();
+  m_inversionSlicesVbo.create();
+  m_inversionSlicesVbo.bind();
+  m_inversionSlicesVbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        reinterpret_cast<void *>(offsetof(Vertex3D, x)));
+
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        reinterpret_cast<void *>(offsetof(Vertex3D, nx)));
+
+  glEnableVertexAttribArray(2);
+  glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex3D),
+                        reinterpret_cast<void *>(offsetof(Vertex3D, r)));
+
+  m_inversionSlicesVao.release();
+  m_inversionSlicesVbo.release();
+
   m_buffersInitialized = true;
 }
 
@@ -1438,6 +1499,14 @@ void GL3DView::paintGL() {
   }
 
   drawBodies();
+
+  if (m_showInversionVoxels) {
+    drawInversionVoxels();
+  }
+
+  if (m_showInversionSlices) {
+    drawInversionSlices();
+  }
 
   if (m_showRelief) {
     drawRelief();
@@ -1838,6 +1907,36 @@ void GL3DView::paintSoftware(QPainter &painter) {
         painter.drawLine(QPointF(pt.x(), pt.y() - 8),
                          QPointF(pt.x(), pt.y() + 8));
       }
+    }
+  }
+
+  // 3c. Inversion Voxels / Slices in Software Mode
+  if ((m_showInversionVoxels || m_showInversionSlices) && m_doc->hasInversionResult()) {
+    const auto &grid = m_doc->inversionResult()->density_grid;
+    if (grid.total_cells() > 0) {
+      double zDomainTop = m_doc->model().z_max().value();
+      double x0 = grid.x0(), x1 = x0 + static_cast<double>(grid.nx()) * grid.dx();
+      double y0 = grid.y0(), y1 = y0 + static_cast<double>(grid.ny()) * grid.dy();
+      double z0 = zDomainTop - static_cast<double>(grid.nz()) * grid.dz();
+      double z1 = zDomainTop;
+
+      QPointF b[8];
+      b[0] = project(x0, y0, z0).first;
+      b[1] = project(x1, y0, z0).first;
+      b[2] = project(x1, y1, z0).first;
+      b[3] = project(x0, y1, z0).first;
+      b[4] = project(x0, y0, z1).first;
+      b[5] = project(x1, y0, z1).first;
+      b[6] = project(x1, y1, z1).first;
+      b[7] = project(x0, y1, z1).first;
+
+      painter.setPen(QPen(QColor(16, 185, 129, 180), 1.5, Qt::DashLine));
+      painter.drawLine(b[0], b[1]); painter.drawLine(b[1], b[2]);
+      painter.drawLine(b[2], b[3]); painter.drawLine(b[3], b[0]);
+      painter.drawLine(b[4], b[5]); painter.drawLine(b[5], b[6]);
+      painter.drawLine(b[6], b[7]); painter.drawLine(b[7], b[4]);
+      painter.drawLine(b[0], b[4]); painter.drawLine(b[1], b[5]);
+      painter.drawLine(b[2], b[6]); painter.drawLine(b[3], b[7]);
     }
   }
 
@@ -4166,10 +4265,515 @@ void GL3DView::setOctantCut(bool enable) {
     m_octantCut = enable;
     m_cachedCutState = computeOctantCutState();
     m_meshDirty = true;
+    m_inversionVboDirty = true;
+    m_inversionSlicesDirty = true;
     emit octantCutChanged(m_octantCut);
     emit quadrantCutChanged(m_octantCut);
     update();
   }
+}
+
+void GL3DView::setShowInversionVoxels(bool show) {
+  if (m_showInversionVoxels != show) {
+    m_showInversionVoxels = show;
+    m_inversionVboDirty = true;
+    emit inversionVoxelsChanged(m_showInversionVoxels);
+    update();
+  }
+}
+
+void GL3DView::setInversionThreshold(double threshold) {
+  threshold = std::max(0.0001, threshold);
+  if (std::abs(m_inversionThreshold - threshold) > 1e-5) {
+    m_inversionThreshold = threshold;
+    m_inversionVboDirty = true;
+    emit inversionThresholdChanged(m_inversionThreshold);
+    update();
+  }
+}
+
+void GL3DView::setInversionOpacity(double opacity) {
+  opacity = std::clamp(opacity, 0.05, 1.0);
+  if (std::abs(m_inversionOpacity - opacity) > 1e-4) {
+    m_inversionOpacity = opacity;
+    m_inversionVboDirty = true;
+    m_inversionSlicesDirty = true;
+    emit inversionOpacityChanged(m_inversionOpacity);
+    update();
+  }
+}
+
+void GL3DView::setShowInversionSlices(bool show) {
+  if (m_showInversionSlices != show) {
+    m_showInversionSlices = show;
+    m_inversionSlicesDirty = true;
+    emit inversionSlicesChanged(m_showInversionSlices);
+    update();
+  }
+}
+
+void GL3DView::updateInversionBuffers() {
+  if (!m_doc || !m_doc->hasInversionResult()) {
+    m_inversionVertexCount = 0;
+    m_inversionVboDirty = false;
+    return;
+  }
+  const auto &res = *m_doc->inversionResult();
+  const auto &grid = res.density_grid;
+  if (grid.total_cells() == 0) {
+    m_inversionVertexCount = 0;
+    m_inversionVboDirty = false;
+    return;
+  }
+
+  const size_t nx = grid.nx();
+  const size_t ny = grid.ny();
+  const size_t nz = grid.nz();
+  const double dx = grid.dx();
+  const double dy = grid.dy();
+  const double dz = grid.dz();
+  const double x0 = grid.x0();
+  const double y0 = grid.y0();
+  const double zDomainTop = m_doc->model().z_max().value();
+  double maxAbsRho = 0.0;
+  for (double val : grid.data()) {
+    maxAbsRho = std::max(maxAbsRho, std::abs(val));
+  }
+  if (maxAbsRho <= 0.0)
+    maxAbsRho = 0.5;
+
+  auto getTopoZ = [&](size_t ix, size_t iy) -> double {
+    int r = std::clamp(static_cast<int>(iy) + 1, 1, std::max(1, static_cast<int>(m_doc->model().rows() - 2)));
+    int c = std::clamp(static_cast<int>(ix) + 1, 1, std::max(1, static_cast<int>(m_doc->model().cols() - 2)));
+    if (m_doc->model().count(r, c) > 0) {
+      return m_doc->model().z(r, c, 0);
+    }
+    return zDomainTop;
+  };
+
+  OctantCutState cut = computeOctantCutState();
+
+  // Find active cells exceeding threshold and not in air or cut away
+  std::vector<char> active(nx * ny * nz, 0);
+  for (size_t ix = 0; ix < nx; ++ix) {
+    double xw = x0 + (static_cast<double>(ix) + 0.5) * dx;
+    for (size_t iy = 0; iy < ny; ++iy) {
+      double yw = y0 + (static_cast<double>(iy) + 0.5) * dy;
+      double topoZ = getTopoZ(ix, iy);
+
+      for (size_t iz = 0; iz < nz; ++iz) {
+        double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
+        double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+
+        if (zLayerBot >= topoZ)
+          continue; // Air cell above topography
+
+        double zw = 0.5 * (std::min(zLayerTop, topoZ) + zLayerBot);
+        if (cut.active && cut.isPointCut(xw, yw, zw))
+          continue; // Cut away by octant cut
+
+        double rho = grid(ix, iy, iz);
+        if (std::abs(rho) >= m_inversionThreshold) {
+          active[(ix * ny + iy) * nz + iz] = 1;
+        }
+      }
+    }
+  }
+
+  std::vector<Vertex3D> vertices;
+  vertices.reserve(nx * ny * nz * 6);
+
+  auto pushQuad = [&](const QVector3D &p0, const QVector3D &p1,
+                      const QVector3D &p2, const QVector3D &p3,
+                      const QVector3D &norm, float r, float g, float b, float a) {
+    vertices.push_back({p0.x(), p0.y(), p0.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p1.x(), p1.y(), p1.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p2.x(), p2.y(), p2.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+
+    vertices.push_back({p0.x(), p0.y(), p0.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p2.x(), p2.y(), p2.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p3.x(), p3.y(), p3.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+  };
+
+  const float alphaVal = static_cast<float>(std::clamp(m_inversionOpacity, 0.05, 1.0));
+
+  for (size_t ix = 0; ix < nx; ++ix) {
+    float xa = static_cast<float>(x0 + static_cast<double>(ix) * dx);
+    float xb = static_cast<float>(xa + dx);
+
+    for (size_t iy = 0; iy < ny; ++iy) {
+      float ya = static_cast<float>(y0 + static_cast<double>(iy) * dy);
+      float yb = static_cast<float>(ya + dy);
+      double topoZ = getTopoZ(ix, iy);
+
+      for (size_t iz = 0; iz < nz; ++iz) {
+        size_t idx = (ix * ny + iy) * nz + iz;
+        if (!active[idx])
+          continue;
+
+        double rho = grid(ix, iy, iz);
+        double norm = std::clamp(rho / maxAbsRho, -1.0, 1.0);
+        float r, g, b;
+        if (norm < 0.0) {
+          float t = static_cast<float>(-norm);
+          r = 1.0f - 0.85f * t;
+          g = 1.0f - 0.60f * t;
+          b = 1.0f - 0.05f * t;
+        } else {
+          float t = static_cast<float>(norm);
+          r = 1.0f - 0.05f * t;
+          g = 1.0f - 0.75f * t;
+          b = 1.0f - 0.85f * t;
+        }
+
+        double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
+        double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+        float za = static_cast<float>(zLayerBot);
+        float zb = static_cast<float>(std::min(zLayerTop, topoZ));
+
+        // +X face (East)
+        if (ix + 1 == nx || !active[((ix + 1) * ny + iy) * nz + iz]) {
+          pushQuad(QVector3D(xb, ya, za), QVector3D(xb, yb, za),
+                   QVector3D(xb, yb, zb), QVector3D(xb, ya, zb),
+                   QVector3D(1.0f, 0.0f, 0.0f), r, g, b, alphaVal);
+        }
+        // -X face (West)
+        if (ix == 0 || !active[((ix - 1) * ny + iy) * nz + iz]) {
+          pushQuad(QVector3D(xa, yb, za), QVector3D(xa, ya, za),
+                   QVector3D(xa, ya, zb), QVector3D(xa, yb, zb),
+                   QVector3D(-1.0f, 0.0f, 0.0f), r, g, b, alphaVal);
+        }
+        // +Y face (North)
+        if (iy + 1 == ny || !active[(ix * ny + (iy + 1)) * nz + iz]) {
+          pushQuad(QVector3D(xb, yb, za), QVector3D(xa, yb, za),
+                   QVector3D(xa, yb, zb), QVector3D(xb, yb, zb),
+                   QVector3D(0.0f, 1.0f, 0.0f), r, g, b, alphaVal);
+        }
+        // -Y face (South)
+        if (iy == 0 || !active[(ix * ny + (iy - 1)) * nz + iz]) {
+          pushQuad(QVector3D(xa, ya, za), QVector3D(xb, ya, za),
+                   QVector3D(xb, ya, zb), QVector3D(xa, ya, zb),
+                   QVector3D(0.0f, -1.0f, 0.0f), r, g, b, alphaVal);
+        }
+        // +Z face (Top)
+        if (iz == 0 || !active[(ix * ny + iy) * nz + (iz - 1)]) {
+          pushQuad(QVector3D(xa, ya, zb), QVector3D(xb, ya, zb),
+                   QVector3D(xb, yb, zb), QVector3D(xa, yb, zb),
+                   QVector3D(0.0f, 0.0f, 1.0f), r, g, b, alphaVal);
+        }
+        // -Z face (Bottom)
+        if (iz + 1 == nz || !active[(ix * ny + iy) * nz + (iz + 1)]) {
+          pushQuad(QVector3D(xa, yb, za), QVector3D(xb, yb, za),
+                   QVector3D(xb, ya, za), QVector3D(xa, ya, za),
+                   QVector3D(0.0f, 0.0f, -1.0f), r, g, b, alphaVal);
+        }
+      }
+    }
+  }
+
+  m_inversionVertexCount = static_cast<int>(vertices.size());
+  if (m_inversionVertexCount > 0 && m_buffersInitialized) {
+    m_inversionVbo.bind();
+    m_inversionVbo.allocate(vertices.data(), static_cast<int>(vertices.size() * sizeof(Vertex3D)));
+    m_inversionVbo.release();
+  }
+  m_inversionVboDirty = false;
+}
+
+void GL3DView::drawInversionVoxels() {
+  if (!m_showInversionVoxels || !m_doc || !m_doc->hasInversionResult())
+    return;
+
+  initShaders();
+  initBuffers();
+
+  OctantCutState cut = computeOctantCutState();
+  if (m_inversionVboDirty || cut != m_cachedCutState) {
+    updateInversionBuffers();
+  }
+
+  if (m_inversionVertexCount == 0 || !m_buffersInitialized || !m_shaderProg)
+    return;
+
+  float zMid = static_cast<float>(
+      (m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5);
+
+  glEnable(GL_DEPTH_TEST);
+  if (m_inversionOpacity >= 0.98) {
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
+  } else {
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+  }
+
+  m_shaderProg->bind();
+  m_shaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+  m_shaderProg->setUniformValue("u_mvMatrix", m_mvMatrix);
+  m_shaderProg->setUniformValue("u_normalMatrix", m_mvMatrix.normalMatrix());
+  m_shaderProg->setUniformValue("u_zMid", zMid);
+  m_shaderProg->setUniformValue("u_zScale", m_zScale);
+  m_shaderProg->setUniformValue("u_light0Dir", QVector3D(0.5f, 0.7f, 1.0f));
+  m_shaderProg->setUniformValue("u_light1Dir", QVector3D(-0.5f, -0.6f, 0.4f));
+  m_shaderProg->setUniformValue("u_light0Color", QVector4D(0.85f, 0.85f, 0.85f, 1.0f));
+  m_shaderProg->setUniformValue("u_light1Color", QVector4D(0.30f, 0.30f, 0.35f, 1.0f));
+  m_shaderProg->setUniformValue("u_ambientColor", QVector4D(0.35f, 0.35f, 0.38f, 1.0f));
+  m_shaderProg->setUniformValue("u_enableFog", m_showDepthFog);
+  float effDist = m_distance / std::max(0.01f, m_zoom);
+  m_shaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
+  m_shaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
+  m_shaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
+  m_shaderProg->setUniformValue("u_highlight", false);
+
+  m_inversionVao.bind();
+  glDrawArrays(GL_TRIANGLES, 0, m_inversionVertexCount);
+  m_inversionVao.release();
+  m_shaderProg->release();
+
+  glDepthMask(GL_TRUE);
+  glDisable(GL_BLEND);
+}
+
+void GL3DView::updateInversionSliceBuffers() {
+  if (!m_doc || !m_doc->hasInversionResult()) {
+    m_inversionSlicesVertexCount = 0;
+    m_inversionSlicesDirty = false;
+    return;
+  }
+  const auto &res = *m_doc->inversionResult();
+  const auto &grid = res.density_grid;
+  if (grid.total_cells() == 0) {
+    m_inversionSlicesVertexCount = 0;
+    m_inversionSlicesDirty = false;
+    return;
+  }
+
+  const size_t nx = grid.nx();
+  const size_t ny = grid.ny();
+  const size_t nz = grid.nz();
+  const double dx = grid.dx();
+  const double dy = grid.dy();
+  const double dz = grid.dz();
+  const double x0 = grid.x0();
+  const double y0 = grid.y0();
+  const double zDomainTop = m_doc->model().z_max().value();
+
+  double maxAbsRho = 0.0;
+  for (double val : grid.data()) {
+    maxAbsRho = std::max(maxAbsRho, std::abs(val));
+  }
+  if (maxAbsRho <= 0.0)
+    maxAbsRho = 0.5;
+
+  auto getTopoZ = [&](size_t ix, size_t iy) -> double {
+    int r = std::clamp(static_cast<int>(iy) + 1, 1, std::max(1, static_cast<int>(m_doc->model().rows() - 2)));
+    int c = std::clamp(static_cast<int>(ix) + 1, 1, std::max(1, static_cast<int>(m_doc->model().cols() - 2)));
+    if (m_doc->model().count(r, c) > 0) {
+      return m_doc->model().z(r, c, 0);
+    }
+    return zDomainTop;
+  };
+
+  OctantCutState cut = computeOctantCutState();
+
+  std::vector<Vertex3D> vertices;
+  vertices.reserve((nx * nz + ny * nz + nx * ny) * 6);
+
+  auto pushQuad = [&](const QVector3D &p0, const QVector3D &p1,
+                      const QVector3D &p2, const QVector3D &p3,
+                      const QVector3D &norm, float r, float g, float b, float a) {
+    vertices.push_back({p0.x(), p0.y(), p0.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p1.x(), p1.y(), p1.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p2.x(), p2.y(), p2.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+
+    vertices.push_back({p0.x(), p0.y(), p0.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p2.x(), p2.y(), p2.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+    vertices.push_back({p3.x(), p3.y(), p3.z(), norm.x(), norm.y(), norm.z(), r, g, b, a});
+  };
+
+  const float alphaVal = static_cast<float>(std::clamp(m_inversionOpacity, 0.2, 1.0));
+
+  auto getColor = [&](double val, float &r, float &g, float &b) {
+    double norm = std::clamp(val / maxAbsRho, -1.0, 1.0);
+    if (norm < 0.0) {
+      float t = static_cast<float>(-norm);
+      r = 1.0f - 0.85f * t;
+      g = 1.0f - 0.60f * t;
+      b = 1.0f - 0.05f * t;
+    } else {
+      float t = static_cast<float>(norm);
+      r = 1.0f - 0.05f * t;
+      g = 1.0f - 0.75f * t;
+      b = 1.0f - 0.85f * t;
+    }
+  };
+
+  // 1. East-West Profile Slice (Y = cut.ewY or active profile Y)
+  double ewY = cut.hasEW ? cut.ewY : m_doc->model().yd_val(std::clamp(m_doc->profileIndex() + 1, 1, m_doc->model().rows()));
+  int sliceIy = std::clamp(static_cast<int>(std::floor((ewY - y0) / dy)), 0, static_cast<int>(ny - 1));
+  float py = static_cast<float>(ewY);
+
+  for (size_t ix = 0; ix < nx; ++ix) {
+    float xa = static_cast<float>(x0 + static_cast<double>(ix) * dx);
+    float xb = static_cast<float>(xa + dx);
+    double xw = x0 + (static_cast<double>(ix) + 0.5) * dx;
+    double topoZ = getTopoZ(ix, static_cast<size_t>(sliceIy));
+
+    for (size_t iz = 0; iz < nz; ++iz) {
+      double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
+      double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+      if (zLayerBot >= topoZ)
+        continue;
+
+      double zw = 0.5 * (std::min(zLayerTop, topoZ) + zLayerBot);
+      if (cut.active && cut.isPointCut(xw, ewY, zw))
+        continue;
+
+      float za = static_cast<float>(zLayerBot);
+      float zb = static_cast<float>(std::min(zLayerTop, topoZ));
+      float r, g, b;
+      getColor(grid(ix, static_cast<size_t>(sliceIy), iz), r, g, b);
+
+      pushQuad(QVector3D(xa, py, za), QVector3D(xb, py, za),
+               QVector3D(xb, py, zb), QVector3D(xa, py, zb),
+               QVector3D(0.0f, 1.0f, 0.0f), r, g, b, alphaVal);
+      pushQuad(QVector3D(xb, py, za), QVector3D(xa, py, za),
+               QVector3D(xa, py, zb), QVector3D(xb, py, zb),
+               QVector3D(0.0f, -1.0f, 0.0f), r, g, b, alphaVal);
+    }
+  }
+
+  // 2. South-North Profile Slice (X = cut.snX or active profile X)
+  double snX = cut.hasSN ? cut.snX : m_doc->model().xd_val(std::clamp(m_doc->profileIndex() + 1, 1, m_doc->model().cols()));
+  int sliceIx = std::clamp(static_cast<int>(std::floor((snX - x0) / dx)), 0, static_cast<int>(nx - 1));
+  float px = static_cast<float>(snX);
+
+  for (size_t iy = 0; iy < ny; ++iy) {
+    float ya = static_cast<float>(y0 + static_cast<double>(iy) * dy);
+    float yb = static_cast<float>(ya + dy);
+    double yw = y0 + (static_cast<double>(iy) + 0.5) * dy;
+    double topoZ = getTopoZ(static_cast<size_t>(sliceIx), iy);
+
+    for (size_t iz = 0; iz < nz; ++iz) {
+      double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
+      double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+      if (zLayerBot >= topoZ)
+        continue;
+
+      double zw = 0.5 * (std::min(zLayerTop, topoZ) + zLayerBot);
+      if (cut.active && cut.isPointCut(snX, yw, zw))
+        continue;
+
+      float za = static_cast<float>(zLayerBot);
+      float zb = static_cast<float>(std::min(zLayerTop, topoZ));
+      float r, g, b;
+      getColor(grid(static_cast<size_t>(sliceIx), iy, iz), r, g, b);
+
+      pushQuad(QVector3D(px, ya, za), QVector3D(px, yb, za),
+               QVector3D(px, yb, zb), QVector3D(px, ya, zb),
+               QVector3D(1.0f, 0.0f, 0.0f), r, g, b, alphaVal);
+      pushQuad(QVector3D(px, yb, za), QVector3D(px, ya, za),
+               QVector3D(px, ya, zb), QVector3D(px, yb, zb),
+               QVector3D(-1.0f, 0.0f, 0.0f), r, g, b, alphaVal);
+    }
+  }
+
+  // 3. Horizontal Planar Slice (Z = cut.planarZ)
+  double planarZ = cut.hasPlanar ? cut.planarZ : m_doc->activeSliceElevation();
+  if (std::isnan(planarZ)) {
+    planarZ = 0.5 * (m_doc->model().z_min_val() + m_doc->model().z_max_val());
+  }
+  int sliceIz = std::clamp(static_cast<int>(std::floor((zDomainTop - planarZ) / dz)), 0, static_cast<int>(nz - 1));
+  float pz = static_cast<float>(planarZ);
+
+  for (size_t ix = 0; ix < nx; ++ix) {
+    float xa = static_cast<float>(x0 + static_cast<double>(ix) * dx);
+    float xb = static_cast<float>(xa + dx);
+    double xw = x0 + (static_cast<double>(ix) + 0.5) * dx;
+
+    for (size_t iy = 0; iy < ny; ++iy) {
+      float ya = static_cast<float>(y0 + static_cast<double>(iy) * dy);
+      float yb = static_cast<float>(ya + dy);
+      double yw = y0 + (static_cast<double>(iy) + 0.5) * dy;
+      double topoZ = getTopoZ(ix, iy);
+
+      if (planarZ > topoZ)
+        continue;
+      if (cut.active && cut.isPointCut(xw, yw, planarZ))
+        continue;
+
+      float r, g, b;
+      getColor(grid(ix, iy, static_cast<size_t>(sliceIz)), r, g, b);
+
+      pushQuad(QVector3D(xa, ya, pz), QVector3D(xb, ya, pz),
+               QVector3D(xb, yb, pz), QVector3D(xa, yb, pz),
+               QVector3D(0.0f, 0.0f, 1.0f), r, g, b, alphaVal);
+      pushQuad(QVector3D(xb, ya, pz), QVector3D(xa, ya, pz),
+               QVector3D(xa, yb, pz), QVector3D(xb, yb, pz),
+               QVector3D(0.0f, 0.0f, -1.0f), r, g, b, alphaVal);
+    }
+  }
+
+  m_inversionSlicesVertexCount = static_cast<int>(vertices.size());
+  if (m_inversionSlicesVertexCount > 0 && m_buffersInitialized) {
+    m_inversionSlicesVbo.bind();
+    m_inversionSlicesVbo.allocate(vertices.data(), static_cast<int>(vertices.size() * sizeof(Vertex3D)));
+    m_inversionSlicesVbo.release();
+  }
+  m_inversionSlicesDirty = false;
+}
+
+void GL3DView::drawInversionSlices() {
+  if (!m_showInversionSlices || !m_doc || !m_doc->hasInversionResult())
+    return;
+
+  initShaders();
+  initBuffers();
+
+  OctantCutState cut = computeOctantCutState();
+  if (m_inversionSlicesDirty || cut != m_cachedCutState) {
+    updateInversionSliceBuffers();
+  }
+
+  if (m_inversionSlicesVertexCount == 0 || !m_buffersInitialized || !m_shaderProg)
+    return;
+
+  float zMid = static_cast<float>(
+      (m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5);
+
+  glEnable(GL_DEPTH_TEST);
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_FALSE);
+  glDisable(GL_CULL_FACE);
+
+  m_shaderProg->bind();
+  m_shaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+  m_shaderProg->setUniformValue("u_mvMatrix", m_mvMatrix);
+  m_shaderProg->setUniformValue("u_normalMatrix", m_mvMatrix.normalMatrix());
+  m_shaderProg->setUniformValue("u_zMid", zMid);
+  m_shaderProg->setUniformValue("u_zScale", m_zScale);
+  m_shaderProg->setUniformValue("u_light0Dir", QVector3D(0.5f, 0.7f, 1.0f));
+  m_shaderProg->setUniformValue("u_light1Dir", QVector3D(-0.5f, -0.6f, 0.4f));
+  m_shaderProg->setUniformValue("u_light0Color", QVector4D(0.85f, 0.85f, 0.85f, 1.0f));
+  m_shaderProg->setUniformValue("u_light1Color", QVector4D(0.30f, 0.30f, 0.35f, 1.0f));
+  m_shaderProg->setUniformValue("u_ambientColor", QVector4D(0.50f, 0.50f, 0.52f, 1.0f));
+  m_shaderProg->setUniformValue("u_enableFog", m_showDepthFog);
+  float effDist = m_distance / std::max(0.01f, m_zoom);
+  m_shaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
+  m_shaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
+  m_shaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
+  m_shaderProg->setUniformValue("u_highlight", false);
+
+  m_inversionSlicesVao.bind();
+  glDrawArrays(GL_TRIANGLES, 0, m_inversionSlicesVertexCount);
+  m_inversionSlicesVao.release();
+  m_shaderProg->release();
+
+  glEnable(GL_CULL_FACE);
+  glDepthMask(GL_TRUE);
+  glDisable(GL_BLEND);
 }
 
 } // namespace mod3d_gui

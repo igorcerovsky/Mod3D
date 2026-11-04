@@ -716,6 +716,40 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   toggles3DLayout->addWidget(m_chk3DOctantCut);
   v3dLayout->addWidget(box3DToggles);
 
+  auto *boxInversion3D = new QGroupBox(tr("3D Inversion Voxels & Slices"), m_pane3DView);
+  auto *inv3DLayout = new QVBoxLayout(boxInversion3D);
+  inv3DLayout->setContentsMargins(8, 8, 8, 8);
+  inv3DLayout->setSpacing(4);
+
+  m_chk3DInversionVoxels = new QCheckBox(tr("Show 3D Inversion Voxels"), boxInversion3D);
+  m_chk3DInversionVoxels->setChecked(true);
+  inv3DLayout->addWidget(m_chk3DInversionVoxels);
+
+  auto *threshLayout = new QHBoxLayout();
+  threshLayout->addWidget(new QLabel(tr("Threshold:"), boxInversion3D));
+  m_spin3DInversionThreshold = new QDoubleSpinBox(boxInversion3D);
+  m_spin3DInversionThreshold->setRange(0.0001, 10.0);
+  m_spin3DInversionThreshold->setSingleStep(0.01);
+  m_spin3DInversionThreshold->setDecimals(3);
+  m_spin3DInversionThreshold->setSuffix(tr(" g/cm³"));
+  m_spin3DInversionThreshold->setValue(0.02);
+  threshLayout->addWidget(m_spin3DInversionThreshold);
+  inv3DLayout->addLayout(threshLayout);
+
+  auto *opacityLayout = new QHBoxLayout();
+  opacityLayout->addWidget(new QLabel(tr("Opacity:"), boxInversion3D));
+  m_slider3DInversionOpacity = new QSlider(Qt::Horizontal, boxInversion3D);
+  m_slider3DInversionOpacity->setRange(10, 100);
+  m_slider3DInversionOpacity->setValue(80);
+  opacityLayout->addWidget(m_slider3DInversionOpacity);
+  inv3DLayout->addLayout(opacityLayout);
+
+  m_chk3DInversionSlices = new QCheckBox(tr("Show Orthogonal Inversion Slices"), boxInversion3D);
+  m_chk3DInversionSlices->setChecked(false);
+  inv3DLayout->addWidget(m_chk3DInversionSlices);
+
+  v3dLayout->addWidget(boxInversion3D);
+
   auto *box3DDepth =
       new QGroupBox(tr("Depth & Elevation Scaling"), m_pane3DView);
   auto *depthLayout = new QHBoxLayout(box3DDepth);
@@ -787,6 +821,33 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   connect(m_chk3DOctantCut, &QCheckBox::toggled, this, [this](bool c) {
     if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
       glv->setOctantCut(c);
+  });
+  connect(m_chk3DInversionVoxels, &QCheckBox::toggled, this, [this](bool c) {
+    if (m_blockSync)
+      return;
+    if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
+      glv->setShowInversionVoxels(c);
+  });
+  connect(m_spin3DInversionThreshold,
+          QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+          [this](double val) {
+            if (m_blockSync)
+              return;
+            if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
+              glv->setInversionThreshold(val);
+          });
+  connect(m_slider3DInversionOpacity, &QSlider::valueChanged, this,
+          [this](int val) {
+            if (m_blockSync)
+              return;
+            if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
+              glv->setInversionOpacity(static_cast<double>(val) / 100.0);
+          });
+  connect(m_chk3DInversionSlices, &QCheckBox::toggled, this, [this](bool c) {
+    if (m_blockSync)
+      return;
+    if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
+      glv->setShowInversionSlices(c);
   });
   connect(m_spin3DZScale, &QDoubleSpinBox::valueChanged, this,
           [this](double val) {
@@ -2635,6 +2696,15 @@ void SettingsPane::updateViewContext() {
     m_chk3DPlanarSlice->setChecked(glv->showPlanarPlane());
     m_chk3DOctantCut->setChecked(glv->octantCut());
     m_spin3DZScale->setValue(glv->zScale());
+
+    m_chk3DInversionVoxels->setEnabled(hasInv);
+    m_chk3DInversionVoxels->setChecked(glv->showInversionVoxels());
+    m_spin3DInversionThreshold->setEnabled(hasInv && glv->showInversionVoxels());
+    m_spin3DInversionThreshold->setValue(glv->inversionThreshold());
+    m_slider3DInversionOpacity->setEnabled(hasInv && glv->showInversionVoxels());
+    m_slider3DInversionOpacity->setValue(static_cast<int>(std::round(glv->inversionOpacity() * 100.0)));
+    m_chk3DInversionSlices->setEnabled(hasInv);
+    m_chk3DInversionSlices->setChecked(glv->showInversionSlices());
 
     // Keep Profiles Tab in sync with the latest active profile
     ProfileOrientation prfOrient = m_doc->profileOrientation();

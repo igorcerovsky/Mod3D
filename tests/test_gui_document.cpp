@@ -5372,3 +5372,82 @@ TEST_F(GuiDocumentTest, SettingsPaneInversionControlsSync) {
   EXPECT_FALSE(sp->sliceInversionRadioButton()->isEnabled());
   EXPECT_FALSE(sp->profileInversionSliceCheckBox()->isEnabled());
 }
+
+TEST_F(GuiDocumentTest, GL3DViewInversionVoxelsAndSlicesRendering) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  GL3DView glv(doc);
+  EXPECT_TRUE(glv.showInversionVoxels());
+  EXPECT_NEAR(glv.inversionThreshold(), 0.02, 1e-4);
+  EXPECT_NEAR(glv.inversionOpacity(), 0.80, 1e-4);
+  EXPECT_FALSE(glv.showInversionSlices());
+
+  // Signal emission checks
+  bool voxChanged = true, slicesChanged = false;
+  double newThresh = 0.0, newOpacity = 0.0;
+  QObject::connect(&glv, &GL3DView::inversionVoxelsChanged, [&](bool v) { voxChanged = v; });
+  QObject::connect(&glv, &GL3DView::inversionThresholdChanged, [&](double th) { newThresh = th; });
+  QObject::connect(&glv, &GL3DView::inversionOpacityChanged, [&](double op) { newOpacity = op; });
+  QObject::connect(&glv, &GL3DView::inversionSlicesChanged, [&](bool s) { slicesChanged = s; });
+
+  glv.setShowInversionVoxels(false);
+  EXPECT_FALSE(glv.showInversionVoxels());
+  EXPECT_FALSE(voxChanged);
+
+  glv.setInversionThreshold(0.15);
+  EXPECT_NEAR(glv.inversionThreshold(), 0.15, 1e-4);
+  EXPECT_NEAR(newThresh, 0.15, 1e-4);
+
+  glv.setInversionOpacity(0.65);
+  EXPECT_NEAR(glv.inversionOpacity(), 0.65, 1e-4);
+  EXPECT_NEAR(newOpacity, 0.65, 1e-4);
+
+  glv.setShowInversionSlices(true);
+  EXPECT_TRUE(glv.showInversionSlices());
+  EXPECT_TRUE(slicesChanged);
+
+  // Set inversion result with an anomalous core
+  inv::InversionResult res;
+  inv::VoxelGrid<double> grid(8, 8, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  for (size_t ix = 3; ix <= 5; ++ix) {
+    for (size_t iy = 3; iy <= 5; ++iy) {
+      for (size_t iz = 2; iz <= 4; ++iz) {
+        grid(ix, iy, iz) = 0.40;
+      }
+    }
+  }
+  res.density_grid = grid;
+  doc->setInversionResult(res);
+
+  // Enable voxels, set threshold to 0.10 -> voxels should be extracted
+  glv.setShowInversionVoxels(true);
+  glv.setInversionThreshold(0.10);
+  glv.updateInversionBuffers();
+  EXPECT_GT(glv.inversionVertexCount(), 0);
+
+  // Set threshold above anomaly (0.50) -> should be 0 vertices
+  glv.setInversionThreshold(0.50);
+  glv.updateInversionBuffers();
+  EXPECT_EQ(glv.inversionVertexCount(), 0);
+
+  // Orthogonal slices
+  glv.updateInversionSliceBuffers();
+  EXPECT_GT(glv.inversionSlicesVertexCount(), 0);
+
+  // Software painting test
+  QPixmap pixmap(400, 300);
+  QPainter painter(&pixmap);
+  EXPECT_NO_THROW(glv.paintSoftware(painter));
+  painter.end();
+
+  // SettingsPane sync
+  SettingsPane *sp = mw.settingsPane();
+  ASSERT_NE(sp, nullptr);
+  EXPECT_NE(sp->inversionVoxelsCheckBox3D(), nullptr);
+  EXPECT_NE(sp->inversionThresholdSpinBox3D(), nullptr);
+  EXPECT_NE(sp->inversionOpacitySlider3D(), nullptr);
+  EXPECT_NE(sp->inversionSlicesCheckBox3D(), nullptr);
+}
