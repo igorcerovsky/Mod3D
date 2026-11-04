@@ -12,7 +12,24 @@
 #include <tuple>
 #include <vector>
 
+namespace inv {
+template <typename T> class VoxelGrid;
+}
+
 namespace mod3d {
+
+enum class BackgroundTrendMode : int {
+  None = 0,
+  ConstantShift = 1,
+  PlanarRegionalTrend = 2,
+  BorderPlanar = 3
+};
+
+struct TrendParameters {
+  double c0{0.0};
+  double gx_per_km{0.0};
+  double gy_per_km{0.0};
+};
 
 enum class ObservationMode {
   SensorHeight = 0,    // Surface relief + sensor altitude (h_sensor)
@@ -327,17 +344,37 @@ public:
   void compute_total_fields();
   void compute_difference(FieldComponent comp, bool removeMean = false);
 
-  // Virtual mean removal of the measured (observed) field.
-  // Raw observed grids are never modified; the mean of every observed
-  // component is stored, and while enabled the const observed_grid()
-  // accessor, the difference grids and the inversions work with the virtual
-  // anomaly (observed - stored mean).
-  void set_remove_observed_mean(bool enable);
+  // Background / Trend Removal of the measured (observed) field.
+  // Raw observed grids are never modified; the trend parameters (c0, gx, gy)
+  // are calculated according to the selected mode:
+  //   0: None (Raw observed)
+  //   1: ConstantShift (Virtual anomaly = observed - c0, where c0 = mean)
+  //   2: PlanarRegionalTrend (c0 + gx*x + gy*y)
+  //   3: BorderPlanar (Border-fitted regional plane + c0)
+  // While any mode != 0 is enabled, the const observed_grid() accessor,
+  // the difference grids, and the inversions work with the virtual anomaly.
+  void set_background_trend_mode(int mode);
+  void set_background_trend_mode(BackgroundTrendMode mode) {
+    set_background_trend_mode(static_cast<int>(mode));
+  }
+  [[nodiscard]] int background_trend_mode() const noexcept {
+    return background_trend_mode_;
+  }
+
+  void set_remove_observed_mean(bool enable) {
+    set_background_trend_mode(enable ? 1 : 0);
+  }
   [[nodiscard]] bool remove_observed_mean() const noexcept {
-    return remove_observed_mean_;
+    return background_trend_mode_ != 0;
   }
   [[nodiscard]] double observed_mean(FieldComponent comp) const;
+  [[nodiscard]] TrendParameters observed_trend_parameters(FieldComponent comp) const;
   [[nodiscard]] const Grid *raw_observed_grid(FieldComponent comp) const;
+
+  // Forward modeling from a 3D voxel density grid below the surface (inv code)
+  void compute_voxel_grid_gravity(const inv::VoxelGrid<double> &grid,
+                                  double zDomainTop,
+                                  bool zeroFirst = false);
 
   // Automated 1D Inversion
   FitResult fit_density(Body *pBody, const std::vector<Facet3Pt> &bodyFacets,
@@ -408,8 +445,9 @@ private:
   std::map<FieldComponent, Grid> observed_grids_;
   std::map<FieldComponent, Grid> difference_grids_;
 
-  bool remove_observed_mean_{false};
+  int background_trend_mode_{0};
   std::map<FieldComponent, double> observed_means_;
+  std::map<FieldComponent, TrendParameters> observed_trends_;
   std::map<FieldComponent, Grid> observed_anomaly_grids_;
 
   NeighborhoodFitSettings neighborhood_fit_settings_{};

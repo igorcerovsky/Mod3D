@@ -95,6 +95,7 @@ public:
     QDoubleSpinBox *inversionThresholdSpinBox3D() const { return m_spin3DInversionThreshold; }
     QSlider *inversionOpacitySlider3D() const { return m_slider3DInversionOpacity; }
     QCheckBox *inversionSlicesCheckBox3D() const { return m_chk3DInversionSlices; }
+    QComboBox *trendModeComboBox() const { return m_comboTrendMode; }
     QCheckBox *removeObservedMeanCheckBox() const { return m_chkRemoveObservedMean; }
     QLabel *observedMeanLabel() const { return m_lblObservedMean; }
 
@@ -288,6 +289,7 @@ private:
     QDoubleSpinBox *m_spinModelZMax{nullptr};
     QDoubleSpinBox *m_spinModelZMin{nullptr};
     QLabel *m_lblModelDimensions{nullptr};
+    QComboBox *m_comboTrendMode{nullptr};
     QCheckBox *m_chkRemoveObservedMean{nullptr};
     QLabel *m_lblObservedMean{nullptr};
     QRadioButton *m_rbOptBrent{nullptr};

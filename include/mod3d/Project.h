@@ -46,6 +46,7 @@ struct InversionSettings3D {
 struct ProjectSettings {
     bool compute_real_time{false};
     bool remove_observed_mean{false};
+    int background_trend_mode{0};
     int gravity_formula{0};
     int magnetic_formula{0};
     std::vector<std::string> active_components;

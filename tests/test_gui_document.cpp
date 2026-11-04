@@ -5139,6 +5139,102 @@ TEST_F(GuiDocumentTest, ModelDocumentInversionResultStateAndApplication) {
   EXPECT_EQ(signalCount, 2);
 }
 
+TEST_F(GuiDocumentTest, SettingsPaneTrendModeComboboxSynchronization) {
+  MainWindow mw;
+  auto *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(15, 15, 0.0, 0.0, 100.0, 100.0, -1000.0, 200.0);
+
+  auto *pane = mw.settingsPane();
+  ASSERT_NE(pane, nullptr);
+  pane->selectPhysicsTab();
+
+  auto *combo = pane->trendModeComboBox();
+  ASSERT_NE(combo, nullptr);
+  EXPECT_EQ(combo->count(), 4);
+  EXPECT_EQ(combo->currentIndex(), 0);
+  EXPECT_EQ(doc->backgroundTrendMode(), 0);
+
+  // Set observed data
+  mod3d::Grid obsGrd(15, 15, 0.0, 0.0, 100.0, 100.0);
+  for (size_t r = 0; r < 15; ++r) {
+    for (size_t c = 0; c < 15; ++c) {
+      obsGrd(r, c) = 20.0 + static_cast<double>(r * 2 + c);
+    }
+  }
+  doc->observation().set_observed_grid(mod3d::FieldComponent::GZ, obsGrd);
+  pane->selectPhysicsTab();
+
+  // Change to Mode 1 (Constant Shift) via combobox
+  combo->setCurrentIndex(1);
+  EXPECT_EQ(doc->backgroundTrendMode(), 1);
+  EXPECT_TRUE(doc->removeObservedMean());
+  EXPECT_NEAR(doc->observedGrid(mod3d::FieldComponent::GZ)->mean(), 0.0, 1e-9);
+
+  // Change to Mode 2 (Planar Regional Trend)
+  combo->setCurrentIndex(2);
+  EXPECT_EQ(doc->backgroundTrendMode(), 2);
+  EXPECT_TRUE(doc->removeObservedMean());
+  auto trend2 = doc->observedTrendParameters(mod3d::FieldComponent::GZ);
+  EXPECT_GT(std::abs(trend2.gx_per_km), 0.0);
+
+  // Change to Mode 3 (Border-Fitted Regional Plane)
+  combo->setCurrentIndex(3);
+  EXPECT_EQ(doc->backgroundTrendMode(), 3);
+
+  // Change from document side to Mode 0
+  doc->setBackgroundTrendMode(0);
+  EXPECT_EQ(combo->currentIndex(), 0);
+  EXPECT_FALSE(doc->removeObservedMean());
+}
+
+TEST_F(GuiDocumentTest, ModelDocumentVoxelGridForwardCalculationOnOpen) {
+  QString tempPath = QDir::temp().filePath("test_voxel_grid_forward_open.mod3d");
+  QFile::remove(tempPath);
+
+  {
+    ModelDocument doc;
+    doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
+    mod3d::Grid obsGrd(11, 11, 0.0, 0.0, 100.0, 100.0);
+    obsGrd.fill(5.0);
+    doc.observation().set_observed_grid(mod3d::FieldComponent::GZ, obsGrd);
+
+    inv::InversionResult res;
+    res.density_grid = inv::VoxelGrid<double>(11, 11, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+    res.density_grid(5, 5, 2) = 0.6; // High density voxel in center
+    doc.setInversionResult(res);
+
+    EXPECT_TRUE(doc.saveFile(tempPath));
+  }
+
+  // Now open the project in a fresh ModelDocument
+  {
+    ModelDocument doc;
+    EXPECT_TRUE(doc.openFile(tempPath));
+    EXPECT_TRUE(doc.hasInversionResult());
+    EXPECT_TRUE(doc.showModeledField());
+    EXPECT_TRUE(doc.showDifferenceField());
+
+    const auto *pMod = doc.modeledGrid(mod3d::FieldComponent::GZ);
+    ASSERT_NE(pMod, nullptr);
+    EXPECT_FALSE(pMod->empty());
+
+    // Modeled anomaly from voxel grid must have positive attraction at center
+    const double centerVal = (*pMod)(5, 5);
+    EXPECT_GT(centerVal, 0.0);
+    EXPECT_GT(centerVal, (*pMod)(0, 0));
+
+    // Difference grid must be calculated
+    const auto *pDiff = doc.differenceGrid(mod3d::FieldComponent::GZ);
+    ASSERT_NE(pDiff, nullptr);
+    EXPECT_FALSE(pDiff->empty());
+    // Difference is modeled - observed: centerVal - 5.0
+    EXPECT_NEAR((*pDiff)(5, 5), centerVal - 5.0, 1e-6);
+  }
+
+  QFile::remove(tempPath);
+}
+
 TEST_F(GuiDocumentTest, ProfileViewInversionDensitySliceAndContextMenu) {
   ModelDocument doc;
   doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);

@@ -215,6 +215,8 @@ bool ModelDocument::openFile(const QString &path) {
             m_lastInversionResult.reset();
         }
 
+        m_project.observation().set_background_trend_mode(m_project.settings().background_trend_mode);
+
         computeAll();
         emit documentReset();
         emit profileChanged(m_profileIndex, m_profileOrient);
@@ -935,9 +937,24 @@ void ModelDocument::computeAll() {
     std::vector<mod3d::Facet3Pt> facets;
     m_project.model().facets_computation(facets);
     m_project.observation().compute_forward_field(facets, true);
+    computeVoxelGridForwardField();
     m_project.observation().compute_total_fields();
     m_project.observation().compute_difference(m_activeField);
     emit computationFinished();
+}
+
+void ModelDocument::computeVoxelGridForwardField() {
+    if (!m_lastInversionResult.has_value() || m_lastInversionResult->density_grid.total_cells() == 0) {
+        return;
+    }
+    m_project.observation().compute_voxel_grid_gravity(
+        m_lastInversionResult->density_grid,
+        m_project.model().z_max().value(),
+        /*zeroFirst=*/false);
+    m_showModeled = true;
+    if (hasAnyObservedGrid()) {
+        m_showDiff = true;
+    }
 }
 
 void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets) {
@@ -947,6 +964,7 @@ void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacet
             m_project.observation().declination().value(),
             m_project.observation().magnetic_intensity().value());
         m_project.observation().update_delta_field(updateFacets);
+        computeVoxelGridForwardField();
         m_project.observation().compute_total_fields();
         m_project.observation().compute_difference(m_activeField);
         emit computationFinished();
@@ -962,19 +980,27 @@ void ModelDocument::setRealTimeCompute(bool enabled) {
     }
 }
 
-void ModelDocument::setRemoveObservedMean(bool enabled) {
-    if (m_project.observation().remove_observed_mean() == enabled &&
-        m_project.settings().remove_observed_mean == enabled) {
+void ModelDocument::setBackgroundTrendMode(int mode) {
+    if (m_project.observation().background_trend_mode() == mode &&
+        m_project.settings().background_trend_mode == mode) {
         return;
     }
-    m_project.settings().remove_observed_mean = enabled;
-    m_project.observation().set_remove_observed_mean(enabled);
+    m_project.settings().background_trend_mode = mode;
+    m_project.settings().remove_observed_mean = (mode != 0);
+    m_project.observation().set_background_trend_mode(mode);
     m_project.observation().compute_difference(m_activeField);
     setModified(true);
+    emit backgroundTrendModeChanged(mode);
     emit computationFinished();
     emit fieldDisplayToggled();
-    emit statusMessage(enabled ? tr("Measured field mean removed (virtual anomaly).")
-                               : tr("Measured field mean restored."));
+    QString msg;
+    switch (mode) {
+    case 1: msg = tr("Measured field: Constant shift c0 removed."); break;
+    case 2: msg = tr("Measured field: Planar regional trend removed."); break;
+    case 3: msg = tr("Measured field: Border-fitted regional plane removed."); break;
+    default: msg = tr("Measured field: Trend removal disabled (raw observed datum)."); break;
+    }
+    emit statusMessage(msg);
 }
 
 void ModelDocument::setActiveField(mod3d::FieldComponent comp) {
@@ -1242,6 +1268,7 @@ void ModelDocument::setInversionResult(const inv::InversionResult &result) {
         m_project.set_inversion_result_json(result.to_json().dump());
     } catch (...) {}
     setModified(true);
+    computeAll();
     emit inversionResultChanged();
 }
 
@@ -1250,6 +1277,7 @@ void ModelDocument::clearInversionResult() {
         m_lastInversionResult.reset();
         m_project.set_inversion_result_json("");
         setModified(true);
+        computeAll();
         emit inversionResultChanged();
     }
 }

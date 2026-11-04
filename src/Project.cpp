@@ -253,8 +253,15 @@ std::string Project::to_json_string(int indent) const {
                       {"modified_at", metadata_.modified_at}};
 
   // Settings
+  int effectiveTrendMode = settings_.background_trend_mode;
+  if (effectiveTrendMode == 0 && settings_.remove_observed_mean) {
+    effectiveTrendMode = 1;
+  }
+  bool effectiveRemoveMean = settings_.remove_observed_mean || (effectiveTrendMode != 0);
+
   root["settings"] = {{"compute_real_time", settings_.compute_real_time},
-                      {"remove_observed_mean", settings_.remove_observed_mean},
+                      {"remove_observed_mean", effectiveRemoveMean},
+                      {"background_trend_mode", effectiveTrendMode},
                       {"gravity_formula", settings_.gravity_formula},
                       {"magnetic_formula", settings_.magnetic_formula},
                       {"active_components", settings_.active_components}};
@@ -445,7 +452,13 @@ bool Project::from_json_string(std::string_view jsonStr) {
     if (root.contains("settings")) {
       const auto &js = root["settings"];
       settings_.compute_real_time = js.value("compute_real_time", false);
-      settings_.remove_observed_mean = js.value("remove_observed_mean", false);
+      const bool rawRemoveMean = js.value("remove_observed_mean", false);
+      int trendMode = js.value("background_trend_mode", rawRemoveMean ? 1 : 0);
+      if (trendMode == 0 && rawRemoveMean) {
+        trendMode = 1;
+      }
+      settings_.background_trend_mode = trendMode;
+      settings_.remove_observed_mean = rawRemoveMean || (trendMode != 0);
       settings_.gravity_formula = js.value("gravity_formula", 0);
       settings_.magnetic_formula = js.value("magnetic_formula", 0);
       if (js.contains("active_components") &&
@@ -623,6 +636,7 @@ bool Project::from_json_string(std::string_view jsonStr) {
           }
         }
       }
+      observation_.set_background_trend_mode(settings_.background_trend_mode);
     }
 
     model_.compute_body_magnetization_vector(observation_.inclination_deg(),

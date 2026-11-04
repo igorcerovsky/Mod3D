@@ -2,6 +2,7 @@
 #include "mod3d/Body.h"
 #include "mod3d/Magnetics.h"
 #include "pfld/pfld_compute.hpp"
+#include "inv/inv.hpp"
 #include <algorithm>
 #include <cmath>
 #include <iomanip>
@@ -54,8 +55,9 @@ void ObservationSpace::swap(ObservationSpace &other) noexcept {
   swap(modeled_grids_, other.modeled_grids_);
   swap(observed_grids_, other.observed_grids_);
   swap(difference_grids_, other.difference_grids_);
-  swap(remove_observed_mean_, other.remove_observed_mean_);
+  swap(background_trend_mode_, other.background_trend_mode_);
   swap(observed_means_, other.observed_means_);
+  swap(observed_trends_, other.observed_trends_);
   swap(observed_anomaly_grids_, other.observed_anomaly_grids_);
 }
 
@@ -278,7 +280,7 @@ Grid *ObservationSpace::observed_grid(FieldComponent comp) {
 }
 
 const Grid *ObservationSpace::observed_grid(FieldComponent comp) const {
-  if (remove_observed_mean_) {
+  if (background_trend_mode_ != 0) {
     auto ait = observed_anomaly_grids_.find(comp);
     if (ait != observed_anomaly_grids_.end())
       return &ait->second;
@@ -298,23 +300,153 @@ double ObservationSpace::observed_mean(FieldComponent comp) const {
   return it != observed_means_.end() ? it->second : 0.0;
 }
 
-void ObservationSpace::set_remove_observed_mean(bool enable) {
-  remove_observed_mean_ = enable;
-  update_virtual_observed_anomalies();
+TrendParameters ObservationSpace::observed_trend_parameters(FieldComponent comp) const {
+  auto it = observed_trends_.find(comp);
+  if (it != observed_trends_.end())
+    return it->second;
+  return TrendParameters{};
+}
+
+void ObservationSpace::set_background_trend_mode(int mode) {
+  if (background_trend_mode_ != mode) {
+    background_trend_mode_ = mode;
+    update_virtual_observed_anomalies();
+  }
 }
 
 void ObservationSpace::update_virtual_observed_anomalies() {
   observed_means_.clear();
+  observed_trends_.clear();
   observed_anomaly_grids_.clear();
+
   for (const auto &[comp, grd] : observed_grids_) {
-    if (grd.empty())
+    if (grd.empty() || grd.rows() == 0 || grd.cols() == 0)
       continue;
+
     const double meanVal = grd.mean();
     observed_means_[comp] = meanVal;
-    if (remove_observed_mean_) {
+
+    if (background_trend_mode_ == 0) {
+      observed_trends_[comp] = TrendParameters{meanVal, 0.0, 0.0};
+      continue;
+    }
+
+    if (background_trend_mode_ == 1) {
+      // Mode 1: Constant shift c0 = mean
       Grid anomaly = grd;
       anomaly -= meanVal;
       observed_anomaly_grids_.emplace(comp, std::move(anomaly));
+      observed_trends_[comp] = TrendParameters{meanVal, 0.0, 0.0};
+    } else {
+      // Mode 2 (Planar regional trend) or Mode 3 (Border-fitted regional plane)
+      inv::GridGeometry geom;
+      geom.nx = cols_;
+      geom.ny = rows_;
+      geom.dx = std::abs(dx_.value());
+      geom.dy = std::abs(dy_.value());
+      geom.x0 = x0_.value() - 0.5 * geom.dx;
+      geom.y0 = y0_.value() - 0.5 * geom.dy;
+
+      std::vector<double> v(cols_ * rows_, 0.0);
+      for (size_t ix = 0; ix < cols_; ++ix) {
+        for (size_t iy = 0; iy < rows_; ++iy) {
+          double val = grd(iy, ix);
+          v[ix * rows_ + iy] = (Grid::is_dummy_value(val) || std::isnan(val)) ? 0.0 : val;
+        }
+      }
+
+      inv::BackgroundBasis bg(geom, background_trend_mode_);
+      std::vector<double> bg_field;
+      double c0 = 0.0, gx_km = 0.0, gy_km = 0.0;
+      bg.evaluate(v, bg_field, c0, gx_km, gy_km);
+
+      Grid anomaly(rows_, cols_, x0_, y0_, dx_, dy_, rotation_);
+      for (size_t ix = 0; ix < cols_; ++ix) {
+        for (size_t iy = 0; iy < rows_; ++iy) {
+          if (grd.is_dummy(iy, ix)) {
+            anomaly(iy, ix) = GRID_DUMMY;
+          } else {
+            anomaly(iy, ix) = grd(iy, ix) - bg_field[ix * rows_ + iy];
+          }
+        }
+      }
+
+      observed_anomaly_grids_.emplace(comp, std::move(anomaly));
+      observed_trends_[comp] = TrendParameters{c0, gx_km, gy_km};
+      observed_means_[comp] = c0;
+    }
+  }
+}
+
+void ObservationSpace::compute_voxel_grid_gravity(
+    const inv::VoxelGrid<double> &grid, double zDomainTop, bool zeroFirst) {
+  if (grid.total_cells() == 0 || rows_ == 0 || cols_ == 0) {
+    return;
+  }
+
+  Grid *pGz = modeled_grid(FieldComponent::GZ);
+  if (!pGz) return;
+
+  if (zeroFirst) {
+    pGz->fill(0.0);
+  }
+
+  const auto obsPoints = observation_points(FieldComponent::GZ);
+  if (obsPoints.empty()) return;
+
+  std::vector<inv::Point3D<double>> inv_obs;
+  inv_obs.reserve(obsPoints.size());
+  for (const auto &pt : obsPoints) {
+    const double zd = Grid::is_dummy_value(pt.z) ? 0.0 : (zDomainTop - pt.z);
+    inv_obs.emplace_back(pt.x, pt.y, zd);
+  }
+
+  const size_t nx = grid.nx();
+  const size_t ny = grid.ny();
+  const double dx = grid.dx();
+  const double dy = grid.dy();
+  const double x0_geom = grid.x0();
+  const double y0_geom = grid.y0();
+
+  const bool hasRelief = !relief_grid_.empty() && relief_grid_.rows() >= 2 && relief_grid_.cols() >= 2;
+  std::vector<double> topo_nodes;
+  if (hasRelief) {
+    topo_nodes.resize((nx + 1) * (ny + 1), 0.0);
+    for (size_t iy = 0; iy <= ny; ++iy) {
+      const double y_c = y0_geom + static_cast<double>(iy) * dy;
+      for (size_t ix = 0; ix <= nx; ++ix) {
+        const double x_c = x0_geom + static_cast<double>(ix) * dx;
+        double elev = relief_grid_.sample(x_c, y_c);
+        if (elev == GRID_DUMMY || std::isnan(elev)) {
+          elev = relief_grid_.mean();
+        }
+        topo_nodes[iy * (nx + 1) + ix] = std::max(0.0, zDomainTop - elev);
+      }
+    }
+  }
+
+  std::vector<double> out_gz(inv_obs.size(), 0.0);
+  if (hasRelief) {
+    inv::ForwardKernel<double>::compute_gravity_field_interface_mesh(grid, topo_nodes, inv_obs, out_gz);
+  } else {
+    inv::ForwardKernel<double>::compute_gravity_field_interface_mesh(grid, {}, inv_obs, out_gz);
+  }
+
+  const double scale = (grv_field_unit_ == GravityFieldUnit::GravityUnit) ? 10.0 : 1.0;
+
+  for (size_t r = 0; r < rows_; ++r) {
+    for (size_t c = 0; c < cols_; ++c) {
+      const size_t idx = r * cols_ + c;
+      if (idx < obsPoints.size() && !Grid::is_dummy_value(obsPoints[idx].z) && !std::isnan(obsPoints[idx].z)) {
+        const double val = out_gz[idx] * scale;
+        if (zeroFirst) {
+          (*pGz)(r, c) = val;
+        } else {
+          double &cell = (*pGz)(r, c);
+          if (Grid::is_dummy_value(cell)) cell = val;
+          else cell += val;
+        }
+      }
     }
   }
 }

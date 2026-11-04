@@ -73,6 +73,9 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow,
   connect(m_doc, &ModelDocument::inversionResultChanged, this, [this]() {
     updateViewContext();
   });
+  connect(m_doc, &ModelDocument::backgroundTrendModeChanged, this, [this](int) {
+    loadPhysicsData();
+  });
   connect(m_doc, &ModelDocument::profileChanged, this,
           [this](int idx, ProfileOrientation orient) {
             if (!m_blockSync) {
@@ -2223,7 +2226,20 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
   auto *boxMeasured = new QGroupBox(tr("Measured Field"), inner);
   auto *measuredLayout = new QVBoxLayout(boxMeasured);
   measuredLayout->setContentsMargins(8, 8, 8, 8);
-  measuredLayout->setSpacing(4);
+  measuredLayout->setSpacing(6);
+
+  auto *trendLayout = new QHBoxLayout();
+  auto *lblTrend = new QLabel(tr("Trend Removal:"), boxMeasured);
+  m_comboTrendMode = new QComboBox(boxMeasured);
+  m_comboTrendMode->addItem(tr("None (Raw observed datum)"), 0);
+  m_comboTrendMode->addItem(tr("Constant Shift c0 (Mean subtraction)"), 1);
+  m_comboTrendMode->addItem(tr("Planar Regional Trend (c0 + gx·x + gy·y)"), 2);
+  m_comboTrendMode->addItem(tr("Border-Fitted Regional Plane + Constant Shift c0"), 3);
+  m_comboTrendMode->setToolTip(
+      tr("Eliminates constant DC shift or linear regional trend between computed field and measured field"));
+  trendLayout->addWidget(lblTrend);
+  trendLayout->addWidget(m_comboTrendMode, 1);
+  measuredLayout->addLayout(trendLayout);
 
   m_chkRemoveObservedMean =
       new QCheckBox(tr("Remove mean from measured field"), boxMeasured);
@@ -2232,20 +2248,39 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
          "field and its mean are kept; "
          "the displayed and fitted measured field is the anomaly (measured - "
          "mean)."));
+  m_chkRemoveObservedMean->setVisible(false);
   measuredLayout->addWidget(m_chkRemoveObservedMean);
 
   m_lblObservedMean = new QLabel(boxMeasured);
   m_lblObservedMean->setStyleSheet("color: #475569; font-size: 11px;");
+  m_lblObservedMean->setWordWrap(true);
   measuredLayout->addWidget(m_lblObservedMean);
 
   layout->addWidget(boxMeasured);
+
+  connect(m_comboTrendMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          [this](int index) {
+            if (m_blockSync)
+              return;
+            const int mode = m_comboTrendMode->itemData(index).toInt();
+            m_doc->setBackgroundTrendMode(mode);
+            m_blockSync = true;
+            m_chkRemoveObservedMean->setChecked(mode != 0);
+            m_blockSync = false;
+            updateObservedMeanLabel();
+          });
 
   connect(m_chkRemoveObservedMean, &QCheckBox::toggled, this,
           [this](bool checked) {
             if (m_blockSync)
               return;
-            m_doc->setRemoveObservedMean(checked);
-            updateObservedMeanLabel();
+            const int targetMode = checked ? 1 : 0;
+            for (int i = 0; i < m_comboTrendMode->count(); ++i) {
+              if (m_comboTrendMode->itemData(i).toInt() == targetMode) {
+                m_comboTrendMode->setCurrentIndex(i);
+                break;
+              }
+            }
           });
 
   // 3. Model Vertical Range & Dimensions
@@ -3061,7 +3096,16 @@ void SettingsPane::loadPhysicsData() {
           .arg(m.y_min_val(), 0, 'f', 1)
           .arg(m.y_max_val(), 0, 'f', 1));
 
-  m_chkRemoveObservedMean->setChecked(m_doc->removeObservedMean());
+  if (m_comboTrendMode) {
+    const int curMode = m_doc->backgroundTrendMode();
+    for (int i = 0; i < m_comboTrendMode->count(); ++i) {
+      if (m_comboTrendMode->itemData(i).toInt() == curMode) {
+        m_comboTrendMode->setCurrentIndex(i);
+        break;
+      }
+    }
+  }
+  m_chkRemoveObservedMean->setChecked(m_doc->backgroundTrendMode() != 0);
   updateObservedMeanLabel();
 
   m_blockSync = false;
@@ -3076,13 +3120,40 @@ void SettingsPane::updateObservedMeanLabel() {
         tr("No measured data for %1").arg(m_doc->activeFieldComponentName()));
     return;
   }
-  const double meanVal = m_doc->observedMean(m_doc->activeField());
-  m_lblObservedMean->setText(
-      tr("Stored mean (%1): %2 %3%4")
-          .arg(m_doc->activeFieldComponentName())
-          .arg(meanVal, 0, 'f', 3)
-          .arg(m_doc->activeFieldUnit())
-          .arg(m_doc->removeObservedMean() ? tr(" - removed") : QString()));
+  const int mode = m_doc->backgroundTrendMode();
+  const auto trend = m_doc->observedTrendParameters(m_doc->activeField());
+  const QString compName = m_doc->activeFieldComponentName();
+  const QString unit = m_doc->activeFieldUnit();
+
+  if (mode == 0) {
+    m_lblObservedMean->setText(
+        tr("Stored mean (%1): %2 %3")
+            .arg(compName)
+            .arg(trend.c0, 0, 'f', 3)
+            .arg(unit));
+  } else if (mode == 1) {
+    m_lblObservedMean->setText(
+        tr("Stored mean (%1): %2 %3 - removed")
+            .arg(compName)
+            .arg(trend.c0, 0, 'f', 3)
+            .arg(unit));
+  } else if (mode == 2) {
+    m_lblObservedMean->setText(
+        tr("Planar trend (%1): c0 = %2 %3, gx = %4 %3/km, gy = %5 %3/km")
+            .arg(compName)
+            .arg(trend.c0, 0, 'f', 3)
+            .arg(unit)
+            .arg(trend.gx_per_km, 0, 'f', 3)
+            .arg(trend.gy_per_km, 0, 'f', 3));
+  } else {
+    m_lblObservedMean->setText(
+        tr("Border plane (%1): c0 = %2 %3, gx = %4 %3/km, gy = %5 %3/km")
+            .arg(compName)
+            .arg(trend.c0, 0, 'f', 3)
+            .arg(unit)
+            .arg(trend.gx_per_km, 0, 'f', 3)
+            .arg(trend.gy_per_km, 0, 'f', 3));
+  }
 }
 
 void SettingsPane::applyPhysicsData() {

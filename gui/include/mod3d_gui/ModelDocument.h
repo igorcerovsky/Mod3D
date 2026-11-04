@@ -238,13 +238,21 @@ public:
     // Computation Pipeline
     void computeAll();
     void computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets);
+    void computeVoxelGridForwardField();
     bool isRealTimeCompute() const noexcept { return m_realTimeCompute; }
     void setRealTimeCompute(bool enabled);
 
-    /// Virtual removal of the mean of the measured (observed) field (raw field is kept, mean is stored).
-    bool removeObservedMean() const noexcept { return m_project.observation().remove_observed_mean(); }
-    void setRemoveObservedMean(bool enabled);
-    double observedMean(mod3d::FieldComponent comp) const { return m_project.observation().observed_mean(comp); }
+    /// Background / Trend removal of the measured (observed) field.
+    [[nodiscard]] int backgroundTrendMode() const noexcept { return m_project.observation().background_trend_mode(); }
+    void setBackgroundTrendMode(int mode);
+    [[nodiscard]] mod3d::TrendParameters observedTrendParameters(mod3d::FieldComponent comp) const {
+        return m_project.observation().observed_trend_parameters(comp);
+    }
+
+    /// Virtual removal of the mean of the measured (observed) field (backward compatibility).
+    [[nodiscard]] bool removeObservedMean() const noexcept { return m_project.observation().remove_observed_mean(); }
+    void setRemoveObservedMean(bool enabled) { setBackgroundTrendMode(enabled ? 1 : 0); }
+    [[nodiscard]] double observedMean(mod3d::FieldComponent comp) const { return m_project.observation().observed_mean(comp); }
 
     // Active Field Display
     mod3d::FieldComponent activeField() const noexcept { return m_activeField; }
@@ -329,6 +337,7 @@ signals:
     void activeBodyChanged(int id);
     void globalMovementChanged(bool enabled);
     void inversionResultChanged();
+    void backgroundTrendModeChanged(int mode);
 
 private:
     void ensureProfileIndexValid();

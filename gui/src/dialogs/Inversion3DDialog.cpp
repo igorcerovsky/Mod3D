@@ -301,6 +301,15 @@ void Inversion3DDialog::setupFocusingTab(QWidget *parent) {
     m_comboTrendMode->setToolTip(tr("Eliminates constant DC shift or linear regional trend between computed pfld field and measured field"));
     formPhys->addRow(tr("Background / Trend Removal:"), m_comboTrendMode);
 
+    connect(m_comboTrendMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
+        if (m_doc && m_comboTrendMode) {
+            const int mode = m_comboTrendMode->itemData(idx).toInt();
+            if (m_doc->backgroundTrendMode() != mode) {
+                m_doc->setBackgroundTrendMode(mode);
+            }
+        }
+    });
+
     m_spinNoiseRel = new QDoubleSpinBox(parent);
     m_spinNoiseRel->setRange(0.01, 50.0);
     m_spinNoiseRel->setDecimals(2);
@@ -581,8 +590,9 @@ void Inversion3DDialog::loadSettingsFromDocument() {
         m_comboOperator->setCurrentIndex(s.forward_operator);
     }
     if (m_comboTrendMode) {
+        const int docTrend = m_doc ? m_doc->backgroundTrendMode() : s.background_trend_mode;
         for (int i = 0; i < m_comboTrendMode->count(); ++i) {
-            if (m_comboTrendMode->itemData(i).toInt() == s.background_trend_mode) {
+            if (m_comboTrendMode->itemData(i).toInt() == docTrend) {
                 m_comboTrendMode->setCurrentIndex(i);
                 break;
             }
@@ -631,6 +641,7 @@ void Inversion3DDialog::saveSettingsToDocument() {
     s.prior_as_reference = m_chkPriorAsRef->isChecked();
     s.refine_previous = m_chkRefinePrevious->isChecked();
     m_doc->setInversionSettings(s);
+    m_doc->setBackgroundTrendMode(s.background_trend_mode);
 }
 
 void Inversion3DDialog::setRunningState(bool running) {
