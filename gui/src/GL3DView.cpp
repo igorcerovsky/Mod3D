@@ -391,14 +391,18 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
   connect(m_doc, &ModelDocument::profileChanged, this,
           [this](int, ProfileOrientation) {
             m_inversionSlicesDirty = true;
+            if (m_octantCut) {
+              m_meshDirty = true;
+              m_inversionVboDirty = true;
+            }
             update();
           });
   connect(m_doc, &ModelDocument::activeSliceElevationChanged, this,
           [this](double) {
             m_inversionSlicesDirty = true;
             if (m_octantCut) {
-              m_cachedCutState = computeOctantCutState();
               m_meshDirty = true;
+              m_inversionVboDirty = true;
             }
             update();
           });
@@ -4263,7 +4267,6 @@ void GL3DView::setShowPlanarPlane(bool enable) {
 void GL3DView::setOctantCut(bool enable) {
   if (m_octantCut != enable) {
     m_octantCut = enable;
-    m_cachedCutState = computeOctantCutState();
     m_meshDirty = true;
     m_inversionVboDirty = true;
     m_inversionSlicesDirty = true;
@@ -4316,6 +4319,7 @@ void GL3DView::updateInversionBuffers() {
   if (!m_doc || !m_doc->hasInversionResult()) {
     m_inversionVertexCount = 0;
     m_inversionVboDirty = false;
+    m_cachedInversionCutState = {};
     return;
   }
   const auto &res = *m_doc->inversionResult();
@@ -4323,6 +4327,7 @@ void GL3DView::updateInversionBuffers() {
   if (grid.total_cells() == 0) {
     m_inversionVertexCount = 0;
     m_inversionVboDirty = false;
+    m_cachedInversionCutState = {};
     return;
   }
 
@@ -4352,6 +4357,7 @@ void GL3DView::updateInversionBuffers() {
   };
 
   OctantCutState cut = computeOctantCutState();
+  m_cachedInversionCutState = cut;
 
   // Find active cells exceeding threshold and not in air or cut away
   std::vector<char> active(nx * ny * nz, 0);
@@ -4488,7 +4494,7 @@ void GL3DView::drawInversionVoxels() {
   initBuffers();
 
   OctantCutState cut = computeOctantCutState();
-  if (m_inversionVboDirty || cut != m_cachedCutState) {
+  if (m_inversionVboDirty || cut != m_cachedInversionCutState) {
     updateInversionBuffers();
   }
 
@@ -4539,6 +4545,7 @@ void GL3DView::updateInversionSliceBuffers() {
   if (!m_doc || !m_doc->hasInversionResult()) {
     m_inversionSlicesVertexCount = 0;
     m_inversionSlicesDirty = false;
+    m_cachedInversionSlicesCutState = {};
     return;
   }
   const auto &res = *m_doc->inversionResult();
@@ -4546,6 +4553,7 @@ void GL3DView::updateInversionSliceBuffers() {
   if (grid.total_cells() == 0) {
     m_inversionSlicesVertexCount = 0;
     m_inversionSlicesDirty = false;
+    m_cachedInversionSlicesCutState = {};
     return;
   }
 
@@ -4576,6 +4584,7 @@ void GL3DView::updateInversionSliceBuffers() {
   };
 
   OctantCutState cut = computeOctantCutState();
+  m_cachedInversionSlicesCutState = cut;
 
   std::vector<Vertex3D> vertices;
   vertices.reserve((nx * nz + ny * nz + nx * ny) * 6);
@@ -4732,7 +4741,7 @@ void GL3DView::drawInversionSlices() {
   initBuffers();
 
   OctantCutState cut = computeOctantCutState();
-  if (m_inversionSlicesDirty || cut != m_cachedCutState) {
+  if (m_inversionSlicesDirty || cut != m_cachedInversionSlicesCutState) {
     updateInversionSliceBuffers();
   }
 

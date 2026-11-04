@@ -144,6 +144,8 @@ public:
 
   void updateInversionBuffers();
   void updateInversionSliceBuffers();
+  void drawInversionVoxels();
+  void drawInversionSlices();
 
   struct OctantCutState {
     bool active{false};
@@ -167,8 +169,10 @@ public:
 
     bool operator==(const OctantCutState &o) const noexcept {
       return active == o.active && hasEW == o.hasEW && ewRow == o.ewRow &&
-             cutPosY == o.cutPosY && hasSN == o.hasSN && snCol == o.snCol &&
-             cutPosX == o.cutPosX && hasPlanar == o.hasPlanar &&
+             std::abs(ewY - o.ewY) < 1e-4 && cutPosY == o.cutPosY &&
+             hasSN == o.hasSN && snCol == o.snCol &&
+             std::abs(snX - o.snX) < 1e-4 && cutPosX == o.cutPosX &&
+             hasPlanar == o.hasPlanar &&
              std::abs(planarZ - o.planarZ) < 1e-4 && cutPosZ == o.cutPosZ;
     }
     bool operator!=(const OctantCutState &o) const noexcept {
@@ -519,8 +523,6 @@ private:
 
   void drawBoundingBox();
   void drawBodies();
-  void drawInversionVoxels();
-  void drawInversionSlices();
   void drawProfilePlane();
   void drawPlanarPlane();
   void drawRelief();
@@ -618,11 +620,13 @@ private:
   QOpenGLBuffer m_inversionVbo{QOpenGLBuffer::VertexBuffer};
   int m_inversionVertexCount{0};
   bool m_inversionVboDirty{true};
+  OctantCutState m_cachedInversionCutState{};
 
   QOpenGLVertexArrayObject m_inversionSlicesVao;
   QOpenGLBuffer m_inversionSlicesVbo{QOpenGLBuffer::VertexBuffer};
   int m_inversionSlicesVertexCount{0};
   bool m_inversionSlicesDirty{true};
+  OctantCutState m_cachedInversionSlicesCutState{};
 };
 
 } // namespace mod3d_gui

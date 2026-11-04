@@ -5451,3 +5451,68 @@ TEST_F(GuiDocumentTest, GL3DViewInversionVoxelsAndSlicesRendering) {
   EXPECT_NE(sp->inversionOpacitySlider3D(), nullptr);
   EXPECT_NE(sp->inversionSlicesCheckBox3D(), nullptr);
 }
+
+TEST_F(GuiDocumentTest, GL3DViewInversionOctantCutInteractiveRotationAndSectionPlanes) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  GL3DView glv(doc);
+  glv.setShowInversionVoxels(true);
+  glv.setShowInversionSlices(true);
+  glv.setInversionThreshold(0.10);
+
+  // Set inversion result with anomalies in opposing quadrants
+  inv::InversionResult res;
+  inv::VoxelGrid<double> grid(8, 8, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  // Quadrant with high X, high Y
+  grid(6, 6, 2) = 0.40;
+  grid(6, 6, 3) = 0.40;
+  // Quadrant with low X, low Y
+  grid(1, 1, 2) = 0.40;
+  grid(1, 1, 3) = 0.40;
+  res.density_grid = grid;
+  doc->setInversionResult(res);
+
+  // Full model without octant cut
+  glv.setOctantCut(false);
+  glv.updateInversionBuffers();
+  int fullCount = glv.inversionVertexCount();
+  EXPECT_GT(fullCount, 0);
+
+  // Enable octant cut
+  glv.setOctantCut(true);
+  glv.setCameraAngles(30.0f, -45.0f);
+  glv.drawInversionVoxels();
+  glv.drawInversionSlices();
+  int cutCount1 = glv.inversionVertexCount();
+  int slicesCount1 = glv.inversionSlicesVertexCount();
+  EXPECT_GT(cutCount1, 0);
+  EXPECT_GT(slicesCount1, 0);
+
+  // 1. Interactive Scene Rotation (orbiting camera across quadrants)
+  glv.setCameraAngles(30.0f, 135.0f);
+  glv.drawInversionVoxels();
+  glv.drawInversionSlices();
+  int cutCount2 = glv.inversionVertexCount();
+  int slicesCount2 = glv.inversionSlicesVertexCount();
+  EXPECT_GT(cutCount2, 0);
+  EXPECT_GT(slicesCount2, 0);
+
+  // 2. Interactive Moving Section Planes: EW / SN profile
+  doc->setProfileIndex(1);
+  QCoreApplication::processEvents();
+  glv.drawInversionVoxels();
+  glv.drawInversionSlices();
+  int cutCount3 = glv.inversionVertexCount();
+  EXPECT_GT(cutCount3, 0);
+
+  // 3. Interactive Moving Section Planes: horizontal slice elevation
+  doc->setActiveSliceElevation(350.0);
+  QCoreApplication::processEvents();
+  glv.drawInversionVoxels();
+  glv.drawInversionSlices();
+  int cutCount4 = glv.inversionVertexCount();
+  EXPECT_GT(cutCount4, 0);
+}
