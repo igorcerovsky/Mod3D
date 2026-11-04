@@ -7,7 +7,7 @@
 [![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C?logo=c%2B%2B)](https://en.cppreference.com/w/cpp/20)
 [![Qt 6](https://img.shields.io/badge/Qt-6.5+-41CD52?logo=qt)](https://www.qt.io/)
 [![CMake](https://img.shields.io/badge/CMake-3.20+-064F8C?logo=cmake)](https://cmake.org/)
-[![Tests](https://img.shields.io/badge/Tests-200%20Passing-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-234%20Passing-brightgreen.svg)]()
 [![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey.svg)]()
 
 **High-Performance Interactive 2.5D & 3D Forward Modeling and Inversion of Potential Fields**
@@ -48,11 +48,17 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
   - **Map View**: 2D potential field color raster heatmaps, station points, profile traverses, body footprints, and automatic CONREC surface relief/topography contours.
   - **Horizontal Slice View**: Planar depth slicing at constant elevation ($Z = \text{const}$) with synchronized 3D cut plane, single potential field bitmap raster underlay centered on survey stations, body boundary outlines (including collapsed outer edges), intersecting profile lines, click-and-drag cell painting, double-click new body creation, and **Synchronize Profile Views** mode to automatically synchronize profile views to clicked locations.
   - **3D Perspective Turntable View**: OpenGL 4.1 hardware-accelerated 3D rendering with LookAt camera, smooth turntable orbit & pan, faceted polyhedral subsurface bodies, active profile cut plane slice highlighting, 3D body raycast hit testing/selection, topographic relief surface & wireframe rendering with elevation colormapping, orientation compass sphere & coordinate tripod, and transparency controls.
+    - **Interactive 3D Inversion Volume Rendering**:
+      - **Volume Ray-Casting**: Default GPU/CPU volume ray-casting with ray-box intersection, front-to-back alpha compositing, and smooth density color grading.
+      - **Progressive Cell Opacity**: Cell opacity scales linearly with $|\text{voxel\_value}|$ up to user-defined slider maximum, keeping low-contrast background regions transparent while highlighting compact anomalies.
+      - **Multi-Mode Visualizations**: Seamlessly switch between **Ray-Casting**, **Thresholded Voxels** (solid anomalous cubes with directional lighting and edge outlines), and **Orthogonal Slices** ($X$, $Y$, and depth $Z$ planes intersecting the density volume).
+      - **Interactive 3D Section Planes & Octant Cut**: Real-time octant clipping and movable orthogonal cut planes fully synchronized with interactive turntable rotation and zoom.
+      - **Settings Controls**: Style dropdown, Inversion Opacity slider (0.05–1.0), threshold cutoff spinbox down to $0.000\text{ g/cm}^3$, and Progressive Opacity toggle.
   - **Default 4-Quadrant Workspace Layout**: Automatically tiles the workspace into 4 quadrants: Top-Left Profile N-S, Top-Right Profile E-W, Bottom-Left Horizontal Slice, and Bottom-Right split into 3D Turntable (left) and Map View (right), with proportional auto-resizing.
   - **Unified Settings Inspector**: 5-tab docked controls (**Display**, **Profiles**, **Modelling**, **Bodies**, **Physics/Inversion**):
     - **Modelling Tab (`🛠 Modelling`)**: Context-aware modeling controls that adapt dynamically to the active view (Profile, Horizontal Slice, Map, 3D), active body selection, customizable vertical step size, **"Global movement" mode** checkbox (switches between moving the active profile slice vs. moving the whole 3D body across all profiles stopping on obstacle hit), one-click action buttons for Entire Body / Upper Boundary / Lower Boundary (Until Hit & Step Up/Down), and an integrated **Modelling Shortcuts & Fast Help** quick-reference guide.
     - **Bodies & Physics Tabs**: Strict SI-unit physical properties ($\text{kg/m}^3$ and $\text{SI}$ susceptibility), color swatches, 3D transparency toggles, 3D linear density gradients ($\nabla\rho$), remanent magnetization, and automated inversion controls.
-- 🎯 **Automated Inversion Suite (Tiers 1–4)**:
+- 🎯 **Automated Inversion Suite (Tiers 1–5)**:
   - **Single-Pass Analytical Density Inversion (Tier 1)**: Evaluates globally optimal density contrast $\Delta\rho^*$ in closed form $\mathcal{O}(1)$ via linear least-squares, bypassing iterative numerical minimization.
   - **Fast Superposition Background Subtraction (Tier 1)**: Isolates single-vertex structural depth variations by caching the static background field $G_{\text{static}} = G_{\text{full}} - G_{\text{local}}(z_{\text{old}})$, updating only the 4 local prism cells touching the target vertex.
   - **Bounded Stratigraphic Solvers (Tier 1)**: Robust bounded Brent and bounded Golden Section algorithms enforcing strict stratigraphic interval non-crossing bounds $[z_D + \epsilon, z_U - \epsilon]$.
@@ -63,6 +69,11 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
     - **Custom Diameter / Radius**: User-configurable circular search diameter in horizontal meters.
     - **Regularized Levenberg-Marquardt Solver**: Solves $(J^T J + \alpha L + \lambda \mathbf{D})\Delta \mathbf{z} = -(J^T \mathbf{r} + \alpha L \Delta \mathbf{z}_0)$ with a scale-invariant surface graph Laplacian curvature penalty $\alpha L$, ensuring smooth geological contacts and preventing unphysical oscillations.
     - **Context Menu & Dedicated Dialog**: Direct right-click `"Fit Neighborhood"` action in Profile View, and dedicated `FitNeighborhoodDialog` for tuning footprint parameters, regularization, and live execution.
+  - **3D Focusing Inversion & AI Deep-Learning Prior (Tier 5)**:
+    - **Physics-Constrained 3D Swin Transformer**: Instant inference ($\le 100\text{ ms}$) generating 3D density contrast volumes directly from 2D surface gravity observations via embedded ONNX Runtime.
+    - **3-Level Coarse-to-Fine Multiscale Hierarchy**: Progressive grid refinement with adaptive active-set pruning, reducing computational work while sharpening deep geological boundaries.
+    - **Zhdanov Focusing Regularizers**: Minimum Support ($\phi_{MS}$) and Minimum Gradient Support ($\phi_{MGS}$) recovering sharp, compact density anomalies with physical boundaries.
+    - **Topography-Aware Operators & Trend Decoupling**: Direct support for irregular DEM topography and simultaneous background trend estimation (Constant Shift, Planar Ramp, Border Planar).
 - 🌐 **Modern C++20 & Qt 6 Design**:
   - Decoupled `mod3d_core` static library (zero GUI dependencies) and hardware-accelerated Qt 6 GUI.
   - Dynamic responsive auto-resizing MDI layout that scales client subwindows smoothly.
@@ -123,10 +134,14 @@ Mod3D/
 │   └── Inversion.h        # Analytical least-squares, bounded 1D solvers & neighborhood inversion
 ├── src/                   # Implementation of mod3d_core
 ├── pfld/                  # Header-only analytical physics kernel
+├── .inv/                  # 3D multiscale focusing inversion & deep learning prior
+│   ├── include/inv/       # InversionEngine, Toeplitz operator, FocusingSolver, NeuralPrior
+│   ├── python/models/     # Pre-trained 3D Swin Transformer ONNX models
+│   └── tests/             # Inversion unit and benchmark tests
 ├── gui/                   # Modern Qt 6 desktop application (mod3d_gui)
 │   ├── include/mod3d_gui/ # Views: ProfileView, MapView, HorizontalSliceView, GL3DView, SettingsPane
-│   └── src/               # Rendering, interaction, and undo/redo controllers
-├── tests/                 # Comprehensive Google Test suite (200 tests)
+│   └── src/               # Rendering, interaction, volume ray-casting, and dialog controllers
+├── tests/                 # Comprehensive Google Test suite (234 tests)
 └── examples/              # Sample models (.mod3d) & legacy models (.m3d)
 ```
 
@@ -236,6 +251,8 @@ ctest --test-dir build -C Release --output-on-failure
 2. **Pohánka, V. (1998)**: *Calculation of the gravity field of a body with arbitrary shape and inhomogeneous density.* Contributions to Geophysics and Geodesy, Vol. 28, No. 3, pp. 169–188.
 3. **Guptasarma, D. & Singh, B. (1999)**: *New expressions for very fast and accurate computation of magnetic and gravity anomalies of a polygonal prism.* Geophysics, Vol. 64, No. 1, pp. 70–82.
 4. **Götze, H.-J. & Petersen, S. (1992)**: *Fast and interactive three-dimensional gravity and magnetic modeling using polyhedral bodies.* International Journal of Earth Sciences, Vol. 81, No. 3, pp. 601–612.
+5. **Zhdanov, M. S. (2002)**: *Geophysical Inverse Theory and Regularization Problems.* Elsevier, Methods in Geochemistry and Geophysics, Vol. 36.
+6. **Yu, P., Zhou, L., Zhou, S., Jiao, J., Huang, G., & Lu, P. (2025)**: *Physics-Constrained Three-Dimensional Swin Transformer for Gravity Data Inversion.* Remote Sensing, Vol. 17, No. 2, p. 245.
 
 ---
 

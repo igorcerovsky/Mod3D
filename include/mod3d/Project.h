@@ -16,7 +16,7 @@ struct ProjectMetadata {
     std::string description{""};
     std::string created_at{""};
     std::string modified_at{""};
-    std::string version{"2.5.4"};
+    std::string version{"2.5.5"};
 };
 
 struct InversionSettings3D {
