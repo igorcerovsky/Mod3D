@@ -814,8 +814,8 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     }
     m_stopRequested.store(false, std::memory_order_relaxed);
 
-    // Launch background worker using std::thread
-    m_workerThread = std::thread([this, setup = std::move(setup), d_fine = std::move(d_fine),
+    // Launch background worker using inv::jthread
+    m_workerThread = inv::jthread([this, setup = std::move(setup), d_fine = std::move(d_fine),
                                   obs_z_cols = std::move(obs_z_cols),
                                   prior_values = std::move(prior_values), isRefining, useNeural]() mutable {
         if (!isRefining && useNeural) {

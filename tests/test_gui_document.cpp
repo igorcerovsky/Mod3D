@@ -5063,7 +5063,7 @@ TEST_F(GuiDocumentTest, Inversion3DWorkerCancellation) {
   bool invertResult = true;
   std::string resultMsg;
 
-  std::thread worker([&]() {
+  inv::jthread worker([&]() {
     threadStarted = true;
     inv::InversionEngine engine(cfg);
     auto &ecfg = const_cast<inv::InversionConfig &>(engine.config());

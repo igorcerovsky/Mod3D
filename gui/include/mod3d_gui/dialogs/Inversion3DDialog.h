@@ -129,8 +129,8 @@ private:
     QPushButton *m_btnExportJson{nullptr};
     QPushButton *m_btnClose{nullptr};
 
-    // Background worker thread and cancellation flag
-    std::thread m_workerThread;
+    // Background worker thread using inv::jthread
+    inv::jthread m_workerThread;
     std::atomic<bool> m_stopRequested{false};
 
     // Last completed inversion result
