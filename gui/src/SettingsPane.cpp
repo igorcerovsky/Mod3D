@@ -730,6 +730,7 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   m_combo3DInversionRenderMode = new QComboBox(boxInversion3D);
   m_combo3DInversionRenderMode->addItem(tr("Ray-Casting (Volume)"), static_cast<int>(GL3DView::InversionRenderMode::RayCasting));
   m_combo3DInversionRenderMode->addItem(tr("Block Model (Voxels)"), static_cast<int>(GL3DView::InversionRenderMode::BlockModel));
+  m_combo3DInversionRenderMode->setCurrentIndex(0);
   modeLayout->addWidget(m_combo3DInversionRenderMode);
   inv3DLayout->addLayout(modeLayout);
 

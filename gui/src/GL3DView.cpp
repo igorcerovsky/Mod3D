@@ -4782,6 +4782,7 @@ void GL3DView::updateInversionTexture() {
   if (isValid() && context()) {
     makeCurrent();
     m_inversionTex = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target3D);
+    m_inversionTex->create();
     m_inversionTex->setFormat(QOpenGLTexture::R32F);
     m_inversionTex->setSize(static_cast<int>(nz), static_cast<int>(ny), static_cast<int>(nx));
     m_inversionTex->setMipLevels(1);
