@@ -27,6 +27,19 @@ Inversion3DDialog::Inversion3DDialog(ModelDocument *doc, QWidget *parent)
     setupUi();
     updateDomainFromDocument();
     loadSettingsFromDocument();
+
+    if (m_doc) {
+        connect(m_doc, &ModelDocument::backgroundTrendModeChanged, this, [this](int mode) {
+            if (m_comboTrendMode) {
+                for (int i = 0; i < m_comboTrendMode->count(); ++i) {
+                    if (m_comboTrendMode->itemData(i).toInt() == mode) {
+                        m_comboTrendMode->setCurrentIndex(i);
+                        break;
+                    }
+                }
+            }
+        });
+    }
 }
 
 Inversion3DDialog::~Inversion3DDialog() {
@@ -298,17 +311,9 @@ void Inversion3DDialog::setupFocusingTab(QWidget *parent) {
     m_comboTrendMode->addItem(tr("Planar Regional Trend (c0 + gx·x + gy·y Joint Projection)"), 2);
     m_comboTrendMode->addItem(tr("Border-Fitted Regional Plane + Constant Shift c0"), 3);
     m_comboTrendMode->setCurrentIndex(1);
-    m_comboTrendMode->setToolTip(tr("Eliminates constant DC shift or linear regional trend between computed pfld field and measured field"));
+    m_comboTrendMode->setEnabled(false);
+    m_comboTrendMode->setToolTip(tr("Current trend removal method configured in Mod3D Settings Pane -> Physics tab (read-only here to preserve synchronization)."));
     formPhys->addRow(tr("Background / Trend Removal:"), m_comboTrendMode);
-
-    connect(m_comboTrendMode, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int idx) {
-        if (m_doc && m_comboTrendMode) {
-            const int mode = m_comboTrendMode->itemData(idx).toInt();
-            if (m_doc->backgroundTrendMode() != mode) {
-                m_doc->setBackgroundTrendMode(mode);
-            }
-        }
-    });
 
     m_spinNoiseRel = new QDoubleSpinBox(parent);
     m_spinNoiseRel->setRange(0.01, 50.0);
@@ -641,7 +646,6 @@ void Inversion3DDialog::saveSettingsToDocument() {
     s.prior_as_reference = m_chkPriorAsRef->isChecked();
     s.refine_previous = m_chkRefinePrevious->isChecked();
     m_doc->setInversionSettings(s);
-    m_doc->setBackgroundTrendMode(s.background_trend_mode);
 }
 
 void Inversion3DDialog::setRunningState(bool running) {

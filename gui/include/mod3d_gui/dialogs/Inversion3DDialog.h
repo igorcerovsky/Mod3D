@@ -42,6 +42,7 @@ public:
     ~Inversion3DDialog() override;
 
     void waitForCompletion();
+    [[nodiscard]] QComboBox *trendModeComboBox() const noexcept { return m_comboTrendMode; }
 
 protected:
     void closeEvent(QCloseEvent *event) override;

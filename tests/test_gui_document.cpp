@@ -5188,6 +5188,29 @@ TEST_F(GuiDocumentTest, SettingsPaneTrendModeComboboxSynchronization) {
   EXPECT_FALSE(doc->removeObservedMean());
 }
 
+TEST_F(GuiDocumentTest, Inversion3DDialogTrendModeReadOnlyAndSynchronizedWithPhysicsTab) {
+  ModelDocument doc;
+  doc.newProject(11, 11, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
+  doc.setBackgroundTrendMode(2); // Set Planar Regional Trend in Mod3D
+
+  Inversion3DDialog dlg(&doc);
+  auto *combo = dlg.trendModeComboBox();
+  ASSERT_NE(combo, nullptr);
+
+  // Combobox must be disabled for editing
+  EXPECT_FALSE(combo->isEnabled());
+
+  // Combobox must display the current trend mode from the document
+  EXPECT_EQ(combo->currentData().toInt(), 2);
+
+  // Updating the document's trend mode dynamically updates the dialog's display
+  doc.setBackgroundTrendMode(3);
+  EXPECT_EQ(combo->currentData().toInt(), 3);
+
+  doc.setBackgroundTrendMode(0);
+  EXPECT_EQ(combo->currentData().toInt(), 0);
+}
+
 TEST_F(GuiDocumentTest, ModelDocumentVoxelGridForwardCalculationOnOpen) {
   QString tempPath = QDir::temp().filePath("test_voxel_grid_forward_open.mod3d");
   QFile::remove(tempPath);
