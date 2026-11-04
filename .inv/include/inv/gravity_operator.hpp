@@ -435,10 +435,10 @@ public:
     [[nodiscard]] std::size_t cols() const noexcept override { return g_.cells(); }
 
     void set_active(const std::vector<char>& active) override {
-        std::fill(layer_active_.begin(), layer_active_.end(), 0);
+        std::fill(layer_active_.begin(), layer_active_.end(), static_cast<char>(0));
         for (std::size_t ic = 0; ic < g_.columns(); ++ic) {
             for (std::size_t iz = 0; iz < g_.nz; ++iz) {
-                if (active[ic * g_.nz + iz]) layer_active_[iz] = 1;
+                if (active[ic * g_.nz + iz]) layer_active_[iz] = static_cast<char>(1);
             }
         }
     }

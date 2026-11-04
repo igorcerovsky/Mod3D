@@ -2262,7 +2262,7 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
             (orient == ProfileOrientation::EastWest) ? (profIdx + 1) : colOrRow;
         int c =
             (orient == ProfileOrientation::EastWest) ? colOrRow : (profIdx + 1);
-        int count = m_doc->model().count(r, c);
+        int count = static_cast<int>(m_doc->model().count(r, c));
         for (int vi = 0; vi < count; ++vi) {
           auto *cp = m_doc->model().at(r, c, vi);
           if (cp && cp->body_id() == bId) {
@@ -2290,7 +2290,7 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
       int r = (orient == ProfileOrientation::EastWest) ? (profIdx + 1) : mid;
       int c = (orient == ProfileOrientation::EastWest) ? mid : (profIdx + 1);
 
-      int count = m_doc->model().count(r, c);
+      int count = static_cast<int>(m_doc->model().count(r, c));
       int targetVi = -1;
       for (int vi = 1; vi < count - 1; ++vi) {
         auto *cp = m_doc->model().at(r, c, vi);
@@ -2496,7 +2496,6 @@ void SettingsPane::updateViewContext() {
     m_chkProfShowIntersects->setChecked(pv->showProfileIntersections());
     m_chkProfGhostPrev->setChecked(pv->showPreviousProfile());
     m_chkProfGhostNext->setChecked(pv->showNextProfile());
-    bool hasInv = m_doc && m_doc->hasInversionResult();
     m_chkProfShowInversionSlice->setEnabled(hasInv);
     m_chkProfShowInversionSlice->setChecked(pv->showInversionDensitySlice());
 

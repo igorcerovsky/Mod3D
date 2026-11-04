@@ -3,7 +3,7 @@
 #include <vector>
 #include <iomanip>
 
-int main(int argc, char* argv[]) {
+int main(int /*argc*/, char* /*argv*/[]) {
     std::cout << "========================================================\n";
     std::cout << "  .inv: 3D Potential Field Neural Inversion Sub-Project \n";
     std::cout << "  Mod3D Independent Core Physics & Inversion Engine    \n";

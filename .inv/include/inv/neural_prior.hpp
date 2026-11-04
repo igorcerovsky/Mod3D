@@ -68,6 +68,18 @@ public:
                         const std::string& custom_model_path = "")
     {
 #if !defined(MOD3D_HAS_ONNX) || !MOD3D_HAS_ONNX
+        (void)obs_cols;
+        (void)nx;
+        (void)ny;
+        (void)target_nz;
+        (void)x0;
+        (void)y0;
+        (void)z0;
+        (void)dx;
+        (void)dy;
+        (void)dz;
+        (void)out_grid;
+        (void)custom_model_path;
         err_msg = "ONNX Runtime support is not compiled into Mod3D.";
         return false;
 #else
