@@ -10,7 +10,9 @@
 
 #include <QOpenGLBuffer>
 #include <QOpenGLShaderProgram>
+#include <QOpenGLTexture>
 #include <QOpenGLVertexArrayObject>
+#include <memory>
 
 class QMdiArea;
 #include "mod3d_gui/ProfileView.h"
@@ -114,10 +116,20 @@ public:
   [[nodiscard]] bool quadrantCut() const noexcept { return octantCut(); }
   void setQuadrantCut(bool enable) { setOctantCut(enable); }
 
+  enum class InversionRenderMode {
+    RayCasting = 0,
+    BlockModel = 1
+  };
+
   [[nodiscard]] bool showInversionVoxels() const noexcept {
     return m_showInversionVoxels;
   }
   void setShowInversionVoxels(bool show);
+
+  [[nodiscard]] InversionRenderMode inversionRenderMode() const noexcept {
+    return m_inversionRenderMode;
+  }
+  void setInversionRenderMode(InversionRenderMode mode);
 
   [[nodiscard]] double inversionThreshold() const noexcept {
     return m_inversionThreshold;
@@ -142,9 +154,17 @@ public:
     return m_inversionSlicesVertexCount;
   }
 
+  [[nodiscard]] int inversionRayCastVertexCount() const noexcept {
+    return m_rayCastVertexCount;
+  }
+
   void updateInversionBuffers();
   void updateInversionSliceBuffers();
+  void updateInversionTexture();
+  void updateInversionRayCastBuffers();
   void drawInversionVoxels();
+  void drawInversionBlockModel();
+  void drawInversionRayCast();
   void drawInversionSlices();
 
   struct OctantCutState {
@@ -488,6 +508,7 @@ signals:
   void octantCutChanged(bool enabled);
   void quadrantCutChanged(bool enabled);
   void inversionVoxelsChanged(bool enabled);
+  void inversionRenderModeChanged(InversionRenderMode mode);
   void inversionThresholdChanged(double threshold);
   void inversionOpacityChanged(double opacity);
   void inversionSlicesChanged(bool enabled);
@@ -612,10 +633,21 @@ private:
 
   // 3D Inversion Voxels & Slices
   bool m_showInversionVoxels{true};
+  InversionRenderMode m_inversionRenderMode{InversionRenderMode::RayCasting};
   double m_inversionThreshold{0.02}; // g/cm³
   double m_inversionOpacity{0.80};
   bool m_showInversionSlices{false};
 
+  // Ray-Casting DVR members
+  std::unique_ptr<QOpenGLTexture> m_inversionTex{nullptr};
+  bool m_inversionTexDirty{true};
+  QOpenGLShaderProgram *m_rayCastShaderProg{nullptr};
+  QOpenGLVertexArrayObject m_rayCastVao;
+  QOpenGLBuffer m_rayCastVbo{QOpenGLBuffer::VertexBuffer};
+  int m_rayCastVertexCount{0};
+  bool m_rayCastVboDirty{true};
+
+  // Block Model members
   QOpenGLVertexArrayObject m_inversionVao;
   QOpenGLBuffer m_inversionVbo{QOpenGLBuffer::VertexBuffer};
   int m_inversionVertexCount{0};

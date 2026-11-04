@@ -90,6 +90,7 @@ public:
     QCheckBox *quadrantCutCheckBox3D() const { return octantCutCheckBox3D(); }
     QCheckBox *planarPlaneCheckBox3D() const { return m_chk3DPlanarSlice; }
     QCheckBox *inversionVoxelsCheckBox3D() const { return m_chk3DInversionVoxels; }
+    QComboBox *inversionRenderModeComboBox3D() const { return m_combo3DInversionRenderMode; }
     QDoubleSpinBox *inversionThresholdSpinBox3D() const { return m_spin3DInversionThreshold; }
     QSlider *inversionOpacitySlider3D() const { return m_slider3DInversionOpacity; }
     QCheckBox *inversionSlicesCheckBox3D() const { return m_chk3DInversionSlices; }
@@ -184,6 +185,7 @@ private:
     QCheckBox *m_chk3DPlanarSlice{nullptr};
     QCheckBox *m_chk3DOctantCut{nullptr};
     QCheckBox *m_chk3DInversionVoxels{nullptr};
+    QComboBox *m_combo3DInversionRenderMode{nullptr};
     QDoubleSpinBox *m_spin3DInversionThreshold{nullptr};
     QSlider *m_slider3DInversionOpacity{nullptr};
     QCheckBox *m_chk3DInversionSlices{nullptr};

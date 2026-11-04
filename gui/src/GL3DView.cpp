@@ -386,6 +386,8 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
 
   connect(m_doc, &ModelDocument::modelGeometryChanged, this, [this]() {
     m_meshDirty = true;
+    m_inversionTexDirty = true;
+    m_rayCastVboDirty = true;
     update();
   });
   connect(m_doc, &ModelDocument::profileChanged, this,
@@ -409,6 +411,8 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
   connect(m_doc, &ModelDocument::inversionResultChanged, this, [this]() {
     m_inversionVboDirty = true;
     m_inversionSlicesDirty = true;
+    m_inversionTexDirty = true;
+    m_rayCastVboDirty = true;
     update();
   });
   connect(m_doc, &ModelDocument::activeProfileCursorChanged, this,
@@ -420,6 +424,8 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
   connect(m_doc, &ModelDocument::documentReset, this, [this]() {
     m_meshDirty = true;
     m_targetInitialized = false;
+    m_inversionTexDirty = true;
+    m_rayCastVboDirty = true;
     resetCamera();
     update();
   });
@@ -427,6 +433,8 @@ GL3DView::GL3DView(ModelDocument *doc, QWidget *parent)
           [this](double, double) {
             m_meshDirty = true;
             m_targetInitialized = false;
+            m_inversionTexDirty = true;
+            m_rayCastVboDirty = true;
             resetCamera();
             update();
           });
@@ -464,16 +472,28 @@ GL3DView::~GL3DView() {
       m_inversionSlicesVao.destroy();
     if (m_inversionSlicesVbo.isCreated())
       m_inversionSlicesVbo.destroy();
+    if (m_rayCastVao.isCreated())
+      m_rayCastVao.destroy();
+    if (m_rayCastVbo.isCreated())
+      m_rayCastVbo.destroy();
+    if (m_inversionTex) {
+      m_inversionTex->destroy();
+      m_inversionTex.reset();
+    }
     delete m_shaderProg;
     m_shaderProg = nullptr;
     delete m_flatShaderProg;
     m_flatShaderProg = nullptr;
+    delete m_rayCastShaderProg;
+    m_rayCastShaderProg = nullptr;
     doneCurrent();
   } else {
     delete m_shaderProg;
     m_shaderProg = nullptr;
     delete m_flatShaderProg;
     m_flatShaderProg = nullptr;
+    delete m_rayCastShaderProg;
+    m_rayCastShaderProg = nullptr;
   }
 }
 
@@ -1160,7 +1180,152 @@ void GL3DView::initShaders() {
                         fbodyFlat, flatAttribs);
   }
 
-  m_shadersInitialized = okShaded && okFlat;
+  delete m_rayCastShaderProg;
+  m_rayCastShaderProg = new QOpenGLShaderProgram(this);
+
+  const char *vbodyRayCast =
+      "layout(location = 0) in vec3 a_position;\n"
+      "uniform mat4 u_mvpMatrix;\n"
+      "uniform float u_zMid;\n"
+      "uniform float u_zScale;\n"
+      "out vec3 v_renderedPos;\n"
+      "void main() {\n"
+      "    vec3 pos = a_position;\n"
+      "    pos.z = u_zMid + (pos.z - u_zMid) * u_zScale;\n"
+      "    v_renderedPos = pos;\n"
+      "    gl_Position = u_mvpMatrix * vec4(pos, 1.0);\n"
+      "}\n";
+
+  const char *fbodyRayCast =
+      "in vec3 v_renderedPos;\n"
+      "uniform sampler3D u_volumeTex;\n"
+      "uniform vec3 u_camPos;\n"
+      "uniform vec3 u_boxMin;\n"
+      "uniform vec3 u_boxMax;\n"
+      "uniform float u_zMid;\n"
+      "uniform float u_zScale;\n"
+      "uniform float u_zDomainTop;\n"
+      "uniform float u_zDomainBot;\n"
+      "uniform float u_x0;\n"
+      "uniform float u_x1;\n"
+      "uniform float u_y0;\n"
+      "uniform float u_y1;\n"
+      "uniform float u_threshold;\n"
+      "uniform float u_maxAbsRho;\n"
+      "uniform float u_opacity;\n"
+      "uniform float u_stepSize;\n"
+      "uniform float u_baseStepSize;\n"
+      "uniform bool u_cutActive;\n"
+      "uniform bool u_cutHasSN;\n"
+      "uniform float u_cutSnX;\n"
+      "uniform bool u_cutPosX;\n"
+      "uniform bool u_cutHasEW;\n"
+      "uniform float u_cutEwY;\n"
+      "uniform bool u_cutPosY;\n"
+      "uniform bool u_cutHasPlanar;\n"
+      "uniform float u_cutPlanarZ;\n"
+      "uniform bool u_cutPosZ;\n"
+      "uniform bool u_enableFog;\n"
+      "uniform float u_fogStart;\n"
+      "uniform float u_fogEnd;\n"
+      "uniform vec4 u_fogColor;\n"
+      "out vec4 fragColor;\n"
+      "\n"
+      "bool isCut(vec3 p) {\n"
+      "    if (!u_cutActive) return false;\n"
+      "    bool inX = true;\n"
+      "    if (u_cutHasSN) {\n"
+      "        inX = u_cutPosX ? (p.x > u_cutSnX + 0.001) : (p.x < u_cutSnX - 0.001);\n"
+      "    }\n"
+      "    bool inY = true;\n"
+      "    if (u_cutHasEW) {\n"
+      "        inY = u_cutPosY ? (p.y > u_cutEwY + 0.001) : (p.y < u_cutEwY - 0.001);\n"
+      "    }\n"
+      "    bool inZ = true;\n"
+      "    if (u_cutHasPlanar) {\n"
+      "        inZ = u_cutPosZ ? (p.z > u_cutPlanarZ + 0.001) : (p.z < u_cutPlanarZ - 0.001);\n"
+      "    }\n"
+      "    return inX && inY && inZ;\n"
+      "}\n"
+      "\n"
+      "void main() {\n"
+      "    vec3 rayOrig = u_camPos;\n"
+      "    vec3 rayDir = normalize(v_renderedPos - u_camPos);\n"
+      "    vec3 safeDir = vec3(\n"
+      "        abs(rayDir.x) < 1e-6 ? (rayDir.x >= 0.0 ? 1e-6 : -1e-6) : rayDir.x,\n"
+      "        abs(rayDir.y) < 1e-6 ? (rayDir.y >= 0.0 ? 1e-6 : -1e-6) : rayDir.y,\n"
+      "        abs(rayDir.z) < 1e-6 ? (rayDir.z >= 0.0 ? 1e-6 : -1e-6) : rayDir.z\n"
+      "    );\n"
+      "    vec3 invR = 1.0 / safeDir;\n"
+      "    vec3 t0 = (u_boxMin - rayOrig) * invR;\n"
+      "    vec3 t1 = (u_boxMax - rayOrig) * invR;\n"
+      "    vec3 tmin = min(t0, t1);\n"
+      "    vec3 tmax = max(t0, t1);\n"
+      "    float tNear = max(max(tmin.x, tmin.y), tmin.z);\n"
+      "    float tFar = min(min(tmax.x, tmax.y), tmax.z);\n"
+      "    if (tNear > tFar || tFar < 0.0) discard;\n"
+      "    tNear = max(tNear, 0.0);\n"
+      "    float rayLen = tFar - tNear;\n"
+      "    if (rayLen <= 0.0) discard;\n"
+      "    int numSteps = clamp(int(ceil(rayLen / u_stepSize)), 16, 256);\n"
+      "    float dt = rayLen / float(numSteps);\n"
+      "    vec4 accum = vec4(0.0);\n"
+      "    float t = tNear + 0.5 * dt;\n"
+      "    for (int i = 0; i < 256; ++i) {\n"
+      "        if (i >= numSteps || accum.a >= 0.98) break;\n"
+      "        vec3 pRend = rayOrig + t * rayDir;\n"
+      "        float worldZ = u_zMid + (pRend.z - u_zMid) / max(0.001, u_zScale);\n"
+      "        vec3 pWorld = vec3(pRend.x, pRend.y, worldZ);\n"
+      "        if (isCut(pWorld)) {\n"
+      "            t += dt;\n"
+      "            continue;\n"
+      "        }\n"
+      "        float u = (u_zDomainTop - worldZ) / max(0.001, u_zDomainTop - u_zDomainBot);\n"
+      "        float v = (pWorld.y - u_y0) / max(0.001, u_y1 - u_y0);\n"
+      "        float w = (pWorld.x - u_x0) / max(0.001, u_x1 - u_x0);\n"
+      "        if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0 && w >= 0.0 && w <= 1.0) {\n"
+      "            float rho = texture(u_volumeTex, vec3(u, v, w)).r;\n"
+      "            float absRho = abs(rho);\n"
+      "            if (absRho >= u_threshold) {\n"
+      "                float norm = clamp(rho / max(0.0001, u_maxAbsRho), -1.0, 1.0);\n"
+      "                vec3 col;\n"
+      "                if (norm < 0.0) {\n"
+      "                    float t_norm = -norm;\n"
+      "                    col = vec3(1.0 - 0.85 * t_norm, 1.0 - 0.60 * t_norm, 1.0 - 0.05 * t_norm);\n"
+      "                } else {\n"
+      "                    float t_norm = norm;\n"
+      "                    col = vec3(1.0 - 0.05 * t_norm, 1.0 - 0.75 * t_norm, 1.0 - 0.85 * t_norm);\n"
+      "                }\n"
+      "                float valFraction = clamp((absRho - u_threshold) / max(0.0001, u_maxAbsRho - u_threshold), 0.0, 1.0);\n"
+      "                float sampleAlpha = clamp(u_opacity * pow(valFraction, 0.5), 0.0, 1.0);\n"
+      "                float stepAlpha = 1.0 - pow(1.0 - min(sampleAlpha, 0.99), dt / max(0.001, u_baseStepSize));\n"
+      "                accum.rgb += (1.0 - accum.a) * col * stepAlpha;\n"
+      "                accum.a += (1.0 - accum.a) * stepAlpha;\n"
+      "            }\n"
+      "        }\n"
+      "        t += dt;\n"
+      "    }\n"
+      "    if (accum.a < 0.01) discard;\n"
+      "    if (u_enableFog) {\n"
+      "        float dist = length(v_renderedPos - u_camPos);\n"
+      "        float fogFactor = clamp((dist - u_fogStart) / max(0.001, u_fogEnd - u_fogStart), 0.0, 1.0);\n"
+      "        accum.rgb = mix(accum.rgb, u_fogColor.rgb * accum.a, fogFactor);\n"
+      "    }\n"
+      "    fragColor = accum;\n"
+      "}\n";
+
+  std::vector<std::pair<const char *, int>> rayCastAttribs = {{"a_position", 0}};
+
+  bool okRayCast = tryCompile(m_rayCastShaderProg, "#version 410 core",
+                              vbodyRayCast, fbodyRayCast, rayCastAttribs);
+  if (!okRayCast) {
+    delete m_rayCastShaderProg;
+    m_rayCastShaderProg = new QOpenGLShaderProgram(this);
+    okRayCast = tryCompile(m_rayCastShaderProg, "#version 330 core",
+                           vbodyRayCast, fbodyRayCast, rayCastAttribs);
+  }
+
+  m_shadersInitialized = okShaded && okFlat && okRayCast;
 }
 
 void GL3DView::initBuffers() {
@@ -1292,6 +1457,19 @@ void GL3DView::initBuffers() {
 
   m_inversionSlicesVao.release();
   m_inversionSlicesVbo.release();
+
+  // Ray-Casting VAO & VBO
+  m_rayCastVao.create();
+  m_rayCastVao.bind();
+  m_rayCastVbo.create();
+  m_rayCastVbo.bind();
+  m_rayCastVbo.setUsagePattern(QOpenGLBuffer::DynamicDraw);
+
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+
+  m_rayCastVao.release();
+  m_rayCastVbo.release();
 
   m_buffersInitialized = true;
 }
@@ -4280,7 +4458,18 @@ void GL3DView::setShowInversionVoxels(bool show) {
   if (m_showInversionVoxels != show) {
     m_showInversionVoxels = show;
     m_inversionVboDirty = true;
+    m_rayCastVboDirty = true;
     emit inversionVoxelsChanged(m_showInversionVoxels);
+    update();
+  }
+}
+
+void GL3DView::setInversionRenderMode(InversionRenderMode mode) {
+  if (m_inversionRenderMode != mode) {
+    m_inversionRenderMode = mode;
+    m_inversionVboDirty = true;
+    m_rayCastVboDirty = true;
+    emit inversionRenderModeChanged(m_inversionRenderMode);
     update();
   }
 }
@@ -4486,7 +4675,125 @@ void GL3DView::updateInversionBuffers() {
   m_inversionVboDirty = false;
 }
 
-void GL3DView::drawInversionVoxels() {
+void GL3DView::updateInversionRayCastBuffers() {
+  if (!m_doc || !m_doc->hasInversionResult()) {
+    m_rayCastVertexCount = 0;
+    m_rayCastVboDirty = false;
+    return;
+  }
+  const auto &res = *m_doc->inversionResult();
+  const auto &grid = res.density_grid;
+  if (grid.total_cells() == 0) {
+    m_rayCastVertexCount = 0;
+    m_rayCastVboDirty = false;
+    return;
+  }
+
+  const double x0 = grid.x0();
+  const double x1 = x0 + static_cast<double>(grid.nx()) * grid.dx();
+  const double y0 = grid.y0();
+  const double y1 = y0 + static_cast<double>(grid.ny()) * grid.dy();
+  const double zDomainTop = m_doc->model().z_max().value();
+  const double zDomainBot = zDomainTop - static_cast<double>(grid.nz()) * grid.dz();
+
+  float fx0 = static_cast<float>(x0);
+  float fx1 = static_cast<float>(x1);
+  float fy0 = static_cast<float>(y0);
+  float fy1 = static_cast<float>(y1);
+  float fz0 = static_cast<float>(zDomainBot);
+  float fz1 = static_cast<float>(zDomainTop);
+
+  // 12 triangles (36 vertices) for the bounding box
+  std::vector<float> boxVerts = {
+      // Bottom (-Z)
+      fx0, fy0, fz0,  fx1, fy1, fz0,  fx1, fy0, fz0,
+      fx0, fy0, fz0,  fx0, fy1, fz0,  fx1, fy1, fz0,
+      // Top (+Z)
+      fx0, fy0, fz1,  fx1, fy0, fz1,  fx1, fy1, fz1,
+      fx0, fy0, fz1,  fx1, fy1, fz1,  fx0, fy1, fz1,
+      // Front (-Y)
+      fx0, fy0, fz0,  fx1, fy0, fz0,  fx1, fy0, fz1,
+      fx0, fy0, fz0,  fx1, fy0, fz1,  fx0, fy0, fz1,
+      // Back (+Y)
+      fx1, fy1, fz0,  fx0, fy1, fz0,  fx0, fy1, fz1,
+      fx1, fy1, fz0,  fx0, fy1, fz1,  fx1, fy1, fz1,
+      // Left (-X)
+      fx0, fy1, fz0,  fx0, fy0, fz0,  fx0, fy0, fz1,
+      fx0, fy1, fz0,  fx0, fy0, fz1,  fx0, fy1, fz1,
+      // Right (+X)
+      fx1, fy0, fz0,  fx1, fy1, fz0,  fx1, fy1, fz1,
+      fx1, fy0, fz0,  fx1, fy1, fz1,  fx1, fy0, fz1,
+  };
+
+  m_rayCastVertexCount = static_cast<int>(boxVerts.size() / 3);
+  if (m_rayCastVertexCount > 0 && m_buffersInitialized) {
+    m_rayCastVbo.bind();
+    m_rayCastVbo.allocate(boxVerts.data(), static_cast<int>(boxVerts.size() * sizeof(float)));
+    m_rayCastVbo.release();
+  }
+  m_rayCastVboDirty = false;
+}
+
+void GL3DView::updateInversionTexture() {
+  if (!m_doc || !m_doc->hasInversionResult()) {
+    m_inversionTex.reset();
+    m_inversionTexDirty = false;
+    return;
+  }
+  const auto &res = *m_doc->inversionResult();
+  const auto &grid = res.density_grid;
+  if (grid.total_cells() == 0) {
+    m_inversionTex.reset();
+    m_inversionTexDirty = false;
+    return;
+  }
+
+  const size_t nx = grid.nx();
+  const size_t ny = grid.ny();
+  const size_t nz = grid.nz();
+  const double dz = grid.dz();
+  const double zDomainTop = m_doc->model().z_max().value();
+
+  auto getTopoZ = [&](size_t ix, size_t iy) -> double {
+    int r = std::clamp(static_cast<int>(iy) + 1, 1, std::max(1, static_cast<int>(m_doc->model().rows() - 2)));
+    int c = std::clamp(static_cast<int>(ix) + 1, 1, std::max(1, static_cast<int>(m_doc->model().cols() - 2)));
+    if (m_doc->model().count(r, c) > 0) {
+      return m_doc->model().z(r, c, 0);
+    }
+    return zDomainTop;
+  };
+
+  std::vector<float> texData(nx * ny * nz);
+  for (size_t ix = 0; ix < nx; ++ix) {
+    for (size_t iy = 0; iy < ny; ++iy) {
+      double topoZ = getTopoZ(ix, iy);
+      for (size_t iz = 0; iz < nz; ++iz) {
+        double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
+        size_t idx = (ix * ny + iy) * nz + iz;
+        if (zLayerBot >= topoZ) {
+          texData[idx] = 0.0f; // Air cell above topography
+        } else {
+          texData[idx] = static_cast<float>(grid(ix, iy, iz));
+        }
+      }
+    }
+  }
+
+  if (isValid() && context()) {
+    makeCurrent();
+    m_inversionTex = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target3D);
+    m_inversionTex->setFormat(QOpenGLTexture::R32F);
+    m_inversionTex->setSize(static_cast<int>(nz), static_cast<int>(ny), static_cast<int>(nx));
+    m_inversionTex->setMipLevels(1);
+    m_inversionTex->allocateStorage(QOpenGLTexture::Red, QOpenGLTexture::Float32);
+    m_inversionTex->setMinMagFilters(QOpenGLTexture::Linear, QOpenGLTexture::Linear);
+    m_inversionTex->setWrapMode(QOpenGLTexture::ClampToEdge);
+    m_inversionTex->setData(QOpenGLTexture::Red, QOpenGLTexture::Float32, texData.data());
+  }
+  m_inversionTexDirty = false;
+}
+
+void GL3DView::drawInversionBlockModel() {
   if (!m_showInversionVoxels || !m_doc || !m_doc->hasInversionResult())
     return;
 
@@ -4539,6 +4846,146 @@ void GL3DView::drawInversionVoxels() {
 
   glDepthMask(GL_TRUE);
   glDisable(GL_BLEND);
+}
+
+void GL3DView::drawInversionRayCast() {
+  if (!m_showInversionVoxels || !m_doc || !m_doc->hasInversionResult())
+    return;
+
+  initShaders();
+  initBuffers();
+
+  if (m_inversionTexDirty || !m_inversionTex) {
+    updateInversionTexture();
+  }
+  if (m_rayCastVboDirty || m_rayCastVertexCount == 0) {
+    updateInversionRayCastBuffers();
+  }
+
+  if (!m_inversionTex || !m_inversionTex->isCreated() || m_rayCastVertexCount == 0 ||
+      !m_buffersInitialized || !m_rayCastShaderProg)
+    return;
+
+  const auto &grid = m_doc->inversionResult()->density_grid;
+  double maxAbsRho = 0.0;
+  for (double val : grid.data()) {
+    maxAbsRho = std::max(maxAbsRho, std::abs(val));
+  }
+  if (maxAbsRho <= 0.0)
+    maxAbsRho = 0.5;
+
+  const double x0 = grid.x0();
+  const double x1 = x0 + static_cast<double>(grid.nx()) * grid.dx();
+  const double y0 = grid.y0();
+  const double y1 = y0 + static_cast<double>(grid.ny()) * grid.dy();
+  const double zDomainTop = m_doc->model().z_max().value();
+  const double zDomainBot = zDomainTop - static_cast<double>(grid.nz()) * grid.dz();
+
+  float zMid = static_cast<float>(
+      (m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5);
+
+  float zMinRend = zMid + (static_cast<float>(zDomainBot) - zMid) * m_zScale;
+  float zMaxRend = zMid + (static_cast<float>(zDomainTop) - zMid) * m_zScale;
+  if (zMinRend > zMaxRend) {
+    std::swap(zMinRend, zMaxRend);
+  }
+
+  float minX = std::min(static_cast<float>(x0), static_cast<float>(x1));
+  float maxX = std::max(static_cast<float>(x0), static_cast<float>(x1));
+  float minY = std::min(static_cast<float>(y0), static_cast<float>(y1));
+  float maxY = std::max(static_cast<float>(y0), static_cast<float>(y1));
+
+  QVector3D boxMin(minX, minY, zMinRend);
+  QVector3D boxMax(maxX, maxY, zMaxRend);
+
+  QVector3D camPos = m_mvMatrix.inverted().column(3).toVector3D();
+
+  bool camInside = (camPos.x() >= boxMin.x() && camPos.x() <= boxMax.x() &&
+                    camPos.y() >= boxMin.y() && camPos.y() <= boxMax.y() &&
+                    camPos.z() >= boxMin.z() && camPos.z() <= boxMax.z());
+
+  OctantCutState cut = computeOctantCutState();
+
+  float baseStepSize = static_cast<float>(
+      std::min({grid.dx(), grid.dy(), grid.dz() * static_cast<double>(m_zScale)}) * 0.75);
+  if (baseStepSize <= 0.001f)
+    baseStepSize = 1.0f;
+
+  glEnable(GL_BLEND);
+  glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+  glDepthMask(GL_FALSE);
+
+  glEnable(GL_CULL_FACE);
+  if (camInside) {
+    glDisable(GL_DEPTH_TEST);
+    glCullFace(GL_FRONT);
+  } else {
+    glEnable(GL_DEPTH_TEST);
+    glCullFace(GL_BACK);
+  }
+
+  m_rayCastShaderProg->bind();
+  m_rayCastShaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+  m_rayCastShaderProg->setUniformValue("u_camPos", camPos);
+  m_rayCastShaderProg->setUniformValue("u_boxMin", boxMin);
+  m_rayCastShaderProg->setUniformValue("u_boxMax", boxMax);
+  m_rayCastShaderProg->setUniformValue("u_zMid", zMid);
+  m_rayCastShaderProg->setUniformValue("u_zScale", m_zScale);
+  m_rayCastShaderProg->setUniformValue("u_zDomainTop", static_cast<float>(zDomainTop));
+  m_rayCastShaderProg->setUniformValue("u_zDomainBot", static_cast<float>(zDomainBot));
+  m_rayCastShaderProg->setUniformValue("u_x0", static_cast<float>(x0));
+  m_rayCastShaderProg->setUniformValue("u_x1", static_cast<float>(x1));
+  m_rayCastShaderProg->setUniformValue("u_y0", static_cast<float>(y0));
+  m_rayCastShaderProg->setUniformValue("u_y1", static_cast<float>(y1));
+  m_rayCastShaderProg->setUniformValue("u_threshold", static_cast<float>(m_inversionThreshold));
+  m_rayCastShaderProg->setUniformValue("u_maxAbsRho", static_cast<float>(maxAbsRho));
+  m_rayCastShaderProg->setUniformValue("u_opacity", static_cast<float>(m_inversionOpacity));
+  m_rayCastShaderProg->setUniformValue("u_stepSize", baseStepSize);
+  m_rayCastShaderProg->setUniformValue("u_baseStepSize", baseStepSize);
+
+  m_rayCastShaderProg->setUniformValue("u_cutActive", cut.active);
+  m_rayCastShaderProg->setUniformValue("u_cutHasSN", cut.hasSN);
+  m_rayCastShaderProg->setUniformValue("u_cutSnX", static_cast<float>(cut.snX));
+  m_rayCastShaderProg->setUniformValue("u_cutPosX", cut.cutPosX);
+  m_rayCastShaderProg->setUniformValue("u_cutHasEW", cut.hasEW);
+  m_rayCastShaderProg->setUniformValue("u_cutEwY", static_cast<float>(cut.ewY));
+  m_rayCastShaderProg->setUniformValue("u_cutPosY", cut.cutPosY);
+  m_rayCastShaderProg->setUniformValue("u_cutHasPlanar", cut.hasPlanar);
+  m_rayCastShaderProg->setUniformValue("u_cutPlanarZ", static_cast<float>(cut.planarZ));
+  m_rayCastShaderProg->setUniformValue("u_cutPosZ", cut.cutPosZ);
+
+  m_rayCastShaderProg->setUniformValue("u_enableFog", m_showDepthFog);
+  float effDist = m_distance / std::max(0.01f, m_zoom);
+  m_rayCastShaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
+  m_rayCastShaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
+  m_rayCastShaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));
+
+  m_inversionTex->bind(0);
+  m_rayCastShaderProg->setUniformValue("u_volumeTex", 0);
+
+  m_rayCastVao.bind();
+  glDrawArrays(GL_TRIANGLES, 0, m_rayCastVertexCount);
+  m_rayCastVao.release();
+
+  m_inversionTex->release(0);
+  m_rayCastShaderProg->release();
+
+  glCullFace(GL_BACK);
+  glDisable(GL_CULL_FACE);
+  glDepthMask(GL_TRUE);
+  glDisable(GL_BLEND);
+  glEnable(GL_DEPTH_TEST);
+}
+
+void GL3DView::drawInversionVoxels() {
+  if (!m_showInversionVoxels || !m_doc || !m_doc->hasInversionResult())
+    return;
+
+  if (m_inversionRenderMode == InversionRenderMode::RayCasting) {
+    drawInversionRayCast();
+  } else {
+    drawInversionBlockModel();
+  }
 }
 
 void GL3DView::updateInversionSliceBuffers() {

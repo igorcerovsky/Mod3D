@@ -725,6 +725,14 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   m_chk3DInversionVoxels->setChecked(true);
   inv3DLayout->addWidget(m_chk3DInversionVoxels);
 
+  auto *modeLayout = new QHBoxLayout();
+  modeLayout->addWidget(new QLabel(tr("Style:"), boxInversion3D));
+  m_combo3DInversionRenderMode = new QComboBox(boxInversion3D);
+  m_combo3DInversionRenderMode->addItem(tr("Ray-Casting (Volume)"), static_cast<int>(GL3DView::InversionRenderMode::RayCasting));
+  m_combo3DInversionRenderMode->addItem(tr("Block Model (Voxels)"), static_cast<int>(GL3DView::InversionRenderMode::BlockModel));
+  modeLayout->addWidget(m_combo3DInversionRenderMode);
+  inv3DLayout->addLayout(modeLayout);
+
   auto *threshLayout = new QHBoxLayout();
   threshLayout->addWidget(new QLabel(tr("Threshold:"), boxInversion3D));
   m_spin3DInversionThreshold = new QDoubleSpinBox(boxInversion3D);
@@ -828,6 +836,17 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
     if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data()))
       glv->setShowInversionVoxels(c);
   });
+  connect(m_combo3DInversionRenderMode,
+          QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+          [this](int idx) {
+            if (m_blockSync)
+              return;
+            if (auto *glv = qobject_cast<GL3DView *>(m_activeView.data())) {
+              auto mode = static_cast<GL3DView::InversionRenderMode>(
+                  m_combo3DInversionRenderMode->itemData(idx).toInt());
+              glv->setInversionRenderMode(mode);
+            }
+          });
   connect(m_spin3DInversionThreshold,
           QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
           [this](double val) {
@@ -2459,6 +2478,16 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
                &SettingsPane::updateViewContext);
     disconnect(oldGlv, &GL3DView::quadrantCutChanged, this,
                &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::inversionVoxelsChanged, this,
+               &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::inversionRenderModeChanged, this,
+               &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::inversionThresholdChanged, this,
+               &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::inversionOpacityChanged, this,
+               &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::inversionSlicesChanged, this,
+               &SettingsPane::updateViewContext);
   }
   m_activeView = (sub && sub->widget()) ? sub->widget() : nullptr;
   if (auto *newPv = qobject_cast<ProfileView *>(m_activeView.data())) {
@@ -2475,6 +2504,16 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
   }
   if (auto *newGlv = qobject_cast<GL3DView *>(m_activeView.data())) {
     connect(newGlv, &GL3DView::octantCutChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::inversionVoxelsChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::inversionRenderModeChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::inversionThresholdChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::inversionOpacityChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::inversionSlicesChanged, this,
             &SettingsPane::updateViewContext, Qt::UniqueConnection);
   }
   updateViewContext();
@@ -2699,6 +2738,12 @@ void SettingsPane::updateViewContext() {
 
     m_chk3DInversionVoxels->setEnabled(hasInv);
     m_chk3DInversionVoxels->setChecked(glv->showInversionVoxels());
+    m_combo3DInversionRenderMode->setEnabled(hasInv && glv->showInversionVoxels());
+    int renderModeIdx = m_combo3DInversionRenderMode->findData(
+        static_cast<int>(glv->inversionRenderMode()));
+    if (renderModeIdx >= 0) {
+      m_combo3DInversionRenderMode->setCurrentIndex(renderModeIdx);
+    }
     m_spin3DInversionThreshold->setEnabled(hasInv && glv->showInversionVoxels());
     m_spin3DInversionThreshold->setValue(glv->inversionThreshold());
     m_slider3DInversionOpacity->setEnabled(hasInv && glv->showInversionVoxels());
