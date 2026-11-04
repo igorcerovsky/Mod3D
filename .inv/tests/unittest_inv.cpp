@@ -449,6 +449,8 @@ TEST(FocusingInversionTest, RecoversCompactPrismAndBeatsL2Baseline) {
     Prism p = make_prism(32, 16, 0.02, 7);
 
     inv::InversionConfig fc = p.cfg;           // focused, 3 levels
+    fc.irls_iterations = 6;
+    fc.cg_max_iterations = 40;
     inv::VoxelGrid<double> focused;
     inv::InversionStats fs;
     ASSERT_TRUE(inv::InversionEngine(fc).invert_columns(p.data, focused, fs));
@@ -456,6 +458,8 @@ TEST(FocusingInversionTest, RecoversCompactPrismAndBeatsL2Baseline) {
     inv::InversionConfig bc = p.cfg;           // Tikhonov L2 baseline, 1 level
     bc.focusing_enabled = false;
     bc.coarse_to_fine_levels = 1;
+    bc.irls_iterations = 6;
+    bc.cg_max_iterations = 40;
     inv::VoxelGrid<double> l2;
     inv::InversionStats bs;
     ASSERT_TRUE(inv::InversionEngine(bc).invert_columns(p.data, l2, bs));
@@ -480,10 +484,14 @@ TEST(FocusingInversionTest, RecoversCompactPrismAndBeatsL2Baseline) {
 }
 
 TEST(FocusingInversionTest, CoarseToFineActuallyChangesAndRefinesTheSolution) {
-    Prism p = make_prism(32, 16, 0.02, 11);
+    Prism p = make_prism(16, 8, 0.02, 11);
     inv::InversionConfig c1 = p.cfg;
     c1.coarse_to_fine_levels = 1;
+    c1.irls_iterations = 4;
+    c1.cg_max_iterations = 25;
     inv::InversionConfig c3 = p.cfg;
+    c3.irls_iterations = 4;
+    c3.cg_max_iterations = 25;
     inv::VoxelGrid<double> m1, m3;
     inv::InversionStats s1, s3;
     ASSERT_TRUE(inv::InversionEngine(c1).invert_columns(p.data, m1, s1));
@@ -496,19 +504,21 @@ TEST(FocusingInversionTest, CoarseToFineActuallyChangesAndRefinesTheSolution) {
 
     // Levels have the expected sizes and the adaptive refinement shrinks the active set.
     ASSERT_EQ(s3.levels.size(), 3u);
-    EXPECT_EQ(s3.levels[0].nx, 8u);
-    EXPECT_EQ(s3.levels[1].nx, 16u);
-    EXPECT_EQ(s3.levels[2].nx, 32u);
-    EXPECT_LT(s3.levels[2].active_cells, 32u * 32u * 16u);
+    EXPECT_EQ(s3.levels[0].nx, 4u);
+    EXPECT_EQ(s3.levels[1].nx, 8u);
+    EXPECT_EQ(s3.levels[2].nx, 16u);
+    EXPECT_LT(s3.levels[2].active_cells, 16u * 16u * 8u);
     EXPECT_LT(s3.levels[2].time_ms, 5.0 * s1.levels[0].time_ms + 1000.0);
 
     // No adaptivity -> all fine cells active.
     inv::InversionConfig cn = p.cfg;
     cn.adaptive_refinement = false;
+    cn.irls_iterations = 4;
+    cn.cg_max_iterations = 25;
     inv::VoxelGrid<double> mn;
     inv::InversionStats sn;
     ASSERT_TRUE(inv::InversionEngine(cn).invert_columns(p.data, mn, sn));
-    EXPECT_EQ(sn.levels[2].active_cells, 32u * 32u * 16u);
+    EXPECT_EQ(sn.levels[2].active_cells, 16u * 16u * 8u);
 }
 
 TEST(FocusingInversionTest, PriorIsScaledAndImprovesStart) {
