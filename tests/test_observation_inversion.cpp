@@ -2,7 +2,10 @@
 #include "mod3d/Inversion.h"
 #include "mod3d/Model.h"
 #include "mod3d/Observation.h"
+#include "mod3d/Project.h"
 #include "inv/voxel_grid.hpp"
+#include "inv/inversion_engine.hpp"
+#include <nlohmann/json.hpp>
 #include <cmath>
 #include <gtest/gtest.h>
 #include <vector>
@@ -627,6 +630,44 @@ TEST(ObservationSpaceTest, VoxelGridForwardCalculationDirectGravity) {
   EXPECT_GT(centerVal, (*gz)(0, 8));
   EXPECT_GT(centerVal, (*gz)(8, 0));
   EXPECT_GT(centerVal, (*gz)(8, 8));
+}
+
+TEST(ObservationSpaceTest, CompareWithRoman1026Model) {
+  Project proj;
+  std::string path = "examples/private/roman_1026.mod3d";
+  if (!std::filesystem::exists(path)) {
+    path = "../examples/private/roman_1026.mod3d";
+  }
+  if (!std::filesystem::exists(path)) {
+    path = "../../examples/private/roman_1026.mod3d";
+  }
+  if (!std::filesystem::exists(path)) {
+    GTEST_SKIP() << "File not found: " << path;
+  }
+  ASSERT_TRUE(proj.load_json(path));
+  ASSERT_TRUE(proj.has_inversion_result_json());
+
+  auto j = nlohmann::json::parse(proj.inversion_result_json());
+  auto invRes = inv::InversionResult::from_json(j);
+  ASSERT_FALSE(invRes.modeled_gz.empty());
+
+  proj.observation().compute_voxel_grid_gravity(invRes.density_grid, proj.model().z_max().value(), true);
+  const Grid *gz = proj.observation().modeled_grid(FieldComponent::GZ);
+  ASSERT_NE(gz, nullptr);
+
+  // Point-by-point comparison between invRes.modeled_gz and computed gz
+  double sum_sq_diff = 0.0;
+  for (size_t ix = 0; ix < gz->cols(); ++ix) {
+    for (size_t iy = 0; iy < gz->rows(); ++iy) {
+      size_t col_idx = ix * gz->rows() + iy;
+      double v_inv = invRes.modeled_gz[col_idx];
+      double v_comp = (*gz)(iy, ix);
+      double diff = std::abs(v_inv - v_comp);
+      sum_sq_diff += diff * diff;
+    }
+  }
+  double rms_diff = std::sqrt(sum_sq_diff / invRes.modeled_gz.size());
+  EXPECT_LT(rms_diff, 0.1);
 }
 
 // ============================================================================

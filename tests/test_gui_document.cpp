@@ -5235,6 +5235,47 @@ TEST_F(GuiDocumentTest, ModelDocumentVoxelGridForwardCalculationOnOpen) {
   QFile::remove(tempPath);
 }
 
+TEST_F(GuiDocumentTest, ModelDocumentOpenRoman1026ReproducesInversionField) {
+  QString path = "examples/private/roman_1026.mod3d";
+  if (!QFile::exists(path)) {
+    path = "../examples/private/roman_1026.mod3d";
+  }
+  if (!QFile::exists(path)) {
+    path = "../../examples/private/roman_1026.mod3d";
+  }
+  if (!QFile::exists(path)) {
+    GTEST_SKIP() << "roman_1026.mod3d not found";
+  }
+
+  ModelDocument doc;
+  ASSERT_TRUE(doc.openFile(path));
+  ASSERT_TRUE(doc.hasInversionResult());
+
+  const auto *pMod = doc.modeledGrid(mod3d::FieldComponent::GZ);
+  ASSERT_NE(pMod, nullptr);
+  EXPECT_FALSE(pMod->empty());
+
+  const auto &invRes = *doc.inversionResult();
+  ASSERT_FALSE(invRes.modeled_gz.empty());
+
+  // Point-by-point comparison between previously computed inversion field
+  // and freshly forward-computed voxel grid field
+  double sumSq = 0.0;
+  for (size_t ix = 0; ix < pMod->cols(); ++ix) {
+    for (size_t iy = 0; iy < pMod->rows(); ++iy) {
+      size_t idx = ix * pMod->rows() + iy;
+      double vInv = invRes.modeled_gz[idx];
+      double vComp = (*pMod)(iy, ix);
+      double diff = vInv - vComp;
+      sumSq += diff * diff;
+    }
+  }
+  double rms = std::sqrt(sumSq / invRes.modeled_gz.size());
+  // RMS difference between forward kernel and previous inversion output should be < 0.1 mGal
+  // and strictly NOT an order of magnitude (10x) off.
+  EXPECT_LT(rms, 0.1);
+}
+
 TEST_F(GuiDocumentTest, ProfileViewInversionDensitySliceAndContextMenu) {
   ModelDocument doc;
   doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);

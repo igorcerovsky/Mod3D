@@ -432,13 +432,11 @@ void ObservationSpace::compute_voxel_grid_gravity(
     inv::ForwardKernel<double>::compute_gravity_field_interface_mesh(grid, {}, inv_obs, out_gz);
   }
 
-  const double scale = (grv_field_unit_ == GravityFieldUnit::GravityUnit) ? 10.0 : 1.0;
-
   for (size_t r = 0; r < rows_; ++r) {
     for (size_t c = 0; c < cols_; ++c) {
       const size_t idx = r * cols_ + c;
       if (idx < obsPoints.size() && !Grid::is_dummy_value(obsPoints[idx].z) && !std::isnan(obsPoints[idx].z)) {
-        const double val = out_gz[idx] * scale;
+        const double val = out_gz[idx];
         if (zeroFirst) {
           (*pGz)(r, c) = val;
         } else {
