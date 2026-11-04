@@ -784,6 +784,22 @@ TEST(FocusingInversionTest, AutoTuneHyperparametersOptimizesLayersBoundsAndGamma
     c.auto_tune_params = true;
     c.use_fft_solver_benchmark = false;
 
+    int callback_eval_count = 0;
+    int callback_done_count = 0;
+    c.tuning_progress_callback = [&](int trial, int total, const std::string& desc, double score, double best) -> bool {
+        EXPECT_GE(trial, 1);
+        EXPECT_LE(trial, total);
+        EXPECT_FALSE(desc.empty());
+        if (score < 0.0) {
+            ++callback_eval_count;
+        } else {
+            ++callback_done_count;
+            EXPECT_LT(score, 1e200);
+            EXPECT_LE(best, score);
+        }
+        return true;
+    };
+
     inv::VoxelGrid<double> truth(12, 12, 8, 0, 0, 0, 50, 50, 50, 0.0);
     for (size_t ix = 4; ix < 8; ++ix)
         for (size_t iy = 4; iy < 8; ++iy)
@@ -813,4 +829,6 @@ TEST(FocusingInversionTest, AutoTuneHyperparametersOptimizesLayersBoundsAndGamma
     EXPECT_GT(stats.tuned_min_density, -1.2); // Tightened negative bound on positive anomaly
     EXPECT_GT(stats.tuned_depth_exponent, 0.5);
     EXPECT_GT(model.max_value(), 0.25);
+    EXPECT_GT(callback_eval_count, 8);
+    EXPECT_EQ(callback_eval_count, callback_done_count);
 }

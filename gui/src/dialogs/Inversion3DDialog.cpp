@@ -20,8 +20,8 @@ Inversion3DDialog::Inversion3DDialog(ModelDocument *doc, QWidget *parent)
     , m_doc(doc)
 {
     setWindowTitle(tr("3D Potential Field Focusing Inversion"));
-    setMinimumSize(680, 520);
-    resize(740, 580);
+    setMinimumSize(700, 560);
+    resize(760, 620);
 
     setupUi();
     updateDomainFromDocument();
@@ -80,40 +80,55 @@ void Inversion3DDialog::setupUi() {
 
     mainLayout->addWidget(m_tabWidget);
 
-    // Bottom action buttons
-    auto *btnLayout = new QHBoxLayout();
+    // Bottom action buttons: organized in two rows so all labels are fully legible and unclipped
+    auto *bottomContainer = new QVBoxLayout();
+    bottomContainer->setSpacing(8);
+
+    // Row 1: Execution and solver run actions
+    auto *row1Layout = new QHBoxLayout();
     m_btnRun = new QPushButton(tr("Run Inversion"), this);
     m_btnRun->setDefault(true);
-    m_btnRun->setStyleSheet("font-weight: bold; padding: 6px 14px;");
+    m_btnRun->setStyleSheet("font-weight: bold; padding: 6px 16px;");
 
     m_btnColdStart = new QPushButton(tr("Run Cold Start"), this);
     m_btnColdStart->setToolTip(tr("Run a fresh inversion from scratch across all coarse-to-fine levels (ignores previous model)"));
+    m_btnColdStart->setStyleSheet("padding: 6px 14px;");
 
     m_btnCancel = new QPushButton(tr("Cancel"), this);
     m_btnCancel->setEnabled(false);
+    m_btnCancel->setStyleSheet("padding: 6px 16px;");
 
+    row1Layout->addWidget(m_btnRun);
+    row1Layout->addWidget(m_btnColdStart);
+    row1Layout->addWidget(m_btnCancel);
+    row1Layout->addStretch();
+
+    // Row 2: Model application, export, and dialog close
+    auto *row2Layout = new QHBoxLayout();
     m_btnApply = new QPushButton(tr("Apply to Document"), this);
     m_btnApply->setEnabled(false);
+    m_btnApply->setStyleSheet("font-weight: bold; padding: 6px 16px;");
 
     m_btnExportVtk = new QPushButton(tr("Export VTK..."), this);
     m_btnExportVtk->setEnabled(false);
+    m_btnExportVtk->setStyleSheet("padding: 6px 12px;");
 
     m_btnExportJson = new QPushButton(tr("Export JSON..."), this);
     m_btnExportJson->setEnabled(false);
+    m_btnExportJson->setStyleSheet("padding: 6px 12px;");
 
     m_btnClose = new QPushButton(tr("Close"), this);
+    m_btnClose->setStyleSheet("padding: 6px 18px;");
 
-    btnLayout->addWidget(m_btnRun);
-    btnLayout->addWidget(m_btnColdStart);
-    btnLayout->addWidget(m_btnCancel);
-    btnLayout->addSpacing(12);
-    btnLayout->addWidget(m_btnApply);
-    btnLayout->addWidget(m_btnExportVtk);
-    btnLayout->addWidget(m_btnExportJson);
-    btnLayout->addStretch();
-    btnLayout->addWidget(m_btnClose);
+    row2Layout->addWidget(m_btnApply);
+    row2Layout->addWidget(m_btnExportVtk);
+    row2Layout->addWidget(m_btnExportJson);
+    row2Layout->addStretch();
+    row2Layout->addWidget(m_btnClose);
 
-    mainLayout->addLayout(btnLayout);
+    bottomContainer->addLayout(row1Layout);
+    bottomContainer->addLayout(row2Layout);
+    mainLayout->addLayout(bottomContainer);
 
     connect(m_btnRun, &QPushButton::clicked, this, &Inversion3DDialog::onRunClicked);
     connect(m_btnColdStart, &QPushButton::clicked, this, &Inversion3DDialog::onRunColdStartClicked);
@@ -784,6 +799,10 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
             .arg(setup.config.coarse_to_fine_levels));
     }
 
+    if (setup.config.auto_tune_params && !isRefining) {
+        appendLog(tr("==> Hyperparameter Auto-Tuning active: optimizing Nz, bounds, gamma, alpha_reg, and e_end before main inversion."));
+    }
+
     const bool useNeural = (m_chkUseNeuralPrior && m_chkUseNeuralPrior->isChecked() && inv::NeuralPriorInference::is_available());
 
     // Launch background worker using C++20 std::jthread
@@ -820,6 +839,31 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
         cfg.cancel_check = [&st]() -> bool {
             return st.stop_requested();
+        };
+
+        cfg.tuning_progress_callback = [this, &st](int trial, int total_trials, const std::string &desc, double score, double best_score) -> bool {
+            if (st.stop_requested()) return false;
+            QMetaObject::invokeMethod(this, [this, trial, total_trials, desc, score, best_score]() {
+                const int pct = static_cast<int>(100.0 * (trial - 1) / std::max(1, total_trials));
+                m_progressBar->setValue(std::clamp(pct, 0, 99));
+                m_lblStatus->setText(tr("Auto-Tuning [%1/%2]: %3")
+                    .arg(trial).arg(total_trials).arg(QString::fromStdString(desc)));
+                if (score >= 0.0) {
+                    m_lblCurrentStats->setText(tr("Tuning Trial %1/%2 | Score: %3 (Best: %4)")
+                        .arg(trial).arg(total_trials)
+                        .arg(score, 0, 'f', 3)
+                        .arg(best_score < 1e200 ? QString::number(best_score, 'f', 3) : QString("-")));
+                    appendLog(tr("  [Auto-Tune %1/%2] %3 -> Score: %4 (Best: %5)")
+                        .arg(trial).arg(total_trials)
+                        .arg(QString::fromStdString(desc))
+                        .arg(score, 0, 'f', 3)
+                        .arg(best_score < 1e200 ? QString::number(best_score, 'f', 3) : QString("-")));
+                } else {
+                    m_lblCurrentStats->setText(tr("Tuning Trial %1/%2 | Evaluating %3...")
+                        .arg(trial).arg(total_trials).arg(QString::fromStdString(desc)));
+                }
+            }, Qt::QueuedConnection);
+            return !st.stop_requested();
         };
 
         cfg.progress_callback = [this, &st](int level, int total_levels, int iter, int total_iters, double rms, double chi) -> bool {

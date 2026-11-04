@@ -97,6 +97,11 @@ struct InversionConfig {
     /// Args: (int level, int total_levels, int iter, int total_iters, double rms_mgal, double chi_rms)
     std::function<bool(int level, int total_levels, int iter, int total_iters, double rms_mgal, double chi_rms)> progress_callback;
 
+    /// Optional auto-tuning progress callback: return false to abort/cancel early.
+    /// Args: (int trial, int total_trials, const std::string& description, double current_score, double best_score)
+    /// Note: current_score < 0 indicates the trial is starting; current_score >= 0 indicates trial evaluation finished.
+    std::function<bool(int trial, int total_trials, const std::string& description, double current_score, double best_score)> tuning_progress_callback;
+
     /// Optional cancel callback: return true to abort immediately.
     std::function<bool()> cancel_check;
 };
@@ -939,8 +944,14 @@ private:
 
         auto eval_candidate = [&](std::size_t cand_nz, double cand_min_d, double cand_max_d,
                                   double cand_gamma, double cand_alpha, double cand_e_end,
-                                  double& score_out) -> bool {
+                                  const std::string& desc, int current_trial, int total_trials,
+                                  double best_so_far, double& score_out) -> bool {
             if (base.cancel_check && base.cancel_check()) return false;
+            if (base.tuning_progress_callback) {
+                if (!base.tuning_progress_callback(current_trial, total_trials, desc, -1.0, best_so_far)) {
+                    return false;
+                }
+            }
             ++out_trials;
 
             const std::size_t fz = choose_factor(cand_nz, std::min<std::size_t>(fx, 2));
@@ -1072,7 +1083,20 @@ private:
             score_out = chi_diff * chi_diff + underfit_pen + overfit_pen
                       + 0.45 * ms_frac + 0.35 * mgs_frac
                       + boundary_pen + gamma_prior + sat_pen + 0.08 * aspect * aspect;
+
+            if (base.tuning_progress_callback) {
+                const double cand_best = (score_out < best_so_far) ? score_out : best_so_far;
+                if (!base.tuning_progress_callback(current_trial, total_trials, desc, score_out, cand_best)) {
+                    return false;
+                }
+            }
             return true;
+        };
+
+        auto fmt = [](double val, int prec) -> std::string {
+            char buf[32];
+            std::snprintf(buf, sizeof(buf), "%.*f", prec, val);
+            return std::string(buf);
         };
 
         double best_gamma = std::clamp(base.depth_weight_exponent, 0.60, 1.10);
@@ -1094,18 +1118,8 @@ private:
             {0.75, 0.35, 0.010},
             {0.85, 2.5, 0.002}
         };
-        for (const auto& ca : phase_a) {
-            double sc = 1e300;
-            if (!eval_candidate(best_nz, best_min_d, best_max_d, ca.gamma, ca.alpha, ca.e_end, sc)) return false;
-            if (sc < best_score) {
-                best_score = sc;
-                best_gamma = ca.gamma;
-                best_alpha = ca.alpha;
-                best_e_end = ca.e_end;
-            }
-        }
 
-        // Phase B: Density contrast bounds [min_density, max_density]
+        // Phase B candidates: Density contrast bounds [min_density, max_density]
         std::vector<std::pair<double, double>> bound_cands = {
             {base.min_density * 0.8, base.max_density * 0.8},
             {base.min_density * 1.25, base.max_density * 1.25}
@@ -1117,18 +1131,12 @@ private:
             bound_cands.push_back({base.min_density, 0.15 * base.max_density});
             bound_cands.push_back({base.min_density * 1.15, 0.0});
         }
+        std::vector<std::pair<double, double>> valid_bounds;
         for (const auto& bc : bound_cands) {
-            if (bc.second <= bc.first + 1e-4) continue;
-            double sc = 1e300;
-            if (!eval_candidate(best_nz, bc.first, bc.second, best_gamma, best_alpha, best_e_end, sc)) return false;
-            if (sc < best_score) {
-                best_score = sc;
-                best_min_d = bc.first;
-                best_max_d = bc.second;
-            }
+            if (bc.second > bc.first + 1e-4) valid_bounds.push_back(bc);
         }
 
-        // Phase C: Vertical discretization layers Nz (keeping total depth extent H_total = nz * dz constant)
+        // Phase C candidates: Vertical discretization layers Nz
         const std::size_t mult = (base.coarse_to_fine_levels >= 3) ? 4 : ((base.coarse_to_fine_levels == 2) ? 2 : 1);
         auto round_mult = [mult](std::size_t v) -> std::size_t {
             std::size_t r = ((v + mult / 2) / mult) * mult;
@@ -1139,10 +1147,55 @@ private:
             round_mult( base.nz ),
             round_mult( (base.nz * 5) / 4 )
         };
+        std::vector<std::size_t> valid_nzs;
         for (std::size_t nz_c : nz_cands) {
-            if (nz_c == best_nz) continue;
+            if (nz_c != base.nz && std::find(valid_nzs.begin(), valid_nzs.end(), nz_c) == valid_nzs.end()) {
+                valid_nzs.push_back(nz_c);
+            }
+        }
+
+        const int total_trials = static_cast<int>(phase_a.size() + valid_bounds.size() + valid_nzs.size());
+        int current_trial = 0;
+
+        // Execute Phase A
+        for (const auto& ca : phase_a) {
+            ++current_trial;
+            const std::string desc = "Phase A (params): gamma=" + fmt(ca.gamma, 2) +
+                                     ", alpha=" + fmt(ca.alpha, 2) +
+                                     ", e_end=" + fmt(ca.e_end, 4);
             double sc = 1e300;
-            if (!eval_candidate(nz_c, best_min_d, best_max_d, best_gamma, best_alpha, best_e_end, sc)) return false;
+            if (!eval_candidate(best_nz, best_min_d, best_max_d, ca.gamma, ca.alpha, ca.e_end,
+                                desc, current_trial, total_trials, best_score, sc)) return false;
+            if (sc < best_score) {
+                best_score = sc;
+                best_gamma = ca.gamma;
+                best_alpha = ca.alpha;
+                best_e_end = ca.e_end;
+            }
+        }
+
+        // Execute Phase B
+        for (const auto& bc : valid_bounds) {
+            ++current_trial;
+            const std::string desc = "Phase B (bounds): [" + fmt(bc.first, 2) + ", " + fmt(bc.second, 2) + "] g/cm^3";
+            double sc = 1e300;
+            if (!eval_candidate(best_nz, bc.first, bc.second, best_gamma, best_alpha, best_e_end,
+                                desc, current_trial, total_trials, best_score, sc)) return false;
+            if (sc < best_score) {
+                best_score = sc;
+                best_min_d = bc.first;
+                best_max_d = bc.second;
+            }
+        }
+
+        // Execute Phase C
+        for (std::size_t nz_c : valid_nzs) {
+            ++current_trial;
+            const std::string desc = "Phase C (layers): Nz=" + std::to_string(nz_c) +
+                                     " (dz=" + fmt(H_total / static_cast<double>(nz_c), 1) + " m)";
+            double sc = 1e300;
+            if (!eval_candidate(nz_c, best_min_d, best_max_d, best_gamma, best_alpha, best_e_end,
+                                desc, current_trial, total_trials, best_score, sc)) return false;
             if (sc < best_score) {
                 best_score = sc;
                 best_nz = nz_c;
