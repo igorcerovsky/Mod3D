@@ -168,8 +168,8 @@ TEST(GridModernizedTest, AtAndSpanAndIterators) {
     EXPECT_DOUBLE_EQ(g[1], 5.0);
     EXPECT_DOUBLE_EQ(g.at(0, 1), 5.0);
     EXPECT_DOUBLE_EQ(g.at(2, 3), 11 * 5.0);
-    EXPECT_THROW(g.at(3, 0), std::out_of_range);
-    EXPECT_THROW(g.at(0, 4), std::out_of_range);
+    EXPECT_THROW((void)g.at(3, 0), std::out_of_range);
+    EXPECT_THROW((void)g.at(0, 4), std::out_of_range);
 
     // span access
     std::span<const double> sp = g.span();

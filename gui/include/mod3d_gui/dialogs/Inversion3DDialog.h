@@ -17,7 +17,7 @@
 #include <QLineEdit>
 
 #include <thread>
-#include <stop_token>
+#include <atomic>
 #include <optional>
 #include <memory>
 
@@ -129,8 +129,9 @@ private:
     QPushButton *m_btnExportJson{nullptr};
     QPushButton *m_btnClose{nullptr};
 
-    // Background worker thread using C++20 std::jthread
-    std::jthread m_workerThread;
+    // Background worker thread and cancellation flag
+    std::thread m_workerThread;
+    std::atomic<bool> m_stopRequested{false};
 
     // Last completed inversion result
     std::optional<inv::InversionResult> m_currentResult;

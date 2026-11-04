@@ -5044,8 +5044,8 @@ TEST_F(GuiDocumentTest, Inversion3DVoxelCenteringAndProfileAlignment) {
   }
 }
 
-TEST_F(GuiDocumentTest, Inversion3DJThreadCancellation) {
-  // Verifies background execution with std::jthread and cooperative std::stop_token
+TEST_F(GuiDocumentTest, Inversion3DWorkerCancellation) {
+  // Verifies background execution and cooperative cancellation
   inv::InversionConfig cfg;
   cfg.nx = 8;
   cfg.ny = 8;
@@ -5059,34 +5059,36 @@ TEST_F(GuiDocumentTest, Inversion3DJThreadCancellation) {
   std::vector<double> d(cfg.nx * cfg.ny, 1.5);
   std::atomic<bool> threadStarted{false};
   std::atomic<bool> threadFinished{false};
+  std::atomic<bool> cancelRequested{false};
   bool invertResult = true;
   std::string resultMsg;
 
-  {
-    std::jthread worker([&](std::stop_token st) {
-      threadStarted = true;
-      inv::InversionEngine engine(cfg);
-      auto &ecfg = const_cast<inv::InversionConfig &>(engine.config());
-      ecfg.cancel_check = [&st]() { return st.stop_requested(); };
-      ecfg.progress_callback = [&st](int, int, int, int, double, double) {
-        return !st.stop_requested();
-      };
+  std::thread worker([&]() {
+    threadStarted = true;
+    inv::InversionEngine engine(cfg);
+    auto &ecfg = const_cast<inv::InversionConfig &>(engine.config());
+    ecfg.cancel_check = [&cancelRequested]() { return cancelRequested.load(); };
+    ecfg.progress_callback = [&cancelRequested](int, int, int, int, double, double) {
+      return !cancelRequested.load();
+    };
 
-      inv::VoxelGrid<double> out_m;
-      inv::InversionStats stats;
-      invertResult = engine.invert_columns(d, out_m, stats);
-      resultMsg = stats.message;
-      threadFinished = true;
-    });
+    inv::VoxelGrid<double> out_m;
+    inv::InversionStats stats;
+    invertResult = engine.invert_columns(d, out_m, stats);
+    resultMsg = stats.message;
+    threadFinished = true;
+  });
 
-    // Wait until worker thread starts
-    while (!threadStarted) {
-      std::this_thread::yield();
-    }
+  // Wait until worker thread starts
+  while (!threadStarted) {
+    std::this_thread::yield();
+  }
 
-    // Request stop cooperatively
-    worker.request_stop();
-  } // worker joins here automatically
+  // Request stop cooperatively
+  cancelRequested.store(true);
+  if (worker.joinable()) {
+    worker.join();
+  }
 
   EXPECT_TRUE(threadFinished);
   EXPECT_FALSE(invertResult);

@@ -30,8 +30,9 @@ Inversion3DDialog::Inversion3DDialog(ModelDocument *doc, QWidget *parent)
 }
 
 Inversion3DDialog::~Inversion3DDialog() {
+    m_stopRequested.store(true, std::memory_order_relaxed);
     if (m_workerThread.joinable()) {
-        m_workerThread.request_stop();
+        m_workerThread.join();
     }
 }
 
@@ -44,16 +45,18 @@ void Inversion3DDialog::waitForCompletion() {
 
 void Inversion3DDialog::closeEvent(QCloseEvent *event) {
     saveSettingsToDocument();
+    m_stopRequested.store(true, std::memory_order_relaxed);
     if (m_workerThread.joinable()) {
-        m_workerThread.request_stop();
+        m_workerThread.join();
     }
     event->accept();
 }
 
 void Inversion3DDialog::done(int r) {
     saveSettingsToDocument();
+    m_stopRequested.store(true, std::memory_order_relaxed);
     if (m_workerThread.joinable()) {
-        m_workerThread.request_stop();
+        m_workerThread.join();
     }
     QDialog::done(r);
 }
@@ -806,10 +809,15 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
     const bool useNeural = (m_chkUseNeuralPrior && m_chkUseNeuralPrior->isChecked() && inv::NeuralPriorInference::is_available());
 
-    // Launch background worker using C++20 std::jthread
-    m_workerThread = std::jthread([this, setup = std::move(setup), d_fine = std::move(d_fine),
-                                   obs_z_cols = std::move(obs_z_cols),
-                                   prior_values = std::move(prior_values), isRefining, useNeural](std::stop_token st) mutable {
+    if (m_workerThread.joinable()) {
+        m_workerThread.join();
+    }
+    m_stopRequested.store(false, std::memory_order_relaxed);
+
+    // Launch background worker using std::thread
+    m_workerThread = std::thread([this, setup = std::move(setup), d_fine = std::move(d_fine),
+                                  obs_z_cols = std::move(obs_z_cols),
+                                  prior_values = std::move(prior_values), isRefining, useNeural]() mutable {
         if (!isRefining && useNeural) {
             std::string modelPath = setup.config.onnx_model_path;
             if (modelPath.empty()) {
@@ -838,12 +846,12 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
         inv::InversionEngine engine(setup.config);
         inv::InversionConfig &cfg = const_cast<inv::InversionConfig&>(engine.config());
 
-        cfg.cancel_check = [&st]() -> bool {
-            return st.stop_requested();
+        cfg.cancel_check = [this]() -> bool {
+            return m_stopRequested.load(std::memory_order_relaxed);
         };
 
-        cfg.tuning_progress_callback = [this, &st](int trial, int total_trials, const std::string &desc, double score, double best_score) -> bool {
-            if (st.stop_requested()) return false;
+        cfg.tuning_progress_callback = [this](int trial, int total_trials, const std::string &desc, double score, double best_score) -> bool {
+            if (m_stopRequested.load(std::memory_order_relaxed)) return false;
             QMetaObject::invokeMethod(this, [this, trial, total_trials, desc, score, best_score]() {
                 const int pct = static_cast<int>(100.0 * (trial - 1) / std::max(1, total_trials));
                 m_progressBar->setValue(std::clamp(pct, 0, 99));
@@ -864,11 +872,11 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                         .arg(trial).arg(total_trials).arg(QString::fromStdString(desc)));
                 }
             }, Qt::QueuedConnection);
-            return !st.stop_requested();
+            return !m_stopRequested.load(std::memory_order_relaxed);
         };
 
-        cfg.progress_callback = [this, &st](int level, int total_levels, int iter, int total_iters, double rms, double chi) -> bool {
-            if (st.stop_requested()) return false;
+        cfg.progress_callback = [this](int level, int total_levels, int iter, int total_iters, double rms, double chi) -> bool {
+            if (m_stopRequested.load(std::memory_order_relaxed)) return false;
             QMetaObject::invokeMethod(this, [this, level, total_levels, iter, total_iters, rms, chi]() {
                 const int pct = static_cast<int>(100.0 * ((level - 1) * total_iters + iter) / (total_levels * total_iters));
                 m_progressBar->setValue(std::clamp(pct, 0, 99));
@@ -882,7 +890,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                     .arg(level).arg(total_levels).arg(iter).arg(total_iters)
                     .arg(rms, 0, 'f', 4).arg(chi, 0, 'f', 3));
             }, Qt::QueuedConnection);
-            return !st.stop_requested();
+            return !m_stopRequested.load(std::memory_order_relaxed);
         };
 
         inv::InversionResult result;
@@ -891,7 +899,8 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                                               prior_values.empty() ? nullptr : &prior_values,
                                               &result.modeled_gz);
 
-        QMetaObject::invokeMethod(this, [this, ok, res = std::move(result), st_req = st.stop_requested()]() mutable {
+        const bool st_req = m_stopRequested.load(std::memory_order_relaxed);
+        QMetaObject::invokeMethod(this, [this, ok, res = std::move(result), st_req]() mutable {
             setRunningState(false);
             if (st_req) {
                 m_lblStatus->setText(tr("Inversion cancelled by user."));
@@ -970,7 +979,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 }
 
 void Inversion3DDialog::onCancelClicked() {
-    m_workerThread.request_stop();
+    m_stopRequested.store(true, std::memory_order_relaxed);
     m_btnCancel->setEnabled(false);
     m_lblStatus->setText(tr("Stopping computation..."));
     appendLog(tr("Cancel requested by user..."));
