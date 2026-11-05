@@ -97,11 +97,17 @@ public:
 
                 for (const auto& facet : mesh_.interfaces()) {
                     const double u = facet.evaluate_unit_gz(p_obs);
-                    if (facet.cell_above >= 0) {
-                        row[facet.cell_above] += u;
+                    if (facet.cell_above >= 0 && facet.count_above > 0) {
+                        const double u_above = u / static_cast<double>(facet.count_above);
+                        for (uint16_t c = 0; c < facet.count_above; ++c) {
+                            row[facet.cell_above + c] += u_above;
+                        }
                     }
-                    if (facet.cell_below >= 0) {
-                        row[facet.cell_below] -= u;
+                    if (facet.cell_below >= 0 && facet.count_below > 0) {
+                        const double u_below = u / static_cast<double>(facet.count_below);
+                        for (uint16_t c = 0; c < facet.count_below; ++c) {
+                            row[facet.cell_below + c] -= u_below;
+                        }
                     }
                 }
             });
@@ -154,8 +160,20 @@ public:
             for (std::size_t f = 0; f < facets.size(); ++f) {
                 const auto& facet = facets[f];
                 double val = 0.0;
-                if (facet.cell_above >= 0) val += m[facet.cell_above];
-                if (facet.cell_below >= 0) val -= m[facet.cell_below];
+                if (facet.cell_above >= 0 && facet.count_above > 0) {
+                    double sum_above = 0.0;
+                    for (uint16_t c = 0; c < facet.count_above; ++c) {
+                        sum_above += m[facet.cell_above + c];
+                    }
+                    val += sum_above / static_cast<double>(facet.count_above);
+                }
+                if (facet.cell_below >= 0 && facet.count_below > 0) {
+                    double sum_below = 0.0;
+                    for (uint16_t c = 0; c < facet.count_below; ++c) {
+                        sum_below += m[facet.cell_below + c];
+                    }
+                    val -= sum_below / static_cast<double>(facet.count_below);
+                }
                 delta_rho[f] = val;
             }
 
@@ -205,8 +223,18 @@ public:
             // Map back: g = D^T w
             for (std::size_t f = 0; f < facets.size(); ++f) {
                 const auto& facet = facets[f];
-                if (facet.cell_above >= 0) g[facet.cell_above] += w[f];
-                if (facet.cell_below >= 0) g[facet.cell_below] -= w[f];
+                if (facet.cell_above >= 0 && facet.count_above > 0) {
+                    const double w_above = w[f] / static_cast<double>(facet.count_above);
+                    for (uint16_t c = 0; c < facet.count_above; ++c) {
+                        g[facet.cell_above + c] += w_above;
+                    }
+                }
+                if (facet.cell_below >= 0 && facet.count_below > 0) {
+                    const double w_below = w[f] / static_cast<double>(facet.count_below);
+                    for (uint16_t c = 0; c < facet.count_below; ++c) {
+                        g[facet.cell_below + c] -= w_below;
+                    }
+                }
             }
             if (use_active_) {
                 for (std::size_t j = 0; j < cols_; ++j) {
@@ -228,9 +256,16 @@ public:
         }
         const pfld::Point3Dd p_obs(obs_[i].x, obs_[i].y, obs_[i].z);
         double s = 0.0;
+        const int64_t jj = static_cast<int64_t>(j);
         for (const auto& facet : mesh_.interfaces()) {
-            if (facet.cell_above == static_cast<int64_t>(j)) s += facet.evaluate_unit_gz(p_obs);
-            if (facet.cell_below == static_cast<int64_t>(j)) s -= facet.evaluate_unit_gz(p_obs);
+            if (facet.cell_above >= 0 && facet.count_above > 0 &&
+                jj >= facet.cell_above && jj < facet.cell_above + static_cast<int64_t>(facet.count_above)) {
+                s += facet.evaluate_unit_gz(p_obs) / static_cast<double>(facet.count_above);
+            }
+            if (facet.cell_below >= 0 && facet.count_below > 0 &&
+                jj >= facet.cell_below && jj < facet.cell_below + static_cast<int64_t>(facet.count_below)) {
+                s -= facet.evaluate_unit_gz(p_obs) / static_cast<double>(facet.count_below);
+            }
         }
         return s;
     }
@@ -241,12 +276,19 @@ private:
         const auto& facets = mesh_.interfaces();
         parallel_for(cols_, [&](std::size_t j) {
             double sum_sq = 0.0;
+            const int64_t jj = static_cast<int64_t>(j);
             for (std::size_t i = 0; i < rows_; ++i) {
                 const pfld::Point3Dd p_obs(obs_[i].x, obs_[i].y, obs_[i].z);
                 double g_ij = 0.0;
                 for (const auto& facet : facets) {
-                    if (facet.cell_above == static_cast<int64_t>(j)) g_ij += facet.evaluate_unit_gz(p_obs);
-                    if (facet.cell_below == static_cast<int64_t>(j)) g_ij -= facet.evaluate_unit_gz(p_obs);
+                    if (facet.cell_above >= 0 && facet.count_above > 0 &&
+                        jj >= facet.cell_above && jj < facet.cell_above + static_cast<int64_t>(facet.count_above)) {
+                        g_ij += facet.evaluate_unit_gz(p_obs) / static_cast<double>(facet.count_above);
+                    }
+                    if (facet.cell_below >= 0 && facet.count_below > 0 &&
+                        jj >= facet.cell_below && jj < facet.cell_below + static_cast<int64_t>(facet.count_below)) {
+                        g_ij -= facet.evaluate_unit_gz(p_obs) / static_cast<double>(facet.count_below);
+                    }
                 }
                 sum_sq += g_ij * g_ij;
             }

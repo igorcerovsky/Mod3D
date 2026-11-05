@@ -83,6 +83,8 @@ struct InterfaceFacet {
     T nz{1.0};              // Normal z-component
     int64_t cell_above{-1}; // Index of cell above (-1 if air/DEM surface)
     int64_t cell_below{-1}; // Index of cell below (-1 if regional basement)
+    uint16_t count_above{1}; // Number of merged consecutive iz cells starting at cell_above
+    uint16_t count_below{1}; // Number of merged consecutive iz cells starting at cell_below
 
     // Scale factor converting SI (m/s^2 per kg/m^3) to mGal with density in g/cm^3:
     // (1000 kg/m^3 / (g/cm^3)) * (1e5 mGal / (m/s^2)) = 1e8
@@ -120,6 +122,116 @@ public:
     using Point = Point3D<T>;
 
     InterfaceMesh() = default;
+
+    /**
+     * @brief Computes the first layer index iz_mid in [0, nz] whose midpoint lies at or below
+     * the column's mean DEM depth zs = 0.25 * (z00 + z10 + z11 + z01).
+     */
+    [[nodiscard]] static std::size_t column_mid_layer(
+        T z00, T z10, T z11, T z01, T z0, T dz, std::size_t nz) noexcept
+    {
+        const T zs = static_cast<T>(0.25) * (z00 + z10 + z11 + z01);
+        for (std::size_t iz = 0; iz < nz; ++iz) {
+            if (z0 + (static_cast<T>(iz) + static_cast<T>(0.5)) * dz >= zs) {
+                return iz;
+            }
+        }
+        return nz;
+    }
+
+    [[nodiscard]] static std::size_t column_mid_layer(
+        const std::vector<T>& topo_elevations,
+        std::size_t nx, std::size_t ny,
+        std::size_t ix, std::size_t iy,
+        T z0, T dz, std::size_t nz) noexcept
+    {
+        if (topo_elevations.size() != (nx + 1) * (ny + 1)) {
+            return (nz > 0) ? 0 : nz;
+        }
+        const std::size_t w = nx + 1;
+        return column_mid_layer(topo_elevations[iy * w + ix],
+                                topo_elevations[iy * w + (ix + 1)],
+                                topo_elevations[(iy + 1) * w + (ix + 1)],
+                                topo_elevations[(iy + 1) * w + ix],
+                                z0, dz, nz);
+    }
+
+    /**
+     * @brief Computes the bottommost layer index iz_top in [0, nz] of the merged top voxel
+     * when merging all terrain-intersecting voxels [iz_mid, iz_top] into a single relief-capped top voxel.
+     */
+    [[nodiscard]] static std::size_t column_top_layer(
+        T z00, T z10, T z11, T z01, T z0, T dz, std::size_t nz) noexcept
+    {
+        const T zs = static_cast<T>(0.25) * (z00 + z10 + z11 + z01);
+        const T z_topo_max = std::max({z00, z10, z11, z01});
+        const T eps = static_cast<T>(1e-6) * dz;
+        std::size_t last_valid = nz;
+        for (std::size_t iz = 0; iz < nz; ++iz) {
+            const T z_mid = z0 + (static_cast<T>(iz) + static_cast<T>(0.5)) * dz;
+            const T z_bot = z0 + static_cast<T>(iz + 1) * dz;
+            if (z_mid >= zs) {
+                last_valid = iz;
+                if (z_bot + eps >= z_topo_max) {
+                    return iz;
+                }
+            }
+        }
+        return last_valid;
+    }
+
+    [[nodiscard]] static std::size_t column_top_layer(
+        const std::vector<T>& topo_elevations,
+        std::size_t nx, std::size_t ny,
+        std::size_t ix, std::size_t iy,
+        T z0, T dz, std::size_t nz) noexcept
+    {
+        if (topo_elevations.size() != (nx + 1) * (ny + 1)) {
+            return (nz > 0) ? 0 : nz;
+        }
+        const std::size_t w = nx + 1;
+        const T z00 = topo_elevations[iy * w + ix];
+        const T z10 = topo_elevations[iy * w + (ix + 1)];
+        const T z11 = topo_elevations[(iy + 1) * w + (ix + 1)];
+        const T z01 = topo_elevations[(iy + 1) * w + ix];
+        return column_top_layer(z00, z10, z11, z01, z0, dz, nz);
+    }
+
+    /**
+     * @brief Computes the shallowest layer index iz_first in [0, iz_top] that intersects the relief
+     * in a column (i.e., whose bottom z0 + (iz + 1) * dz > z_topo_min + eps).
+     * Layers iz in [iz_first, iz_top] are the terrain-intersecting layers merged into iz_top.
+     */
+    [[nodiscard]] static std::size_t column_first_intersecting_layer(
+        T z00, T z10, T z11, T z01, T z0, T dz, std::size_t iz_top) noexcept
+    {
+        const T z_topo_min = std::min({z00, z10, z11, z01});
+        const T eps = static_cast<T>(1e-6) * dz;
+        for (std::size_t iz = 0; iz < iz_top; ++iz) {
+            const T z_bot = z0 + static_cast<T>(iz + 1) * dz;
+            if (z_bot > z_topo_min + eps) {
+                return iz;
+            }
+        }
+        return iz_top;
+    }
+
+    [[nodiscard]] static std::size_t column_first_intersecting_layer(
+        const std::vector<T>& topo_elevations,
+        std::size_t nx, std::size_t ny,
+        std::size_t ix, std::size_t iy,
+        T z0, T dz, std::size_t iz_top) noexcept
+    {
+        if (topo_elevations.size() != (nx + 1) * (ny + 1)) {
+            return 0;
+        }
+        const std::size_t w = nx + 1;
+        const T z00 = topo_elevations[iy * w + ix];
+        const T z10 = topo_elevations[iy * w + (ix + 1)];
+        const T z11 = topo_elevations[(iy + 1) * w + (ix + 1)];
+        const T z01 = topo_elevations[(iy + 1) * w + ix];
+        return column_first_intersecting_layer(z00, z10, z11, z01, z0, dz, iz_top);
+    }
 
     /**
      * @brief Builds an optimized interface mesh from topography and a 3D voxel density grid.
@@ -168,33 +280,29 @@ public:
             return (ix * ny + iy) * nz + iz;
         };
 
-        // Topmost active subsurface layer per column (ix * ny + iy):
-        // First iz in [0, nz) whose cell center z0 + (iz + 0.5) * dz >= zs (mean column DEM depth).
-        std::vector<std::size_t> col_iz_top(nx * ny, nz);
+        // Topmost active subsurface layer iz_top per column (ix * ny + iy):
+        std::vector<std::size_t> col_top_iz(nx * ny, nz);
         for (std::size_t ix = 0; ix < nx; ++ix) {
             for (std::size_t iy = 0; iy < ny; ++iy) {
-                const T zs = static_cast<T>(0.25) * (get_topo(ix, iy) + get_topo(ix + 1, iy) +
-                                                     get_topo(ix + 1, iy + 1) + get_topo(ix, iy + 1));
-                for (std::size_t iz = 0; iz < nz; ++iz) {
-                    if (z0 + (static_cast<T>(iz) + static_cast<T>(0.5)) * dz >= zs) {
-                        col_iz_top[ix * ny + iy] = iz;
-                        break;
-                    }
-                }
+                const T z00 = get_topo(ix, iy);
+                const T z10 = get_topo(ix + 1, iy);
+                const T z11 = get_topo(ix + 1, iy + 1);
+                const T z01 = get_topo(ix, iy + 1);
+                col_top_iz[ix * ny + iy] = column_mid_layer(z00, z10, z11, z01, z0, dz, nz);
             }
         }
 
         // --------------------------------------------------------------------
         // 1. TOPOGRAPHY SURFACE: Triangulated Facets (2 triangles per column)
         // --------------------------------------------------------------------
-        // Normal points downwards (+Z). cell_above = -1 (air), cell_below = iz_top.
+        // Normal points downwards (+Z). cell_above = -1 (air), cell_below = top_iz.
         // Delta_rho = 0.0 - rho_top = -rho_top (air density = 0).
         for (std::size_t ix = 0; ix < nx; ++ix) {
             const T x_l = x0 + static_cast<T>(ix) * dx;
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
-                const std::size_t iz_top = col_iz_top[ix * ny + iy];
+                const std::size_t iz_top = col_top_iz[ix * ny + iy];
                 if (iz_top >= nz) {
                     continue;
                 }
@@ -243,8 +351,8 @@ public:
         // 2. SUBSURFACE INTERNAL HORIZONTAL INTERFACES (Rectangular Quads)
         // --------------------------------------------------------------------
         // Shared between cell (ix, iy, iz) and cell (ix, iy, iz+1) for iz >= iz_top.
-        // Normal points downwards (+Z). Delta_rho = rho_above - rho_below.
-        // Lateral vertical walls are SKIPPED (n_z = 0 in planar modeling).
+        // When multiple terrain-intersecting layers share a merged uniform density,
+        // delta_rho = 0 across their internal interfaces so those quads are automatically skipped.
         for (std::size_t iz = 0; iz + 1 < nz; ++iz) {
             const T z_interface = z0 + static_cast<T>(iz + 1) * dz;
 
@@ -253,8 +361,9 @@ public:
                 const T x_r = x_l + dx;
 
                 for (std::size_t iy = 0; iy < ny; ++iy) {
-                    if (iz < col_iz_top[ix * ny + iy]) {
-                        continue; // Above DEM surface (air)
+                    const std::size_t iz_top = col_top_iz[ix * ny + iy];
+                    if (iz < iz_top) {
+                        continue; // Above DEM surface
                     }
 
                     const T y_b = y0 + static_cast<T>(iy) * dy;
@@ -264,7 +373,7 @@ public:
                     const T rho_below = cell_densities[cell_idx(ix, iy, iz + 1)];
                     const T delta_rho = rho_above - rho_below;
 
-                    // Skip internal interface if densities match (homogeneous interior)
+                    // Skip internal interface if densities match (homogeneous interior or merged top voxel)
                     if (std::abs(delta_rho) < static_cast<T>(1e-9)) {
                         continue;
                     }
@@ -298,7 +407,8 @@ public:
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
-                if (col_iz_top[ix * ny + iy] >= nz) {
+                const std::size_t iz_top = col_top_iz[ix * ny + iy];
+                if (iz_top >= nz) {
                     continue;
                 }
 
@@ -360,17 +470,14 @@ public:
             return static_cast<int64_t>((ix * ny + iy) * nz + iz);
         };
 
-        std::vector<std::size_t> col_iz_top(nx * ny, nz);
+        std::vector<std::size_t> col_top_iz(nx * ny, nz);
         for (std::size_t ix = 0; ix < nx; ++ix) {
             for (std::size_t iy = 0; iy < ny; ++iy) {
-                const T zs = static_cast<T>(0.25) * (get_topo(ix, iy) + get_topo(ix + 1, iy) +
-                                                     get_topo(ix + 1, iy + 1) + get_topo(ix, iy + 1));
-                for (std::size_t iz = 0; iz < nz; ++iz) {
-                    if (z0 + (static_cast<T>(iz) + static_cast<T>(0.5)) * dz >= zs) {
-                        col_iz_top[ix * ny + iy] = iz;
-                        break;
-                    }
-                }
+                const T z00 = get_topo(ix, iy);
+                const T z10 = get_topo(ix + 1, iy);
+                const T z11 = get_topo(ix + 1, iy + 1);
+                const T z01 = get_topo(ix, iy + 1);
+                col_top_iz[ix * ny + iy] = column_mid_layer(z00, z10, z11, z01, z0, dz, nz);
             }
         }
 
@@ -380,7 +487,7 @@ public:
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
-                const std::size_t iz_top = col_iz_top[ix * ny + iy];
+                const std::size_t iz_top = col_top_iz[ix * ny + iy];
                 if (iz_top >= nz) {
                     continue;
                 }
@@ -431,8 +538,9 @@ public:
                 const T x_r = x_l + dx;
 
                 for (std::size_t iy = 0; iy < ny; ++iy) {
-                    if (iz < col_iz_top[ix * ny + iy]) {
-                        continue; // Above DEM surface (air)
+                    const std::size_t iz_top = col_top_iz[ix * ny + iy];
+                    if (iz < iz_top) {
+                        continue; // Above DEM surface
                     }
 
                     const T y_b = y0 + static_cast<T>(iy) * dy;
@@ -462,7 +570,8 @@ public:
             const T x_r = x_l + dx;
 
             for (std::size_t iy = 0; iy < ny; ++iy) {
-                if (col_iz_top[ix * ny + iy] >= nz) {
+                const std::size_t iz_top = col_top_iz[ix * ny + iy];
+                if (iz_top >= nz) {
                     continue;
                 }
 

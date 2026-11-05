@@ -1061,6 +1061,27 @@ void ProfileView::drawInversionDensitySlice(QPainter &painter, const QRect &canv
   painter.save();
   painter.setClipRect(canvas);
 
+  const double x0 = densityGrid.x0();
+  const double y0 = densityGrid.y0();
+  const auto &relief = m_doc->observation().surface_relief();
+  const bool hasRelief = !relief.empty() && relief.rows() >= 2 && relief.cols() >= 2;
+  const double reliefMean = hasRelief ? relief.mean() : zDomainTop;
+
+  auto sampleCornerDepth = [&](size_t ix_node, size_t iy_node, double fallbackElev) -> double {
+    double elev = fallbackElev;
+    if (hasRelief) {
+      const double xc = x0 + static_cast<double>(ix_node) * dx;
+      const double yc = y0 + static_cast<double>(iy_node) * dy;
+      double s = relief.sample(xc, yc);
+      if (s != mod3d::GRID_DUMMY && !std::isnan(s)) {
+        elev = s;
+      } else {
+        elev = reliefMean;
+      }
+    }
+    return std::max(0.0, zDomainTop - elev);
+  };
+
   if (m_profileOrient == ProfileOrientation::EastWest) {
     const int iy = m_profileIndex;
     if (iy >= 0 && iy < static_cast<int>(ny)) {
@@ -1068,6 +1089,7 @@ void ProfileView::drawInversionDensitySlice(QPainter &painter, const QRect &canv
       for (int i = 0; i < nLines && static_cast<size_t>(i) < nx; ++i) {
         double xw = columnCoordinate(i);
         int sx1 = worldToScreenX(xw - 0.5 * dx);
+        int sxMid = worldToScreenX(xw);
         int sx2 = worldToScreenX(xw + 0.5 * dx);
         int cellW = std::max(1, std::abs(sx2 - sx1));
         int sx = std::min(sx1, sx2);
@@ -1076,24 +1098,65 @@ void ProfileView::drawInversionDensitySlice(QPainter &painter, const QRect &canv
         getRowCol(i, r, c);
         double topoZ = m_doc->model().z(r, c, 0);
 
-        for (size_t iz = 0; iz < nz; ++iz) {
+        double prevTopoZ = topoZ;
+        if (i > 0) {
+          int rPrev = 0, cPrev = 0;
+          getRowCol(i - 1, rPrev, cPrev);
+          prevTopoZ = m_doc->model().z(rPrev, cPrev, 0);
+        }
+        double nextTopoZ = topoZ;
+        if (i + 1 < nLines) {
+          int rNext = 0, cNext = 0;
+          getRowCol(i + 1, rNext, cNext);
+          nextTopoZ = m_doc->model().z(rNext, cNext, 0);
+        }
+
+        const double zTopLeft = (i > 0) ? 0.5 * (prevTopoZ + topoZ) : topoZ;
+        const double zTopMid = topoZ;
+        const double zTopRight = (i + 1 < nLines) ? 0.5 * (topoZ + nextTopoZ) : topoZ;
+
+        const size_t ux = static_cast<size_t>(i);
+        const size_t uy = static_cast<size_t>(iy);
+        const double d00 = std::max(sampleCornerDepth(ux, uy, zTopLeft), std::max(0.0, zDomainTop - zTopLeft));
+        const double d10 = std::max(sampleCornerDepth(ux + 1, uy, zTopRight), std::max(0.0, zDomainTop - zTopRight));
+        const double d11 = std::max(sampleCornerDepth(ux + 1, uy + 1, zTopRight), std::max(0.0, zDomainTop - zTopRight));
+        const double d01 = std::max(sampleCornerDepth(ux, uy + 1, zTopLeft), std::max(0.0, zDomainTop - zTopLeft));
+
+        const size_t iz_top = pfld::InterfaceMesh<double>::column_top_layer(
+            d00, d10, d11, d01, 0.0, dz, nz);
+
+        for (size_t iz = iz_top; iz < nz; ++iz) {
           double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
           double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
-
-          if (zLayerBot >= topoZ)
-            continue; // above surface
-
-          double zCellTop = std::min(zLayerTop, topoZ);
-          int sy1 = worldToScreenZ(zCellTop);
-          int sy2 = worldToScreenZ(zLayerBot);
-          int cellH = std::max(1, std::abs(sy2 - sy1));
-          int sy = std::min(sy1, sy2);
 
           double rho = densityGrid(i, iy, iz);
           if (std::abs(rho) < 1e-4)
             continue;
 
-          painter.fillRect(sx, sy, cellW, cellH, getDensityColor(rho, maxAbsRho));
+          const QColor cellColor = getDensityColor(rho, maxAbsRho);
+          if (iz == iz_top) {
+            // Single merged top voxel bounded above by the upper relief facets and below by zLayerBot
+            int syTopLeft = worldToScreenZ(std::max(zLayerBot, zTopLeft));
+            int syTopMid = worldToScreenZ(std::max(zLayerBot, zTopMid));
+            int syTopRight = worldToScreenZ(std::max(zLayerBot, zTopRight));
+            int syBot = worldToScreenZ(zLayerBot);
+
+            QPolygonF topPoly;
+            topPoly << QPointF(sx1, syTopLeft)
+                    << QPointF(sxMid, syTopMid)
+                    << QPointF(sx2, syTopRight)
+                    << QPointF(sx2, syBot)
+                    << QPointF(sx1, syBot);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(cellColor);
+            painter.drawPolygon(topPoly);
+          } else {
+            int sy1 = worldToScreenZ(zLayerTop);
+            int sy2 = worldToScreenZ(zLayerBot);
+            int cellH = std::max(1, std::abs(sy2 - sy1));
+            int sy = std::min(sy1, sy2);
+            painter.fillRect(sx, sy, cellW, cellH, cellColor);
+          }
         }
       }
     }
@@ -1105,6 +1168,7 @@ void ProfileView::drawInversionDensitySlice(QPainter &painter, const QRect &canv
       for (int i = 0; i < nLines && static_cast<size_t>(i) < ny; ++i) {
         double yw = columnCoordinate(i);
         int sy1 = worldToScreenX(yw - 0.5 * dy);
+        int syMid = worldToScreenX(yw);
         int sy2 = worldToScreenX(yw + 0.5 * dy);
         int cellW = std::max(1, std::abs(sy2 - sy1));
         int sx = std::min(sy1, sy2);
@@ -1113,24 +1177,64 @@ void ProfileView::drawInversionDensitySlice(QPainter &painter, const QRect &canv
         getRowCol(i, r, c);
         double topoZ = m_doc->model().z(r, c, 0);
 
-        for (size_t iz = 0; iz < nz; ++iz) {
+        double prevTopoZ = topoZ;
+        if (i > 0) {
+          int rPrev = 0, cPrev = 0;
+          getRowCol(i - 1, rPrev, cPrev);
+          prevTopoZ = m_doc->model().z(rPrev, cPrev, 0);
+        }
+        double nextTopoZ = topoZ;
+        if (i + 1 < nLines) {
+          int rNext = 0, cNext = 0;
+          getRowCol(i + 1, rNext, cNext);
+          nextTopoZ = m_doc->model().z(rNext, cNext, 0);
+        }
+
+        const double zTopLeft = (i > 0) ? 0.5 * (prevTopoZ + topoZ) : topoZ;
+        const double zTopMid = topoZ;
+        const double zTopRight = (i + 1 < nLines) ? 0.5 * (topoZ + nextTopoZ) : topoZ;
+
+        const size_t ux = static_cast<size_t>(ix);
+        const size_t uy = static_cast<size_t>(i);
+        const double d00 = std::max(sampleCornerDepth(ux, uy, zTopLeft), std::max(0.0, zDomainTop - zTopLeft));
+        const double d10 = std::max(sampleCornerDepth(ux + 1, uy, zTopLeft), std::max(0.0, zDomainTop - zTopLeft));
+        const double d11 = std::max(sampleCornerDepth(ux + 1, uy + 1, zTopRight), std::max(0.0, zDomainTop - zTopRight));
+        const double d01 = std::max(sampleCornerDepth(ux, uy + 1, zTopRight), std::max(0.0, zDomainTop - zTopRight));
+
+        const size_t iz_top = pfld::InterfaceMesh<double>::column_top_layer(
+            d00, d10, d11, d01, 0.0, dz, nz);
+
+        for (size_t iz = iz_top; iz < nz; ++iz) {
           double zLayerTop = zDomainTop - static_cast<double>(iz) * dz;
           double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
-
-          if (zLayerBot >= topoZ)
-            continue;
-
-          double zCellTop = std::min(zLayerTop, topoZ);
-          int sz1 = worldToScreenZ(zCellTop);
-          int sz2 = worldToScreenZ(zLayerBot);
-          int cellH = std::max(1, std::abs(sz2 - sz1));
-          int sy = std::min(sz1, sz2);
 
           double rho = densityGrid(ix, i, iz);
           if (std::abs(rho) < 1e-4)
             continue;
 
-          painter.fillRect(sx, sy, cellW, cellH, getDensityColor(rho, maxAbsRho));
+          const QColor cellColor = getDensityColor(rho, maxAbsRho);
+          if (iz == iz_top) {
+            int szTopLeft = worldToScreenZ(std::max(zLayerBot, zTopLeft));
+            int szTopMid = worldToScreenZ(std::max(zLayerBot, zTopMid));
+            int szTopRight = worldToScreenZ(std::max(zLayerBot, zTopRight));
+            int szBot = worldToScreenZ(zLayerBot);
+
+            QPolygonF topPoly;
+            topPoly << QPointF(sy1, szTopLeft)
+                    << QPointF(syMid, szTopMid)
+                    << QPointF(sy2, szTopRight)
+                    << QPointF(sy2, szBot)
+                    << QPointF(sy1, szBot);
+            painter.setPen(Qt::NoPen);
+            painter.setBrush(cellColor);
+            painter.drawPolygon(topPoly);
+          } else {
+            int sz1 = worldToScreenZ(zLayerTop);
+            int sz2 = worldToScreenZ(zLayerBot);
+            int cellH = std::max(1, std::abs(sz2 - sz1));
+            int sy = std::min(sz1, sz2);
+            painter.fillRect(sx, sy, cellW, cellH, cellColor);
+          }
         }
       }
     }

@@ -668,4 +668,39 @@ TEST(PfldInterfaceMeshTest, PlanarOptimizationAndDensityDiff) {
 	EXPECT_LT(gz[1], gz[0]);
 }
 
+TEST(PfldInterfaceMeshTest, MergedTerrainIntersectingVoxelsWithUpperReliefFacets) {
+	// 1x1x4 column with dz = 10 m and terrain sloping across multiple layers:
+	// z00 = 2 m, z10 = 12 m, z11 = 24 m, z01 = 10 m -> zs = 12 m, z_topo_max = 24 m.
+	// Layer 0: [0, 10] (mid 5 < 12)
+	// Layer 1: [10, 20] (mid 15 >= 12 -> iz_mid = 1)
+	// Layer 2: [20, 30] (bot 30 >= 24 -> iz_top = 2)
+	const std::size_t nx = 1, ny = 1, nz = 4;
+	const double dx = 50.0, dy = 50.0, dz = 10.0;
+	const std::vector<double> topo = {2.0, 12.0, 10.0, 24.0};
+
+	const std::size_t iz_mid = pfld::InterfaceMesh<double>::column_mid_layer(topo, nx, ny, 0, 0, 0.0, dz, nz);
+	const std::size_t iz_top = pfld::InterfaceMesh<double>::column_top_layer(topo, nx, ny, 0, 0, 0.0, dz, nz);
+	const std::size_t iz_first = pfld::InterfaceMesh<double>::column_first_intersecting_layer(
+		topo, nx, ny, 0, 0, 0.0, dz, iz_top);
+
+	EXPECT_EQ(iz_first, 0u);
+	EXPECT_EQ(iz_mid, 1u);
+	EXPECT_EQ(iz_top, 2u);
+
+	// When intersecting layers [iz_mid..iz_top] are merged to a single uniform density (0.4 g/cm^3)
+	// and layer 3 has 0.0 g/cm^3, the internal horizontal interface between iz=1 and iz=2 has delta_rho=0
+	// and is omitted, leaving only the 2 upper relief triangles and 1 bottom quad at z = 30 m.
+	std::vector<double> densities = {0.0, 0.4, 0.4, 0.0};
+	pfld::InterfaceMesh<double> mesh;
+	mesh.build(nx, ny, nz, 0.0, 0.0, dx, dy, dz, topo, densities, 0.0, 0.0);
+
+	std::size_t tri_count = 0, quad_count = 0;
+	for (const auto& f : mesh.interfaces()) {
+		if (f.type == pfld::InterfaceFacetType::TopographyTriangle) ++tri_count;
+		if (f.type == pfld::InterfaceFacetType::SubsurfaceQuad) ++quad_count;
+	}
+	EXPECT_EQ(tri_count, 2u);
+	EXPECT_EQ(quad_count, 1u);
+}
+
 } // namespace
