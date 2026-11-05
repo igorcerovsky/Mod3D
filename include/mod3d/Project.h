@@ -22,7 +22,7 @@ struct ProjectMetadata {
 struct InversionSettings3D {
     int nz{24};
     double dz{100.0};
-    double obs_height{10.0};
+    double obs_height{0.1};
     bool focusing_enabled{true};
     int coarse_to_fine_levels{3};
     bool adaptive_refinement{true};

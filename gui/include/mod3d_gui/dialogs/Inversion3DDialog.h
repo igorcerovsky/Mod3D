@@ -43,6 +43,12 @@ public:
 
     void waitForCompletion();
     [[nodiscard]] QComboBox *trendModeComboBox() const noexcept { return m_comboTrendMode; }
+    [[nodiscard]] QSpinBox *nzSpinBox() const noexcept { return m_spinNz; }
+    [[nodiscard]] QDoubleSpinBox *dzSpinBox() const noexcept { return m_spinDz; }
+    [[nodiscard]] QDoubleSpinBox *obsHeightSpinBox() const noexcept { return m_spinObsHeight; }
+    [[nodiscard]] QCheckBox *autoTuneCheckBox() const noexcept { return m_chkAutoTune; }
+    [[nodiscard]] QCheckBox *refinePreviousCheckBox() const noexcept { return m_chkRefinePrevious; }
+    [[nodiscard]] const std::optional<inv::InversionResult> &currentResult() const noexcept { return m_currentResult; }
 
 protected:
     void closeEvent(QCloseEvent *event) override;

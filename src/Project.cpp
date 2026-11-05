@@ -676,6 +676,17 @@ bool Project::from_json_string(std::string_view jsonStr) {
       settings_.inversion.refine_previous = ji.value("refine_previous", settings_.inversion.refine_previous);
       settings_.inversion.background_trend_mode = ji.value("background_trend_mode", settings_.inversion.background_trend_mode);
       settings_.inversion.auto_tune_params = ji.value("auto_tune_params", settings_.inversion.auto_tune_params);
+    } else if (model_.is_initialized()) {
+      const double H = std::max(10.0, model_.z_max_val() - model_.z_min_val());
+      const double dxy = std::max(1.0, std::min(std::abs(model_.dx_val()), std::abs(model_.dy_val())));
+      int initNz = std::clamp(static_cast<int>(std::round(H / dxy)), 16, 48);
+      if (root.contains("inversion_result") && root["inversion_result"].is_object() &&
+          root["inversion_result"].contains("grid") && root["inversion_result"]["grid"].is_object()) {
+        initNz = root["inversion_result"]["grid"].value("nz", initNz);
+      }
+      settings_.inversion.nz = std::max(2, initNz);
+      settings_.inversion.dz = H / static_cast<double>(settings_.inversion.nz);
+      settings_.inversion.obs_height = observation_.gravity_height().value();
     }
 
     // Inversion Result

@@ -190,17 +190,17 @@ void Inversion3DDialog::setupDomainTab(QWidget *parent) {
     formV->addRow(tr("Vertical Layers (Nz):"), m_spinNz);
 
     m_spinDz = new QDoubleSpinBox(parent);
-    m_spinDz->setRange(1.0, 50000.0);
-    m_spinDz->setDecimals(1);
+    m_spinDz->setRange(0.01, 50000.0);
+    m_spinDz->setDecimals(3);
     m_spinDz->setSuffix(" m");
     m_spinDz->setValue(100.0);
     formV->addRow(tr("Cell Thickness (&Delta;z):"), m_spinDz);
 
     m_spinObsHeight = new QDoubleSpinBox(parent);
     m_spinObsHeight->setRange(0.0, 10000.0);
-    m_spinObsHeight->setDecimals(1);
+    m_spinObsHeight->setDecimals(2);
     m_spinObsHeight->setSuffix(" m");
-    m_spinObsHeight->setValue(10.0);
+    m_spinObsHeight->setValue(0.1);
     formV->addRow(tr("Sensor Clearance above Ground:"), m_spinObsHeight);
 
     layout->addWidget(grpVertical);
@@ -217,6 +217,7 @@ void Inversion3DDialog::setupDomainTab(QWidget *parent) {
             m_spinDz->setValue(H / nz);
             m_spinDz->blockSignals(false);
         }
+        saveSettingsToDocument();
     });
 
     connect(m_spinDz, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double dz) {
@@ -228,6 +229,7 @@ void Inversion3DDialog::setupDomainTab(QWidget *parent) {
         m_spinNz->blockSignals(true);
         m_spinNz->setValue(nz);
         m_spinNz->blockSignals(false);
+        saveSettingsToDocument();
     });
 }
 
@@ -565,12 +567,17 @@ void Inversion3DDialog::updateRefinementState() {
 void Inversion3DDialog::loadSettingsFromDocument() {
     if (!m_doc) return;
     const auto &s = m_doc->inversionSettings();
+    const double zMin = m_doc->model().z_min().value();
+    const double zMax = m_doc->model().z_max().value();
+    const double H = std::max(10.0, zMax - zMin);
     if (s.nz > 0) {
         m_spinNz->blockSignals(true);
         m_spinNz->setValue(s.nz);
         m_spinNz->blockSignals(false);
-    }
-    if (s.dz > 0.0) {
+        m_spinDz->blockSignals(true);
+        m_spinDz->setValue(H / static_cast<double>(s.nz));
+        m_spinDz->blockSignals(false);
+    } else if (s.dz > 0.0) {
         m_spinDz->blockSignals(true);
         m_spinDz->setValue(s.dz);
         m_spinDz->blockSignals(false);
@@ -607,7 +614,8 @@ void Inversion3DDialog::loadSettingsFromDocument() {
     m_spinIrlsIters->setValue(s.irls_iterations);
     m_spinCgMaxIters->setValue(s.cg_max_iterations);
     if (m_chkAutoTune) {
-        m_chkAutoTune->setChecked(s.auto_tune_params);
+        const bool alreadyAutoTuned = m_doc->hasInversionResult() && m_doc->inversionResult()->stats.auto_tuned;
+        m_chkAutoTune->setChecked(s.auto_tune_params && !alreadyAutoTuned);
     }
     m_chkUseNeuralPrior->setChecked(s.use_neural_prior && inv::NeuralPriorInference::is_available());
     if (!s.onnx_model_path.empty()) {
@@ -623,9 +631,12 @@ void Inversion3DDialog::loadSettingsFromDocument() {
 
 void Inversion3DDialog::saveSettingsToDocument() {
     if (!m_doc) return;
-    mod3d::InversionSettings3D s;
+    const double zMin = m_doc->model().z_min().value();
+    const double zMax = m_doc->model().z_max().value();
+    const double H = std::max(10.0, zMax - zMin);
+    mod3d::InversionSettings3D s = m_doc->inversionSettings();
     s.nz = m_spinNz->value();
-    s.dz = m_spinDz->value();
+    s.dz = (s.nz > 0) ? (H / static_cast<double>(s.nz)) : m_spinDz->value();
     s.obs_height = m_spinObsHeight->value();
     s.focusing_enabled = m_chkFocusing->isChecked();
     s.coarse_to_fine_levels = m_comboLevels->currentData().toInt();
@@ -644,7 +655,9 @@ void Inversion3DDialog::saveSettingsToDocument() {
     s.use_neural_prior = m_chkUseNeuralPrior->isChecked();
     s.onnx_model_path = m_txtPriorPath->text().toStdString();
     s.prior_as_reference = m_chkPriorAsRef->isChecked();
-    s.refine_previous = m_chkRefinePrevious->isChecked();
+    if (m_chkRefinePrevious && m_chkRefinePrevious->isEnabled()) {
+        s.refine_previous = m_chkRefinePrevious->isChecked();
+    }
     m_doc->setInversionSettings(s);
 }
 
@@ -684,7 +697,10 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     const size_t nz = static_cast<size_t>(m_spinNz->value());
     const double dx = std::abs(obsGrid->dx().value());
     const double dy = std::abs(obsGrid->dy().value());
-    const double dz = m_spinDz->value();
+    const double zMin = m_doc->model().z_min().value();
+    const double zMax = m_doc->model().z_max().value();
+    const double H = std::max(10.0, zMax - zMin);
+    const double dz = (nz > 0) ? (H / static_cast<double>(nz)) : m_spinDz->value();
 
     // Voxel horizontal centering: voxel center is AT (x_i, y_i)
     // so x0_geom = obsGrid->x0 - 0.5 * dx, y0_geom = obsGrid->y0 - 0.5 * dy.
@@ -713,14 +729,33 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     setup.config.min_density = units::KgPerM3(m_spinMinDensity->value()).in<units::GPerCm3>();
     setup.config.max_density = units::KgPerM3(m_spinMaxDensity->value()).in<units::GPerCm3>();
     setup.config.use_fft_solver_benchmark = (m_comboOperator->currentIndex() == 1);
-    setup.config.background_trend_mode = m_comboTrendMode ? m_comboTrendMode->currentData().toInt() : 1;
+    // Observed grid from Mod3D (activeObservedGrid) is already detrended according to Mod3D's Physics tab.
+    // Pass background_trend_mode = 0 to the solver so G * m fits the detrended Mod3D field directly
+    // without double-detrending or introducing an unmodeled baseline shift.
+    setup.config.background_trend_mode = 0;
     setup.config.auto_tune_params = m_chkAutoTune ? m_chkAutoTune->isChecked() : false;
     setup.config.noise_rel = m_spinNoiseRel->value() * 0.01;
     setup.config.irls_iterations = m_spinIrlsIters->value();
     setup.config.cg_max_iterations = m_spinCgMaxIters->value();
-    setup.config.obs_height = units::Meters(m_spinObsHeight->value()).in<units::Meters>();
-    setup.config.dz = units::Meters(m_spinDz->value()).in<units::Meters>();
+    const double rawObsH = units::Meters(m_spinObsHeight->value()).in<units::Meters>();
+    setup.config.obs_height = (m_doc->observation().gravity_mode() == mod3d::ObservationMode::SensorHeight && rawObsH <= 0.0)
+        ? 0.1
+        : rawObsH;
+    setup.config.dz = units::Meters(dz).in<units::Meters>();
     setup.config.onnx_model_path = m_txtPriorPath->text().toStdString();
+    if (!setup.config.auto_tune_params) {
+        const inv::InversionResult *prevTuned = m_currentResult.has_value()
+            ? &(*m_currentResult)
+            : (m_doc->hasInversionResult() ? &(*m_doc->inversionResult()) : nullptr);
+        if (prevTuned && prevTuned->stats.auto_tuned) {
+            if (prevTuned->stats.tuned_alpha_reg > 0.0) {
+                setup.config.alpha_reg = prevTuned->stats.tuned_alpha_reg;
+            }
+            if (prevTuned->stats.tuned_focusing_e_end_rel > 0.0) {
+                setup.config.focusing_e_end_rel = prevTuned->stats.tuned_focusing_e_end_rel;
+            }
+        }
+    }
 
     // Collect observation raster: index ix * ny + iy
     std::vector<double> d_fine(nx * ny, 0.0);
@@ -773,7 +808,6 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     m_tabWidget->setCurrentIndex(3);
     m_txtLog->clear();
     m_progressBar->setValue(0);
-    m_currentResult.reset();
     m_btnApply->setEnabled(false);
     m_btnExportVtk->setEnabled(false);
     m_btnExportJson->setEnabled(false);
@@ -781,7 +815,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
     appendLog(tr("Starting 3D Focusing Inversion (%1x%2x%3 voxels)...").arg(nx).arg(ny).arg(nz));
     appendLog(tr("Voxel Centers aligned with profile planes: x0 = %1 m, y0 = %2 m, dx = %3 m, dy = %4 m, dz = %5 m")
-        .arg(x0_geom, 0, 'f', 1).arg(y0_geom, 0, 'f', 1).arg(dx, 0, 'f', 1).arg(dy, 0, 'f', 1).arg(dz, 0, 'f', 1));
+        .arg(x0_geom, 0, 'f', 1).arg(y0_geom, 0, 'f', 1).arg(dx, 0, 'f', 1).arg(dy, 0, 'f', 1).arg(dz, 0, 'f', 3));
     appendLog(tr("Forward operator: %1").arg(setup.config.use_fft_solver_benchmark ? "Toeplitz FFT benchmark" : "pfld::InterfaceMesh DEM facets"));
 
     m_lastSetup = setup;
@@ -817,6 +851,8 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
         appendLog(tr("==> Cold Start Mode: Starting fresh inversion from scratch across all %1 coarse-to-fine levels (zero initial model).")
             .arg(setup.config.coarse_to_fine_levels));
     }
+
+    m_currentResult.reset();
 
     if (setup.config.auto_tune_params && !isRefining) {
         appendLog(tr("==> Hyperparameter Auto-Tuning active: optimizing Nz, bounds, gamma, alpha_reg, and e_end before main inversion."));
@@ -957,11 +993,14 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                     m_spinMinDensity->setValue(tunedMinKg);
                     m_spinMaxDensity->setValue(tunedMaxKg);
                     m_spinDepthExp->setValue(m_currentResult->stats.tuned_depth_exponent);
+                    if (m_chkAutoTune) {
+                        m_chkAutoTune->setChecked(false);
+                    }
                     saveSettingsToDocument();
                     appendLog(tr("    Auto-Tuned Parameters (%1 trials): Nz = %2 (dz = %3 m), Bounds = [%4, %5] %6, \xce\xb3 = %7, \xce\xb1_reg = %8, e_end = %9")
                         .arg(m_currentResult->stats.tuning_trials_evaluated)
                         .arg(m_currentResult->stats.tuned_nz)
-                        .arg(m_currentResult->stats.tuned_dz, 0, 'f', 1)
+                        .arg(m_currentResult->stats.tuned_dz, 0, 'f', 3)
                         .arg(tunedMinKg, 0, 'f', 1)
                         .arg(tunedMaxKg, 0, 'f', 1)
                         .arg(densUnit)
@@ -1084,26 +1123,26 @@ void Inversion3DDialog::onBrowsePriorClicked() {
 void Inversion3DDialog::onInstantAiClicked() {
     if (!m_doc) return;
 
-    // Check observation grid
-    const auto *obsGrid = m_doc->observedGrid(mod3d::FieldComponent::GZ);
-    if (!obsGrid || obsGrid->empty()) {
-        obsGrid = m_doc->observedGrid(mod3d::FieldComponent::G_TOT);
-    }
+    // Check observation grid (already detrended by Mod3D Physics tab)
+    const auto *obsGrid = m_doc->activeObservedGrid();
     if (!obsGrid || obsGrid->empty()) {
         QMessageBox::warning(this, tr("Observation Missing"),
                              tr("3D Inversion requires an active observed gravity grid (gz or g_tot)."));
         return;
     }
 
-    const size_t nx = m_doc->model().cols();
-    const size_t ny = m_doc->model().rows();
+    const size_t nx = obsGrid->cols();
+    const size_t ny = obsGrid->rows();
     const size_t nz = static_cast<size_t>(m_spinNz->value());
-    const double dx = m_doc->model().x_size().value();
-    const double dy = m_doc->model().y_size().value();
-    const double dz = m_spinDz->value();
+    const double dx = std::abs(obsGrid->dx().value());
+    const double dy = std::abs(obsGrid->dy().value());
+    const double zMin = m_doc->model().z_min().value();
+    const double zMax = m_doc->model().z_max().value();
+    const double H = std::max(10.0, zMax - zMin);
+    const double dz = (nz > 0) ? (H / static_cast<double>(nz)) : m_spinDz->value();
 
-    const double x0_geom = m_doc->model().xd_val(1);
-    const double y0_geom = m_doc->model().yd_val(1);
+    const double x0_geom = obsGrid->x0().value() - 0.5 * dx;
+    const double y0_geom = obsGrid->y0().value() - 0.5 * dy;
     const double z0_geom = 0.0;
 
     std::vector<double> d_fine(nx * ny, 0.0);
@@ -1157,7 +1196,10 @@ void Inversion3DDialog::onInstantAiClicked() {
     cfg.nx = nx; cfg.ny = ny; cfg.nz = nz;
     cfg.dx = dx; cfg.dy = dy; cfg.dz = dz;
     cfg.x0 = x0_geom; cfg.y0 = y0_geom; cfg.z0 = z0_geom;
-    cfg.obs_height = m_spinObsHeight->value();
+    const double rawObsH = m_spinObsHeight->value();
+    cfg.obs_height = (m_doc->observation().gravity_mode() == mod3d::ObservationMode::SensorHeight && rawObsH <= 0.0)
+        ? 0.1
+        : rawObsH;
     cfg.use_fft_solver_benchmark = (m_comboOperator->currentIndex() == 1);
 
     inv::InversionResult result;
@@ -1224,17 +1266,6 @@ void Inversion3DDialog::onInstantAiClicked() {
         op->set_active(active);
         result.modeled_gz.resize(nx * ny, 0.0);
         op->apply(result.density_grid.data(), result.modeled_gz);
-
-        const int bg_mode = m_comboTrendMode ? m_comboTrendMode->currentData().toInt() : 1;
-        if (bg_mode != 0) {
-            std::vector<double> diff(nx * ny, 0.0);
-            for (size_t i = 0; i < nx * ny; ++i) diff[i] = d_fine[i] - result.modeled_gz[i];
-            inv::BackgroundBasis bg(g, static_cast<inv::BackgroundTrendMode>(bg_mode == 3 ? 1 : bg_mode));
-            std::vector<double> bg_field;
-            bg.evaluate(diff, bg_field, result.stats.baseline_shift_mgal,
-                        result.stats.trend_gx_mgal_per_km, result.stats.trend_gy_mgal_per_km);
-            for (size_t i = 0; i < nx * ny; ++i) result.modeled_gz[i] += bg_field[i];
-        }
 
         double fit2 = 0.0;
         for (size_t i = 0; i < nx * ny; ++i) {

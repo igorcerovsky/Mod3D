@@ -5298,6 +5298,57 @@ TEST_F(GuiDocumentTest, ModelDocumentOpenRoman1026ReproducesInversionField) {
   EXPECT_LT(rms, 1e-9);
 }
 
+TEST_F(GuiDocumentTest, Inversion3DDialogParameterPersistenceAndRoman1026Quality) {
+  QString path = "examples/private/roman_1026.mod3d";
+  if (!QFile::exists(path)) {
+    path = "../examples/private/roman_1026.mod3d";
+  }
+  if (!QFile::exists(path)) {
+    path = "../../examples/private/roman_1026.mod3d";
+  }
+  if (!QFile::exists(path)) {
+    GTEST_SKIP() << "roman_1026.mod3d not found";
+  }
+
+  ModelDocument doc;
+  ASSERT_TRUE(doc.openFile(path));
+
+  Inversion3DDialog dlg(&doc);
+  ASSERT_NE(dlg.nzSpinBox(), nullptr);
+  ASSERT_NE(dlg.dzSpinBox(), nullptr);
+  ASSERT_NE(dlg.autoTuneCheckBox(), nullptr);
+
+  // Nz must be loaded as 64 and dz as 170.0 / 64 = 2.656 (not rounded to 2.7)
+  EXPECT_EQ(dlg.nzSpinBox()->value(), 64);
+  EXPECT_NEAR(dlg.dzSpinBox()->value(), 170.0 / 64.0, 1e-3);
+  // Since roman_1026.mod3d already has an auto-tuned result, auto-tune checkbox is unchecked on load
+  // so re-running does not overwrite user-selected parameters.
+  EXPECT_FALSE(dlg.autoTuneCheckBox()->isChecked());
+
+  // Re-run cold-start inversion with Nz = 64 and verify Nz persists and achieves high quality (< 0.065 mGal)
+  dlg.onRunColdStartClicked();
+  dlg.waitForCompletion();
+
+  EXPECT_EQ(dlg.nzSpinBox()->value(), 64);
+  EXPECT_EQ(doc.inversionSettings().nz, 64);
+  ASSERT_TRUE(dlg.currentResult().has_value());
+  EXPECT_EQ(dlg.currentResult()->density_grid.nz(), 64u);
+  EXPECT_LT(dlg.currentResult()->stats.final_data_rms, 0.065);
+  EXPECT_DOUBLE_EQ(dlg.currentResult()->stats.baseline_shift_mgal, 0.0);
+
+  // Now change Nz to 32 and re-run -> verify Nz = 32 persists and does not reset to 24
+  dlg.nzSpinBox()->setValue(32);
+  EXPECT_EQ(doc.inversionSettings().nz, 32);
+  dlg.onRunClicked();
+  dlg.waitForCompletion();
+
+  EXPECT_EQ(dlg.nzSpinBox()->value(), 32);
+  EXPECT_EQ(doc.inversionSettings().nz, 32);
+  ASSERT_TRUE(dlg.currentResult().has_value());
+  EXPECT_EQ(dlg.currentResult()->density_grid.nz(), 32u);
+  EXPECT_LT(dlg.currentResult()->stats.final_data_rms, 0.095);
+}
+
 TEST_F(GuiDocumentTest, ProfileViewInversionDensitySliceAndContextMenu) {
   ModelDocument doc;
   doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);

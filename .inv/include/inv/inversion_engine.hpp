@@ -1067,9 +1067,9 @@ private:
             const double top_frac = tot_energy > 1e-20 ? (top_energy / tot_energy) : 0.0;
             const double bot_frac = tot_energy > 1e-20 ? (bot_energy / tot_energy) : 0.0;
 
-            // Aspect ratio penalty for vertical cell thickness vs horizontal step
+            // Aspect ratio penalty for overly thick vertical cells vs horizontal step
             const double dxy = 0.5 * (base.dx + base.dy);
-            const double aspect = std::log(std::max(0.1, cand_dz / std::max(1.0, dxy)));
+            const double aspect = std::max(0.0, std::log(std::max(0.1, cand_dz / std::max(1.0, dxy))));
 
             const double chi_diff = ls.chi_rms - 1.0;
             const double underfit_pen = (ls.chi_rms > 1.15) ? 2.5 * (ls.chi_rms - 1.15) * (ls.chi_rms - 1.15) : 0.0;
@@ -1142,11 +1142,12 @@ private:
             std::size_t r = ((v + mult / 2) / mult) * mult;
             return std::clamp<std::size_t>(r, std::max<std::size_t>(4, mult), 64);
         };
-        const std::vector<std::size_t> nz_cands = {
-            round_mult( std::max<std::size_t>(4, (base.nz * 3) / 4) ),
-            round_mult( base.nz ),
-            round_mult( (base.nz * 5) / 4 )
-        };
+        std::vector<std::size_t> nz_cands;
+        if (base.nz % mult != 0) {
+            nz_cands.push_back(round_mult(std::max<std::size_t>(4, (base.nz * 3) / 4)));
+        }
+        nz_cands.push_back(round_mult(base.nz));
+        nz_cands.push_back(round_mult((base.nz * 5) / 4));
         std::vector<std::size_t> valid_nzs;
         for (std::size_t nz_c : nz_cands) {
             if (nz_c != base.nz && std::find(valid_nzs.begin(), valid_nzs.end(), nz_c) == valid_nzs.end()) {

@@ -38,6 +38,14 @@ bool ModelDocument::newProject(int rows, int cols, double x0, double y0, double 
     m_project.observation().init_geometry(rows, cols, x0, y0, dx, dy);
     m_project.observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 0.0);
     m_project.observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 0.0);
+    {
+        const double H = std::max(10.0, zMax - zMin);
+        const double dxy = std::max(1.0, std::min(std::abs(dx), std::abs(dy)));
+        const int initNz = std::clamp(static_cast<int>(std::round(H / dxy)), 16, 48);
+        m_project.settings().inversion.nz = initNz;
+        m_project.settings().inversion.dz = H / static_cast<double>(initNz);
+        m_project.settings().inversion.obs_height = 0.0;
+    }
 
     m_profileOrient = ProfileOrientation::EastWest;
     m_profileIndex = rows / 2;
@@ -74,6 +82,14 @@ bool ModelDocument::newProjectFromReliefGrid(const mod3d::Grid &reliefGrid, doub
     m_project.observation().set_surface_relief(reliefGrid);
     m_project.observation().set_gravity_observation(mod3d::ObservationMode::SensorHeight, 0.0);
     m_project.observation().set_magnetic_observation(mod3d::ObservationMode::SensorHeight, 0.0);
+    {
+        const double H = std::max(10.0, zMax - zMin);
+        const double dxy = std::max(1.0, std::min(std::abs(reliefGrid.dx().value()), std::abs(reliefGrid.dy().value())));
+        const int initNz = std::clamp(static_cast<int>(std::round(H / dxy)), 16, 48);
+        m_project.settings().inversion.nz = initNz;
+        m_project.settings().inversion.dz = H / static_cast<double>(initNz);
+        m_project.settings().inversion.obs_height = 0.0;
+    }
 
     m_profileOrient = ProfileOrientation::EastWest;
     m_profileIndex = static_cast<int>(reliefGrid.rows()) / 2;
