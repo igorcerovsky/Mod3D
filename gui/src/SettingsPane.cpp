@@ -72,6 +72,21 @@ SettingsPane::SettingsPane(ModelDocument *doc, MainWindow *mainWindow,
   });
   connect(m_doc, &ModelDocument::inversionResultChanged, this, [this]() {
     updateViewContext();
+    updateModelingModeStatus();
+  });
+  connect(m_doc, &ModelDocument::modelingModeChanged, this, [this](mod3d::ModelingMode mode) {
+    if (!m_blockSync) {
+      m_blockSync = true;
+      if (m_rbModelingPolyhedral && m_rbModelingVoxel) {
+        if (mode == mod3d::ModelingMode::Voxel) {
+          m_rbModelingVoxel->setChecked(true);
+        } else {
+          m_rbModelingPolyhedral->setChecked(true);
+        }
+      }
+      updateModelingModeStatus();
+      m_blockSync = false;
+    }
   });
   connect(m_doc, &ModelDocument::backgroundTrendModeChanged, this, [this](int) {
     loadPhysicsData();
@@ -2177,6 +2192,58 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
   layout->setSpacing(6);
   layout->setAlignment(Qt::AlignTop);
 
+  // 0. Modeling Mode (Field Source Selection)
+  auto *boxModeling = new QGroupBox(tr("Modeling Mode (Field Source)"), inner);
+  auto *layoutModeling = new QVBoxLayout(boxModeling);
+  layoutModeling->setContentsMargins(8, 8, 8, 8);
+  layoutModeling->setSpacing(6);
+
+  m_rbModelingPolyhedral =
+      new QRadioButton(tr("Polyhedral Model (2.5D / 3D Bodies)"), boxModeling);
+  m_rbModelingPolyhedral->setToolTip(
+      tr("The modeled field in all views is computed exclusively from 2.5D and "
+         "3D polyhedral bodies (facets). Voxel model is excluded."));
+
+  m_rbModelingVoxel =
+      new QRadioButton(tr("Voxel Model (3D Inversion Grid)"), boxModeling);
+  m_rbModelingVoxel->setToolTip(
+      tr("The modeled field in all views is computed exclusively from the 3D "
+         "voxel density inversion grid. Polyhedral bodies are excluded."));
+
+  auto *grpModeling = new QButtonGroup(boxModeling);
+  grpModeling->addButton(m_rbModelingPolyhedral, 0);
+  grpModeling->addButton(m_rbModelingVoxel, 1);
+
+  layoutModeling->addWidget(m_rbModelingPolyhedral);
+  layoutModeling->addWidget(m_rbModelingVoxel);
+
+  m_lblModelingModeStatus = new QLabel(boxModeling);
+  m_lblModelingModeStatus->setStyleSheet("color: #475569; font-size: 11px;");
+  m_lblModelingModeStatus->setWordWrap(true);
+  layoutModeling->addWidget(m_lblModelingModeStatus);
+
+  layout->addWidget(boxModeling);
+
+  connect(m_rbModelingPolyhedral, &QRadioButton::toggled, this,
+          [this](bool checked) {
+            if (m_blockSync)
+              return;
+            if (checked) {
+              m_doc->setModelingMode(mod3d::ModelingMode::Polyhedral);
+              updateModelingModeStatus();
+            }
+          });
+
+  connect(m_rbModelingVoxel, &QRadioButton::toggled, this,
+          [this](bool checked) {
+            if (m_blockSync)
+              return;
+            if (checked) {
+              m_doc->setModelingMode(mod3d::ModelingMode::Voxel);
+              updateModelingModeStatus();
+            }
+          });
+
   // 1. Geomagnetic Inducing Field
   auto *boxInd =
       new QGroupBox(tr("Geomagnetic Inducing Field (T0, I0, D0)"), inner);
@@ -2358,6 +2425,13 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
   layout->addWidget(boxFit);
 
   connect(m_btnFitActiveDensity, &QPushButton::clicked, this, [this]() {
+    if (m_doc->modelingMode() == mod3d::ModelingMode::Voxel) {
+      QMessageBox::information(
+          this, tr("Polyhedral Modeling Required"),
+          tr("1D automated fitting operates on polyhedral body geometry.\n\n"
+             "Please switch Modeling Mode to 'Polyhedral Model' in this tab first."));
+      return;
+    }
     int bId = m_comboBodies->currentData().toInt();
     auto *b = m_doc->model().body(bId);
     if (!b)
@@ -2374,6 +2448,13 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
   });
 
   connect(m_btnFit1DVertices, &QPushButton::clicked, this, [this]() {
+    if (m_doc->modelingMode() == mod3d::ModelingMode::Voxel) {
+      QMessageBox::information(
+          this, tr("Polyhedral Modeling Required"),
+          tr("1D automated fitting operates on polyhedral body geometry.\n\n"
+             "Please switch Modeling Mode to 'Polyhedral Model' in this tab first."));
+      return;
+    }
     if (auto *pv = qobject_cast<ProfileView *>(m_activeView.data())) {
       int profIdx = pv->profileIndex();
       auto orient = pv->profileOrientation();
@@ -2406,6 +2487,13 @@ void SettingsPane::setupPhysicsTab(QWidget *container) {
   });
 
   connect(m_btnFitNeighborhood, &QPushButton::clicked, this, [this]() {
+    if (m_doc->modelingMode() == mod3d::ModelingMode::Voxel) {
+      QMessageBox::information(
+          this, tr("Polyhedral Modeling Required"),
+          tr("1D automated fitting operates on polyhedral body geometry.\n\n"
+             "Please switch Modeling Mode to 'Polyhedral Model' in this tab first."));
+      return;
+    }
     if (auto *pv = qobject_cast<ProfileView *>(m_activeView.data())) {
       int profIdx = pv->profileIndex();
       auto orient = pv->profileOrientation();
@@ -3068,6 +3156,16 @@ void SettingsPane::applyBodyData() {
 void SettingsPane::loadPhysicsData() {
   m_blockSync = true;
 
+  // Modeling Mode
+  if (m_rbModelingPolyhedral && m_rbModelingVoxel) {
+    if (m_doc->modelingMode() == mod3d::ModelingMode::Voxel) {
+      m_rbModelingVoxel->setChecked(true);
+    } else {
+      m_rbModelingPolyhedral->setChecked(true);
+    }
+    updateModelingModeStatus();
+  }
+
   // Inducing Field
   m_spinIndT0->setValue(m_doc->observation().magnetic_intensity().value());
   m_spinIndInc->setValue(m_doc->observation().inclination().value());
@@ -3109,6 +3207,31 @@ void SettingsPane::loadPhysicsData() {
   updateObservedMeanLabel();
 
   m_blockSync = false;
+}
+
+void SettingsPane::updateModelingModeStatus() {
+  if (!m_lblModelingModeStatus)
+    return;
+  if (m_doc->modelingMode() == mod3d::ModelingMode::Polyhedral) {
+    const size_t numBodies = m_doc->model().bodies().size();
+    m_lblModelingModeStatus->setText(
+        tr("Active: Polyhedral Model (%1 %2 in model). Modeled field driven by bodies.")
+            .arg(numBodies)
+            .arg(numBodies == 1 ? tr("body") : tr("bodies")));
+  } else {
+    if (m_doc->hasInversionResult()) {
+      const auto &res = *m_doc->inversionResult();
+      const auto &vg = res.density_grid;
+      m_lblModelingModeStatus->setText(
+          tr("Active: Voxel Model (%1 × %2 × %3 cells). Modeled field driven by 3D inversion grid.")
+              .arg(vg.nx())
+              .arg(vg.ny())
+              .arg(vg.nz()));
+    } else {
+      m_lblModelingModeStatus->setText(
+          tr("Active: Voxel Model (⚠ No 3D inversion grid available. Run 3D Inversion to compute)."));
+    }
+  }
 }
 
 void SettingsPane::updateObservedMeanLabel() {
@@ -3159,6 +3282,15 @@ void SettingsPane::updateObservedMeanLabel() {
 void SettingsPane::applyPhysicsData() {
   if (m_blockSync)
     return;
+
+  if (m_rbModelingPolyhedral && m_rbModelingVoxel) {
+    const auto targetMode = m_rbModelingVoxel->isChecked()
+                                ? mod3d::ModelingMode::Voxel
+                                : mod3d::ModelingMode::Polyhedral;
+    if (m_doc->modelingMode() != targetMode) {
+      m_doc->setModelingMode(targetMode);
+    }
+  }
 
   m_doc->observation().set_ambient_field_params(
       m_spinIndInc->value(), m_spinIndDec->value(), m_spinIndT0->value());

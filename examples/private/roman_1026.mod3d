@@ -33847,6 +33847,7 @@
     "compute_real_time": false,
     "gravity_formula": 0,
     "magnetic_formula": 0,
+    "modeling_mode": 1,
     "remove_observed_mean": true
   },
   "version": "2.5.6"

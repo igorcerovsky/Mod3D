@@ -945,28 +945,46 @@ bool ModelDocument::moveLowerBoundaryVerticalUntilHit(int bodyId, ProfileOrienta
 }
 
 void ModelDocument::computeAll() {
-    m_project.model().clear_facets_update();
-    m_project.model().compute_body_magnetization_vector(
-        m_project.observation().inclination().value(),
-        m_project.observation().declination().value(),
-        m_project.observation().magnetic_intensity().value());
-    std::vector<mod3d::Facet3Pt> facets;
-    m_project.model().facets_computation(facets);
-    m_project.observation().compute_forward_field(facets, true);
-    computeVoxelGridForwardField();
+    if (m_project.settings().modeling_mode == mod3d::ModelingMode::Voxel) {
+        computeVoxelGridForwardField();
+    } else {
+        m_project.model().clear_facets_update();
+        m_project.model().compute_body_magnetization_vector(
+            m_project.observation().inclination().value(),
+            m_project.observation().declination().value(),
+            m_project.observation().magnetic_intensity().value());
+        std::vector<mod3d::Facet3Pt> facets;
+        m_project.model().facets_computation(facets);
+        m_project.observation().compute_forward_field(facets, true);
+    }
     m_project.observation().compute_total_fields();
     m_project.observation().compute_difference(m_activeField);
     emit computationFinished();
 }
 
 void ModelDocument::computeVoxelGridForwardField() {
+    // In Voxel mode, gravity Gz is computed from the 3D density grid.
+    // Zero out other potential field components to ensure strict exclusivity.
+    for (int c = 0; c < 15; ++c) {
+        auto comp = static_cast<mod3d::FieldComponent>(c);
+        if (comp != mod3d::FieldComponent::GZ) {
+            auto *grid = m_project.observation().modeled_grid(comp);
+            if (grid && !grid->empty()) {
+                grid->fill(0.0);
+            }
+        }
+    }
+    auto *pGz = m_project.observation().modeled_grid(mod3d::FieldComponent::GZ);
     if (!m_lastInversionResult.has_value() || m_lastInversionResult->density_grid.total_cells() == 0) {
+        if (pGz) {
+            pGz->fill(0.0);
+        }
         return;
     }
     m_project.observation().compute_voxel_grid_gravity(
         m_lastInversionResult->density_grid,
         m_project.model().z_max().value(),
-        /*zeroFirst=*/false);
+        /*zeroFirst=*/true);
     m_showModeled = true;
     if (hasAnyObservedGrid()) {
         m_showDiff = true;
@@ -974,17 +992,35 @@ void ModelDocument::computeVoxelGridForwardField() {
 }
 
 void ModelDocument::computeDelta(const std::vector<mod3d::Facet3Pt> &updateFacets) {
+    if (m_project.settings().modeling_mode == mod3d::ModelingMode::Voxel) {
+        // In Voxel mode, polyhedral geometry edits do not affect the voxel modeled field.
+        return;
+    }
     if (!updateFacets.empty()) {
         m_project.model().compute_body_magnetization_vector(
             m_project.observation().inclination().value(),
             m_project.observation().declination().value(),
             m_project.observation().magnetic_intensity().value());
         m_project.observation().update_delta_field(updateFacets);
-        computeVoxelGridForwardField();
         m_project.observation().compute_total_fields();
         m_project.observation().compute_difference(m_activeField);
         emit computationFinished();
     }
+}
+
+void ModelDocument::setModelingMode(mod3d::ModelingMode mode) {
+    if (m_project.settings().modeling_mode == mode) {
+        return;
+    }
+    m_project.settings().modeling_mode = mode;
+    setModified(true);
+    computeAll();
+    emit modelingModeChanged(mode);
+    emit fieldDisplayToggled();
+    QString msg = (mode == mod3d::ModelingMode::Voxel)
+        ? tr("Modeling mode switched to Voxel Model (3D Inversion Grid).")
+        : tr("Modeling mode switched to Polyhedral Model (2.5D / 3D Bodies).");
+    emit statusMessage(msg);
 }
 
 void ModelDocument::setRealTimeCompute(bool enabled) {
@@ -1283,8 +1319,10 @@ void ModelDocument::setInversionResult(const inv::InversionResult &result) {
     try {
         m_project.set_inversion_result_json(result.to_json().dump());
     } catch (...) {}
+    m_project.settings().modeling_mode = mod3d::ModelingMode::Voxel;
     setModified(true);
     computeAll();
+    emit modelingModeChanged(mod3d::ModelingMode::Voxel);
     emit inversionResultChanged();
 }
 
@@ -1292,6 +1330,10 @@ void ModelDocument::clearInversionResult() {
     if (m_lastInversionResult.has_value()) {
         m_lastInversionResult.reset();
         m_project.set_inversion_result_json("");
+        if (m_project.settings().modeling_mode == mod3d::ModelingMode::Voxel) {
+            m_project.settings().modeling_mode = mod3d::ModelingMode::Polyhedral;
+            emit modelingModeChanged(mod3d::ModelingMode::Polyhedral);
+        }
         setModified(true);
         computeAll();
         emit inversionResultChanged();

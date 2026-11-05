@@ -242,6 +242,10 @@ public:
     bool isRealTimeCompute() const noexcept { return m_realTimeCompute; }
     void setRealTimeCompute(bool enabled);
 
+    /// Modeling Mode (Field source selection: Polyhedral Model vs Voxel Model)
+    [[nodiscard]] mod3d::ModelingMode modelingMode() const noexcept { return m_project.settings().modeling_mode; }
+    void setModelingMode(mod3d::ModelingMode mode);
+
     /// Background / Trend removal of the measured (observed) field.
     [[nodiscard]] int backgroundTrendMode() const noexcept { return m_project.observation().background_trend_mode(); }
     void setBackgroundTrendMode(int mode);
@@ -337,6 +341,7 @@ signals:
     void activeBodyChanged(int id);
     void globalMovementChanged(bool enabled);
     void inversionResultChanged();
+    void modelingModeChanged(mod3d::ModelingMode mode);
     void backgroundTrendModeChanged(int mode);
 
 private:

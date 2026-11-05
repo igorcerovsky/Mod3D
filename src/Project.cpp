@@ -264,6 +264,7 @@ std::string Project::to_json_string(int indent) const {
                       {"background_trend_mode", effectiveTrendMode},
                       {"gravity_formula", settings_.gravity_formula},
                       {"magnetic_formula", settings_.magnetic_formula},
+                      {"modeling_mode", static_cast<int>(settings_.modeling_mode)},
                       {"active_components", settings_.active_components}};
 
   // Model
@@ -461,6 +462,9 @@ bool Project::from_json_string(std::string_view jsonStr) {
       settings_.remove_observed_mean = rawRemoveMean || (trendMode != 0);
       settings_.gravity_formula = js.value("gravity_formula", 0);
       settings_.magnetic_formula = js.value("magnetic_formula", 0);
+      if (js.contains("modeling_mode")) {
+        settings_.modeling_mode = static_cast<ModelingMode>(js.value("modeling_mode", 0));
+      }
       if (js.contains("active_components") &&
           js["active_components"].is_array()) {
         settings_.active_components =
@@ -694,6 +698,11 @@ bool Project::from_json_string(std::string_view jsonStr) {
       inversion_result_json_ = root["inversion_result"].dump();
     } else {
       inversion_result_json_.clear();
+    }
+
+    if ((!root.contains("settings") || !root["settings"].contains("modeling_mode")) &&
+        !inversion_result_json_.empty() && model_.bodies().empty()) {
+      settings_.modeling_mode = ModelingMode::Voxel;
     }
 
     return true;

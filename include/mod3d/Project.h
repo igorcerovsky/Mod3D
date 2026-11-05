@@ -43,12 +43,18 @@ struct InversionSettings3D {
     bool auto_tune_params{false};
 };
 
+enum class ModelingMode {
+    Polyhedral = 0,
+    Voxel = 1
+};
+
 struct ProjectSettings {
     bool compute_real_time{false};
     bool remove_observed_mean{false};
     int background_trend_mode{0};
     int gravity_formula{0};
     int magnetic_formula{0};
+    ModelingMode modeling_mode{ModelingMode::Polyhedral};
     std::vector<std::string> active_components;
     InversionSettings3D inversion{};
 };

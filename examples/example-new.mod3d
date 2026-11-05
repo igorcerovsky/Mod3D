@@ -21135,7 +21135,8 @@
     "active_components": [],
     "compute_real_time": true,
     "gravity_formula": 0,
-    "magnetic_formula": 1
+    "magnetic_formula": 1,
+    "modeling_mode": 0
   },
   "version": "2.5.6"
 }

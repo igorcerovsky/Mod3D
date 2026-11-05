@@ -19,6 +19,7 @@ TEST(ProjectIOTest, MetadataAndSettingsRoundtrip) {
     proj.settings().remove_observed_mean = true;
     proj.settings().gravity_formula = 1;
     proj.settings().magnetic_formula = 2;
+    proj.settings().modeling_mode = mod3d::ModelingMode::Voxel;
     proj.settings().active_components = {"gz", "delta_t", "gzz"};
 
     std::string jsonStr = proj.to_json_string();
@@ -38,6 +39,7 @@ TEST(ProjectIOTest, MetadataAndSettingsRoundtrip) {
     EXPECT_TRUE(loaded.settings().remove_observed_mean);
     EXPECT_EQ(loaded.settings().gravity_formula, 1);
     EXPECT_EQ(loaded.settings().magnetic_formula, 2);
+    EXPECT_EQ(loaded.settings().modeling_mode, mod3d::ModelingMode::Voxel);
     ASSERT_EQ(loaded.settings().active_components.size(), 3u);
     EXPECT_EQ(loaded.settings().active_components[0], "gz");
     EXPECT_EQ(loaded.settings().active_components[1], "delta_t");

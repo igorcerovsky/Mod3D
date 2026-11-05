@@ -5751,3 +5751,115 @@ TEST_F(GuiDocumentTest, GL3DViewReliefVisibilityAndInversionBeneathSurface) {
   EXPECT_NO_THROW(glv.updateInversionRayCastBuffers());
   EXPECT_EQ(glv.inversionRayCastVertexCount(), 36);
 }
+
+TEST_F(GuiDocumentTest, SettingsPaneModelingModeRadioButtonsSync) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(15, 15, 0.0, 0.0, 100.0, 100.0, -1000.0, 200.0);
+
+  SettingsPane *pane = mw.settingsPane();
+  ASSERT_NE(pane, nullptr);
+  pane->selectPhysicsTab();
+
+  auto *rbPoly = pane->modelingPolyhedralRadioButton();
+  auto *rbVoxel = pane->modelingVoxelRadioButton();
+  auto *lblStatus = pane->modelingModeStatusLabel();
+
+  ASSERT_NE(rbPoly, nullptr);
+  ASSERT_NE(rbVoxel, nullptr);
+  ASSERT_NE(lblStatus, nullptr);
+
+  // Initial state is Polyhedral Model
+  EXPECT_TRUE(rbPoly->isChecked());
+  EXPECT_FALSE(rbVoxel->isChecked());
+  EXPECT_EQ(doc->modelingMode(), mod3d::ModelingMode::Polyhedral);
+  EXPECT_TRUE(lblStatus->text().contains("Polyhedral"));
+
+  // Toggle to Voxel Model via Radio Button
+  rbVoxel->setChecked(true);
+  EXPECT_TRUE(rbVoxel->isChecked());
+  EXPECT_FALSE(rbPoly->isChecked());
+  EXPECT_EQ(doc->modelingMode(), mod3d::ModelingMode::Voxel);
+  EXPECT_TRUE(lblStatus->text().contains("Voxel"));
+
+  // Set an inversion result and check status text
+  inv::InversionResult res;
+  res.density_grid = inv::VoxelGrid<double>(10, 10, 5, 0.0, 0.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  doc->setInversionResult(res);
+  pane->selectPhysicsTab();
+  EXPECT_TRUE(rbVoxel->isChecked());
+  EXPECT_TRUE(lblStatus->text().contains("10 × 10 × 5"));
+
+  // Toggle back to Polyhedral Model via document method
+  doc->setModelingMode(mod3d::ModelingMode::Polyhedral);
+  EXPECT_TRUE(rbPoly->isChecked());
+  EXPECT_FALSE(rbVoxel->isChecked());
+  EXPECT_TRUE(lblStatus->text().contains("Polyhedral"));
+}
+
+TEST_F(GuiDocumentTest, ModelingModeExclusivityInModeledField) {
+  ModelDocument doc;
+  doc.newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 0.0);
+
+  // 1. Create a polyhedral body
+  doc.setProfileIndex(2);
+  int bodyId = doc.insertBodyAt(2, -500.0, -200.0);
+  ASSERT_GT(bodyId, 0);
+  doc.insertBodyAt(3, -500.0, -200.0, bodyId);
+  doc.copyBodyToNextProfile(bodyId);
+  auto *b = doc.model().body(bodyId);
+  ASSERT_NE(b, nullptr);
+  const_cast<mod3d::Body *>(b)->set_density(3200.0);
+
+  // Compute in Polyhedral mode (default)
+  EXPECT_EQ(doc.modelingMode(), mod3d::ModelingMode::Polyhedral);
+  doc.computeAll();
+
+  const auto *pModPoly = doc.modeledGrid(mod3d::FieldComponent::GZ);
+  ASSERT_NE(pModPoly, nullptr);
+  EXPECT_FALSE(pModPoly->empty());
+  double polyMax = pModPoly->max();
+  double polyMin = pModPoly->min();
+  EXPECT_NE(polyMax, polyMin);
+
+  // Copy pure polyhedral grid
+  mod3d::Grid savedPolyGrid = *pModPoly;
+
+  // 2. Add an inversion result with a distinct anomaly
+  inv::InversionResult res;
+  res.density_grid = inv::VoxelGrid<double>(9, 9, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  res.density_grid(4, 4, 3) = 0.85; // Strong distinct anomaly at center cell
+  doc.setInversionResult(res); // Automatically activates Voxel mode
+
+  EXPECT_EQ(doc.modelingMode(), mod3d::ModelingMode::Voxel);
+
+  const auto *pModVoxel = doc.modeledGrid(mod3d::FieldComponent::GZ);
+  ASSERT_NE(pModVoxel, nullptr);
+  EXPECT_FALSE(pModVoxel->empty());
+  mod3d::Grid savedVoxelGrid = *pModVoxel;
+
+  // The voxel modeled field must have a non-zero anomaly and must NOT equal polyhedral field
+  EXPECT_GT(savedVoxelGrid.max(), 0.0);
+  EXPECT_NE(savedVoxelGrid.max(), savedPolyGrid.max());
+
+  // 3. Switch back to Polyhedral mode: modeled field must exactly match saved polyhedral grid
+  doc.setModelingMode(mod3d::ModelingMode::Polyhedral);
+  const auto *pModPoly2 = doc.modeledGrid(mod3d::FieldComponent::GZ);
+  ASSERT_NE(pModPoly2, nullptr);
+  for (size_t r = 0; r < 9; ++r) {
+    for (size_t c = 0; c < 9; ++c) {
+      EXPECT_DOUBLE_EQ((*pModPoly2)(r, c), savedPolyGrid(r, c));
+    }
+  }
+
+  // 4. Switch back to Voxel mode: modeled field must exactly match saved voxel grid
+  doc.setModelingMode(mod3d::ModelingMode::Voxel);
+  const auto *pModVoxel2 = doc.modeledGrid(mod3d::FieldComponent::GZ);
+  ASSERT_NE(pModVoxel2, nullptr);
+  for (size_t r = 0; r < 9; ++r) {
+    for (size_t c = 0; c < 9; ++c) {
+      EXPECT_DOUBLE_EQ((*pModVoxel2)(r, c), savedVoxelGrid(r, c));
+    }
+  }
+}

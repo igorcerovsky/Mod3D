@@ -96,6 +96,9 @@ public:
     QSlider *inversionOpacitySlider3D() const { return m_slider3DInversionOpacity; }
     QCheckBox *inversionSlicesCheckBox3D() const { return m_chk3DInversionSlices; }
     QComboBox *trendModeComboBox() const { return m_comboTrendMode; }
+    QRadioButton *modelingPolyhedralRadioButton() const { return m_rbModelingPolyhedral; }
+    QRadioButton *modelingVoxelRadioButton() const { return m_rbModelingVoxel; }
+    QLabel *modelingModeStatusLabel() const { return m_lblModelingModeStatus; }
     QCheckBox *removeObservedMeanCheckBox() const { return m_chkRemoveObservedMean; }
     QLabel *observedMeanLabel() const { return m_lblObservedMean; }
 
@@ -280,6 +283,10 @@ private:
     QPushButton *m_btnInvertDensity{nullptr};
 
     // Tab 4: Physics & Model Controls
+    QRadioButton *m_rbModelingPolyhedral{nullptr};
+    QRadioButton *m_rbModelingVoxel{nullptr};
+    QLabel *m_lblModelingModeStatus{nullptr};
+    void updateModelingModeStatus();
     QDoubleSpinBox *m_spinIndT0{nullptr};
     QDoubleSpinBox *m_spinIndInc{nullptr};
     QDoubleSpinBox *m_spinIndDec{nullptr};
