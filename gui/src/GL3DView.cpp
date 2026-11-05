@@ -480,6 +480,10 @@ GL3DView::~GL3DView() {
       m_inversionTex->destroy();
       m_inversionTex.reset();
     }
+    if (m_sceneDepthTex) {
+      m_sceneDepthTex->destroy();
+      m_sceneDepthTex.reset();
+    }
     delete m_shaderProg;
     m_shaderProg = nullptr;
     delete m_flatShaderProg;
@@ -1199,6 +1203,9 @@ void GL3DView::initShaders() {
   const char *fbodyRayCast =
       "in vec3 v_renderedPos;\n"
       "uniform sampler3D u_volumeTex;\n"
+      "uniform sampler2D u_sceneDepthTex;\n"
+      "uniform mat4 u_invMvp;\n"
+      "uniform vec2 u_screenSize;\n"
       "uniform vec3 u_camPos;\n"
       "uniform vec3 u_boxMin;\n"
       "uniform vec3 u_boxMax;\n"
@@ -1266,6 +1273,24 @@ void GL3DView::initShaders() {
       "    float tFar = min(min(tmax.x, tmax.y), tmax.z);\n"
       "    if (tNear > tFar || tFar < 0.0) discard;\n"
       "    tNear = max(tNear, 0.0);\n"
+      "\n"
+      "    // Sample scene depth to occlude / stop ray at objects behind or inside volume\n"
+      "    if (u_screenSize.x > 0.0 && u_screenSize.y > 0.0) {\n"
+      "        vec2 screenCoord = gl_FragCoord.xy / u_screenSize;\n"
+      "        float sceneDepth = texture(u_sceneDepthTex, screenCoord).r;\n"
+      "        if (sceneDepth < 0.999999) {\n"
+      "            vec4 ndcPos = vec4(screenCoord * 2.0 - 1.0, sceneDepth * 2.0 - 1.0, 1.0);\n"
+      "            vec4 worldPosH = u_invMvp * ndcPos;\n"
+      "            if (abs(worldPosH.w) > 1e-6) {\n"
+      "                vec3 scenePos = worldPosH.xyz / worldPosH.w;\n"
+      "                float tScene = dot(scenePos - rayOrig, rayDir);\n"
+      "                if (tScene < tFar) {\n"
+      "                    tFar = tScene;\n"
+      "                }\n"
+      "            }\n"
+      "        }\n"
+      "    }\n"
+      "    if (tNear > tFar || tFar < 0.0) discard;\n"
       "    float rayLen = tFar - tNear;\n"
       "    if (rayLen <= 0.0) discard;\n"
       "    int numSteps = clamp(int(ceil(rayLen / u_stepSize)), 16, 256);\n"
@@ -1685,14 +1710,6 @@ void GL3DView::paintGL() {
 
   drawBodies();
 
-  if (m_showInversionVoxels) {
-    drawInversionVoxels();
-  }
-
-  if (m_showInversionSlices) {
-    drawInversionSlices();
-  }
-
   if (m_showRelief) {
     drawRelief();
   }
@@ -1703,6 +1720,14 @@ void GL3DView::paintGL() {
 
   if (m_showPlanarPlane) {
     drawPlanarPlane();
+  }
+
+  if (m_showInversionSlices) {
+    drawInversionSlices();
+  }
+
+  if (m_showInversionVoxels) {
+    drawInversionVoxels();
   }
 
   if (m_mouseDragging && (m_dragButton == Qt::LeftButton) && !m_draggingGizmo) {
@@ -5034,8 +5059,32 @@ void GL3DView::drawInversionRayCast() {
     glCullFace(GL_BACK);
   }
 
+  qreal dpr = devicePixelRatioF();
+  int physW = static_cast<int>(std::round(width() * dpr));
+  int physH = static_cast<int>(std::round(height() * dpr));
+  if (physW <= 0) physW = 1;
+  if (physH <= 0) physH = 1;
+
+  if (!m_sceneDepthTex || m_depthTexWidth != physW || m_depthTexHeight != physH) {
+    m_sceneDepthTex = std::make_unique<QOpenGLTexture>(QOpenGLTexture::Target2D);
+    m_sceneDepthTex->create();
+    m_sceneDepthTex->setFormat(QOpenGLTexture::DepthFormat);
+    m_sceneDepthTex->setSize(physW, physH);
+    m_sceneDepthTex->allocateStorage(QOpenGLTexture::Depth, QOpenGLTexture::Float32);
+    m_sceneDepthTex->setMinMagFilters(QOpenGLTexture::Nearest, QOpenGLTexture::Nearest);
+    m_sceneDepthTex->setWrapMode(QOpenGLTexture::ClampToEdge);
+    m_depthTexWidth = physW;
+    m_depthTexHeight = physH;
+  }
+
+  // Copy hardware depth buffer into 2D depth texture for scene occlusion
+  m_sceneDepthTex->bind(1);
+  glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, physW, physH);
+
   m_rayCastShaderProg->bind();
   m_rayCastShaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
+  m_rayCastShaderProg->setUniformValue("u_invMvp", (m_projMatrix * m_mvMatrix).inverted());
+  m_rayCastShaderProg->setUniformValue("u_screenSize", QVector2D(static_cast<float>(physW), static_cast<float>(physH)));
   m_rayCastShaderProg->setUniformValue("u_camPos", camPos);
   m_rayCastShaderProg->setUniformValue("u_boxMin", boxMin);
   m_rayCastShaderProg->setUniformValue("u_boxMax", boxMax);
@@ -5073,11 +5122,14 @@ void GL3DView::drawInversionRayCast() {
 
   m_inversionTex->bind(0);
   m_rayCastShaderProg->setUniformValue("u_volumeTex", 0);
+  m_sceneDepthTex->bind(1);
+  m_rayCastShaderProg->setUniformValue("u_sceneDepthTex", 1);
 
   m_rayCastVao.bind();
   glDrawArrays(GL_TRIANGLES, 0, m_rayCastVertexCount);
   m_rayCastVao.release();
 
+  m_sceneDepthTex->release(1);
   m_inversionTex->release(0);
   m_rayCastShaderProg->release();
 

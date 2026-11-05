@@ -648,6 +648,9 @@ private:
   // Ray-Casting DVR members
   std::unique_ptr<QOpenGLTexture> m_inversionTex{nullptr};
   bool m_inversionTexDirty{true};
+  std::unique_ptr<QOpenGLTexture> m_sceneDepthTex{nullptr};
+  int m_depthTexWidth{0};
+  int m_depthTexHeight{0};
   QOpenGLShaderProgram *m_rayCastShaderProg{nullptr};
   QOpenGLVertexArrayObject m_rayCastVao;
   QOpenGLBuffer m_rayCastVbo{QOpenGLBuffer::VertexBuffer};
