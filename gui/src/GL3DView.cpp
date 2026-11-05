@@ -1634,7 +1634,7 @@ void GL3DView::renderLines(const std::vector<FlatVertex3D> &lines,
 }
 
 void GL3DView::renderFlatTriangles(const std::vector<FlatVertex3D> &tris,
-                                   bool blend) {
+                                   bool blend, bool depthWrite) {
   if (tris.empty())
     return;
   if (!m_flatShaderProg)
@@ -1645,8 +1645,8 @@ void GL3DView::renderFlatTriangles(const std::vector<FlatVertex3D> &tris,
   if (blend) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glDepthMask(GL_FALSE);
   }
+  glDepthMask(depthWrite ? GL_TRUE : GL_FALSE);
 
   m_flatShaderProg->bind();
   m_flatShaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
@@ -1662,8 +1662,8 @@ void GL3DView::renderFlatTriangles(const std::vector<FlatVertex3D> &tris,
   m_flatTrisVao.release();
   m_flatShaderProg->release();
 
+  glDepthMask(GL_TRUE);
   if (blend) {
-    glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
   }
 }
@@ -1710,10 +1710,6 @@ void GL3DView::paintGL() {
 
   drawBodies();
 
-  if (m_showRelief) {
-    drawRelief();
-  }
-
   if (m_showProfilePlane) {
     drawProfilePlane();
   }
@@ -1728,6 +1724,10 @@ void GL3DView::paintGL() {
 
   if (m_showInversionVoxels) {
     drawInversionVoxels();
+  }
+
+  if (m_showRelief) {
+    drawRelief();
   }
 
   if (m_mouseDragging && (m_dragButton == Qt::LeftButton) && !m_draggingGizmo) {
@@ -4899,15 +4899,17 @@ void GL3DView::updateInversionTexture() {
       const double d01 = std::max(0.0, zDomainTop - cornerElev[(iy + 1) * (nx + 1) + ix]);
       const size_t iz_top = pfld::InterfaceMesh<double>::column_top_layer(
           d00, d10, d11, d01, 0.0, dz, nz);
-      double topoZ = getTopoZ(ix, iy);
+      double topoZ = 0.25 * (cornerElev[iy * (nx + 1) + ix] +
+                             cornerElev[iy * (nx + 1) + (ix + 1)] +
+                             cornerElev[(iy + 1) * (nx + 1) + (ix + 1)] +
+                             cornerElev[(iy + 1) * (nx + 1) + ix]);
       for (size_t iz = 0; iz < nz; ++iz) {
         double zLayerBot = zDomainTop - static_cast<double>(iz + 1) * dz;
         size_t idx = (ix * ny + iy) * nz + iz;
-        if (zLayerBot >= topoZ) {
-          texData[idx] = 0.0f; // Air cell above topography
+        if (iz < iz_top || zLayerBot >= topoZ) {
+          texData[idx] = 0.0f; // Air cell strictly above topography
         } else {
-          const size_t srcIz = (iz < iz_top && iz_top < nz) ? iz_top : iz;
-          texData[idx] = static_cast<float>(grid(ix, iy, srcIz));
+          texData[idx] = static_cast<float>(grid(ix, iy, iz));
         }
       }
     }

@@ -546,7 +546,7 @@ private:
   void renderLines(const std::vector<FlatVertex3D> &lines,
                    float lineWidth = 1.0f);
   void renderFlatTriangles(const std::vector<FlatVertex3D> &tris,
-                           bool blend = false);
+                           bool blend = false, bool depthWrite = true);
 
   void drawBoundingBox();
   void drawBodies();

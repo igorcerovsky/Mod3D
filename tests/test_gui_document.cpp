@@ -5697,3 +5697,51 @@ TEST_F(GuiDocumentTest, GL3DViewInversionOctantCutInteractiveRotationAndSectionP
   EXPECT_NO_THROW(glv.drawInversionVoxels());
   EXPECT_EQ(glv.inversionRayCastVertexCount(), 36);
 }
+
+TEST_F(GuiDocumentTest, GL3DViewReliefVisibilityAndInversionBeneathSurface) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  // Set terrain topography
+  for (int r = 1; r <= 7; ++r) {
+    for (int c = 1; c <= 7; ++c) {
+      doc->model().set_z(r, c, 0, 200.0 + 15.0 * (r + c));
+    }
+  }
+
+  // Set inversion result with anomalies
+  inv::InversionResult res;
+  inv::VoxelGrid<double> grid(8, 8, 6, 0.0, 0.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  for (size_t ix = 0; ix < 8; ++ix) {
+    for (size_t iy = 0; iy < 8; ++iy) {
+      grid(ix, iy, 4) = 0.50;
+      grid(ix, iy, 5) = 0.75;
+    }
+  }
+  res.density_grid = grid;
+  doc->setInversionResult(res);
+
+  GL3DView glv(doc);
+  glv.resize(640, 480);
+  glv.setShowRelief(true);
+  glv.setShowInversionVoxels(true);
+  glv.setInversionRenderMode(GL3DView::InversionRenderMode::RayCasting);
+
+  // Top-down view looking directly from the top
+  glv.setCameraAngles(89.0f, 0.0f);
+  QCoreApplication::processEvents();
+
+  // Verify render execution (paintEvent or software fallback)
+  QPixmap pixmap(640, 480);
+  pixmap.fill(Qt::white);
+  QPainter painter(&pixmap);
+  EXPECT_NO_THROW(glv.paintSoftware(painter));
+  painter.end();
+
+  // Verify that inversion ray casting buffers and texture are created
+  EXPECT_NO_THROW(glv.updateInversionTexture());
+  EXPECT_NO_THROW(glv.updateInversionRayCastBuffers());
+  EXPECT_EQ(glv.inversionRayCastVertexCount(), 36);
+}
