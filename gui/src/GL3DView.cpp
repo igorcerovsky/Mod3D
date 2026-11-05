@@ -1722,11 +1722,21 @@ void GL3DView::paintGL() {
     drawInversionSlices();
   }
 
+  // When viewing from the bottom (pitch < 0), relief is behind the subsurface volume
+  // and must be drawn first so the ray-cast voxels in front can occlude it.
+  // When viewing from the top (pitch >= 0), relief is in front of the subsurface volume
+  // and is drawn after to remain visible on the surface.
+  bool viewFromBottom = (m_pitch < 0.0f);
+
+  if (m_showRelief && viewFromBottom) {
+    drawRelief();
+  }
+
   if (m_showInversionVoxels) {
     drawInversionVoxels();
   }
 
-  if (m_showRelief) {
+  if (m_showRelief && !viewFromBottom) {
     drawRelief();
   }
 

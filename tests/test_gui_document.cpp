@@ -5729,8 +5729,14 @@ TEST_F(GuiDocumentTest, GL3DViewReliefVisibilityAndInversionBeneathSurface) {
   glv.setShowInversionVoxels(true);
   glv.setInversionRenderMode(GL3DView::InversionRenderMode::RayCasting);
 
-  // Top-down view looking directly from the top
+  // Top-down view looking directly from the top (pitch > 0)
   glv.setCameraAngles(89.0f, 0.0f);
+  EXPECT_GE(glv.pitch(), 0.0f);
+  QCoreApplication::processEvents();
+
+  // Bottom-up view looking from underneath (pitch < 0)
+  glv.setCameraAngles(-60.0f, 0.0f);
+  EXPECT_LT(glv.pitch(), 0.0f);
   QCoreApplication::processEvents();
 
   // Verify render execution (paintEvent or software fallback)
