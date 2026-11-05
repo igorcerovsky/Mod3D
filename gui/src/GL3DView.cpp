@@ -2721,7 +2721,7 @@ void GL3DView::drawRelief() {
     reliefTris.reserve(static_cast<size_t>(rMax * cMax * 6));
     reliefGridLines.reserve(static_cast<size_t>(rMax * cMax * 4));
 
-    float alphaSurf = 0.88f;
+    float alphaSurf = 1.0f;
 
     for (int rIdx = 1; rIdx < rMax; ++rIdx) {
       float y0 = static_cast<float>(m.yd_val(rIdx));
@@ -2778,7 +2778,7 @@ void GL3DView::drawRelief() {
       }
     }
 
-    renderFlatTriangles(reliefTris, true);
+    renderFlatTriangles(reliefTris, false);
     renderLines(reliefGridLines, 1.0f);
   } else {
     // ReliefMode::Wireframe
