@@ -301,7 +301,19 @@ void Inversion3DDialog::setupFocusingTab(QWidget *parent) {
     densityLayout->addWidget(m_spinMinDensity);
     densityLayout->addWidget(new QLabel(tr("Max:"), parent));
     densityLayout->addWidget(m_spinMaxDensity);
+
+    m_btnCheckBottleneck = new QPushButton(tr("Check Density Bottleneck"), parent);
+    m_btnCheckBottleneck->setToolTip(tr("Automatically analyze observed anomaly range, domain thickness, and 3D voxel geometry to detect bottlenecks and set reasonable density bounds."));
+    densityLayout->addWidget(m_btnCheckBottleneck);
     formPhys->addRow(tr("Density Contrast Bounds:"), densityLayout);
+
+    connect(m_btnCheckBottleneck, &QPushButton::clicked, this, &Inversion3DDialog::onCheckDensityBottleneckClicked);
+    connect(m_spinMinDensity, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double) {
+        saveSettingsToDocument();
+    });
+    connect(m_spinMaxDensity, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double) {
+        saveSettingsToDocument();
+    });
 
     m_comboOperator = new QComboBox(parent);
     m_comboOperator->addItem(tr("pfld::InterfaceMesh (DEM terrain-conforming facets, Primary)"));
@@ -568,6 +580,7 @@ void Inversion3DDialog::updateRefinementState() {
 
 void Inversion3DDialog::loadSettingsFromDocument() {
     if (!m_doc) return;
+    m_isLoadingSettings = true;
     const auto &s = m_doc->inversionSettings();
     const double zMin = m_doc->model().z_min().value();
     const double zMax = m_doc->model().z_max().value();
@@ -630,10 +643,11 @@ void Inversion3DDialog::loadSettingsFromDocument() {
     if (m_chkRefinePrevious->isEnabled()) {
         m_chkRefinePrevious->setChecked(s.refine_previous);
     }
+    m_isLoadingSettings = false;
 }
 
 void Inversion3DDialog::saveSettingsToDocument() {
-    if (!m_doc) return;
+    if (m_isLoadingSettings || !m_doc) return;
     const double zMin = m_doc->model().z_min().value();
     const double zMax = m_doc->model().z_max().value();
     const double H = std::max(10.0, zMax - zMin);
@@ -824,6 +838,17 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
     m_lastSetup = setup;
     saveSettingsToDocument();
+
+    // Check density bound bottleneck before starting
+    const auto bottleneckReport = checkDensityBottleneck(/*applyBounds=*/false);
+    if (bottleneckReport.has_bottleneck) {
+        appendLog(tr("⚠ WARNING: Density bound bottleneck detected! Bounds [%1, %2] kg/m³ may restrict reproduction of observed anomaly.")
+            .arg(bottleneckReport.current_min_density_kg, 0, 'f', 0)
+            .arg(bottleneckReport.current_max_density_kg, 0, 'f', 0));
+        appendLog(tr("    Recommended bounds: [%1, %2] kg/m³. Click 'Check Density Bottleneck' on the Physics tab to auto-set.")
+            .arg(bottleneckReport.recommended_min_density_kg, 0, 'f', 0)
+            .arg(bottleneckReport.recommended_max_density_kg, 0, 'f', 0));
+    }
 
     const bool refinePrev = !forceColdStart && m_chkRefinePrevious && m_chkRefinePrevious->isChecked() && m_chkRefinePrevious->isEnabled();
     const inv::InversionResult *prevRes = nullptr;
@@ -1318,6 +1343,231 @@ void Inversion3DDialog::onInstantAiClicked() {
         .arg(m_currentResult->stats.initial_data_rms, 0, 'f', 4)
         .arg(m_currentResult->stats.final_data_rms, 0, 'f', 4));
     appendLog(tr("    Click 'Apply to Document' to inspect 3D density in Profile, Horizontal Slice, and 3D views."));
+}
+
+Inversion3DDialog::DensityBottleneckReport Inversion3DDialog::checkDensityBottleneck(bool applyBounds) {
+    DensityBottleneckReport report;
+    if (!m_doc) {
+        report.message = tr("No active document available.");
+        return report;
+    }
+
+    const mod3d::Grid *obsGrid = m_doc->activeObservedGrid();
+    if (!obsGrid || obsGrid->empty()) {
+        report.message = tr("No active observed gravity grid found.");
+        return report;
+    }
+
+    // 1. Analyze observed anomaly raster
+    double obsMin = 1e30, obsMax = -1e30;
+    size_t validCount = 0;
+    for (size_t r = 0; r < obsGrid->rows(); ++r) {
+        for (size_t c = 0; c < obsGrid->cols(); ++c) {
+            double v = (*obsGrid)(r, c);
+            if (!mod3d::Grid::is_dummy_value(v) && !std::isnan(v)) {
+                obsMin = std::min(obsMin, v);
+                obsMax = std::max(obsMax, v);
+                validCount++;
+            }
+        }
+    }
+    if (validCount == 0 || obsMin > obsMax) {
+        report.message = tr("Observed gravity grid contains no valid numerical values.");
+        return report;
+    }
+
+    const double obsSpan = obsMax - obsMin;
+    report.observed_min_mgal = obsMin;
+    report.observed_max_mgal = obsMax;
+    report.observed_span_mgal = obsSpan;
+
+    // 2. Analyze domain geometry and 3D voxel attenuation
+    const double zDomainTop = m_doc->model().z_max().value();
+    const double zMin = m_doc->model().z_min().value();
+    const double H_total = std::max(10.0, zDomainTop - zMin);
+    const double dx = std::abs(obsGrid->dx().value());
+    const double dy = std::abs(obsGrid->dy().value());
+    const double Lx = static_cast<double>(obsGrid->cols()) * dx;
+    const double Ly = static_cast<double>(obsGrid->rows()) * dy;
+
+    // Effective thickness below mean terrain if surface relief exists
+    double meanElev = zDomainTop;
+    const auto &relief = m_doc->observation().surface_relief();
+    if (!relief.empty() && relief.rows() >= 2 && relief.cols() >= 2) {
+        meanElev = relief.mean();
+    }
+    const double H_eff = std::clamp(meanElev - zMin, 10.0, H_total);
+    report.domain_thickness_m = H_eff;
+
+    // 3D Geometric factor for finite prism vs infinite Bouguer slab:
+    // Radius R = half-width of survey footprint.
+    // For a cylinder/prism of radius R and thickness H, on-axis surface gravity is:
+    // Delta_g = 2*pi*G*rho*(H + R - sqrt(H^2 + R^2)) = 2*pi*G*rho*H * eta
+    const double R = 0.5 * std::min(Lx, Ly);
+    const double eta = (R > 0.0) ? std::clamp((H_eff + R - std::sqrt(H_eff * H_eff + R * R)) / H_eff, 0.15, 0.95) : 0.5;
+
+    // In focusing inversion, compact structures occupy an effective volume fraction V_frac ~ 0.40 - 0.50
+    // twopiG = 2 * pi * G = 4.1934e-5 mGal / (kg/m^3 * m)
+    constexpr double TWO_PI_G = 4.1934e-5;
+    constexpr double V_FRAC = 0.40;
+    const double G_eff = TWO_PI_G * H_eff * eta * V_FRAC; // mGal per (kg/m^3)
+
+    // Current bounds in kg/m³
+    const double curMinKg = m_spinMinDensity->value();
+    const double curMaxKg = m_spinMaxDensity->value();
+    report.current_min_density_kg = curMinKg;
+    report.current_max_density_kg = curMaxKg;
+
+    // Maximum field achievable with current bounds
+    report.max_achievable_pos_mgal = std::max(0.0, curMaxKg) * G_eff;
+    report.max_achievable_neg_mgal = std::min(0.0, curMinKg) * G_eff;
+
+    // 3. Inspect previous inversion result for boundary saturation
+    const inv::InversionResult *prevRes = m_currentResult.has_value()
+        ? &(*m_currentResult)
+        : (m_doc->hasInversionResult() ? &(*m_doc->inversionResult()) : nullptr);
+
+    double prevMinKg = 0.0;
+    double prevMaxKg = 0.0;
+    if (prevRes && prevRes->density_grid.total_cells() > 0) {
+        const auto &data = prevRes->density_grid.data();
+        const double prevMinG = prevRes->density_grid.min_value();
+        const double prevMaxG = prevRes->density_grid.max_value();
+        prevMinKg = units::GPerCm3(prevMinG).in<units::KgPerM3>();
+        prevMaxKg = units::GPerCm3(prevMaxG).in<units::KgPerM3>();
+        const double tolMin = std::max(1e-4, std::abs(prevMinG) * 0.015);
+        const double tolMax = std::max(1e-4, std::abs(prevMaxG) * 0.015);
+        size_t countMin = 0, countMax = 0, activeCount = 0;
+        for (double v : data) {
+            if (std::abs(v) > 1e-12) {
+                activeCount++;
+                if (v <= prevMinG + tolMin) countMin++;
+                if (v >= prevMaxG - tolMax) countMax++;
+            }
+        }
+        if (activeCount > 0) {
+            report.saturated_min_percent = 100.0 * static_cast<double>(countMin) / static_cast<double>(activeCount);
+            report.saturated_max_percent = 100.0 * static_cast<double>(countMax) / static_cast<double>(activeCount);
+        }
+    }
+
+    // 4. Target gravity requirements
+    const double targetPos = std::max(0.0, obsMax);
+    const double targetNeg = std::min(0.0, obsMin);
+
+    // Bottleneck conditions:
+    // (A) Current achievable field falls short of the target by > 10%
+    // (B) Previous inversion had > 5% of active cells saturated against the boundary AND current bounds have not been enlarged past that saturated value
+    if (targetPos > 0.05 && (report.max_achievable_pos_mgal < 0.90 * targetPos || 
+        (report.saturated_max_percent > 5.0 && curMaxKg <= prevMaxKg + 10.0))) {
+        report.max_bottleneck = true;
+    }
+    if (targetNeg < -0.05 && (report.max_achievable_neg_mgal > 0.90 * targetNeg || 
+        (report.saturated_min_percent > 5.0 && curMinKg >= prevMinKg - 10.0))) {
+        report.min_bottleneck = true;
+    }
+    report.has_bottleneck = report.max_bottleneck || report.min_bottleneck;
+
+    // 5. Compute reasonable recommended bounds with safety factor F = 1.5
+    constexpr double SAFETY_F = 1.5;
+    double recMaxKg = 300.0;
+    if (targetPos > 0.02) {
+        recMaxKg = (SAFETY_F * targetPos) / G_eff;
+    }
+    double recMinKg = -300.0;
+    if (targetNeg < -0.02) {
+        recMinKg = (SAFETY_F * targetNeg) / G_eff;
+    }
+
+    // Round outward to clean multiples of 50 kg/m³
+    recMaxKg = std::max(300.0, std::ceil(recMaxKg / 50.0) * 50.0);
+    recMinKg = std::min(-300.0, std::floor(recMinKg / 50.0) * 50.0);
+
+    report.recommended_min_density_kg = recMinKg;
+    report.recommended_max_density_kg = recMaxKg;
+
+    // 6. Apply if requested
+    if (applyBounds) {
+        m_spinMinDensity->blockSignals(true);
+        m_spinMinDensity->setValue(recMinKg);
+        m_spinMinDensity->blockSignals(false);
+
+        m_spinMaxDensity->blockSignals(true);
+        m_spinMaxDensity->setValue(recMaxKg);
+        m_spinMaxDensity->blockSignals(false);
+
+        saveSettingsToDocument();
+    }
+
+    // 7. Format summary text
+    QStringList lines;
+    if (report.has_bottleneck) {
+        lines << tr("=== DENSITY BOUND BOTTLENECK DETECTED ===");
+    } else {
+        lines << tr("=== DENSITY BOUNDS CHECK: SUFFICIENT ===");
+    }
+
+    lines << tr("• Observed Anomaly: min = %1 mGal, max = %2 mGal (Span: %3 mGal)")
+                 .arg(obsMin, 0, 'f', 2)
+                 .arg(obsMax, 0, 'f', 2)
+                 .arg(obsSpan, 0, 'f', 2);
+    lines << tr("• Model Domain: effective thickness H = %1 m, footprint = %2 × %3 m, 3D geometric factor η = %4")
+                 .arg(H_eff, 0, 'f', 1)
+                 .arg(Lx, 0, 'f', 0)
+                 .arg(Ly, 0, 'f', 0)
+                 .arg(eta, 0, 'f', 2);
+    lines << tr("• Current Bounds: [%1, %2] kg/m³")
+                 .arg(curMinKg, 0, 'f', 0)
+                 .arg(curMaxKg, 0, 'f', 0);
+    lines << tr("  - Max achievable gravity with current bounds: [%1, %2] mGal")
+                 .arg(report.max_achievable_neg_mgal, 0, 'f', 2)
+                 .arg(report.max_achievable_pos_mgal, 0, 'f', 2);
+
+    if (report.saturated_max_percent > 0.0 || report.saturated_min_percent > 0.0) {
+        lines << tr("• Previous Inversion Saturation:");
+        if (report.saturated_max_percent > 0.0) {
+            lines << tr("  - Upper bound: %1% of active cells pegged at max density!")
+                         .arg(report.saturated_max_percent, 0, 'f', 1);
+        }
+        if (report.saturated_min_percent > 0.0) {
+            lines << tr("  - Lower bound: %1% of active cells pegged at min density!")
+                         .arg(report.saturated_min_percent, 0, 'f', 1);
+        }
+    }
+
+    if (report.has_bottleneck) {
+        if (report.max_bottleneck) {
+            lines << tr("⚠ Upper bound (+%1 kg/m³) is too narrow to reproduce the +%2 mGal positive anomaly peak without causing a downward DC shift!")
+                         .arg(curMaxKg, 0, 'f', 0)
+                         .arg(targetPos, 0, 'f', 2);
+        }
+        if (report.min_bottleneck) {
+            lines << tr("⚠ Lower bound (%1 kg/m³) is too narrow to reproduce the %2 mGal negative anomaly trough!")
+                         .arg(curMinKg, 0, 'f', 0)
+                         .arg(targetNeg, 0, 'f', 2);
+        }
+    }
+
+    lines << tr("✔ Recommended Bounds: [%1, %2] kg/m³")
+                 .arg(recMinKg, 0, 'f', 0)
+                 .arg(recMaxKg, 0, 'f', 0);
+    if (applyBounds) {
+        lines << tr("  (Bounds automatically updated in dialog and document settings)");
+    }
+
+    report.message = lines.join("\n");
+    return report;
+}
+
+void Inversion3DDialog::onCheckDensityBottleneckClicked() {
+    auto report = checkDensityBottleneck(/*applyBounds=*/true);
+    appendLog(report.message);
+
+    if (report.has_bottleneck) {
+        QMessageBox::warning(this, tr("Density Bottleneck Detected & Fixed"), report.message);
+    } else {
+        QMessageBox::information(this, tr("Density Bounds Check"), report.message);
+    }
 }
 
 } // namespace mod3d_gui

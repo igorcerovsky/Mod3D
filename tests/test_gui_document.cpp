@@ -5863,3 +5863,53 @@ TEST_F(GuiDocumentTest, ModelingModeExclusivityInModeledField) {
     }
   }
 }
+
+TEST_F(GuiDocumentTest, Inversion3DDialogDensityBottleneckCheckAndAutoFix) {
+  QString path = "examples/private/inv_test.mod3d";
+  if (!QFile::exists(path)) {
+    path = "../examples/private/inv_test.mod3d";
+  }
+  if (!QFile::exists(path)) {
+    path = "../../examples/private/inv_test.mod3d";
+  }
+  if (!QFile::exists(path)) {
+    GTEST_SKIP() << "inv_test.mod3d not found";
+  }
+
+  ModelDocument doc;
+  ASSERT_TRUE(doc.openFile(path));
+
+  Inversion3DDialog dlg(&doc);
+  ASSERT_NE(dlg.minDensitySpinBox(), nullptr);
+  ASSERT_NE(dlg.maxDensitySpinBox(), nullptr);
+  ASSERT_NE(dlg.checkBottleneckButton(), nullptr);
+
+  // In inv_test.mod3d, initial bounds are min = -1840.0 kg/m³, max = 400.0 kg/m³
+  EXPECT_DOUBLE_EQ(dlg.minDensitySpinBox()->value(), -1840.0);
+  EXPECT_DOUBLE_EQ(dlg.maxDensitySpinBox()->value(), 400.0);
+
+  // 1. Dry run check: Bottleneck must be detected on upper bound
+  auto report = dlg.checkDensityBottleneck(/*applyBounds=*/false);
+  EXPECT_TRUE(report.has_bottleneck);
+  EXPECT_TRUE(report.max_bottleneck);
+  // Upper bound saturation in previous inversion was ~60% of active cells
+  EXPECT_GT(report.saturated_max_percent, 50.0);
+  // Recommended max density must be substantially wider than 400 kg/m³ (e.g. >= 1500 kg/m³)
+  EXPECT_GE(report.recommended_max_density_kg, 1500.0);
+  EXPECT_LE(report.recommended_min_density_kg, -1500.0);
+
+  // Initial spinbox values should remain untouched on dry run
+  EXPECT_DOUBLE_EQ(dlg.maxDensitySpinBox()->value(), 400.0);
+
+  // 2. Trigger auto-fix (applyBounds = true)
+  auto reportApplied = dlg.checkDensityBottleneck(/*applyBounds=*/true);
+  EXPECT_TRUE(reportApplied.has_bottleneck);
+  EXPECT_EQ(dlg.maxDensitySpinBox()->value(), reportApplied.recommended_max_density_kg);
+  EXPECT_EQ(dlg.minDensitySpinBox()->value(), reportApplied.recommended_min_density_kg);
+  EXPECT_DOUBLE_EQ(doc.inversionSettings().max_density, reportApplied.recommended_max_density_kg);
+  EXPECT_DOUBLE_EQ(doc.inversionSettings().min_density, reportApplied.recommended_min_density_kg);
+
+  // 3. Re-check: with the new bounds applied, bottleneck should now be resolved
+  auto reportAfter = dlg.checkDensityBottleneck(/*applyBounds=*/false);
+  EXPECT_FALSE(reportAfter.max_bottleneck);
+}

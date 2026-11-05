@@ -46,9 +46,33 @@ public:
     [[nodiscard]] QSpinBox *nzSpinBox() const noexcept { return m_spinNz; }
     [[nodiscard]] QDoubleSpinBox *dzSpinBox() const noexcept { return m_spinDz; }
     [[nodiscard]] QDoubleSpinBox *obsHeightSpinBox() const noexcept { return m_spinObsHeight; }
+    [[nodiscard]] QDoubleSpinBox *minDensitySpinBox() const noexcept { return m_spinMinDensity; }
+    [[nodiscard]] QDoubleSpinBox *maxDensitySpinBox() const noexcept { return m_spinMaxDensity; }
+    [[nodiscard]] QPushButton *checkBottleneckButton() const noexcept { return m_btnCheckBottleneck; }
     [[nodiscard]] QCheckBox *autoTuneCheckBox() const noexcept { return m_chkAutoTune; }
     [[nodiscard]] QCheckBox *refinePreviousCheckBox() const noexcept { return m_chkRefinePrevious; }
     [[nodiscard]] const std::optional<inv::InversionResult> &currentResult() const noexcept { return m_currentResult; }
+
+    struct DensityBottleneckReport {
+        bool has_bottleneck{false};
+        bool min_bottleneck{false};
+        bool max_bottleneck{false};
+        double observed_min_mgal{0.0};
+        double observed_max_mgal{0.0};
+        double observed_span_mgal{0.0};
+        double domain_thickness_m{0.0};
+        double current_min_density_kg{0.0};
+        double current_max_density_kg{0.0};
+        double max_achievable_pos_mgal{0.0};
+        double max_achievable_neg_mgal{0.0};
+        double recommended_min_density_kg{0.0};
+        double recommended_max_density_kg{0.0};
+        double saturated_min_percent{0.0};
+        double saturated_max_percent{0.0};
+        QString message;
+    };
+
+    DensityBottleneckReport checkDensityBottleneck(bool applyBounds = true);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -63,6 +87,7 @@ public slots:
     void onExportJsonClicked();
     void onBrowsePriorClicked();
     void onInstantAiClicked();
+    void onCheckDensityBottleneckClicked();
 
 private:
     void setupUi();
@@ -102,6 +127,7 @@ private:
     QDoubleSpinBox *m_spinDepthExp{nullptr};
     QDoubleSpinBox *m_spinMinDensity{nullptr};
     QDoubleSpinBox *m_spinMaxDensity{nullptr};
+    QPushButton *m_btnCheckBottleneck{nullptr};
     QComboBox *m_comboOperator{nullptr};
     QComboBox *m_comboTrendMode{nullptr};
     QCheckBox *m_chkAutoTune{nullptr};
@@ -143,6 +169,7 @@ private:
     // Last completed inversion result
     std::optional<inv::InversionResult> m_currentResult;
     inv::InversionSetup m_lastSetup;
+    bool m_isLoadingSettings{false};
 };
 
 } // namespace mod3d_gui

@@ -1,13 +1,13 @@
+#include "inv/inversion_engine.hpp"
+#include "inv/voxel_grid.hpp"
 #include "mod3d/Body.h"
 #include "mod3d/Inversion.h"
 #include "mod3d/Model.h"
 #include "mod3d/Observation.h"
 #include "mod3d/Project.h"
-#include "inv/voxel_grid.hpp"
-#include "inv/inversion_engine.hpp"
-#include <nlohmann/json.hpp>
 #include <cmath>
 #include <gtest/gtest.h>
+#include <nlohmann/json.hpp>
 #include <vector>
 
 using namespace mod3d;
@@ -65,15 +65,15 @@ TEST(InversionMathTest, BoundedOptimizationConvergence) {
   auto testFunc = [](double x) { return (x - 2.75) * (x - 2.75) + 3.14; };
 
   // 1. Golden section bounded
-  FitResult resGolden = Inversion1D::optimize_bounded(
-      0.0, 5.0, testFunc, 1.0, FitMethod::golden, 1e-5);
+  FitResult resGolden = Inversion1D::optimize_bounded(0.0, 5.0, testFunc, 1.0,
+                                                      FitMethod::golden, 1e-5);
   EXPECT_TRUE(resGolden.converged);
   EXPECT_NEAR(resGolden.optimal_parameter, 2.75, 1e-4);
   EXPECT_NEAR(resGolden.minimum_objective, 3.14, 1e-4);
 
   // 2. Brent bounded
-  FitResult resBrent = Inversion1D::optimize_bounded(
-      0.0, 5.0, testFunc, 1.0, FitMethod::brent, 1e-5);
+  FitResult resBrent = Inversion1D::optimize_bounded(0.0, 5.0, testFunc, 1.0,
+                                                     FitMethod::brent, 1e-5);
   EXPECT_TRUE(resBrent.converged);
   EXPECT_NEAR(resBrent.optimal_parameter, 2.75, 1e-5);
   EXPECT_NEAR(resBrent.minimum_objective, 3.14, 1e-5);
@@ -420,14 +420,16 @@ TEST(Gate3InversionTest, VertexDepthRecoverySuperposition) {
   Grid trueObsGrid = *obs.modeled_grid(FieldComponent::GZ);
   obs.set_observed_grid(FieldComponent::GZ, trueObsGrid);
 
-  // Move vertex to initial guess and compute forward field so modeled_grids_ matches initial model
+  // Move vertex to initial guess and compute forward field so modeled_grids_
+  // matches initial model
   model.move_vertex(vIdx, 2, 2, initialZ, BodyMoveType::Normal);
   model.init_facet_list();
   std::vector<Facet3Pt> initialFacets;
   model.facets_computation(initialFacets);
   obs.compute_forward_field(initialFacets, true);
 
-  // Run vertex depth inversion using fast superposition: use_superposition = true
+  // Run vertex depth inversion using fast superposition: use_superposition =
+  // true
   FitResult fitRes = obs.fit_vertex(model, 2, 2, 1, FieldComponent::GZ, 1e-4,
                                     FitMethod::brent, true);
 
@@ -481,9 +483,9 @@ TEST(Gate3InversionTest, ParallelStationForwardAndVertexInversionBenchmark) {
   obs.compute_forward_field(initialFacets, true);
 
   // Fast vertex inversion with Tier 2 zero-copy & Tier 3 jthread parallelism
-  FitResult fitRes = obs.fit_vertex(model, targetRow, targetCol, vIdx,
-                                    FieldComponent::GZ, 1e-4, FitMethod::brent,
-                                    true);
+  FitResult fitRes =
+      obs.fit_vertex(model, targetRow, targetCol, vIdx, FieldComponent::GZ,
+                     1e-4, FitMethod::brent, true);
 
   EXPECT_TRUE(fitRes.converged);
   EXPECT_NEAR(fitRes.optimal_parameter, trueZ, 0.2);
@@ -573,7 +575,8 @@ TEST(ObservationSpaceTest, BackgroundTrendModesAndParameters) {
   obs.set_background_trend_mode(BackgroundTrendMode::None);
   EXPECT_EQ(obs.background_trend_mode(), 0);
   EXPECT_FALSE(obs.remove_observed_mean());
-  EXPECT_EQ(cobs.observed_grid(FieldComponent::GZ), cobs.raw_observed_grid(FieldComponent::GZ));
+  EXPECT_EQ(cobs.observed_grid(FieldComponent::GZ),
+            cobs.raw_observed_grid(FieldComponent::GZ));
   auto t0 = obs.observed_trend_parameters(FieldComponent::GZ);
   EXPECT_NEAR(t0.c0, rawMean, 1e-9);
 
@@ -597,7 +600,7 @@ TEST(ObservationSpaceTest, BackgroundTrendModesAndParameters) {
   ASSERT_NE(anom2, nullptr);
   EXPECT_NEAR(anom2->mean(), 0.0, 1e-9);
   auto t2 = obs.observed_trend_parameters(FieldComponent::GZ);
-  EXPECT_NEAR(t2.gx_per_km, 0.02 * 1000.0, 1e-4); // 0.02 mGal/m = 20 mGal/km
+  EXPECT_NEAR(t2.gx_per_km, 0.02 * 1000.0, 1e-4);  // 0.02 mGal/m = 20 mGal/km
   EXPECT_NEAR(t2.gy_per_km, -0.01 * 1000.0, 1e-4); // -0.01 mGal/m = -10 mGal/km
 
   // Mode 3: BorderPlanar
@@ -616,7 +619,8 @@ TEST(ObservationSpaceTest, VoxelGridForwardCalculationDirectGravity) {
   obs.set_gravity_field_unit(GravityFieldUnit::MilliGal);
 
   // Create voxel grid with density anomaly at center (cell 4, 4, 2)
-  inv::VoxelGrid<double> vg(9, 9, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  inv::VoxelGrid<double> vg(9, 9, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0,
+                            0.0);
   vg(4, 4, 2) = 0.5; // 0.5 g/cm³ density contrast
 
   obs.compute_voxel_grid_gravity(vg, 0.0, true);
@@ -651,7 +655,8 @@ TEST(ObservationSpaceTest, CompareWithRoman1026Model) {
   auto invRes = inv::InversionResult::from_json(j);
   ASSERT_FALSE(invRes.modeled_gz.empty());
 
-  proj.observation().compute_voxel_grid_gravity(invRes.density_grid, proj.model().z_max().value(), true);
+  proj.observation().compute_voxel_grid_gravity(
+      invRes.density_grid, proj.model().z_max().value(), true);
   const Grid *gz = proj.observation().modeled_grid(FieldComponent::GZ);
   ASSERT_NE(gz, nullptr);
 
@@ -668,6 +673,200 @@ TEST(ObservationSpaceTest, CompareWithRoman1026Model) {
   }
   double rms_diff = std::sqrt(sum_sq_diff / invRes.modeled_gz.size());
   EXPECT_LT(rms_diff, 1e-9);
+}
+
+TEST(ObservationSpaceTest, DiagnoseInvTestShift) {
+  Project proj;
+  std::string path = "examples/private/inv_test.mod3d";
+  if (!std::filesystem::exists(path))
+    path = "../examples/private/inv_test.mod3d";
+  if (!std::filesystem::exists(path))
+    path = "../../examples/private/inv_test.mod3d";
+  if (!std::filesystem::exists(path))
+    GTEST_SKIP() << "File not found: " << path;
+
+  ASSERT_TRUE(proj.load_json(path));
+  ASSERT_TRUE(proj.has_inversion_result_json());
+
+  auto j = nlohmann::json::parse(proj.inversion_result_json());
+  auto invRes = inv::InversionResult::from_json(j);
+  ASSERT_FALSE(invRes.modeled_gz.empty());
+
+  const auto *obsGrid =
+      std::as_const(proj.observation()).observed_grid(FieldComponent::GZ);
+  const auto *rawGrid =
+      proj.observation().raw_observed_grid(FieldComponent::GZ);
+  ASSERT_NE(obsGrid, nullptr);
+  std::cout << "\n=== DIAGNOSE INV_TEST SHIFT ===" << std::endl;
+  std::cout << "Observed grid rows: " << obsGrid->rows()
+            << " cols: " << obsGrid->cols() << std::endl;
+  std::cout << "Observed mean: " << obsGrid->mean() << std::endl;
+  if (rawGrid)
+    std::cout << "Raw grid mean: " << rawGrid->mean() << std::endl;
+  std::cout << "Observed == Raw? " << (obsGrid == rawGrid) << std::endl;
+  std::cout << "Observed trend mode: "
+            << proj.observation().background_trend_mode() << std::endl;
+  std::cout << "Has mean for GZ? "
+            << proj.observation().observed_mean(FieldComponent::GZ)
+            << std::endl;
+  auto tparams =
+      proj.observation().observed_trend_parameters(FieldComponent::GZ);
+  std::cout << "Trend c0: " << tparams.c0 << " gx: " << tparams.gx_per_km
+            << " gy: " << tparams.gy_per_km << std::endl;
+  std::cout << "Gravity mode: "
+            << static_cast<int>(proj.observation().gravity_mode())
+            << " height: " << proj.observation().gravity_height().value()
+            << std::endl;
+
+  std::cout << "Inversion Result stats: "
+            << " final_rms: " << invRes.stats.final_data_rms
+            << " baseline_shift: " << invRes.stats.baseline_shift_mgal
+            << " initial_rms: " << invRes.stats.initial_data_rms << std::endl;
+
+  // Compute forward grid from density_grid
+  proj.observation().compute_voxel_grid_gravity(
+      invRes.density_grid, proj.model().z_max().value(), true);
+  const Grid *modGrid = proj.observation().modeled_grid(FieldComponent::GZ);
+  ASSERT_NE(modGrid, nullptr);
+
+  double sum_diff = 0.0, sum_sq_diff = 0.0;
+  size_t count = 0;
+  for (size_t r = 0; r < obsGrid->rows(); ++r) {
+    for (size_t c = 0; c < obsGrid->cols(); ++c) {
+      double vo = (*obsGrid)(r, c);
+      double vm = (*modGrid)(r, c);
+      double d = vo - vm;
+      sum_diff += d;
+      sum_sq_diff += d * d;
+      count++;
+    }
+  }
+  std::cout << "Observed - Modeled: mean diff: " << (sum_diff / count)
+            << " RMS: " << std::sqrt(sum_sq_diff / count) << std::endl;
+
+  // Let's run InversionEngine directly on this observed data with different
+  // configs!
+  const size_t nx = obsGrid->cols();
+  const size_t ny = obsGrid->rows();
+  const double dx = std::abs(obsGrid->dx().value());
+  const double dy = std::abs(obsGrid->dy().value());
+  const double zDomainTop = proj.model().z_max().value();
+  const double zMin = proj.model().z_min().value();
+  const double H = std::max(10.0, zDomainTop - zMin);
+
+  std::vector<double> d_fine(nx * ny, 0.0);
+  for (size_t ix = 0; ix < nx; ++ix) {
+    for (size_t iy = 0; iy < ny; ++iy) {
+      d_fine[ix * ny + iy] = (*obsGrid)(iy, ix);
+    }
+  }
+
+  const auto &relief = proj.observation().surface_relief();
+  std::vector<double> topo_nodes((nx + 1) * (ny + 1), 0.0);
+  const double x0_geom = obsGrid->x0().value() - 0.5 * dx;
+  const double y0_geom = obsGrid->y0().value() - 0.5 * dy;
+  for (size_t iy = 0; iy <= ny; ++iy) {
+    const double y_c = y0_geom + static_cast<double>(iy) * dy;
+    for (size_t ix = 0; ix <= nx; ++ix) {
+      const double x_c = x0_geom + static_cast<double>(ix) * dx;
+      double elev = relief.sample(x_c, y_c);
+      if (elev == mod3d::GRID_DUMMY || std::isnan(elev))
+        elev = relief.mean();
+      topo_nodes[iy * (nx + 1) + ix] = std::max(0.0, zDomainTop - elev);
+    }
+  }
+
+  auto run_experiment = [&](const std::string &name, int bg_mode, double min_d,
+                            double max_d, double obs_h) {
+    inv::InversionConfig cfg;
+    cfg.nx = nx;
+    cfg.ny = ny;
+    cfg.nz = 85;
+    cfg.dx = dx;
+    cfg.dy = dy;
+    cfg.dz = H / 85.0;
+    cfg.x0 = x0_geom;
+    cfg.y0 = y0_geom;
+    cfg.z0 = 0.0;
+    cfg.min_density = min_d;
+    cfg.max_density = max_d;
+    cfg.obs_height = obs_h;
+    cfg.background_trend_mode = bg_mode;
+    cfg.coarse_to_fine_levels = 1;
+    cfg.focusing_enabled = true;
+    cfg.adaptive_refinement = false;
+    cfg.irls_iterations = 15;
+    cfg.cg_max_iterations = 40;
+
+    inv::InversionEngine eng(cfg);
+    inv::VoxelGrid<double> out_m;
+    inv::InversionStats stats;
+    std::vector<double> out_mod;
+    bool ok = eng.invert_columns(d_fine, out_m, stats, topo_nodes, {}, nullptr,
+                                 &out_mod);
+    std::cout << "\n--- Experiment: " << name << " ---" << std::endl;
+    std::cout << "  ok: " << ok << " final RMS: " << stats.final_data_rms
+              << " baseline_shift: " << stats.baseline_shift_mgal
+              << " min_val: " << out_m.min_value()
+              << " max_val: " << out_m.max_value() << std::endl;
+    if (!out_mod.empty()) {
+      double m_diff = 0.0;
+      for (size_t i = 0; i < d_fine.size(); ++i)
+        m_diff += (d_fine[i] - out_mod[i]);
+      std::cout << "  d_fine - out_mod mean diff: " << (m_diff / d_fine.size())
+                << std::endl;
+    }
+  };
+
+  run_experiment("Current (bg=0, min=-1.84, max=0.40, h=0.1)", 0, -1.84, 0.40,
+                 0.1);
+  run_experiment("With ConstantShift (bg=1, min=-1.84, max=0.40, h=0.1)", 1,
+                 -1.84, 0.40, 0.1);
+  run_experiment("Wider Bounds (bg=0, min=-2.8, max=1.5, h=0.1)", 0, -2.8, 1.5,
+                 0.1);
+  run_experiment("Wider Bounds + bg=1 (bg=1, min=-2.8, max=1.5, h=0.1)", 1,
+                 -2.8, 1.5, 0.1);
+  run_experiment("Height 1.0m (bg=0, min=-1.84, max=0.40, h=1.0)", 0, -1.84,
+                 0.40, 1.0);
+
+  // Let's test the effect of sensor height on surface voxel gravity:
+  std::cout << "\n=== SENSOR HEIGHT SENSITIVITY TEST ===" << std::endl;
+  for (double h : {0.01, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0}) {
+    inv::InversionConfig cfg;
+    cfg.nx = nx;
+    cfg.ny = ny;
+    cfg.nz = 85;
+    cfg.dx = dx;
+    cfg.dy = dy;
+    cfg.dz = H / 85.0;
+    cfg.x0 = x0_geom;
+    cfg.y0 = y0_geom;
+    cfg.z0 = 0.0;
+    cfg.obs_height = h;
+
+    std::vector<inv::Point3D<double>> obs;
+    for (size_t ix = 0; ix < nx; ++ix) {
+      for (size_t iy = 0; iy < ny; ++iy) {
+        double zs = inv::column_surface_z(topo_nodes, nx, ny, ix, iy, 0.0);
+        obs.emplace_back(cfg.x0 + (ix + 0.5) * dx, cfg.y0 + (iy + 0.5) * dy,
+                         zs - h);
+      }
+    }
+    inv::PfldInterfaceMeshOperator op(
+        inv::GridGeometry{nx, ny, 85, cfg.x0, cfg.y0, 0.0, dx, dy, cfg.dz}, obs,
+        topo_nodes);
+    // Apply uniform density 0.1 g/cm³ to entire model
+    std::vector<double> m_uniform(nx * ny * 85, 0.1);
+    std::vector<double> gz_unif(nx * ny, 0.0);
+    op.apply(m_uniform, gz_unif);
+    double avg_gz = 0.0;
+    for (double v : gz_unif)
+      avg_gz += v;
+    avg_gz /= gz_unif.size();
+    std::cout << "  h = " << h
+              << " m -> uniform 0.1 g/cm³ gravity mean = " << avg_gz << " mGal"
+              << std::endl;
+  }
 }
 
 // ============================================================================
@@ -712,8 +911,8 @@ TEST(ObservationSpaceTest, MultiBodyDensityInversionWithSharedInterface) {
   const double guessDensity2 = 2700.0;
   b2->set_density(guessDensity2);
 
-  FitResult res2 = obs.fit_density(
-      b2, facets, FieldComponent::GZ, guessDensity2, 1e-5, FitMethod::brent);
+  FitResult res2 = obs.fit_density(b2, facets, FieldComponent::GZ,
+                                   guessDensity2, 1e-5, FitMethod::brent);
 
   EXPECT_TRUE(res2.converged);
   EXPECT_NEAR(res2.optimal_parameter, trueDensity2, 1e-2);
@@ -751,10 +950,14 @@ TEST(ObservationSpaceTest, FitNeighborhoodCustomRadius) {
   int vIdx = 1;
 
   model.move_vertex(vIdx, targetRow, targetCol, -550.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow - 1, targetCol, -550.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow + 1, targetCol, -550.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol - 1, -550.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol + 1, -550.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, -550.0,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, -550.0,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, -550.0,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, -550.0,
+                    BodyMoveType::Normal);
 
   model.init_facet_list();
   std::vector<Facet3Pt> trueFacets;
@@ -768,17 +971,22 @@ TEST(ObservationSpaceTest, FitNeighborhoodCustomRadius) {
 
   // Now perturb all 5 vertices to flat initial guess -650m
   model.move_vertex(vIdx, targetRow, targetCol, -650.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow - 1, targetCol, -650.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow + 1, targetCol, -650.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol - 1, -650.0, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol + 1, -650.0, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, -650.0,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, -650.0,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, -650.0,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, -650.0,
+                    BodyMoveType::Normal);
 
   model.init_facet_list();
   std::vector<Facet3Pt> initialFacets;
   model.facets_computation(initialFacets);
   obs.compute_forward_field(initialFacets, true);
 
-  // Run Tier 4 neighborhood fit with custom radius 120m (covers 5 vertices: center + 4 neighbors)
+  // Run Tier 4 neighborhood fit with custom radius 120m (covers 5 vertices:
+  // center + 4 neighbors)
   NeighborhoodFitSettings settings;
   settings.radius_mode = NeighborhoodRadiusMode::Custom;
   settings.custom_radius_m = 120.0;
@@ -827,10 +1035,14 @@ TEST(ObservationSpaceTest, FitNeighborhoodAutomaticRadius) {
   const double trueZ = -400.0;
   const double initialZ = -450.0;
   model.move_vertex(vIdx, targetRow, targetCol, trueZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow - 1, targetCol, trueZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow + 1, targetCol, trueZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol - 1, trueZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol + 1, trueZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, trueZ,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, trueZ,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, trueZ,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, trueZ,
+                    BodyMoveType::Normal);
 
   model.init_facet_list();
   std::vector<Facet3Pt> trueFacets;
@@ -844,10 +1056,14 @@ TEST(ObservationSpaceTest, FitNeighborhoodAutomaticRadius) {
 
   // Reset to initial guess
   model.move_vertex(vIdx, targetRow, targetCol, initialZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow - 1, targetCol, initialZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow + 1, targetCol, initialZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol - 1, initialZ, BodyMoveType::Normal);
-  model.move_vertex(vIdx, targetRow, targetCol + 1, initialZ, BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow - 1, targetCol, initialZ,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow + 1, targetCol, initialZ,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol - 1, initialZ,
+                    BodyMoveType::Normal);
+  model.move_vertex(vIdx, targetRow, targetCol + 1, initialZ,
+                    BodyMoveType::Normal);
 
   model.init_facet_list();
   std::vector<Facet3Pt> initialFacets;
@@ -871,4 +1087,3 @@ TEST(ObservationSpaceTest, FitNeighborhoodAutomaticRadius) {
   EXPECT_NEAR(model.z(targetRow, targetCol, vIdx), trueZ, 10.0);
   EXPECT_LT(res.elapsed_time_sec, 10.0);
 }
-
