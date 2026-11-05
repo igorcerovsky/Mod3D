@@ -667,7 +667,7 @@ TEST(ObservationSpaceTest, CompareWithRoman1026Model) {
     }
   }
   double rms_diff = std::sqrt(sum_sq_diff / invRes.modeled_gz.size());
-  EXPECT_LT(rms_diff, 0.1);
+  EXPECT_LT(rms_diff, 1e-9);
 }
 
 // ============================================================================

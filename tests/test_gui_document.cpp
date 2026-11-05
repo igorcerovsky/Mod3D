@@ -5294,9 +5294,8 @@ TEST_F(GuiDocumentTest, ModelDocumentOpenRoman1026ReproducesInversionField) {
     }
   }
   double rms = std::sqrt(sumSq / invRes.modeled_gz.size());
-  // RMS difference between forward kernel and previous inversion output should be < 0.1 mGal
-  // and strictly NOT an order of magnitude (10x) off.
-  EXPECT_LT(rms, 0.1);
+  // RMS difference between forward kernel and previous inversion output must match to machine precision.
+  EXPECT_LT(rms, 1e-9);
 }
 
 TEST_F(GuiDocumentTest, ProfileViewInversionDensitySliceAndContextMenu) {

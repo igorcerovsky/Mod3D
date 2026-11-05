@@ -394,13 +394,6 @@ void ObservationSpace::compute_voxel_grid_gravity(
   const auto obsPoints = observation_points(FieldComponent::GZ);
   if (obsPoints.empty()) return;
 
-  std::vector<inv::Point3D<double>> inv_obs;
-  inv_obs.reserve(obsPoints.size());
-  for (const auto &pt : obsPoints) {
-    const double zd = Grid::is_dummy_value(pt.z) ? 0.0 : (zDomainTop - pt.z);
-    inv_obs.emplace_back(pt.x, pt.y, zd);
-  }
-
   const size_t nx = grid.nx();
   const size_t ny = grid.ny();
   const double dx = grid.dx();
@@ -423,6 +416,26 @@ void ObservationSpace::compute_voxel_grid_gravity(
         topo_nodes[iy * (nx + 1) + ix] = std::max(0.0, zDomainTop - elev);
       }
     }
+  }
+
+  std::vector<inv::Point3D<double>> inv_obs;
+  inv_obs.reserve(obsPoints.size());
+  const bool alignWithColumnTopo = hasRelief && (grv_mode_ == ObservationMode::SensorHeight) &&
+                                   (rows_ == ny) && (cols_ == nx);
+  const double hSens = (grv_height_.value() > 0.0) ? grv_height_.value() : 0.1;
+  for (size_t idx = 0; idx < obsPoints.size(); ++idx) {
+    const auto &pt = obsPoints[idx];
+    double zd = Grid::is_dummy_value(pt.z) ? 0.0 : (zDomainTop - pt.z);
+    if (alignWithColumnTopo && !Grid::is_dummy_value(pt.z)) {
+      const size_t iy = idx / cols_;
+      const size_t ix = idx % cols_;
+      const double colSurf = 0.25 * (topo_nodes[iy * (nx + 1) + ix] +
+                                     topo_nodes[iy * (nx + 1) + (ix + 1)] +
+                                     topo_nodes[(iy + 1) * (nx + 1) + (ix + 1)] +
+                                     topo_nodes[(iy + 1) * (nx + 1) + ix]);
+      zd = colSurf - hSens;
+    }
+    inv_obs.emplace_back(pt.x, pt.y, zd);
   }
 
   std::vector<double> out_gz(inv_obs.size(), 0.0);
