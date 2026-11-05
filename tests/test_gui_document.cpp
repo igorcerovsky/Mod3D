@@ -5316,7 +5316,12 @@ TEST_F(GuiDocumentTest, Inversion3DDialogParameterPersistenceAndRoman1026Quality
   Inversion3DDialog dlg(&doc);
   ASSERT_NE(dlg.nzSpinBox(), nullptr);
   ASSERT_NE(dlg.dzSpinBox(), nullptr);
+  ASSERT_NE(dlg.obsHeightSpinBox(), nullptr);
   ASSERT_NE(dlg.autoTuneCheckBox(), nullptr);
+
+  // Gravity sensor height must be disabled and match the document's observation gravity height
+  EXPECT_FALSE(dlg.obsHeightSpinBox()->isEnabled());
+  EXPECT_DOUBLE_EQ(dlg.obsHeightSpinBox()->value(), doc.observation().gravity_height().value());
 
   // Nz must be loaded as 64 and dz as 170.0 / 64 = 2.656 (not rounded to 2.7)
   EXPECT_EQ(dlg.nzSpinBox()->value(), 64);

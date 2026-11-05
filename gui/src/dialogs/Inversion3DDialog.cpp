@@ -197,11 +197,13 @@ void Inversion3DDialog::setupDomainTab(QWidget *parent) {
     formV->addRow(tr("Cell Thickness (&Delta;z):"), m_spinDz);
 
     m_spinObsHeight = new QDoubleSpinBox(parent);
-    m_spinObsHeight->setRange(0.0, 10000.0);
+    m_spinObsHeight->setRange(0.0, 50000.0);
     m_spinObsHeight->setDecimals(2);
     m_spinObsHeight->setSuffix(" m");
-    m_spinObsHeight->setValue(0.1);
-    formV->addRow(tr("Sensor Clearance above Ground:"), m_spinObsHeight);
+    m_spinObsHeight->setValue(0.0);
+    m_spinObsHeight->setEnabled(false);
+    m_spinObsHeight->setToolTip(tr("Current Gravity Sensor Height configured in Settings Pane -> Physics tab (read-only here to preserve synchronization)."));
+    formV->addRow(tr("Gravity Sensor Height:"), m_spinObsHeight);
 
     layout->addWidget(grpVertical);
     layout->addStretch();
@@ -582,7 +584,8 @@ void Inversion3DDialog::loadSettingsFromDocument() {
         m_spinDz->setValue(s.dz);
         m_spinDz->blockSignals(false);
     }
-    m_spinObsHeight->setValue(s.obs_height);
+    const double docGrvHeight = m_doc ? m_doc->observation().gravity_height().value() : s.obs_height;
+    m_spinObsHeight->setValue(docGrvHeight);
     m_chkFocusing->setChecked(s.focusing_enabled);
 
     for (int i = 0; i < m_comboLevels->count(); ++i) {
@@ -637,7 +640,7 @@ void Inversion3DDialog::saveSettingsToDocument() {
     mod3d::InversionSettings3D s = m_doc->inversionSettings();
     s.nz = m_spinNz->value();
     s.dz = (s.nz > 0) ? (H / static_cast<double>(s.nz)) : m_spinDz->value();
-    s.obs_height = m_spinObsHeight->value();
+    s.obs_height = m_doc ? m_doc->observation().gravity_height().value() : m_spinObsHeight->value();
     s.focusing_enabled = m_chkFocusing->isChecked();
     s.coarse_to_fine_levels = m_comboLevels->currentData().toInt();
     s.adaptive_refinement = m_chkAdaptiveRefine->isChecked();
@@ -737,7 +740,8 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     setup.config.noise_rel = m_spinNoiseRel->value() * 0.01;
     setup.config.irls_iterations = m_spinIrlsIters->value();
     setup.config.cg_max_iterations = m_spinCgMaxIters->value();
-    const double rawObsH = units::Meters(m_spinObsHeight->value()).in<units::Meters>();
+    const double rawObsH = m_doc ? m_doc->observation().gravity_height().value()
+                                 : units::Meters(m_spinObsHeight->value()).in<units::Meters>();
     setup.config.obs_height = (m_doc->observation().gravity_mode() == mod3d::ObservationMode::SensorHeight && rawObsH <= 0.0)
         ? 0.1
         : rawObsH;
@@ -1196,7 +1200,8 @@ void Inversion3DDialog::onInstantAiClicked() {
     cfg.nx = nx; cfg.ny = ny; cfg.nz = nz;
     cfg.dx = dx; cfg.dy = dy; cfg.dz = dz;
     cfg.x0 = x0_geom; cfg.y0 = y0_geom; cfg.z0 = z0_geom;
-    const double rawObsH = m_spinObsHeight->value();
+    const double rawObsH = m_doc ? m_doc->observation().gravity_height().value()
+                                 : m_spinObsHeight->value();
     cfg.obs_height = (m_doc->observation().gravity_mode() == mod3d::ObservationMode::SensorHeight && rawObsH <= 0.0)
         ? 0.1
         : rawObsH;
