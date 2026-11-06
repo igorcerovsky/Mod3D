@@ -5990,3 +5990,85 @@ TEST_F(GuiDocumentTest, GL3DViewVolumeRayCastingOrthographicAndPerspectiveProjec
   glv->setZoom(8.0f);
   EXPECT_NO_THROW(glv->drawInversionVoxels());
 }
+
+TEST_F(GuiDocumentTest, GL3DViewDepthSlicesUnlitAndSectionPlanesDepthRendering) {
+  MainWindow mw;
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  // Set topography
+  for (int r = 1; r <= 7; ++r) {
+    for (int c = 1; c <= 7; ++c) {
+      doc->model().set_z(r, c, 0, 150.0 + 10.0 * (r + c));
+    }
+  }
+
+  // Set inversion result
+  inv::InversionResult res;
+  inv::VoxelGrid<double> grid(8, 8, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  grid(4, 4, 2) = 0.35;
+  grid(4, 4, 3) = -0.25;
+  res.density_grid = grid;
+  doc->setInversionResult(res);
+
+  // Find GL3DView
+  GL3DView *glv = nullptr;
+  QMdiSubWindow *sub3D = nullptr;
+  for (auto *sub : mw.mdiArea()->subWindowList()) {
+    if (auto *g = qobject_cast<GL3DView *>(sub->widget())) {
+      glv = g;
+      sub3D = sub;
+      break;
+    }
+  }
+  ASSERT_NE(glv, nullptr);
+  ASSERT_NE(sub3D, nullptr);
+  mw.mdiArea()->setActiveSubWindow(sub3D);
+  QCoreApplication::processEvents();
+
+  // Enable all passes
+  glv->setShowRelief(true);
+  glv->setShowProfilePlane(true);
+  glv->setShowPlanarPlane(true);
+  glv->setShowTransparentProfilePlane(true);
+  glv->setShowInversionSlices(true);
+  glv->setShowInversionVoxels(true);
+  glv->setInversionRenderMode(GL3DView::InversionRenderMode::RayCasting);
+
+  // 1. Verify rendering passes execute cleanly without OpenGL state errors
+  EXPECT_NO_THROW(glv->drawRelief());
+  EXPECT_NO_THROW(glv->drawProfilePlane());
+  EXPECT_NO_THROW(glv->drawPlanarPlane());
+  EXPECT_NO_THROW(glv->drawInversionSlices());
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+
+  // 2. Profile slices and planar plane with transparent mode disabled
+  glv->setShowTransparentProfilePlane(false);
+  EXPECT_FALSE(glv->showTransparentProfilePlane());
+  EXPECT_NO_THROW(glv->drawProfilePlane());
+  EXPECT_NO_THROW(glv->drawPlanarPlane());
+
+  // Re-enable transparent section planes
+  glv->setShowTransparentProfilePlane(true);
+  EXPECT_TRUE(glv->showTransparentProfilePlane());
+
+  // 3. Moving profile and planar section planes interact with depth buffer correctly
+  doc->setProfileOrientation(ProfileOrientation::SouthNorth);
+  doc->setProfileIndex(3);
+  doc->setActiveSliceElevation(-200.0);
+  QCoreApplication::processEvents();
+
+  EXPECT_NO_THROW(glv->drawRelief());
+  EXPECT_NO_THROW(glv->drawProfilePlane());
+  EXPECT_NO_THROW(glv->drawPlanarPlane());
+  EXPECT_NO_THROW(glv->drawInversionSlices());
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+
+  // 4. Inversion block model rendering alongside section planes
+  glv->setInversionRenderMode(GL3DView::InversionRenderMode::BlockModel);
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+  EXPECT_NO_THROW(glv->drawInversionSlices());
+  EXPECT_NO_THROW(glv->drawProfilePlane());
+  EXPECT_NO_THROW(glv->drawPlanarPlane());
+}

@@ -171,6 +171,9 @@ public:
   void drawInversionBlockModel();
   void drawInversionRayCast();
   void drawInversionSlices();
+  void drawProfilePlane();
+  void drawPlanarPlane();
+  void drawRelief();
 
   struct OctantCutState {
     bool active{false};
@@ -544,15 +547,13 @@ private:
   void initBuffers();
   void updateBodyBuffers();
   void renderLines(const std::vector<FlatVertex3D> &lines,
-                   float lineWidth = 1.0f);
+                   float lineWidth = 1.0f, bool blend = false,
+                   bool depthWrite = true);
   void renderFlatTriangles(const std::vector<FlatVertex3D> &tris,
                            bool blend = false, bool depthWrite = true);
 
   void drawBoundingBox();
   void drawBodies();
-  void drawProfilePlane();
-  void drawPlanarPlane();
-  void drawRelief();
   void drawOrientationHud(QPainter &painter);
   void drawPivotIndicator();
   void showContextMenu(const QPoint &globalPos);
