@@ -2614,6 +2614,8 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
                &SettingsPane::updateViewContext);
     disconnect(oldGlv, &GL3DView::quadrantCutChanged, this,
                &SettingsPane::updateViewContext);
+    disconnect(oldGlv, &GL3DView::projectionChanged, this,
+               &SettingsPane::updateViewContext);
     disconnect(oldGlv, &GL3DView::inversionVoxelsChanged, this,
                &SettingsPane::updateViewContext);
     disconnect(oldGlv, &GL3DView::inversionRenderModeChanged, this,
@@ -2642,6 +2644,8 @@ void SettingsPane::setActiveSubWindow(QMdiSubWindow *sub) {
   }
   if (auto *newGlv = qobject_cast<GL3DView *>(m_activeView.data())) {
     connect(newGlv, &GL3DView::octantCutChanged, this,
+            &SettingsPane::updateViewContext, Qt::UniqueConnection);
+    connect(newGlv, &GL3DView::projectionChanged, this,
             &SettingsPane::updateViewContext, Qt::UniqueConnection);
     connect(newGlv, &GL3DView::inversionVoxelsChanged, this,
             &SettingsPane::updateViewContext, Qt::UniqueConnection);

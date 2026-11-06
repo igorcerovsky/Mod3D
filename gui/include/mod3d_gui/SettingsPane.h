@@ -88,6 +88,7 @@ public:
     QComboBox *reliefModeComboBox3D() const { return m_combo3DReliefMode; }
     QCheckBox *octantCutCheckBox3D() const { return m_chk3DOctantCut; }
     QCheckBox *quadrantCutCheckBox3D() const { return octantCutCheckBox3D(); }
+    QCheckBox *orthographicCheckBox3D() const { return m_chk3DOrtho; }
     QCheckBox *planarPlaneCheckBox3D() const { return m_chk3DPlanarSlice; }
     QCheckBox *inversionVoxelsCheckBox3D() const { return m_chk3DInversionVoxels; }
     QComboBox *inversionRenderModeComboBox3D() const { return m_combo3DInversionRenderMode; }

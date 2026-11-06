@@ -1207,6 +1207,8 @@ void GL3DView::initShaders() {
       "uniform mat4 u_invMvp;\n"
       "uniform vec2 u_screenSize;\n"
       "uniform vec3 u_camPos;\n"
+      "uniform vec3 u_viewDir;\n"
+      "uniform bool u_isOrtho;\n"
       "uniform vec3 u_boxMin;\n"
       "uniform vec3 u_boxMax;\n"
       "uniform float u_zMid;\n"
@@ -1257,8 +1259,20 @@ void GL3DView::initShaders() {
       "}\n"
       "\n"
       "void main() {\n"
-      "    vec3 rayOrig = u_camPos;\n"
-      "    vec3 rayDir = normalize(v_renderedPos - u_camPos);\n"
+      "    vec3 rayOrig;\n"
+      "    vec3 rayDir;\n"
+      "    if (u_isOrtho) {\n"
+      "        vec2 screenCoord = gl_FragCoord.xy / u_screenSize;\n"
+      "        vec4 pNearH = u_invMvp * vec4(screenCoord * 2.0 - 1.0, -1.0, 1.0);\n"
+      "        vec4 pFarH  = u_invMvp * vec4(screenCoord * 2.0 - 1.0,  1.0, 1.0);\n"
+      "        vec3 pNear  = pNearH.xyz / max(1e-6, abs(pNearH.w));\n"
+      "        vec3 pFar   = pFarH.xyz / max(1e-6, abs(pFarH.w));\n"
+      "        rayOrig = pNear;\n"
+      "        rayDir  = normalize(pFar - pNear);\n"
+      "    } else {\n"
+      "        rayOrig = u_camPos;\n"
+      "        rayDir  = normalize(v_renderedPos - u_camPos);\n"
+      "    }\n"
       "    vec3 safeDir = vec3(\n"
       "        abs(rayDir.x) < 1e-6 ? (rayDir.x >= 0.0 ? 1e-6 : -1e-6) : rayDir.x,\n"
       "        abs(rayDir.y) < 1e-6 ? (rayDir.y >= 0.0 ? 1e-6 : -1e-6) : rayDir.y,\n"
@@ -1335,7 +1349,8 @@ void GL3DView::initShaders() {
       "    }\n"
       "    if (accum.a < 0.01) discard;\n"
       "    if (u_enableFog) {\n"
-      "        float dist = length(v_renderedPos - u_camPos);\n"
+      "        vec3 pMid = rayOrig + (tNear + 0.5 * rayLen) * rayDir;\n"
+      "        float dist = u_isOrtho ? dot(pMid - u_camPos, u_viewDir) : length(v_renderedPos - u_camPos);\n"
       "        float fogFactor = clamp((dist - u_fogStart) / max(0.001, u_fogEnd - u_fogStart), 0.0, 1.0);\n"
       "        accum.rgb = mix(accum.rgb, u_fogColor.rgb * accum.a, fogFactor);\n"
       "    }\n"
@@ -4026,6 +4041,16 @@ QVector3D GL3DView::screenToWorldPlane(const QPoint &pos, float planeZ) {
   QVector3D upDir(-sinP * sinAz, -sinP * cosAz, cosP);
   QVector3D viewDir(-cosP * sinAz, -cosP * cosAz, -sinP);
 
+  if (m_orthographic) {
+    QVector3D rayOrig = m_target + ndcX * halfW * rightDir + ndcY * halfH * upDir;
+    QVector3D rayDir = viewDir;
+    if (std::abs(rayDir.z()) > 1e-4f) {
+      float t = (planeZ - rayOrig.z()) / rayDir.z();
+      return rayOrig + t * rayDir;
+    }
+    return rayOrig;
+  }
+
   QVector3D eye = m_target - effDist * viewDir;
   QVector3D rayDir =
       (viewDir * effDist + ndcX * halfW * rightDir + ndcY * halfH * upDir)
@@ -5047,12 +5072,46 @@ void GL3DView::drawInversionRayCast() {
   if (baseStepSize <= 0.001f)
     baseStepSize = 1.0f;
 
+  float effDist = m_distance / std::max(0.01f, m_zoom);
+
+  // Dynamic Near plane distance (consistent with setupMatrices)
+  double maxDim = 10000.0;
+  if (m_doc) {
+    const auto &m = m_doc->model();
+    maxDim =
+        std::max({m.x_max_val() - m.x_min_val(), m.y_max_val() - m.y_min_val(),
+                  (m.z_max_val() - m.z_min_val()) * std::max(1.0f, m_zScale)});
+  }
+  float boundingRadius = static_cast<float>(maxDim * 0.75);
+  if (boundingRadius < 100.0f)
+    boundingRadius = 100.0f;
+  float zNear = std::max(
+      1.0f, std::max(0.02f * boundingRadius, effDist - boundingRadius * 1.6f));
+
+  // Determine if near clipping plane intersects or is inside front faces
+  bool nearIntersects = camInside;
+  float minViewDepth = 1e30f;
+  for (int ix = 0; ix < 2; ++ix) {
+    float x = ix ? maxX : minX;
+    for (int iy = 0; iy < 2; ++iy) {
+      float y = iy ? maxY : minY;
+      for (int iz = 0; iz < 2; ++iz) {
+        float z = iz ? zMaxRend : zMinRend;
+        QVector4D pCam = m_mvMatrix * QVector4D(x, y, z, 1.0f);
+        minViewDepth = std::min(minViewDepth, -pCam.z());
+      }
+    }
+  }
+  if (minViewDepth <= zNear) {
+    nearIntersects = true;
+  }
+
   glEnable(GL_BLEND);
   glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
   glDepthMask(GL_FALSE);
 
   glEnable(GL_CULL_FACE);
-  if (camInside) {
+  if (nearIntersects) {
     glDisable(GL_DEPTH_TEST);
     glCullFace(GL_FRONT);
   } else {
@@ -5082,11 +5141,16 @@ void GL3DView::drawInversionRayCast() {
   m_sceneDepthTex->bind(1);
   glCopyTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 0, 0, physW, physH);
 
+  QVector3D viewDir =
+      m_mvMatrix.inverted().mapVector(QVector3D(0.0f, 0.0f, -1.0f)).normalized();
+
   m_rayCastShaderProg->bind();
   m_rayCastShaderProg->setUniformValue("u_mvpMatrix", m_projMatrix * m_mvMatrix);
   m_rayCastShaderProg->setUniformValue("u_invMvp", (m_projMatrix * m_mvMatrix).inverted());
   m_rayCastShaderProg->setUniformValue("u_screenSize", QVector2D(static_cast<float>(physW), static_cast<float>(physH)));
   m_rayCastShaderProg->setUniformValue("u_camPos", camPos);
+  m_rayCastShaderProg->setUniformValue("u_isOrtho", m_orthographic);
+  m_rayCastShaderProg->setUniformValue("u_viewDir", viewDir);
   m_rayCastShaderProg->setUniformValue("u_boxMin", boxMin);
   m_rayCastShaderProg->setUniformValue("u_boxMax", boxMax);
   m_rayCastShaderProg->setUniformValue("u_zMid", zMid);
@@ -5116,7 +5180,6 @@ void GL3DView::drawInversionRayCast() {
   m_rayCastShaderProg->setUniformValue("u_cutPosZ", cut.cutPosZ);
 
   m_rayCastShaderProg->setUniformValue("u_enableFog", m_showDepthFog);
-  float effDist = m_distance / std::max(0.01f, m_zoom);
   m_rayCastShaderProg->setUniformValue("u_fogStart", effDist * 0.75f);
   m_rayCastShaderProg->setUniformValue("u_fogEnd", effDist * 2.2f);
   m_rayCastShaderProg->setUniformValue("u_fogColor", QVector4D(0.92f, 0.93f, 0.95f, 1.0f));

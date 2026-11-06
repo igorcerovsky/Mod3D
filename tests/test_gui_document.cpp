@@ -5917,3 +5917,76 @@ TEST_F(GuiDocumentTest, Inversion3DDialogDensityBottleneckCheckAndAutoFix) {
   auto reportAfter = dlg.checkDensityBottleneck(/*applyBounds=*/false);
   EXPECT_FALSE(reportAfter.max_bottleneck);
 }
+
+TEST_F(GuiDocumentTest, GL3DViewVolumeRayCastingOrthographicAndPerspectiveProjection) {
+  MainWindow mw;
+  mw.resize(1200, 800);
+  ModelDocument *doc = mw.document();
+  ASSERT_NE(doc, nullptr);
+  doc->newProject(9, 9, 0.0, 0.0, 100.0, 100.0, -1000.0, 500.0);
+
+  // Set up an inversion result
+  inv::InversionResult res;
+  inv::VoxelGrid<double> grid(8, 8, 6, -50.0, -50.0, 0.0, 100.0, 100.0, 50.0, 0.0);
+  for (size_t ix = 2; ix <= 5; ++ix) {
+    for (size_t iy = 2; iy <= 5; ++iy) {
+      for (size_t iz = 1; iz <= 4; ++iz) {
+        grid(ix, iy, iz) = 0.35;
+      }
+    }
+  }
+  res.density_grid = grid;
+  doc->setInversionResult(res);
+
+  GL3DView *glv = nullptr;
+  QMdiSubWindow *sub3D = nullptr;
+  for (auto *sub : mw.mdiArea()->subWindowList()) {
+    if (auto *g = qobject_cast<GL3DView *>(sub->widget())) {
+      glv = g;
+      sub3D = sub;
+      break;
+    }
+  }
+  ASSERT_NE(glv, nullptr);
+  ASSERT_NE(sub3D, nullptr);
+  mw.mdiArea()->setActiveSubWindow(sub3D);
+  QCoreApplication::processEvents();
+
+  glv->setShowInversionVoxels(true);
+  glv->setInversionRenderMode(GL3DView::InversionRenderMode::RayCasting);
+  EXPECT_EQ(glv->inversionRenderMode(), GL3DView::InversionRenderMode::RayCasting);
+
+  // Default is perspective projection
+  EXPECT_FALSE(glv->isOrthographic());
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+
+  // Toggle to Orthographic Projection
+  bool projEmitted = false;
+  QObject::connect(glv, &GL3DView::projectionChanged, [&](bool o) { projEmitted = o; });
+  glv->setOrthographic(true);
+  EXPECT_TRUE(glv->isOrthographic());
+  EXPECT_TRUE(projEmitted);
+
+  // In orthographic mode, volume ray-casting must execute properly
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+
+  // SettingsPane integration: toggling Orthographic Projection checkbox updates 3D view
+  SettingsPane *sp = mw.settingsPane();
+  ASSERT_NE(sp, nullptr);
+  ASSERT_NE(sp->orthographicCheckBox3D(), nullptr);
+  EXPECT_TRUE(sp->orthographicCheckBox3D()->isChecked());
+
+  // Toggle off via checkbox (switch back to perspective)
+  sp->orthographicCheckBox3D()->setChecked(false);
+  EXPECT_FALSE(glv->isOrthographic());
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+
+  // Toggle on via checkbox (switch back to orthographic)
+  sp->orthographicCheckBox3D()->setChecked(true);
+  EXPECT_TRUE(glv->isOrthographic());
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+
+  // High zoom in orthographic mode (near-plane cutting volume)
+  glv->setZoom(8.0f);
+  EXPECT_NO_THROW(glv->drawInversionVoxels());
+}
