@@ -6042,6 +6042,8 @@ TEST_F(GuiDocumentTest, GL3DViewDepthSlicesUnlitAndSectionPlanesDepthRendering) 
   EXPECT_NO_THROW(glv->drawPlanarPlane());
   EXPECT_NO_THROW(glv->drawInversionSlices());
   EXPECT_NO_THROW(glv->drawInversionVoxels());
+  EXPECT_GT(glv->inversionSlicesVertexCount(), 0);
+  EXPECT_EQ(glv->inversionSlicesVertexCount() % 6, 0);
 
   // 2. Profile slices and planar plane with transparent mode disabled
   glv->setShowTransparentProfilePlane(false);

@@ -1762,7 +1762,7 @@ void GL3DView::paintGL() {
     drawInversionVoxels();
   }
 
-  // 3. Section planes (semi-transparent overlays, depth-tested, no depth-write)
+  // 3. Section planes (semi-transparent overlays, depth-tested, depth-write for mutual intersection)
   if (m_showProfilePlane) {
     drawProfilePlane();
   }
@@ -1771,7 +1771,7 @@ void GL3DView::paintGL() {
     drawPlanarPlane();
   }
 
-  // 4. Inversion slices (unlit colormapped slices, depth-tested, no depth-write)
+  // 4. Inversion slices (unlit colormapped slices, depth-tested, depth-write for mutual clipping)
   if (m_showInversionSlices) {
     drawInversionSlices();
   }
@@ -3351,7 +3351,6 @@ void GL3DView::drawProfilePlane() {
     auto addQuad = [&](const QVector3D &p0, const QVector3D &p1,
                        const QVector3D &p2, const QVector3D &p3, float r,
                        float g, float b, float a) {
-      // Front face
       profileTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
       profileTris.push_back({p1.x(), p1.y(), p1.z(), r, g, b, a});
       profileTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
@@ -3359,15 +3358,6 @@ void GL3DView::drawProfilePlane() {
       profileTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
       profileTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
       profileTris.push_back({p3.x(), p3.y(), p3.z(), r, g, b, a});
-
-      // Back face
-      profileTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
-      profileTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
-      profileTris.push_back({p1.x(), p1.y(), p1.z(), r, g, b, a});
-
-      profileTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
-      profileTris.push_back({p3.x(), p3.y(), p3.z(), r, g, b, a});
-      profileTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
     };
 
     // Inactive profile planes (subtle translucent neutral grey)
@@ -3402,7 +3392,7 @@ void GL3DView::drawProfilePlane() {
       }
     }
 
-    renderFlatTriangles(profileTris, true, false);
+    renderFlatTriangles(profileTris, true, true);
   }
 
   // 2. Profile outlines
@@ -3571,7 +3561,6 @@ void GL3DView::drawPlanarPlane() {
     auto addQuad = [&](const QVector3D &p0, const QVector3D &p1,
                        const QVector3D &p2, const QVector3D &p3, float r,
                        float g, float b, float a) {
-      // Front face
       planarTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
       planarTris.push_back({p1.x(), p1.y(), p1.z(), r, g, b, a});
       planarTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
@@ -3579,15 +3568,6 @@ void GL3DView::drawPlanarPlane() {
       planarTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
       planarTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
       planarTris.push_back({p3.x(), p3.y(), p3.z(), r, g, b, a});
-
-      // Back face
-      planarTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
-      planarTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
-      planarTris.push_back({p1.x(), p1.y(), p1.z(), r, g, b, a});
-
-      planarTris.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
-      planarTris.push_back({p3.x(), p3.y(), p3.z(), r, g, b, a});
-      planarTris.push_back({p2.x(), p2.y(), p2.z(), r, g, b, a});
     };
 
     // Neutral grey translucent sheet
@@ -3595,7 +3575,7 @@ void GL3DView::drawPlanarPlane() {
     addQuad(QVector3D(x0, y0, zPlanar), QVector3D(x1, y0, zPlanar),
             QVector3D(x1, y1, zPlanar), QVector3D(x0, y1, zPlanar), r, g, b, a);
 
-    renderFlatTriangles(planarTris, true, false);
+    renderFlatTriangles(planarTris, true, true);
   }
 
   // 2. Planar sheet perimeter boundary loop & intersection lines
@@ -5419,9 +5399,6 @@ void GL3DView::updateInversionSliceBuffers() {
       pushQuad(QVector3D(xa, py, za), QVector3D(xb, py, za),
                QVector3D(xb, py, zbR), QVector3D(xa, py, zbL),
                QVector3D(0.0f, 1.0f, 0.0f), r, g, b, alphaVal);
-      pushQuad(QVector3D(xb, py, za), QVector3D(xa, py, za),
-               QVector3D(xa, py, zbL), QVector3D(xb, py, zbR),
-               QVector3D(0.0f, -1.0f, 0.0f), r, g, b, alphaVal);
     }
   }
 
@@ -5457,9 +5434,6 @@ void GL3DView::updateInversionSliceBuffers() {
       pushQuad(QVector3D(px, ya, za), QVector3D(px, yb, za),
                QVector3D(px, yb, zbN), QVector3D(px, ya, zbS),
                QVector3D(1.0f, 0.0f, 0.0f), r, g, b, alphaVal);
-      pushQuad(QVector3D(px, yb, za), QVector3D(px, ya, za),
-               QVector3D(px, ya, zbS), QVector3D(px, yb, zbN),
-               QVector3D(-1.0f, 0.0f, 0.0f), r, g, b, alphaVal);
     }
   }
 
@@ -5497,9 +5471,6 @@ void GL3DView::updateInversionSliceBuffers() {
       pushQuad(QVector3D(xa, ya, pz), QVector3D(xb, ya, pz),
                QVector3D(xb, yb, pz), QVector3D(xa, yb, pz),
                QVector3D(0.0f, 0.0f, 1.0f), r, g, b, alphaVal);
-      pushQuad(QVector3D(xb, ya, pz), QVector3D(xa, ya, pz),
-               QVector3D(xa, yb, pz), QVector3D(xb, yb, pz),
-               QVector3D(0.0f, 0.0f, -1.0f), r, g, b, alphaVal);
     }
   }
 
@@ -5531,9 +5502,10 @@ void GL3DView::drawInversionSlices() {
       (m_doc->model().z_min_val() + m_doc->model().z_max_val()) * 0.5);
 
   glEnable(GL_DEPTH_TEST);
+  glDepthFunc(GL_LEQUAL);
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-  glDepthMask(GL_FALSE);
+  glDepthMask(GL_TRUE);
   glDisable(GL_CULL_FACE);
 
   m_shaderProg->bind();
