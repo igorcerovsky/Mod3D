@@ -1933,7 +1933,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
     double z0 = model.z_min_val();
     double z1 = model.z_max_val();
 
-    // Inactive slices (subtle blue)
+    // Inactive slices (subtle neutral grey)
     int rMaxSw = model.rows() - 2;
     int cMaxSw = model.cols() - 2;
     OctantCutState cutSw = computeOctantCutState();
@@ -1955,13 +1955,13 @@ void GL3DView::paintSoftware(QPainter &painter) {
              << project(x, model.y_max_val(), z1).first
              << project(x, model.y_min_val(), z1).first;
       }
-      painter.setBrush(m_transparentProfiles ? QColor(59, 130, 246, 20)
+      painter.setBrush(m_transparentProfiles ? QColor(140, 140, 140, 16)
                                              : Qt::NoBrush);
-      painter.setPen(QPen(QColor(59, 130, 246, 120), 1.0, Qt::DashLine));
+      painter.setPen(QPen(QColor(140, 140, 140, 110), 1.0, Qt::DashLine));
       painter.drawPolygon(poly);
 
-      // Relief intersection curve highlighted with inactive profile plane color
-      painter.setPen(QPen(QColor(59, 130, 246), 2.2, Qt::SolidLine));
+      // Relief intersection curve in neutral grey
+      painter.setPen(QPen(QColor(140, 140, 140), 1.8, Qt::SolidLine));
       if (sl.orient == ProfileOrientation::EastWest) {
         int rowIdx = std::clamp(sl.index + 1, 1, rMaxSw);
         double y = model.yd_val(rowIdx);
@@ -1991,7 +1991,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
       }
     }
 
-    // Active slice (prominent amber / red)
+    // Active slice (clean neutral grey)
     for (const auto &sl : swSlices) {
       if (!sl.isActive)
         continue;
@@ -2009,13 +2009,13 @@ void GL3DView::paintSoftware(QPainter &painter) {
              << project(x, model.y_max_val(), z1).first
              << project(x, model.y_min_val(), z1).first;
       }
-      painter.setBrush(m_transparentProfiles ? QColor(245, 158, 11, 45)
+      painter.setBrush(m_transparentProfiles ? QColor(170, 170, 170, 36)
                                              : Qt::NoBrush);
-      painter.setPen(QPen(QColor(217, 119, 6, 220), 1.8, Qt::DashLine));
+      painter.setPen(QPen(QColor(180, 180, 180, 220), 1.8, Qt::DashLine));
       painter.drawPolygon(poly);
 
-      // Relief intersection curve highlighted with active profile plane color
-      painter.setPen(QPen(QColor(230, 50, 35), 3.2, Qt::SolidLine));
+      // Relief intersection curve in crisp silver-grey
+      painter.setPen(QPen(QColor(200, 200, 200), 2.8, Qt::SolidLine));
       if (sl.orient == ProfileOrientation::EastWest) {
         int rowIdx = std::clamp(sl.index + 1, 1, rMaxSw);
         double y = model.yd_val(rowIdx);
@@ -2046,7 +2046,7 @@ void GL3DView::paintSoftware(QPainter &painter) {
     }
   }
 
-  // 3b. Horizontal Planar View Plane in Software Mode
+  // 3b. Horizontal Planar View Plane in Software Mode (neutral grey)
   if (m_showPlanarPlane) {
     double sliceZ = m_doc->activeSliceElevation();
     if (std::isnan(sliceZ)) {
@@ -2069,12 +2069,12 @@ void GL3DView::paintSoftware(QPainter &painter) {
          << project(model.x_max_val(), model.y_max_val(), sliceZ).first
          << project(model.x_min_val(), model.y_max_val(), sliceZ).first;
 
-    painter.setBrush(m_transparentProfiles ? QColor(16, 185, 129, 32)
+    painter.setBrush(m_transparentProfiles ? QColor(150, 150, 150, 24)
                                            : Qt::NoBrush);
-    painter.setPen(QPen(QColor(5, 150, 105, 220), 1.8, Qt::DashLine));
+    painter.setPen(QPen(QColor(175, 175, 175, 220), 1.8, Qt::DashLine));
     painter.drawPolygon(poly);
 
-    // Draw profile intersection lines on the planar sheet
+    // Draw profile intersection lines on the planar sheet in neutral grey
     std::vector<double> ewYs;
     std::vector<double> snXs;
     if (QMdiArea *mdi = findMdiArea()) {
@@ -2096,19 +2096,18 @@ void GL3DView::paintSoftware(QPainter &painter) {
       }
     }
 
-    painter.setPen(QPen(QColor(230, 50, 35), 2.4, Qt::SolidLine));
+    painter.setPen(QPen(QColor(180, 180, 180), 2.0, Qt::SolidLine));
     for (double y : ewYs) {
       painter.drawLine(project(model.x_min_val(), y, sliceZ).first,
                        project(model.x_max_val(), y, sliceZ).first);
     }
-    painter.setPen(QPen(QColor(37, 99, 235), 2.4, Qt::SolidLine));
     for (double x : snXs) {
       painter.drawLine(project(x, model.y_min_val(), sliceZ).first,
                        project(x, model.y_max_val(), sliceZ).first);
     }
 
-    // Crosshairs at 3-plane intersections
-    painter.setPen(QPen(QColor(234, 179, 8), 3.0, Qt::SolidLine));
+    // Crosshairs at 3-plane intersections in silver-grey
+    painter.setPen(QPen(QColor(215, 215, 215), 2.5, Qt::SolidLine));
     for (double x : snXs) {
       for (double y : ewYs) {
         auto pt = project(x, y, sliceZ).first;
@@ -3303,11 +3302,11 @@ void GL3DView::drawProfilePlane() {
       profileTris.push_back({p3.x(), p3.y(), p3.z(), r, g, b, a});
     };
 
-    // Inactive profile planes
+    // Inactive profile planes (subtle translucent neutral grey)
     for (const auto &sl : slices) {
       if (sl.isActive)
         continue;
-      float r = 0.35f, g = 0.55f, b = 0.85f, a = 0.08f;
+      float r = 0.55f, g = 0.55f, b = 0.55f, a = 0.06f;
       if (sl.orient == ProfileOrientation::EastWest) {
         float y = static_cast<float>(m.yd_val(sl.index + 1));
         addQuad(QVector3D(x0, y, z0), QVector3D(x1, y, z0),
@@ -3319,11 +3318,11 @@ void GL3DView::drawProfilePlane() {
       }
     }
 
-    // Active profile plane
+    // Active profile plane (clean translucent neutral grey)
     for (const auto &sl : slices) {
       if (!sl.isActive)
         continue;
-      float r = 0.96f, g = 0.28f, b = 0.22f, a = 0.26f;
+      float r = 0.65f, g = 0.65f, b = 0.65f, a = 0.16f;
       if (sl.orient == ProfileOrientation::EastWest) {
         float y = static_cast<float>(m.yd_val(sl.index + 1));
         addQuad(QVector3D(x0, y, z0), QVector3D(x1, y, z0),
@@ -3363,7 +3362,7 @@ void GL3DView::drawProfilePlane() {
   for (const auto &sl : slices) {
     if (sl.isActive)
       continue;
-    float r = 0.35f, g = 0.60f, b = 0.85f, a = 0.50f;
+    float r = 0.55f, g = 0.55f, b = 0.55f, a = 0.45f;
     if (sl.orient == ProfileOrientation::EastWest) {
       float y = static_cast<float>(m.yd_val(sl.index + 1));
       addLoopLines(inactiveLines, QVector3D(x0, y, z0), QVector3D(x1, y, z0),
@@ -3378,21 +3377,21 @@ void GL3DView::drawProfilePlane() {
   for (const auto &sl : slices) {
     if (!sl.isActive)
       continue;
-    float r = 0.96f, g = 0.20f, b = 0.15f, a = 0.95f;
+    float r = 0.75f, g = 0.75f, b = 0.75f, a = 0.90f;
     if (sl.orient == ProfileOrientation::EastWest) {
       float y = static_cast<float>(m.yd_val(sl.index + 1));
       addLoopLines(activeLines, QVector3D(x0, y, z0), QVector3D(x1, y, z0),
                    QVector3D(x1, y, z1), QVector3D(x0, y, z1), r, g, b, a);
-      // Golden accent line on top ridge
-      ridgeLines.push_back({x0, y, z1, 1.0f, 0.85f, 0.20f, 0.95f});
-      ridgeLines.push_back({x1, y, z1, 1.0f, 0.85f, 0.20f, 0.95f});
+      // Silver-grey accent line on top ridge
+      ridgeLines.push_back({x0, y, z1, 0.85f, 0.85f, 0.85f, 0.92f});
+      ridgeLines.push_back({x1, y, z1, 0.85f, 0.85f, 0.85f, 0.92f});
     } else {
       float x = static_cast<float>(m.xd_val(sl.index + 1));
       addLoopLines(activeLines, QVector3D(x, y0, z0), QVector3D(x, y1, z0),
                    QVector3D(x, y1, z1), QVector3D(x, y0, z1), r, g, b, a);
-      // Golden accent line on top ridge
-      ridgeLines.push_back({x, y0, z1, 1.0f, 0.85f, 0.20f, 0.95f});
-      ridgeLines.push_back({x, y1, z1, 1.0f, 0.85f, 0.20f, 0.95f});
+      // Silver-grey accent line on top ridge
+      ridgeLines.push_back({x, y0, z1, 0.85f, 0.85f, 0.85f, 0.92f});
+      ridgeLines.push_back({x, y1, z1, 0.85f, 0.85f, 0.85f, 0.92f});
     }
   }
 
@@ -3410,11 +3409,11 @@ void GL3DView::drawProfilePlane() {
 
   for (const auto &sl : slices) {
     auto &targetLines = sl.isActive ? activeReliefLines : inactiveReliefLines;
-    // Highlighting color of the profile plane
-    float r = sl.isActive ? 0.98f : 0.32f;
-    float g = sl.isActive ? 0.22f : 0.65f;
-    float b = sl.isActive ? 0.16f : 0.96f;
-    float a = sl.isActive ? 1.0f : 0.90f;
+    // Highlighting color of the profile plane in neutral grey
+    float r = sl.isActive ? 0.82f : 0.58f;
+    float g = sl.isActive ? 0.82f : 0.58f;
+    float b = sl.isActive ? 0.82f : 0.58f;
+    float a = sl.isActive ? 0.95f : 0.75f;
 
     if (sl.orient == ProfileOrientation::EastWest) {
       int rowIdx = std::clamp(sl.index + 1, 1, rMax);
@@ -3507,8 +3506,8 @@ void GL3DView::drawPlanarPlane() {
       planarTris.push_back({p3.x(), p3.y(), p3.z(), r, g, b, a});
     };
 
-    // Elegant emerald / teal translucent sheet
-    float r = 0.08f, g = 0.72f, b = 0.58f, a = 0.18f;
+    // Neutral grey translucent sheet
+    float r = 0.58f, g = 0.58f, b = 0.58f, a = 0.12f;
     addQuad(QVector3D(x0, y0, zPlanar), QVector3D(x1, y0, zPlanar),
             QVector3D(x1, y1, zPlanar), QVector3D(x0, y1, zPlanar), r, g, b, a);
 
@@ -3537,10 +3536,10 @@ void GL3DView::drawPlanarPlane() {
     target.push_back({p0.x(), p0.y(), p0.z(), r, g, b, a});
   };
 
-  // Perimeter boundary in crisp emerald / cyan
+  // Perimeter boundary in neutral grey
   addLoopLines(planarLines, QVector3D(x0, y0, zPlanar),
                QVector3D(x1, y0, zPlanar), QVector3D(x1, y1, zPlanar),
-               QVector3D(x0, y1, zPlanar), 0.10f, 0.82f, 0.65f, 0.90f);
+               QVector3D(x0, y1, zPlanar), 0.75f, 0.75f, 0.75f, 0.85f);
 
   // 3. Intersections with open profile planes
   QMdiArea *mdi = findMdiArea();
@@ -3557,7 +3556,7 @@ void GL3DView::drawPlanarPlane() {
   std::vector<float> snXs;
 
   if (openPvs.empty()) {
-    float r = 0.96f, g = 0.35f, b = 0.20f, a = 0.95f;
+    float r = 0.70f, g = 0.70f, b = 0.70f, a = 0.85f;
     if (m_doc->profileOrientation() == ProfileOrientation::EastWest) {
       float y = static_cast<float>(m.yd_val(m_doc->profileIndex() + 1));
       ewYs.push_back(y);
@@ -3574,13 +3573,13 @@ void GL3DView::drawPlanarPlane() {
       if (pv->profileOrientation() == ProfileOrientation::EastWest) {
         float y = static_cast<float>(m.yd_val(pv->profileIndex() + 1));
         ewYs.push_back(y);
-        float r = 0.96f, g = 0.30f, b = 0.20f, a = 0.95f;
+        float r = 0.70f, g = 0.70f, b = 0.70f, a = 0.85f;
         intersectLines.push_back({x0, y, zPlanar, r, g, b, a});
         intersectLines.push_back({x1, y, zPlanar, r, g, b, a});
       } else {
         float x = static_cast<float>(m.xd_val(pv->profileIndex() + 1));
         snXs.push_back(x);
-        float r = 0.20f, g = 0.65f, b = 0.96f, a = 0.95f;
+        float r = 0.70f, g = 0.70f, b = 0.70f, a = 0.85f;
         intersectLines.push_back({x, y0, zPlanar, r, g, b, a});
         intersectLines.push_back({x, y1, zPlanar, r, g, b, a});
       }
@@ -3592,7 +3591,7 @@ void GL3DView::drawPlanarPlane() {
     float armZ = std::max(20.0f, (z1Raw - z0Raw) * 0.025f * m_zScale);
     for (float xInt : snXs) {
       for (float yInt : ewYs) {
-        float cr = 1.0f, cg = 0.88f, cb = 0.25f, ca = 1.0f;
+        float cr = 0.85f, cg = 0.85f, cb = 0.85f, ca = 0.90f;
         crosshairLines.push_back({xInt - armX, yInt, zPlanar, cr, cg, cb, ca});
         crosshairLines.push_back({xInt + armX, yInt, zPlanar, cr, cg, cb, ca});
         crosshairLines.push_back({xInt, yInt - armY, zPlanar, cr, cg, cb, ca});
@@ -4210,6 +4209,12 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
   actProfile->setCheckable(true);
   actProfile->setChecked(m_showProfilePlane);
 
+  auto *actPlanar =
+      menu.addAction(tr("Show Planar View Plane"), this,
+                     [this](bool checked) { setShowPlanarPlane(checked); });
+  actPlanar->setCheckable(true);
+  actPlanar->setChecked(m_showPlanarPlane);
+
   auto *actTranspBodies =
       menu.addAction(tr("Transparent Bodies"), this, [this](bool checked) {
         setShowTransparentBodies(checked);
@@ -4240,12 +4245,6 @@ void GL3DView::showContextMenu(const QPoint &globalPos) {
                      [this](bool checked) { setShowOuterFacets(checked); });
   actOuter->setCheckable(true);
   actOuter->setChecked(m_showOuterFacets);
-
-  auto *actPlanar =
-      menu.addAction(tr("Show Planar View Plane"), this,
-                     [this](bool checked) { setShowPlanarPlane(checked); });
-  actPlanar->setCheckable(true);
-  actPlanar->setChecked(m_showPlanarPlane);
 
   auto *actOctCut =
       menu.addAction(tr("Octant Cut (Front Profiles & Slice) (C)"), this,

@@ -674,6 +674,14 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   m_chk3DSlices =
       new QCheckBox(tr("Profile Slices (Open Views)"), box3DToggles);
   m_chk3DSlices->setChecked(true);
+  m_chk3DPlanarSlice =
+      new QCheckBox(tr("Horizontal Planar View Plane"), box3DToggles);
+  m_chk3DPlanarSlice->setChecked(true);
+  m_chk3DPlanarSlice->setToolTip(tr("Show the horizontal planar modeling slice "
+                                    "plane (Z = active slice elevation)"));
+  m_chk3DTransparentSlices =
+      new QCheckBox(tr("Transparent Profile / Section Slices"), box3DToggles);
+  m_chk3DTransparentSlices->setChecked(true);
   m_chk3DCompass = new QCheckBox(tr("Orientation Compass Triad"), box3DToggles);
   m_chk3DCompass->setChecked(true);
   m_chk3DBoundingBox = new QCheckBox(tr("Bounding Box"), box3DToggles);
@@ -705,14 +713,6 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   m_chk3DTransparentBodies =
       new QCheckBox(tr("Transparent Bodies"), box3DToggles);
   m_chk3DTransparentBodies->setChecked(false);
-  m_chk3DTransparentSlices =
-      new QCheckBox(tr("Transparent Profile / Section Slices"), box3DToggles);
-  m_chk3DTransparentSlices->setChecked(true);
-  m_chk3DPlanarSlice =
-      new QCheckBox(tr("Horizontal Planar View Plane"), box3DToggles);
-  m_chk3DPlanarSlice->setChecked(true);
-  m_chk3DPlanarSlice->setToolTip(tr("Show the horizontal planar modeling slice "
-                                    "plane (Z = active slice elevation)"));
   m_chk3DOctantCut =
       new QCheckBox(tr("Octant Cut (Front Profiles & Slice)"), box3DToggles);
   m_chk3DOctantCut->setChecked(false);
@@ -721,6 +721,8 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
          "planes and horizontal planar slice (Shortcut: C)"));
 
   toggles3DLayout->addWidget(m_chk3DSlices);
+  toggles3DLayout->addWidget(m_chk3DPlanarSlice);
+  toggles3DLayout->addWidget(m_chk3DTransparentSlices);
   toggles3DLayout->addWidget(m_chk3DCompass);
   toggles3DLayout->addWidget(m_chk3DBoundingBox);
   toggles3DLayout->addWidget(m_chk3DFeatureEdges);
@@ -729,8 +731,6 @@ void SettingsPane::setupDisplayTab(QWidget *container) {
   toggles3DLayout->addWidget(m_chk3DOrtho);
   toggles3DLayout->addWidget(m_chk3DDepthFog);
   toggles3DLayout->addWidget(m_chk3DTransparentBodies);
-  toggles3DLayout->addWidget(m_chk3DTransparentSlices);
-  toggles3DLayout->addWidget(m_chk3DPlanarSlice);
   toggles3DLayout->addWidget(m_chk3DOctantCut);
   v3dLayout->addWidget(box3DToggles);
 
