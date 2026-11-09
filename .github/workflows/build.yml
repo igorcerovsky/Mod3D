@@ -16,12 +16,12 @@ jobs:
   # macOS Build (Apple Silicon; Intel macos-13 disabled due to queue delays)
   # =========================================================================
   build-macos:
-    name: macOS (${{ matrix.os == 'macos-14' && 'Apple Silicon' || 'Intel' }})
+    name: macOS (${{ matrix.os != 'macos-13' && 'Apple Silicon' || 'Intel' }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14] # Note: macos-13 (Intel) can be re-enabled here in the future
+        os: [macos-15] # Note: macos-13 (Intel) can be re-enabled here in the future
 
     steps:
       - name: Checkout repository
@@ -50,7 +50,7 @@ jobs:
       - name: Package macOS App Bundle & DMG
         run: |
           QT_BIN="$(brew --prefix qt@6)/bin"
-          ARCH="${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }}"
+          ARCH="${{ matrix.os != 'macos-13' && 'arm64' || 'x86_64' }}"
           STAGE_DIR="dist_macos"
           DMG_STAGE="dmg_stage"
 
@@ -88,7 +88,7 @@ jobs:
       - name: Upload macOS Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Mod3D-macOS-${{ matrix.os == 'macos-14' && 'arm64' || 'x86_64' }}
+          name: Mod3D-macOS-${{ matrix.os != 'macos-13' && 'arm64' || 'x86_64' }}
           path: |
             Mod3D-macOS-*.dmg
             Mod3D-macOS-*.zip
