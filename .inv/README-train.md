@@ -1,15 +1,16 @@
 # 3D Potential Field Neural Inversion: Complete Training Guide
 
 > **A Comprehensive Guide to Training Physics-Informed 3D Swin Transformers for Mod3D**  
-> *Procedural Geological Priors, Differentiable FFT Forward Physics, Zhdanov Focusing Loss & Test-Time Adaptation*
+> *Isolated Bodies & Cavities, Draped Terrain Relief, 3D Distance Penalties, Opposite-Sign Halo Suppression, Differentiable Nagy-Prism Physics & Live Training GUI*
 
 ---
 
 ## 1. Executive Training Strategy
 
 Inverting surface potential field data (gravity $\Delta g$ and magnetics $\Delta T$) into 3D subsurface physical properties ($\Delta \rho, \chi$) is ill-posed and non-unique. Because the Earth has no vast database of true subterranean 3D density volumes with matching surveys, naive deep learning approaches fail:
-* Training purely on simple geometric shapes (spheres/cubes) produces models that fail on real, complex geology (*Out-of-Distribution breakdown*).
+* Training purely on simple geometric shapes without terrain produces models that fail on real relief (*Out-of-Distribution breakdown*).
 * Training purely unsupervised on data misfit $\|G\mathbf{m} - \mathbf{d}\|_2^2$ causes the network to collapse into the non-uniqueness trap, placing all anomalies directly at the ground surface (*Depth attenuation bias*).
+* Symmetric L1/L2 penalties produce unphysical opposite-sign "compensating halos" (e.g. negative density halos wrapping a positive orebody to artificially cancel gravity tails).
 
 To solve this, `.inv` employs a **Three-Phase Hybrid Training Strategy**:
 
@@ -18,27 +19,27 @@ To solve this, `.inv` employs a **Three-Phase Hybrid Training Strategy**:
 |                                    3-PHASE HYBRID TRAINING FRAMEWORK                                    |
 +---------------------------------------------------------------------------------------------------------+
 |                                                                                                         |
-|   PHASE 1: SYNTHETIC PRE-TRAINING           PHASE 2: PHYSICS-GUIDED TRAINING      PHASE 3: TEST-TIME    |
-|   (Procedural Geological Prior)             (Differentiable Forward Loop)         ADAPTATION (Mod3D)    |
+|   PHASE 1: SYNTHETIC DATA GENERATION            PHASE 2: PHYSICS-GUIDED TRAINING      PHASE 3: TEST-TIME    |
+|   (Isolated Bodies, Cavities & Terrain)         (Differentiable Forward Loop)         ADAPTATION (Mod3D)    |
 |                                                                                                         |
-|   +--------------------------+              +---------------------------+         +-------------------+ |
-|   | Stochastic Geology Gen   |              | Fast GPU FFT Forward G    |         | Real Survey Data  | |
-|   | - Folding & Stratigraphy |              | (2 ms BTTB convolution)   |         | from Mod3D JSON   | |
-|   | - Dipping Faults         |              +-------------+-------------+         +---------+---------+ |
-|   | - Intrusive Bodies       |                            |                                 |           |
-|   | - Topography Relief      |                            v                                 v           |
-|   +------------+-------------+              +---------------------------+         +-------------------+ |
-|                |                            | Physics & Focusing Losses |         | Pre-trained Swin3D| |
-|                v                            | - Data Misfit ||Gm - d||² | ------> | Instant Inference | |
-|   +--------------------------+              | - Zhdanov S_MS (volume)   |         | (< 50 ms)         | |
-|   | 3D Swin Transformer      |              | - Zhdanov S_MGS (edges)   |         +---------+---------+ |
-|   | Supervised Pre-training  |              +---------------------------+                   |           |
-|   | (Learns structural prior)|                                                              v           |
-|   +--------------------------+                                                    +-------------------+ |
-|                                                                                   | Test-Time Refine  | |
-|                                                                                   | (10-20 Adam steps | |
-|                                                                                   |  with pfld mesh)  | |
-|                                                                                   +-------------------+ |
+|   +--------------------------+                  +---------------------------+         +-------------------+ |
+|   | On-The-Fly Geometry      |                  | Draped Nagy Operator G    |         | Real Survey Data  | |
+|   | - Isolated rock bodies   |                  | (~2 ms batched on MPS)    |         | from Mod3D JSON   | |
+|   | - Air & water cavities   |                  +-------------+-------------+         +---------+---------+ |
+|   | - Smooth/sloped terrain  |                                |                                 |           |
+|   | - 30-40 cm sensor clear. |                                v                                 v           |
+|   | - 3D petrophysical noise |                  +---------------------------+         +-------------------+ |
+|   | - Dihedral D4 symmetries |                  | Compound Inversion Loss   |         | Pre-trained Swin3D| |
+|   +------------+-------------+                  | - Depth-weighted L1+L2    | ------> | Instant Inference | |
+|                |                                | - 3D Distance-weighting   |         | (< 50 ms)         | |
+|                v                                | - Opposite-halo penalty   |         +---------+---------+ |
+|   +--------------------------+                  | - 3D Face-jump gradient   |                   |           |
+|   | 2-Channel 3D Swin        |                  | - Signed soft Dice        |                   v           |
+|   | Transformer Backbone     |                  | - Draped data misfit      |         +-------------------+ |
+|   | [gz, terrain/depth_max]  |                  +---------------------------+         | Linear Projection | |
+|   +--------------------------+                                                        | & IRLS Refine     | |
+|                                                                                       | (with pfld mesh)  | |
+|                                                                                       +-------------------+ |
 +---------------------------------------------------------------------------------------------------------+
 ```
 
@@ -75,205 +76,174 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
 
 ## 3. Step-by-Step Training Pipeline
 
-### Step 1: Procedural Geological Dataset Generation
+### Step 1: Isolated Bodies, Cavities & Terrain Data Generation
 
-Rather than hand-labeling or hunting for paired data, `.inv/python/dataset.py` synthesizes thousands of geologically authentic 3D volumes combining five geological processes:
+Rather than hand-labeling or hunting for paired data, `.inv/python/dataset.py` synthesizes thousands of 3D volumes containing isolated geological bodies and subsurface cavities strictly below random terrain relief:
 
-1. **Undulating Sedimentary Beds**: Multi-harmonic sinusoidal folding simulating regional deformation.
-2. **Lithological Contrasts**: Physically realistic rock density contrasts ($\Delta \rho \in [-0.35, +0.55]\text{ g/cm}^3$).
-3. **Planar & Listric Faults**: Tectonic shear cutting through strata with dipping fault angles ($45^\circ\text{–}75^\circ$) and variable throws.
-4. **Compact Magmatic Intrusions**: High-density ellipsoidal plutons, volcanic plugs, and mineralized dykes acting as Zhdanov focusing targets.
-5. **Topography & Survey Noise**: Synthetic DEM relief surfaces and Gaussian noise ($\sigma = 0.02\text{–}0.05\text{ mGal}$) with leveling stripe errors.
+1. **Target Types**:
+   * **Rock Bodies (75% of bodies)**: High/low density anomalies ($\Delta \rho \in \pm 0.1\text{–}0.8\text{ g/cm}^3$) with random sign and rotated ellipsoidal or rectangular box geometry.
+   * **Cavities (25% of bodies)**: Shallow, compact negative anomalies representing **air cavities** ($\Delta \rho \in -2.00\text{ to } -2.67\text{ g/cm}^3$) or **water-filled cavities** ($\Delta \rho \in -1.00\text{ to } -1.67\text{ g/cm}^3$).
+2. **Body Multiplicity & Spacing**:
+   * 40% single-body models, 60% multi-body models (2 to 4 distinct bodies).
+   * Minimum separation of $\ge 2$ empty cells between bodies ensures zero overlap or merging.
+   * Clear boundary margins ($\ge 3$ cells from lateral borders) prevent boundary clipping.
+3. **Random Topography Relief**:
+   * Multi-scale Gaussian-filtered random terrain depth $t(x, y)$ with optional regional tilt.
+   * Relief up to 25% of total domain depth (15% flat terrain cases for baseline stability).
+   * Density strictly zeroed above relief surface (air cells carry zero density contrast).
+4. **Realistic Gravimeter Sensor Clearance**:
+   * Stations are draped directly on the terrain with realistic relative gravity meter tripod clearance: **$30\text{–}40\text{ cm}$ ($0.30\text{–}0.40\text{ m}$)** above the ground.
+5. **3D Petrophysical Voxel Noise (Denoising Supervision)**:
+   * Real host rocks have internal density variations and 3D subsurface clutter.
+   * During forward simulation (`simulate_batch`), 3D voxel density noise ($\sigma_{\text{body}} = 0.08 |\rho|$ internal heterogeneity + $\sigma_{\text{bg}}$ host-rock clutter below terrain) is added to the density volume that produces the surface gravity field `obs_noisy`.
+   * **Crucial distinction**: The supervision target `rho` remains strictly clean in the background. The network is trained as a true **geological denoiser** that rejects 3D subsurface clutter and surface sensor noise ($\sigma = 0.5\%\text{–}4\% \cdot \max|g_z|$) while outputting clean, sharp bodies.
+6. **Dihedral $D_4$ Horizontal Symmetry Augmentation**:
+   * Gravity physics is strictly equivariant to horizontal rotations and reflections.
+   * `augment_d4` applies random $90^\circ, 180^\circ, 270^\circ$ rotations and horizontal reflections on the GPU batch during training, providing $8\times$ effective directional coverage with zero forward modeling overhead.
 
-#### Option A: On-The-Fly Generation (Zero Disk Footprint, Recommended)
-`SyntheticPotentialFieldDataset` generates random geological realizations on the fly during training:
+#### On-The-Fly Generation (Zero Disk Footprint, Recommended)
+`BodyTerrainDataset` generates fresh random geometry in DataLoader workers (numpy) while `simulate_batch` runs exact draped-station Nagy prism forward modeling batched on GPU/MPS (~2 ms per sample):
 ```python
-from dataset import SyntheticPotentialFieldDataset
+from dataset import BodyTerrainDataset, simulate_batch
+from forward import TerrainGravityOperator
 
-# Generates new stochastic samples every epoch to prevent overfitting
-dataset = SyntheticPotentialFieldDataset(n_samples=5000, nx=64, ny=64, nz=32)
-```
-
-#### Option B: Pre-Generate and Cache to Disk
-```bash
-python dataset.py --samples 10000 --nx 64 --ny 64 --nz 32 --output ./data/synthetic
+# Generates infinite stochastic samples on the fly
+dataset = BodyTerrainDataset(n_samples=2000, nx=64, ny=64, nz=32, cell=50.0)
+op = TerrainGravityOperator(64, 64, 32, 50.0, 50.0, 50.0).to("mps")
 ```
 
 ---
 
-### Step 2: Network Architecture & Differentiable Forward Physics
+### Step 2: 2-Channel Network Architecture & Differentiable Forward Physics
 
 The network architecture in `.inv/python/model_swin3d.py` combines four specialized modules:
 
-1. **2D Patch Tokenizer**: Extracts $4 \times 4$ patches from the surface potential field map ($\Delta g, g_{zz}, \Delta T$).
-2. **2D-to-3D Dimension Lifting (Cross-Attention)**:
-   * Initializes 3D query tokens $Q(x, y, z)$ embedded with depth coordinates.
-   * Cross-attends to 2D surface observation keys $K(x_{\text{obs}}, y_{\text{obs}})$ with a **Green's function distance decay bias**:
-     $$B_{\text{phys}}(i, j) \propto -\beta \ln\left(1 + \frac{\|\mathbf{r}_i^{\text{cell}} - \mathbf{r}_j^{\text{obs}}\|^2}{z_0^2}\right)$$
+1. **2-Channel Input Representation**:
+   * Channel 0: Surface draped gravity anomaly $\Delta g(x, y)$ in mGal.
+   * Channel 1: Normalized terrain depth $t(x, y) / z_{\text{total}} \in [0.0, 0.25]$.
+2. **2D Patch Tokenizer & Dimension Lifting**:
+   * Patch embedding converts surface observations into token representations.
+   * Cross-attention lifts 2D surface observation tokens into 3D volume queries $Q(x, y, z)$ with Green's function distance decay bias.
 3. **3D Swin Transformer Backbone**:
    * Uses 3D shifted-window self-attention with linear computational complexity $\mathcal{O}(M)$ rather than quadratic $\mathcal{O}(M^2)$.
-   * Implements **anisotropic relative position bias** (inspired by Pangu-Weather), treating vertical depth $z$ as physically distinct from horizontal strike/dip ($x, y$).
-4. **Voxel Regression Head**:
-   * Convolves 3D tokens to target grid dimensions ($N_x \times N_y \times N_z$) and applies scaled activation bounding physical densities.
+   * Implements **anisotropic relative position bias**, treating vertical depth $z$ as physically distinct from horizontal strike/dip ($x, y$).
+4. **MPS-Optimized Voxel Regression & Relief Masking**:
+   * Uses pixel-shuffle + grouped Conv2d + 1x1 depth-mixing for fast 3D upsampling (avoiding slow PyTorch MPS `ConvTranspose3d`, running in ~0.18 s/step on Apple M4).
+   * Automatically masks cells above the terrain relief surface to zero.
+   * Strictly equivariant to field amplitude (scaling input data scales predicted density proportionally).
+5. **Differentiable Draped-Station Forward Physics**:
+   * `TerrainGravityOperator` (`forward.py`) implements batched Nagy-prism gravity forward modeling from 3D voxels to stations draped at $z_{\text{obs}} = t - \text{clearance}$.
 
 ---
 
-### Step 3: Physics-Guided Loss & Zhdanov Focusing Stabilizers ($S_{MS}$ and $S_{MGS}$)
+### Step 3: Compound Inversion Loss, Distance Penalties & Boundary Sharpening
 
-The loss formulation in `.inv/python/losses.py` ensures both data fit and boundary sharpness:
+The loss formulation in `.inv/python/losses.py` (`CompoundInversionLoss`) addresses the core physical challenges of potential field inversion:
 
-$$\mathcal{L}_{\text{total}} = \lambda_{\text{sup}} \mathcal{L}_{\text{sup}}(\hat{m}, m_{\text{true}}) + \lambda_{\text{data}} \|G(\hat{m}) - \mathbf{d}_{\text{obs}}\|_2^2 + \lambda_{MS} S_{MS}(\hat{m}) + \lambda_{MGS} S_{MGS}(\hat{m})$$
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{sup}} + \lambda_{\text{data}} \mathcal{L}_{\text{data}}$$
 
-**$S_{MS}$** and **$S_{MGS}$** are **Focusing Stabilizers** introduced by **Michael S. Zhdanov and Oleg Portniaguine (1999, 2002)**. They solve the single biggest problem with traditional potential field inversion: **the blurry, diffuse "clouds" caused by classical Tikhonov $L_2$ regularization**.
+Every term is **scale-normalized per sample** by $a = \max |m_{\text{true}}|$, ensuring that a weak $+0.1\text{ g/cm}^3$ rock body and a $-2.67\text{ g/cm}^3$ air cavity contribute equally to gradients without collapsing to the trivial zero model:
 
-| Metric | Full Name | What it Measures | Geological Effect |
-| :--- | :--- | :--- | :--- |
-| **$S_{MS}$** | **Minimum Support** | **Anomalous Volume** (approximates $L_0$ norm of $m$) | Shrinks diffuse halos; produces **compact, isolated bodies** (ore pockets, plutons). |
-| **$S_{MGS}$** | **Minimum Gradient Support** | **Contact Area** (approximates $L_0$ norm of $\nabla m$) | Eliminates gradual ramps; produces **sharp, blocky lithological contacts** (fault scarps, dyke walls). |
+$$\mathcal{L}_{\text{sup}} = \frac{1}{4}\left(\mathcal{L}_{\text{fg}} + \mathcal{L}_{\text{dist-L1}} + \mathcal{L}_{\text{dice}} + \mathcal{L}_{\text{grad}}\right) + \mathcal{L}_{\text{halo}}$$
 
----
+#### 1. Depth-Weighted Foreground Error ($\mathcal{L}_{\text{fg}}$)
+$$\mathcal{L}_{\text{fg}} = \frac{\sum_{j \in \text{body}} w_z(z_j) \left(|p_j - t_j| + \frac{1}{2}(p_j - t_j)^2\right)}{\sum_{j \in \text{body}} w_z(z_j)}$$
+where $w_z(z) = 1.0 + 0.5 \cdot z / z_{\max} \in [1.0, 1.5]$ counteracts the natural $1/z^2$ decay of gravity sensitivity, specifically sharpening deep targets and bottom contacts.
 
-#### 1. Why Classical $L_2$ Regularization Fails in Geology
+#### 2. Multi-Scale 3D Distance-Weighted Background Penalty ($\mathcal{L}_{\text{dist-L1}}$)
+Standard uniform L1 losses treat a false-positive voxel 500 m away identically to a 1-voxel shift at the body boundary. Using separable 3D max-pooling dilations at Chebyshev radii $r = 1, 3, 7$ voxels, distance weights $w_{\text{dist}}$ scale monotonically away from the body:
+$$w_{\text{dist}} = 1.0 + 1.5\,(1 - d_1) + 2.5\,(1 - d_3) + 5.0\,(1 - d_7) \in [1.0, 10.0]$$
+* **On body / contact ($r \le 1$)**: $1.0\times$ penalty.
+* **Near background ($r \in [2, 3]$)**: $2.5\times$ penalty.
+* **Intermediate background ($r \in [4, 7]$)**: $5.0\times$ penalty.
+* **Far field ($r > 7$)**: **$10.0\times$ penalty**, suppressing far-field ghost anomalies and deep tails.
 
-In standard Tikhonov $L_2$ inversion, the regularizer penalizes $\|m\|_2^2 = \sum m_i^2$ or $\|\nabla m\|_2^2 = \sum (\nabla m_i)^2$. 
+#### 3. Opposite-Sign Compensating Halo Penalty ($\mathcal{L}_{\text{halo}}$)
+In unconstrained gravity inversion, networks frequently introduce negative density halos around a positive body (or positive density halos around a cavity) to artificially cancel gravity tails and minimize surface misfit.
+* Sign-aware proximity zones identify regions around positive and negative bodies.
+* Opposite-sign anomalies ($\text{ReLU}(-p)$ near positive bodies, $\text{ReLU}(+p)$ near negative bodies/cavities) receive a dedicated proximity-weighted penalty with weight multiplier $\beta_{\text{halo}} = 3.0$.
+* A compensating opposite-sign halo incurs **$>2.5\times$ higher total loss** than a same-sign blur halo of identical amplitude.
 
-Because $L_2$ squares the values, having one cell with a large density anomaly (e.g., $+0.4\text{ g/cm}^3$) incurs a penalty of $0.4^2 = 0.16$. If that same mass is smeared across 10 cells at $+0.04\text{ g/cm}^3$, the penalty drops tenfold to $10 \times 0.04^2 = 0.016$. 
+#### 4. 3D Contact-Edge & Face-Jump Gradient Loss ($\mathcal{L}_{\text{grad}}$)
+To preserve razor-sharp step-function boundaries rather than smoothed ramps, discrete gradients across all interior voxel faces $(\Delta_z, \Delta_x, \Delta_y)$ are matched to the true geometry:
+$$\mathcal{L}_{\text{grad}} = \frac{1}{2}\left(\frac{\sum_f |\Delta_f p - \Delta_f t| w_z}{\sum_f (|\Delta_f p| + |\Delta_f t|) w_z + \epsilon} + \frac{\sum_{f \in \text{contact}} |\Delta_f p - \Delta_f t| w_z}{\sum_{f \in \text{contact}} w_z}\right)$$
+This forces gradients to zero inside bodies and in the background (piecewise-constant geology) while requiring the full step jump $\Delta_f p = \Delta_f t$ right on the contact surfaces.
 
-Therefore, **$L_2$ regularization mathematically prefers wide, spread-out, blurry clouds** over sharp, realistic geological bodies.
+#### 5. Signed Soft Dice Loss ($\mathcal{L}_{\text{dice}}$)
+$$\mathcal{L}_{\text{dice}} = 1.0 - \frac{2 \langle p, t \rangle}{\|p\|_2^2 + \|t\|_2^2 + \epsilon}$$
+Simultaneously aligns volumetric spatial support, anomaly sign (+ vs -), and relative mass.
 
----
+#### 6. Draped-Station Physics Data Misfit ($\mathcal{L}_{\text{data}}$)
+$$\mathcal{L}_{\text{data}} = \frac{\|G(\hat{m}, z_{\text{obs}}) - d_{\text{clean}}\|_2^2}{\|d_{\text{clean}}\|_2^2 + \epsilon}$$
+Computed through `TerrainGravityOperator` on the exact draped station elevations $z_{\text{obs}} = t - \text{clearance}$.
 
-#### 2. $S_{MS}$: Minimum Support (Compactness / Volume Minimizer)
-
-##### Mathematical Formulation
-$$S_{MS}(\mathbf{m}) = \sum_{j=1}^M \frac{(m_j - m_{0,j})^2}{(m_j - m_{0,j})^2 + e^2}$$
-
-where:
-* $m_j$ is the density contrast of voxel cell $j$.
-* $m_{0,j}$ is the prior / background value (typically $0.0$).
-* $e$ is a small focusing threshold parameter (e.g., $10^{-3}$).
-
-##### How It Works Mechanically
-Look at how the term $f(x) = \frac{x^2}{x^2 + e^2}$ behaves where $x = m_j - m_{0,j}$:
-* **Inside the target body** ($|x| \gg e$, e.g., $\Delta \rho = 0.40$ and $e = 0.001$):
-  $$\frac{0.40^2}{0.40^2 + 0.001^2} = \frac{0.16}{0.160001} \approx \mathbf{0.99999 \approx 1}$$
-* **In background rock** ($|x| \ll e$, e.g., $\Delta \rho = 0.0001$ and $e = 0.001$):
-  $$\frac{0.0001^2}{0.0001^2 + 0.001^2} = \frac{10^{-8}}{10^{-6}} \approx \mathbf{0.01 \approx 0}$$
-
-##### The Mathematical Insight ($L_0$ Pseudo-Norm)
-Every cell with a real anomaly contributes $\approx 1$, while near-zero background cells contribute $\approx 0$. 
-Therefore, **$S_{MS}$ literally counts the number of anomalous cells** (the geometric volume of the body's mathematical *support*):
-$$\lim_{e \to 0} S_{MS}(\mathbf{m}) = \text{Volume of anomalous bodies} = \|\mathbf{m} - \mathbf{m}_0\|_0$$
-
-Minimizing $S_{MS}$ forces the inversion to concentrate mass into the **smallest possible volume** that still satisfies the observed potential field.
+#### 7. 1-Step Optimal Linear Amplitude Projection at Inference
+Because forward gravity $d = G m$ is strictly linear in density contrast, predicted priors can undergo a single-step least-squares projection:
+$$\alpha^* = \frac{\langle G\hat{m}, d_{\text{obs}}\rangle}{\|G\hat{m}\|_2^2} \implies \hat{m}_{\text{proj}} = \alpha^* \hat{m}$$
+This guarantees that the predicted prior's forward anomaly matches the observed field amplitude before iterative focusing begins.
 
 ---
 
-#### 3. $S_{MGS}$: Minimum Gradient Support (Sharp Blocky Boundaries)
-
-##### Mathematical Formulation
-$$S_{MGS}(\mathbf{m}) = \sum_{j=1}^M \frac{\|\nabla m_j\|^2}{\|\nabla m_j\|^2 + e_{\text{grad}}^2}$$
-
-where $\nabla m_j = (\partial_x m, \partial_y m, \partial_z m)$ is the 3D spatial gradient vector computed across adjacent voxels.
-
-##### How It Works Mechanically
-Instead of evaluating the property value, $S_{MGS}$ evaluates the **spatial gradient** (the rate of change between adjacent cells):
-* **Inside a homogeneous body or background**: $|\nabla m| \approx 0 \implies \text{term} \approx 0$.
-* **Across a sharp, single-cell fault step**: $|\nabla m| \gg e_{\text{grad}} \implies \text{term} \approx 1$ (only for the cells right at the contact).
-* **Across a wide, smooth transition ramp**: Many cells have small non-zero gradients $|\nabla m| > e_{\text{grad}}$. Each cell adds $\approx 1$, creating a massive penalty!
-
-##### The Geological Insight
-Minimizing $S_{MGS}$ penalizes diffuse gradient transition zones. It forces property changes to occur across **the minimum possible boundary surface area**, creating **razor-sharp, piecewise-constant blocky geology** (such as fault contacts, dykes, and layered formations).
-
----
-
-#### 4. Visual Comparison of the Three Approaches
-
-```text
-TRUE GEOLOGY               TIKHONOV L2                ZHDANOV S_MS & S_MGS
-(Sharp ore body)           (Smooth blur)              (Focused inversion)
-
-    Density                    Density                    Density
-   ^                          ^                          ^
-   |       +-------+          |         .---.            |       +-------+
-   |       |       |          |        /     \           |       |       |
-   |       |       |          |       /       \          |       |       |
-0.0+-------+-------+-->    0.0+------'         '-->   0.0+-------+-------+-->
-   0       X1      X2         0       X1      X2         0       X1      X2
-
-- Crisp contacts           - Spread over space        - Crisp boundaries
-- Uniform core             - Underestimates peak      - True amplitude preserved
-                           - Blurry halos             - Zero background noise
-```
-
----
-
-#### 5. The Critical Role of Threshold $e$ & Curriculum Annealing
-
-The parameter $e$ controls how "sharp" the focusing is:
-* **When $e$ is large ($e = 0.5\text{–}1.0$)**:
-  $$\frac{x^2}{x^2 + e^2} \approx \frac{x^2}{e^2} \propto x^2$$
-  The functional behaves like standard quadratic $L_2$ Tikhonov. Gradients are smooth and stable.
-* **When $e$ is small ($e = 0.001$)**:
-  The functional acts as a sharp step function ($L_0$ counting).
-
-##### Why We Use Annealing in `train.py`
-If training starts with $e = 0.001$ immediately, gradients are too non-linear and the network gets trapped in poor local minima. In `.inv/python/train.py`, we implement an **annealing curriculum**:
-1. **Epochs 1–10 (Structural Warmup, $e = 0.10$)**: Smooth $L_2$-like regime to guide global location and mass of structures.
-2. **Epochs 11–25 (Focusing Activation, $e: 0.10 \to 0.01$)**: Focusing activates; diffuse halos contract into compact cores ($S_{MS}$ drops).
-3. **Epochs 26–35 (Contact Sharpening, $e: 0.01 \to 0.001$)**: Minimum Gradient Support ($S_{MGS}$) takes over, locking in razor-sharp geological contacts.
-
----
-
-### Step 4: Executing the Training Run
+### Step 4: Executing the Training Run & Live Monitoring
 
 Run the training loop using `train.py`:
 
 ```bash
-# Basic run on Apple Silicon or CUDA
-python train.py \
-  --epochs 35 \
-  --batch-size 8 \
-  --lr 2e-4 \
-  --n-samples 5000 \
-  --save-dir ./checkpoints
+# Basic run with automatic device selection (MPS on Mac, CUDA on Linux)
+python train.py --epochs 20 --steps 200 --batch-size 8
+
+# Live macOS GUI window with 6 visual panels updated every epoch
+python train.py --epochs 20 --steps 200 --batch-size 8 --gui
+
+# Smoke test (~1 minute)
+python train.py --epochs 2 --steps 20 --n-val 8
+
+# Extended multi-hour training run
+python train.py --epochs 40 --steps 300 --batch-size 8 --lr 5e-4 --n-val 64 --gui
 ```
 
-#### Training Parameters
+#### Training Arguments
 
 | Argument | Default | Description |
 | :--- | :--- | :--- |
-| `--epochs` | `30` | Number of training epochs (30–40 recommended). |
-| `--batch-size` | `8` | Mini-batch size (adjust based on VRAM: 4 for 8GB, 8 for 16GB, 16 for 24GB+). |
-| `--lr` | `2e-4` | Initial learning rate with Cosine Annealing schedule. |
-| `--n-samples` | `2000` | Number of procedural samples per epoch. |
-| `--save-dir` | `./checkpoints`| Directory where `best_swin3d.pt` is saved. |
-| `--device` | `auto` | Automatically picks `cuda`, `mps`, or `cpu`. |
+| `--epochs` | `20` | Number of training epochs. |
+| `--steps` | `200` | Optimizer steps per epoch (batches generated on the fly). |
+| `--batch-size` | `8` | Mini-batch size (8 fits comfortably in Apple Silicon unified memory). |
+| `--lr` | `5e-4` | Peak learning rate with `OneCycleLR` cosine annealing. |
+| `--n-val` | `64` | Fixed seeded validation samples for deterministic tracking. |
+| `--gui` | `False` | Opens a live native GUI window with 6 real-time training graphs. |
+| `--save-dir` | `./checkpoints` | Checkpoint directory (`best_swin3d.pt`, `last_swin3d.pt`). |
+| `--resume` | `""` | Optional checkpoint path to resume training from. |
 
-#### Expected Console Output
-```text
-==================================================================
-  .inv: Training 3D Potential Field Inversion Transformer         
-  Device: mps | Epochs: 35 | Batch size: 8
-==================================================================
-[1] Initializing Procedural 3D Geology Dataset...
-[2] Initializing 3D Swin Transformer...
-[3] Starting Training Loop...
-Epoch [01/35] Loss: 0.1842 | S_MS: 0.2410 | S_MGS: 0.3120 | Focus e: 0.1000 | LR: 2.00e-04
-Epoch [10/35] Loss: 0.0984 | S_MS: 0.1650 | S_MGS: 0.1980 | Focus e: 0.0520 | LR: 1.85e-04
-Epoch [20/35] Loss: 0.0431 | S_MS: 0.0890 | S_MGS: 0.1120 | Focus e: 0.0140 | LR: 1.10e-04
-Epoch [35/35] Loss: 0.0189 | S_MS: 0.0340 | S_MGS: 0.0450 | Focus e: 0.0010 | LR: 1.00e-06
+#### Live Monitoring (GUI & Web Dashboard)
+Even when running headless or via SSH, `train.py` continuously updates:
+1. **Interactive GUI Window** (`--gui`): Native window with live loss curves, metrics, and geological sections.
+2. **Auto-refreshing Web Dashboard** (`checkpoints/dashboard.html`): Open in any browser (`open checkpoints/dashboard.html`); auto-refreshes every 5 seconds.
+3. **High-Resolution Snapshot** (`checkpoints/training_monitor.png`): 6-panel summary chart updated every epoch:
+   * **Panel 1 (Losses)**: Train Loss, Val Loss, Relative Data Misfit, Opposite-Sign Halo loss.
+   * **Panel 2 (3D Recovery)**: 3D Volumetric IoU ($\ge 50\%$ peak), Amplitude Ratio ($\sum p / \sum t$), 1 - Body Rel L1.
+   * **Panel 3 (Depth Accuracy)**: 3D Depth Centroid Error [m] with 1-cell reference line.
+   * **Panel 4 (Draped Gravity Map)**: Surface $g_z$ anomaly [mGal] with profile slice marker.
+   * **Panel 5 (Ground Truth X-Z Section)**: Vertical density cross-section below relief with shaded air cells.
+   * **Panel 6 (Swin-3D Prediction X-Z Section)**: Predicted vertical density cross-section below relief.
 
-[4] Training Complete! Best Checkpoint saved to: ./checkpoints/best_swin3d.pt
+#### Validation Metrics Reference
+
+| Metric | Meaning | Ideal Value | Zero Model |
+| :--- | :--- | :--- | :--- |
+| `l1_rel` | Mean whole-volume L1 error / $\max|m_{\text{true}}|$ | `0.000` | $\approx$ Body volume fraction ($\approx 0.003$) |
+| `body_l1_rel` | Mean L1 error restricted to true body cells | `0.000` | `1.000` |
+| `data_rel_misfit` | Gravity misfit $\|G m_{\text{pred}} - d\| / \|d\|$ | `0.000` | `1.000` |
+| `iou` | 3D Volumetric IoU of $|m| \ge 0.5 \max|m|$ | `1.000` | `0.000` |
+| `centroid_dz` | 3D depth centroid error $|z_{\text{pred}} - z_{\text{true}}|$ | `0 m` | `NaN` (no body) |
+| `amp_ratio` | Mass recovery ratio $\sum_{\text{body}} p \cdot \text{sgn}(t) / \sum |t|$ | `1.000` | `0.000` |
+| `halo_opp` | Mass fraction sitting in opposite-sign compensating halos | `0.000` | `0.000` |
+
+#### Standalone Evaluation CLI
+To evaluate any trained checkpoint on independent test sets:
+```bash
+python evaluate.py --checkpoint checkpoints/best_swin3d.pt --samples 64
 ```
-
-#### How to Interpret Focusing Metrics in Training Logs
-
-During training, `train.py` outputs live metrics for each epoch and mini-batch step:
-* **`Loss` decreasing ($0.184 \to 0.018$)**: Measures overall objective convergence across supervised priors, forward physics data fit, and focusing regularizers.
-* **`S_MS` decreasing ($0.241 \to 0.034$)**: Confirms that the model has stopped predicting diffuse density clouds across the volume and concentrated anomalous mass into compact bodies (occupying $\approx 3.4\%$ of the domain).
-* **`S_MGS` decreasing ($0.312 \to 0.045$)**: Confirms that fuzzy boundary gradients are disappearing, replaced by razor-sharp, blocky lithological contacts and fault interfaces.
-* **`Focus e` decaying ($0.100 \to 0.001$)**: Verifies that the curriculum schedule is actively transitioning the network from smooth global convergence to sharp $L_0$-proximal focusing.
 
 ---
 
@@ -284,13 +254,22 @@ Once training is complete, convert the PyTorch model checkpoint into a portable 
 ```bash
 python export_onnx.py \
   --checkpoint ./checkpoints/best_swin3d.pt \
-  --output ../../resources/models/inv_swin3d.onnx \
-  --opset 17
+  --output ./models/inv_swin3d.onnx
 ```
 
-* **Dynamic Axes**: The exported model supports variable input surface dimensions $(N_x \times N_y)$.
-* **Model Size**: Approximately $165\text{ MB}$ (standard 32-bit float) or $83\text{ MB}$ (float16).
-* **C++ Runtime**: Mod3D loads `inv_swin3d.onnx` via `inv::InversionEngine`, running on Apple Silicon Metal or NVIDIA TensorRT in **under 50 milliseconds**.
+* **Model Input**: `(1, 2, 64, 64)` [surface gravity gz (mGal), normalized terrain depth below grid top].
+* **Model Output**: `(1, 1, 32, 64, 64)` density contrast volume (g/cm³).
+* **Relief Masking**: Built-in — cells above the terrain relief surface are automatically zeroed.
+* **C++ Runtime**: Mod3D loads `inv_swin3d.onnx` via `inv::NeuralPriorInference::predict` (`.inv/include/inv/neural_prior.hpp`), running on Apple Silicon Metal or NVIDIA TensorRT in **under 50 milliseconds**.
+
+#### Generating Neural Priors for Mod3D Inversion JSON
+To inject a neural prior into a Mod3D setup JSON:
+```bash
+python infer_prior.py \
+  --setup setup.json \
+  --checkpoint checkpoints/best_swin3d.pt \
+  --output setup_prior.json
+```
 
 ---
 

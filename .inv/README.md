@@ -9,7 +9,7 @@
 
 The **`.inv`** sub-project provides an automated, physics-guided 3D potential field inversion framework integrated within **Mod3D**. It bridges classic potential field inverse theory—specifically **Portniaguine & Zhdanov's Reweighted Focusing Inversion**—with state-of-the-art **Transformer architectures** inspired by 3D weather and earth system modeling (**Pangu-Weather**, **GraphCast**, **ClimaX**).
 
-The system divides the subsurface modeling space into 3D voxel cells, predicts physical parameter distributions (density contrast $\Delta \rho$ and magnetic susceptibility $\chi$) directly from surface potential field observations, and refines them using analytical forward operators.
+The system divides the subsurface modeling space into 3D voxel cells, predicts physical parameter distributions (density contrast $\Delta \rho$ and magnetic susceptibility $\chi$) directly from surface potential field observations and terrain relief, and refines them using analytical forward operators. The neural prior specifically targets isolated anomalous rock bodies ($\pm 0.1\text{–}0.8\text{ g/cm}^3$) and subsurface cavities (air $-2.00\text{ to } -2.67\text{ g/cm}^3$, water $-1.00\text{ to } -1.67\text{ g/cm}^3$) strictly below topography relief.
 
 ### Key Architectural Invariant: Complete Core Independence
 
@@ -18,7 +18,7 @@ Like **`pfld`** (Mod3D's standalone facet physics engine), the computational cor
 * Written in standard **ISO C++20**.
 * **Header-only / interface-first** for zero-friction integration.
 * Fully usable as a standalone library or CLI tool, while being effortlessly embeddable into `mod3d_core` via CMake (`add_subdirectory(.inv)`).
-* Accompanied by a dedicated Python sub-project (`.inv/python/`) for synthetic geological training, loss definition, and ONNX export.
+* Accompanied by a dedicated Python sub-project (`.inv/python/`) for synthetic isolated body & cavity training under terrain relief, loss definition, live GUI monitoring, and ONNX export.
 
 ```
 +-----------------------------------------------------------------------------------------+
@@ -41,8 +41,8 @@ Like **`pfld`** (Mod3D's standalone facet physics engine), the computational cor
 |                                                                                         |
 |   +---------------------------------------------------------------------------------+   |
 |   |                           .inv/python (Training Sub-Project)                    |   |
-|   |  - Synthetic Geology Generator   - Physics-Guided Losses (Zhdanov MS/MGS)       |   |
-|   |  - 3D Swin Transformer Trainer   - ONNX Exporter / Quantizer                    |   |
+|   |  - Isolated Bodies, Cavities & Terrain Relief - Compound Loss (Distance + Halo) |   |
+|   |  - 2-Channel 3D Swin Transformer Trainer      - Live GUI Monitor & ONNX Export  |   |
 |   +---------------------------------------------------------------------------------+   |
 +-----------------------------------------------------------------------------------------+
 ```
@@ -115,6 +115,7 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │   ├── focusing_solver.hpp     # Portniaguine-Zhdanov IRLS solver with Jacobi-PCG & discrepancy cooling
 │   ├── focusing_metrics.hpp    # Zhdanov MS and MGS focusing stabilizers & IRLS weights
 │   ├── inversion_engine.hpp    # Multi-scale coarse-to-fine focusing engine & Mod3D JSON exchange
+│   ├── neural_prior.hpp        # ONNX Runtime 3D neural prior inference & terrain masking
 │   └── inv.hpp                 # Umbrella library header
 │
 ├── app/                        # Standalone C++ command-line tool
@@ -126,11 +127,15 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │
 └── python/                     # Python training & research sub-project
     ├── requirements.txt        # PyTorch, ONNX, and scientific dependencies
-    ├── dataset.py              # Procedural 3D geological model generator (faults, dykes, plutons)
-    ├── model_swin3d.py         # 3D Swin Transformer architecture with 2D cross-attention
-    ├── losses.py               # Physics misfit, depth-weighting, and Zhdanov MS/MGS losses
-    ├── train.py                # Distributed PyTorch training loop
-    └── export_onnx.py          # PyTorch to ONNX export and float16/INT8 quantization
+    ├── dataset.py              # Isolated bodies, cavities, terrain relief & 3D voxel noise
+    ├── forward.py              # Batched draped Nagy-prism and flat FFT gravity operators
+    ├── model_swin3d.py         # 2-channel 3D Swin Transformer with MPS-optimized upsampling
+    ├── losses.py               # Scale-normalized CompoundInversionLoss, distance penalties, halo & edge jump
+    ├── train.py                # On-the-fly training loop with live 6-panel GUI monitor & web dashboard
+    ├── evaluate.py             # Volumetric IoU, centroid depth, amplitude & halo metrics
+    ├── infer_prior.py          # Write neural prior into Mod3D setup JSON with amplitude projection
+    ├── export_onnx.py          # PyTorch to ONNX export with terrain input and relief masking
+    └── test_inv_python.py      # Comprehensive 13-test Python test suite
 ```
 
 ---
@@ -173,18 +178,24 @@ target_link_libraries(mod3d_core PUBLIC inv)
 
 ```bash
 cd .inv/python
-python3 -m venv venv
-source venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 
-# Generate synthetic training dataset
-python dataset.py --samples 10000 --output ./data/synthetic
+# Run automated Python test suite (13 tests verifying physics, losses, and noise)
+python test_inv_python.py
 
-# Train 3D Swin Transformer with Zhdanov focusing loss
-python train.py --data ./data/synthetic --epochs 50 --batch-size 8
+# Train 3D Swin Transformer with live macOS GUI window
+python train.py --epochs 20 --steps 200 --batch-size 8 --gui
 
-# Export trained model to ONNX for C++ runtime
-python export_onnx.py --checkpoint ./checkpoints/best.pt --output ./models/inv_swin3d.onnx
+# Smoke test (quick 1-minute verification)
+python train.py --epochs 2 --steps 20 --n-val 8
+
+# Evaluate checkpoint on fixed validation set
+python evaluate.py --checkpoint ./checkpoints/best_swin3d.pt --samples 64
+
+# Export trained model to ONNX for Mod3D C++ runtime
+python export_onnx.py --checkpoint ./checkpoints/best_swin3d.pt --output ./models/inv_swin3d.onnx
 ```
 
 ---
