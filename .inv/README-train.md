@@ -10,7 +10,8 @@
 Inverting surface potential field data (gravity $\Delta g$ and magnetics $\Delta T$) into 3D subsurface physical properties ($\Delta \rho, \chi$) is ill-posed and non-unique. Because the Earth has no vast database of true subterranean 3D density volumes with matching surveys, naive deep learning approaches fail:
 * Training purely on simple geometric shapes without terrain produces models that fail on real relief (*Out-of-Distribution breakdown*).
 * Training purely unsupervised on data misfit $\|G\mathbf{m} - \mathbf{d}\|_2^2$ causes the network to collapse into the non-uniqueness trap, placing all anomalies directly at the ground surface (*Depth attenuation bias*).
-* Symmetric L1/L2 penalties produce unphysical opposite-sign "compensating halos" (e.g. negative density halos wrapping a positive orebody to artificially cancel gravity tails).
+* Symmetric L1/L2 penalties produce unphysical opposite-sign "compensating halos" (e.g. negative density halos wrapping a positive orebody to artificially cancel gravity tails) and classic L2 Soft Dice leads to spiky core overshoots on partial volume coverage.
+* Global contrast normalization causes weak deep rock bodies to be ignored when high-contrast cavities are present in the same domain.
 
 To solve this, `.inv` employs a **Three-Phase Hybrid Training Strategy**:
 
@@ -34,9 +35,10 @@ To solve this, `.inv` employs a **Three-Phase Hybrid Training Strategy**:
 |                |                                | - 3D Distance-weighting   |         | (< 50 ms)         | |
 |                v                                | - Opposite-halo penalty   |         +---------+---------+ |
 |   +--------------------------+                  | - 3D Face-jump gradient   |                   |           |
-|   | 2-Channel 3D Swin        |                  | - Signed soft Dice        |                   v           |
-|   | Transformer Backbone     |                  | - Draped data misfit      |         +-------------------+ |
-|   | [gz, terrain/depth_max]  |                  +---------------------------+         | Linear Projection | |
+|   | 2-Channel 3D Swin        |                  | - Signed L1-IoU (Tanimoto)|                   v           |
+|   | Transformer Backbone     |                  | - Core overshoot penalty  |         +-------------------+ |
+|   | [gz, terrain/depth_max]  |                  | - Draped data misfit      |         | Linear Projection | |
+|   +--------------------------+                  +---------------------------+         | & IRLS Refine     | |
 |   +--------------------------+                                                        | & IRLS Refine     | |
 |                                                                                       | (with pfld mesh)  | |
 |                                                                                       +-------------------+ |
@@ -87,7 +89,12 @@ Rather than hand-labeling or hunting for paired data, `.inv/python/dataset.py` s
    * 40% single-body models, 60% multi-body models (2 to 4 distinct bodies).
    * Minimum separation of $\ge 2$ empty cells between bodies ensures zero overlap or merging.
    * Clear boundary margins ($\ge 3$ cells from lateral borders) prevent boundary clipping.
-3. **Random Topography Relief**:
+3. **Depth-Proportional Minimum Body Size & Contrast (Noise-Floor Safeguard)**:
+   * As body depth `gap` below terrain increases, bodies must be physically detectable by surface gravimeters.
+   * Horizontal radius scales proportionally: $r_x, r_y \ge 0.25 \cdot \text{gap} \cdot \text{cell\_size}$.
+   * Vertical half-span scales: $r_z \ge 0.18 \cdot \text{gap} \cdot (n_z / 32)$.
+   * For deep bodies ($\text{gap} > 0.22 \cdot n_z$), density contrast is lower-bounded to $|\Delta\rho| \ge 0.30\text{ g/cm}^3$, preventing physically untrainable, sub-noise ghost targets from polluting gradients.
+4. **Random Topography Relief**:
    * Multi-scale Gaussian-filtered random terrain depth $t(x, y)$ with optional regional tilt.
    * Relief up to 25% of total domain depth (15% flat terrain cases for baseline stability).
    * Density strictly zeroed above relief surface (air cells carry zero density contrast).
@@ -144,18 +151,22 @@ $$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{sup}} + \lambda_{\text{data}} 
 
 Every term is **scale-normalized per sample** by $a = \max |m_{\text{true}}|$, ensuring that a weak $+0.1\text{ g/cm}^3$ rock body and a $-2.67\text{ g/cm}^3$ air cavity contribute equally to gradients without collapsing to the trivial zero model:
 
-$$\mathcal{L}_{\text{sup}} = \frac{1}{4}\left(\mathcal{L}_{\text{fg}} + \mathcal{L}_{\text{dist-L1}} + \mathcal{L}_{\text{dice}} + \mathcal{L}_{\text{grad}}\right) + \mathcal{L}_{\text{halo}}$$
+$$\mathcal{L}_{\text{sup}} = \frac{1}{4}\left(\mathcal{L}_{\text{fg}} + \mathcal{L}_{\text{dist-L1}} + \mathcal{L}_{\text{Tanimoto}} + \mathcal{L}_{\text{grad}}\right) + \mathcal{L}_{\text{halo}}$$
 
-#### 1. Depth-Weighted Foreground Error ($\mathcal{L}_{\text{fg}}$)
-$$\mathcal{L}_{\text{fg}} = \frac{\sum_{j \in \text{body}} w_z(z_j) \left(|p_j - t_j| + \frac{1}{2}(p_j - t_j)^2\right)}{\sum_{j \in \text{body}} w_z(z_j)}$$
-where $w_z(z) = 1.0 + 0.5 \cdot z / z_{\max} \in [1.0, 1.5]$ counteracts the natural $1/z^2$ decay of gravity sensitivity, specifically sharpening deep targets and bottom contacts.
+#### 1. Depth-Weighted & Local-Contrast Foreground Error with Core Overshoot Penalty ($\mathcal{L}_{\text{fg}}$)
+$$\mathcal{L}_{\text{fg}} = \frac{\sum_{j \in \text{body}} w_z(z_j) \left(e_{\text{loc}, j} + \frac{1}{2} e_{\text{loc}, j}^2 + \frac{1}{2} \text{Overshoot}_j\right)}{\sum_{j \in \text{body}} w_z(z_j)}$$
+where:
+* **Local Contrast Normalization**: $e_{\text{loc}, j} = \frac{|p_n,j - t_n,j|}{\max(|t_n,j|, 0.05)}$ normalizes error by the body's actual local contrast. In scenes containing both a $-2.67\text{ g/cm}^3$ cavity and a $+0.2\text{ g/cm}^3$ deep rock body, this prevents the cavity from dominating $95\%$ of the supervised gradient.
+* **Core Overshoot Penalty**: $\text{Overshoot}_j = \frac{\text{ReLU}(|p_n,j| - |t_n,j|)}{\max(|t_n,j|, 0.05)}$ explicitly penalizes unphysical density overshoot in the body interior.
+* **Depth Ramp**: $w_z(z) = 1.0 + \text{depth\_boost} \cdot z / z_{\max} \in [1.0, 1.5]$ (default `depth_boost = 0.5`) counteracts the natural $1/z^2$ decay of gravity sensitivity, specifically sharpening deep targets and bottom contacts.
 
 #### 2. Multi-Scale 3D Distance-Weighted Background Penalty ($\mathcal{L}_{\text{dist-L1}}$)
-Standard uniform L1 losses treat a false-positive voxel 500 m away identically to a 1-voxel shift at the body boundary. Using separable 3D max-pooling dilations at Chebyshev radii $r = 1, 3, 7$ voxels, distance weights $w_{\text{dist}}$ scale monotonically away from the body:
-$$w_{\text{dist}} = 1.0 + 1.5\,(1 - d_1) + 2.5\,(1 - d_3) + 5.0\,(1 - d_7) \in [1.0, 10.0]$$
-* **On body / contact ($r \le 1$)**: $1.0\times$ penalty.
-* **Near background ($r \in [2, 3]$)**: $2.5\times$ penalty.
-* **Intermediate background ($r \in [4, 7]$)**: $5.0\times$ penalty.
+Standard uniform L1 losses treat a false-positive voxel 500 m away identically to a 1-voxel shift at the body boundary. Furthermore, leaving the immediate boundary shell at weight $1.0\times$ allows substantial mass leakage into the contact zone. Using separable 3D max-pooling dilations at Chebyshev radii $r = 1, 3, 7$ voxels, distance weights $w_{\text{dist}}$ scale monotonically starting **immediately at the body surface**:
+$$w_{\text{dist}} = 1.0 + 1.5\,(1 - m_{\text{fg}}) + 1.5\,(1 - d_1) + 2.0\,(1 - d_3) + 4.0\,(1 - d_7) \in [1.0, 10.0]$$
+* **Inside true body ($m_{\text{fg}} = 1$)**: $1.0\times$ penalty.
+* **Immediate contact shell ($r = 1$)**: **$2.5\times$ penalty**, actively suppressing 1-voxel boundary smearing and mass spill.
+* **Near background ($r \in [2, 3]$)**: $4.0\times$ penalty.
+* **Intermediate background ($r \in [4, 7]$)**: $6.0\times$ penalty.
 * **Far field ($r > 7$)**: **$10.0\times$ penalty**, suppressing far-field ghost anomalies and deep tails.
 
 #### 3. Opposite-Sign Compensating Halo Penalty ($\mathcal{L}_{\text{halo}}$)
@@ -169,9 +180,10 @@ To preserve razor-sharp step-function boundaries rather than smoothed ramps, dis
 $$\mathcal{L}_{\text{grad}} = \frac{1}{2}\left(\frac{\sum_f |\Delta_f p - \Delta_f t| w_z}{\sum_f (|\Delta_f p| + |\Delta_f t|) w_z + \epsilon} + \frac{\sum_{f \in \text{contact}} |\Delta_f p - \Delta_f t| w_z}{\sum_{f \in \text{contact}} w_z}\right)$$
 This forces gradients to zero inside bodies and in the background (piecewise-constant geology) while requiring the full step jump $\Delta_f p = \Delta_f t$ right on the contact surfaces.
 
-#### 5. Signed Soft Dice Loss ($\mathcal{L}_{\text{dice}}$)
-$$\mathcal{L}_{\text{dice}} = 1.0 - \frac{2 \langle p, t \rangle}{\|p\|_2^2 + \|t\|_2^2 + \epsilon}$$
-Simultaneously aligns volumetric spatial support, anomaly sign (+ vs -), and relative mass.
+#### 5. Signed L1-IoU / Tanimoto Loss ($\mathcal{L}_{\text{Tanimoto}}$)
+$$\mathcal{L}_{\text{Tanimoto}} = 1.0 - \frac{2 \sum \min\left(\text{ReLU}(p_n \cdot \text{sgn}(t_n)), |t_n|\right)}{\|p_n\|_1 + \|t_n\|_1 + \epsilon}$$
+* **Mathematical Advantage over L2 Soft Dice**: Classic L2 Dice loss ($1 - \frac{2\langle p, t\rangle}{\|p\|_2^2 + \|t\|_2^2}$) has its analytical minimum when the network predicts an unphysical core overshoot $c^* = 1/\sqrt{f}$ if spatial coverage $f < 1$. This caused previous models to develop a $1.5\times\text{–}2.7\times$ central density spike.
+* Signed L1-IoU (Tanimoto) caps the numerator intersection at $|t_n|$ and evaluates the denominator in L1, guaranteeing that the **unique global optimum is strictly $p_n = t_n$** regardless of partial spatial coverage.
 
 #### 6. Draped-Station Physics Data Misfit ($\mathcal{L}_{\text{data}}$)
 $$\mathcal{L}_{\text{data}} = \frac{\|G(\hat{m}, z_{\text{obs}}) - d_{\text{clean}}\|_2^2}{\|d_{\text{clean}}\|_2^2 + \epsilon}$$
@@ -200,6 +212,9 @@ python train.py --epochs 2 --steps 20 --n-val 8
 
 # Extended multi-hour training run
 python train.py --epochs 40 --steps 300 --batch-size 8 --lr 5e-4 --n-val 64 --gui
+
+# Resuming / Fine-tuning with automatic Cosine Annealing decay
+python train.py --resume checkpoints/best_swin3d.pt --epochs 40 --lr 1.5e-4 --n-val 128 --gui
 ```
 
 #### Training Arguments
@@ -209,7 +224,8 @@ python train.py --epochs 40 --steps 300 --batch-size 8 --lr 5e-4 --n-val 64 --gu
 | `--epochs` | `20` | Number of training epochs. |
 | `--steps` | `200` | Optimizer steps per epoch (batches generated on the fly). |
 | `--batch-size` | `8` | Mini-batch size (8 fits comfortably in Apple Silicon unified memory). |
-| `--lr` | `5e-4` | Peak learning rate with `OneCycleLR` cosine annealing. |
+| `--lr` | `5e-4` | Learning rate (uses `OneCycleLR` from scratch; switches smoothly to `CosineAnnealingLR` without warmup shock on `--resume`). |
+| `--depth-boost`| `0.5` | Linear vertical sensitivity ramp $w_z(z) = 1.0 + \text{depth\_boost} \cdot z/z_{\max}$. |
 | `--n-val` | `64` | Fixed seeded validation samples for deterministic tracking. |
 | `--gui` | `False` | Opens a live native GUI window with 6 real-time training graphs. |
 | `--save-dir` | `./checkpoints` | Checkpoint directory (`best_swin3d.pt`, `last_swin3d.pt`). |
@@ -218,7 +234,7 @@ python train.py --epochs 40 --steps 300 --batch-size 8 --lr 5e-4 --n-val 64 --gu
 #### Live Monitoring (GUI & Web Dashboard)
 Even when running headless or via SSH, `train.py` continuously updates:
 1. **Interactive GUI Window** (`--gui`): Native window with live loss curves, metrics, and geological sections.
-2. **Auto-refreshing Web Dashboard** (`checkpoints/dashboard.html`): Open in any browser (`open checkpoints/dashboard.html`); auto-refreshes every 5 seconds.
+2. **HTML5 Direct Canvas Web Dashboard** (`checkpoints/dashboard.html`): Open in any browser (`open checkpoints/dashboard.html`); renders raw numerical voxel arrays directly onto HTML5 `<canvas>` without image-caching artifacts and auto-refreshes every 5 seconds. Supports both real-time epoch history and full run replays.
 3. **High-Resolution Snapshot** (`checkpoints/training_monitor.png`): 6-panel summary chart updated every epoch:
    * **Panel 1 (Losses)**: Train Loss, Val Loss, Relative Data Misfit, Opposite-Sign Halo loss.
    * **Panel 2 (3D Recovery)**: 3D Volumetric IoU ($\ge 50\%$ peak), Amplitude Ratio ($\sum p / \sum t$), 1 - Body Rel L1.
@@ -232,10 +248,10 @@ Even when running headless or via SSH, `train.py` continuously updates:
 | Metric | Meaning | Ideal Value | Zero Model |
 | :--- | :--- | :--- | :--- |
 | `l1_rel` | Mean whole-volume L1 error / $\max|m_{\text{true}}|$ | `0.000` | $\approx$ Body volume fraction ($\approx 0.003$) |
-| `body_l1_rel` | Mean L1 error restricted to true body cells | `0.000` | `1.000` |
+| `body_l1_rel` | Mean relative L1 error inside true bodies normalized per voxel by $|t_n|$ | `0.000` | `1.000` |
 | `data_rel_misfit` | Gravity misfit $\|G m_{\text{pred}} - d\| / \|d\|$ | `0.000` | `1.000` |
-| `iou` | 3D Volumetric IoU of $|m| \ge 0.5 \max|m|$ | `1.000` | `0.000` |
-| `centroid_dz` | 3D depth centroid error $|z_{\text{pred}} - z_{\text{true}}|$ | `0 m` | `NaN` (no body) |
+| `iou` | 3D Volumetric IoU with per-body local contrast thresholds | `1.000` | `0.000` |
+| `centroid_dz` | Mass-weighted per-body vertical-cylinder depth centroid error $|z_{\text{pred}} - z_{\text{true}}|$ | `0 m` | `NaN` (no body) |
 | `amp_ratio` | Mass recovery ratio $\sum_{\text{body}} p \cdot \text{sgn}(t) / \sum |t|$ | `1.000` | `0.000` |
 | `halo_opp` | Mass fraction sitting in opposite-sign compensating halos | `0.000` | `0.000` |
 

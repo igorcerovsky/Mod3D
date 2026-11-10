@@ -3,7 +3,8 @@
 import numpy as np
 import torch
 
-from dataset import BodyTerrainDataset, random_bodies, random_terrain, simulate_batch, terrain_channel
+from dataset import BodyTerrainDataset, augment_d4, random_bodies, random_terrain, simulate_batch, terrain_channel
+from evaluate import compute_metrics, project_amplitude
 from forward import GravityFFTOperator, TerrainGravityOperator, prism_gz
 from infer_prior import column_surface_depth, scattered_to_columns
 from losses import CompoundInversionLoss, ZhdanovFocusingLoss
@@ -155,6 +156,97 @@ def test_compound_loss_uses_physics_and_l1():
     # scale normalisation: a cavity-strength copy gives the same supervised loss
     _, m10 = crit(torch.zeros_like(rho), 10 * rho, 10 * clean, z)
     assert abs(m10["loss_sup"] - mz["loss_sup"]) < 1e-5
+
+
+def test_distance_penalty_sharp_boundaries_and_voxel_noise():
+    crit = CompoundInversionLoss()
+    m_true = torch.zeros(1, 1, 16, 32, 32)
+    m_true[:, :, 6:10, 6:10, 6:10] = -2.0
+
+    # 1. Distance-weighted background penalty: identical ghost blob far vs near body
+    near_ghost = m_true.clone()
+    near_ghost[:, :, 6:10, 11:13, 6:10] = -0.5      # 2 voxels from body (r in 2..3)
+    far_ghost = m_true.clone()
+    far_ghost[:, :, 6:10, 24:26, 6:10] = -0.5       # >14 voxels from body (r > 7)
+    l_near, m_near = crit(near_ghost, m_true)
+    l_far, m_far = crit(far_ghost, m_true)
+    assert m_far["loss_ms"] > 1.8 * m_near["loss_ms"]
+    assert l_far.item() > l_near.item()
+
+    # 2. Sharp boundary preservation: smoothed body vs crisp step-function body
+    blurred = torch.nn.functional.avg_pool3d(m_true, kernel_size=3, stride=1, padding=1)
+    blurred = blurred * (m_true.abs().max() / blurred.abs().max())
+    l_blur, m_blur = crit(blurred, m_true)
+    assert m_blur["loss_grad"] > 0.5 and l_blur.item() > 0.3
+
+    # 3. 3D petrophysical voxel noise in simulate_batch
+    op = TerrainGravityOperator(16, 16, 8)
+    t = torch.zeros(1, 16, 16)
+    c = torch.tensor([0.35])
+    nf_zero = torch.tensor([0.0])
+    ns = torch.tensor([42])
+    noisy_vox, clean, z_obs = simulate_batch(op, m_true[:, :, :8, :16, :16], t, c, nf_zero, ns)
+    assert not torch.allclose(noisy_vox, clean)     # internal body voxel heterogeneity perturbs field
+
+    # 4. Opposite-sign compensating halo penalty (loss + evaluation metric)
+    pos_body = torch.zeros(1, 1, 8, 16, 16)
+    pos_body[:, :, 3:6, 6:10, 6:10] = 0.5
+    same_sign_halo = pos_body.clone()
+    same_sign_halo[:, :, 3:6, 5:6, 6:10] = 0.15     # +0.15 blur halo adjacent to +0.5 body
+    opp_sign_halo = pos_body.clone()
+    opp_sign_halo[:, :, 3:6, 5:6, 6:10] = -0.15     # -0.15 compensating halo adjacent to +0.5 body
+    l_same, m_same = crit(same_sign_halo, pos_body)
+    l_opp, m_opp = crit(opp_sign_halo, pos_body)
+    assert m_same["loss_halo"] == 0.0 and m_opp["loss_halo"] > 0.15
+    assert l_opp.item() > 2.5 * l_same.item()
+    d_pos = op(pos_body, z_obs)
+    met_same = compute_metrics(same_sign_halo, pos_body, d_pos, z_obs, op)
+    met_opp = compute_metrics(opp_sign_halo, pos_body, d_pos, z_obs, op)
+    assert met_same["halo_opp"] == 0.0 and met_opp["halo_opp"] > 0.03
+
+    # 5. Depth-weighted sensitivity boost: deeper body error penalized more than shallow error
+    two_bodies = torch.zeros(1, 1, 16, 16, 16)
+    two_bodies[:, :, 2:4, 6:10, 6:10] = 0.5         # shallow body
+    two_bodies[:, :, 12:14, 6:10, 6:10] = 0.5       # deep body
+    err_shallow = two_bodies.clone()
+    err_shallow[:, :, 2:4, 6:10, 6:10] = 0.25
+    err_deep = two_bodies.clone()
+    err_deep[:, :, 12:14, 6:10, 6:10] = 0.25
+    l_sh, _ = crit(err_shallow, two_bodies)
+    l_dp, _ = crit(err_deep, two_bodies)
+    assert l_dp.item() > l_sh.item()
+
+    # 6. Dihedral D4 symmetry augmentation preserves exact forward physics
+    r_rot, t_rot, _, c_rot, z_rot = augment_d4(pos_body, t, d_pos, d_pos, z_obs, k=1, flip=True)
+    assert torch.allclose(op(r_rot, z_rot), c_rot, rtol=1e-5, atol=1e-6)
+
+    # 7. 1-step linear amplitude projection recovers exact scale
+    proj = project_amplitude(0.4 * pos_body, d_pos, z_obs, op)
+    assert torch.allclose(proj, pos_body, rtol=1e-5, atol=1e-6)
+
+    # 8. Core overshoot penalty + Signed L1-IoU prevent spiky core overshoot on partial coverage
+    partial_exact = torch.zeros_like(pos_body)
+    partial_exact[:, :, 4:5, 7:9, 7:9] = 0.5        # partial coverage at true density (0.5)
+    partial_spiky = torch.zeros_like(pos_body)
+    partial_spiky[:, :, 4:5, 7:9, 7:9] = 1.25       # spiky 2.5x core overshoot on same subset
+    l_ex, m_ex = crit(partial_exact, pos_body)
+    l_sp, m_sp = crit(partial_spiky, pos_body)
+    assert m_sp["loss_sup"] > m_ex["loss_sup"]
+    assert m_sp["loss_ms"] > m_ex["loss_ms"]
+    assert l_sp.item() > l_ex.item()
+
+    # 9. Multi-body local contrast & per-body vertical column centroid_dz
+    mixed = torch.zeros(1, 1, 16, 32, 32)
+    mixed[:, :, 2:5, 6:10, 6:10] = -2.0             # strong shallow cavity
+    mixed[:, :, 11:14, 20:24, 20:24] = 0.30         # weak deep rock body
+    mixed_pred = mixed.clone()
+    mixed_pred[:, :, 2:5, 6:10, 6:10] = -1.2        # cavity slightly under-predicted so rock > 0.2*max|p|
+    op32 = TerrainGravityOperator(32, 32, 16)
+    z32 = torch.full((1, 32, 32), -0.35)
+    d_mixed = op32(mixed, z32)
+    met_mixed = compute_metrics(mixed_pred, mixed, d_mixed, z32, op32)
+    assert met_mixed["centroid_dz"] < 5.0           # both bodies are at exact true depths!
+    assert met_mixed["iou"] > 0.95                  # both bodies are detected without contrast-cutoff erasure
 
 
 def test_column_surface_depth_matches_cpp_layout():

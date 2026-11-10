@@ -10,9 +10,13 @@ Each sample
   and away from the lateral borders. Shapes: rotated ellipsoids or boxes.
     - rock bodies   +/-0.1 ... 0.8 g/cm^3 (random sign)
     - cavities      (25 % of bodies, small & shallow): air -2.0 ... -2.67, water -1.0 ... -1.67
-* Background contrast is exactly zero (terrain-corrected anomaly: the relief carries no contrast).
-* Field: exact Nagy-prism response on the draped stations (``TerrainGravityOperator``) plus
-  Gaussian noise with sigma = U(0.5 %, 4 %) * max|clean field|. No regional trend.
+* Background contrast in the supervision target is strictly zero (terrain-corrected anomaly: the
+  relief carries no contrast), while the forward gravity simulation adds 3D petrophysical voxel
+  noise (internal body heterogeneity + host-rock background density clutter below the terrain) so
+  the network learns to reject geological voxel noise and recover clean, sharp bodies.
+* Field: exact Nagy-prism response on the draped stations (``TerrainGravityOperator``) from the
+  voxel-perturbed density volume plus station Gaussian noise with sigma = U(0.5 %, 4 %) * max|clean field|.
+  No regional trend.
 
 The cheap part (geometry, numpy) runs in DataLoader workers via ``BodyTerrainDataset``; the forward
 model runs batched on the training device via ``simulate_batch`` (~2 ms per sample on Apple MPS).
@@ -31,7 +35,9 @@ from forward import TerrainGravityOperator
 NX, NY, NZ, CELL = 64, 64, 32, 50.0
 MAX_RELIEF_FRAC = 0.25          # max terrain relief / domain depth
 CLEARANCE = (0.30, 0.40)        # ground gravimeter sensor height above terrain [m] (30-40 cm)
-NOISE_FRAC = (0.005, 0.04)      # noise sigma / max|field|
+NOISE_FRAC = (0.005, 0.04)      # station noise sigma / max|field|
+BODY_VOX_NOISE = 0.08           # 3D internal body voxel heterogeneity (std fraction of |rho|)
+BG_VOX_NOISE_SCALE = 0.15       # 3D host-rock voxel clutter scale relative to noise_frac * max|rho|
 
 
 def random_terrain(rng, nx, ny, depth_total):
@@ -62,15 +68,20 @@ def random_bodies(rng, t, nz, dz, dx):
         attempts += 1
         cavity = rng.random() < 0.25
         if cavity:
-            rx, ry = rng.uniform(1.0, 3.5, 2) * hs
-            rz = rng.uniform(0.8, 2.5) * nz / 32.0
-            gap = rng.uniform(0.5, 6.0) * nz / 32.0          # top of cavity below terrain [cells]
+            rx, ry = rng.uniform(1.2, 3.5, 2) * hs
+            rz = rng.uniform(0.9, 2.5) * nz / 32.0
+            gap = rng.uniform(0.5, 4.5) * nz / 32.0          # top of cavity below terrain [cells]
             rho_val = -rng.uniform(2.0, 2.67) if rng.random() < 0.7 else -rng.uniform(1.0, 1.67)
         else:
-            rx, ry = rng.uniform(1.5, 9.0, 2) * hs
-            rz = rng.uniform(1.0, 6.0) * nz / 32.0
-            gap = rng.uniform(0.5, 0.55 * nz)
-            rho_val = rng.uniform(0.1, 0.8) * (1.0 if rng.random() < 0.5 else -1.0)
+            rx, ry = rng.uniform(1.8, 9.0, 2) * hs
+            rz = rng.uniform(1.2, 6.0) * nz / 32.0
+            gap = rng.uniform(0.5, 0.50 * nz)
+            rho_val = rng.uniform(0.15, 0.8) * (1.0 if rng.random() < 0.5 else -1.0)
+        # Depth-proportional minimum size & contrast so deeper bodies remain above the gravimeter noise floor
+        rx, ry = max(rx, 0.25 * gap * hs), max(ry, 0.25 * gap * hs)
+        rz = max(rz, 0.18 * gap * nz / 32.0)
+        if not cavity and gap > 0.22 * nz and abs(rho_val) < 0.30:
+            rho_val = math.copysign(0.30 + 0.5 * abs(rho_val), rho_val)
         rmax = max(rx, ry)
         margin = 3 + rmax
         if 2 * margin >= min(nx, ny):
@@ -140,26 +151,63 @@ class BodyTerrainDataset(Dataset):
 
 
 @torch.no_grad()
-def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, noise_seed=None):
+def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, noise_seed=None,
+                   body_vox_noise=BODY_VOX_NOISE, bg_vox_scale=BG_VOX_NOISE_SCALE):
     """Batched forward on ``op``'s device. Returns ``(obs_noisy, obs_clean, z_obs)``.
 
-    obs: (B, 1, nx, ny) mGal; z_obs: (B, nx, ny) station depth = t - clearance.
+    ``obs_clean`` is the exact gravity field of the clean target ``rho``; ``obs_noisy`` is computed
+    from ``rho + delta_rho`` (3D petrophysical voxel noise inside bodies and in the host rock below
+    terrain) plus 2D station instrument noise, so the network learns to suppress both 3D subsurface
+    density clutter and surface measurement noise while predicting the clean target ``rho``.
     """
     z_obs = t - clearance.view(-1, 1, 1)
     clean = op(rho, z_obs)
     peak = clean.abs().amax(dim=(1, 2, 3), keepdim=True)
     if noise_seed is None:
         noise = torch.randn_like(clean)
+        vox_n = torch.randn_like(rho)
     else:   # deterministic noise (validation)
         noise = torch.stack([torch.randn(clean.shape[1:], generator=torch.Generator().manual_seed(int(s)))
                              for s in noise_seed.cpu()]).to(clean.device)
-    noisy = clean + noise * noise_frac.view(-1, 1, 1, 1) * peak
+        vox_n = torch.stack([torch.randn(rho.shape[1:], generator=torch.Generator().manual_seed(int(s) + 1))
+                             for s in noise_seed.cpu()]).to(rho.device)
+    if body_vox_noise > 0.0 or bg_vox_scale > 0.0:
+        z_top = torch.arange(op.nz, device=rho.device, dtype=rho.dtype).view(1, 1, op.nz, 1, 1) * op.dz
+        below = (z_top >= t.unsqueeze(1).unsqueeze(2)).to(rho.dtype)
+        amp = rho.abs().amax(dim=(1, 2, 3, 4), keepdim=True).clamp_min(0.1)
+        sigma_vox = body_vox_noise * rho.abs() + bg_vox_scale * noise_frac.view(-1, 1, 1, 1, 1) * amp
+        obs_vox = op(rho + sigma_vox * vox_n * below, z_obs)
+    else:
+        obs_vox = clean
+    noisy = obs_vox + noise * noise_frac.view(-1, 1, 1, 1) * peak
     return noisy, clean, z_obs
 
 
 def terrain_channel(t, depth_total):
     """Network terrain input: terrain depth / domain depth, (B, 1, nx, ny)."""
     return (t / depth_total).unsqueeze(1)
+
+
+def augment_d4(rho, t, obs, clean, z_obs, k=None, flip=None):
+    """Exact horizontal dihedral D4 symmetry augmentation (rotations + reflection) for gz inversion."""
+    nx, ny = t.shape[-2], t.shape[-1]
+    if k is None:
+        k = int(torch.randint(0, 4 if nx == ny else 2, (1,)).item()) * (1 if nx == ny else 2)
+    if flip is None:
+        flip = bool(torch.randint(0, 2, (1,)).item())
+    if k:
+        rho = torch.rot90(rho, k, dims=(-2, -1))
+        t = torch.rot90(t, k, dims=(-2, -1))
+        obs = torch.rot90(obs, k, dims=(-2, -1))
+        clean = torch.rot90(clean, k, dims=(-2, -1))
+        z_obs = torch.rot90(z_obs, k, dims=(-2, -1))
+    if flip:
+        rho = torch.flip(rho, dims=(-1,))
+        t = torch.flip(t, dims=(-1,))
+        obs = torch.flip(obs, dims=(-1,))
+        clean = torch.flip(clean, dims=(-1,))
+        z_obs = torch.flip(z_obs, dims=(-1,))
+    return rho, t, obs, clean, z_obs
 
 
 if __name__ == "__main__":

@@ -42,7 +42,8 @@ Like **`pfld`** (Mod3D's standalone facet physics engine), the computational cor
 |   +---------------------------------------------------------------------------------+   |
 |   |                           .inv/python (Training Sub-Project)                    |   |
 |   |  - Isolated Bodies, Cavities & Terrain Relief - Compound Loss (Distance + Halo) |   |
-|   |  - 2-Channel 3D Swin Transformer Trainer      - Live GUI Monitor & ONNX Export  |   |
+|   |  - Depth-Scaled Radii & Detectability Floor   - Signed L1-IoU & Core Regularizer|   |
+|   |  - 2-Channel 3D Swin Transformer Trainer      - Direct Canvas Monitor & ONNX    |   |
 |   +---------------------------------------------------------------------------------+   |
 +-----------------------------------------------------------------------------------------+
 ```
@@ -127,12 +128,12 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │
 └── python/                     # Python training & research sub-project
     ├── requirements.txt        # PyTorch, ONNX, and scientific dependencies
-    ├── dataset.py              # Isolated bodies, cavities, terrain relief & 3D voxel noise
+    ├── dataset.py              # Isolated bodies, cavities, terrain relief, depth-scaled radii & 3D voxel noise
     ├── forward.py              # Batched draped Nagy-prism and flat FFT gravity operators
     ├── model_swin3d.py         # 2-channel 3D Swin Transformer with MPS-optimized upsampling
-    ├── losses.py               # Scale-normalized CompoundInversionLoss, distance penalties, halo & edge jump
-    ├── train.py                # On-the-fly training loop with live 6-panel GUI monitor & web dashboard
-    ├── evaluate.py             # Volumetric IoU, centroid depth, amplitude & halo metrics
+    ├── losses.py               # Scale-normalized CompoundInversionLoss, Signed L1-IoU, core overshoot, r=1 shell & halo
+    ├── train.py                # On-the-fly training loop, cosine annealing resume, GUI monitor & HTML5 canvas dashboard
+    ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, local contrast IoU, amp & halo metrics
     ├── infer_prior.py          # Write neural prior into Mod3D setup JSON with amplitude projection
     ├── export_onnx.py          # PyTorch to ONNX export with terrain input and relief masking
     └── test_inv_python.py      # Comprehensive 13-test Python test suite

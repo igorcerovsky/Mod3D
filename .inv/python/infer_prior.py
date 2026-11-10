@@ -20,6 +20,8 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from evaluate import project_amplitude
+from forward import TerrainGravityOperator
 from model_swin3d import PotentialFieldTransformer3D
 
 
@@ -72,7 +74,7 @@ def amplitude_scale(nx, ny, nz, dx, dy, dz, g):
     return 1.0 / (eff ** (1.0 / 3.0) / g["cell"])
 
 
-def predict_prior(setup, checkpoint, device="cpu"):
+def predict_prior(setup, checkpoint, device="cpu", project=True):
     ck = torch.load(checkpoint, map_location=device)
     g = ck.get("grid", {"nx": 64, "ny": 64, "nz": 32, "cell": 50.0})
     vd = setup["voxel_domain"]
@@ -90,7 +92,12 @@ def predict_prior(setup, checkpoint, device="cpu"):
     model.to(device).eval()
     with torch.no_grad():
         x = torch.from_numpy(np.stack([cols, t_norm]).astype(np.float32))[None].to(device)   # (1,2,nx,ny)
-        pred = model(x) * amplitude_scale(nx, ny, nz, vd["dx"], vd["dy"], vd["dz"], g)
+        pred = model(x)
+        if project:
+            op = TerrainGravityOperator(g["nx"], g["ny"], g["nz"], g["cell"], g["cell"], g["cell"]).to(device)
+            z_obs = torch.from_numpy(t_norm * (g["nz"] * g["cell"]) - 0.35).float()[None].to(device)
+            pred = project_amplitude(pred, x[:, :1], z_obs, op)
+        pred = pred * amplitude_scale(nx, ny, nz, vd["dx"], vd["dy"], vd["dz"], g)
         pred = F.interpolate(pred, size=(nz, nx, ny), mode="trilinear", align_corners=False)
     vol = pred[0, 0].cpu().numpy()                                                # (nz, nx, ny)
     return np.transpose(vol, (1, 2, 0)).ravel(order="C")                          # (ix*ny+iy)*nz+iz
