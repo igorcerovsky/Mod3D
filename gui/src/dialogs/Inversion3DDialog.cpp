@@ -1041,11 +1041,21 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
       }
       inv::VoxelGrid<double> prior_grid;
       std::string err;
+      // Terrain depth below the grid top per column (network terrain channel)
+      std::vector<double> surf_cols(setup.config.nx * setup.config.ny, 0.0);
+      for (std::size_t ix = 0; ix < setup.config.nx; ++ix) {
+        for (std::size_t iy = 0; iy < setup.config.ny; ++iy) {
+          surf_cols[ix * setup.config.ny + iy] =
+              inv::column_surface_z(setup.topo_elevations, setup.config.nx,
+                                    setup.config.ny, ix, iy, setup.config.z0) -
+              setup.config.z0;
+        }
+      }
       if (inv::NeuralPriorInference::predict(
               d_fine, setup.config.nx, setup.config.ny, setup.config.nz,
               setup.config.x0, setup.config.y0, setup.config.z0,
               setup.config.dx, setup.config.dy, setup.config.dz, prior_grid,
-              err, modelPath)) {
+              err, modelPath, surf_cols)) {
         prior_values = std::move(prior_grid.data());
         QMetaObject::invokeMethod(
             this,
@@ -1450,6 +1460,32 @@ void Inversion3DDialog::onInstantAiClicked() {
                 .arg(ny)
                 .arg(nz));
 
+  // Topography surface nodes (depth below domain top) at cell corners, shared
+  // by the network terrain channel and the forward check below.
+  const double zDomainTop = m_doc->model().z_max().value();
+  const auto &relief = m_doc->observation().surface_relief();
+  const bool hasRelief =
+      !relief.empty() && relief.rows() >= 2 && relief.cols() >= 2;
+  std::vector<double> topo_nodes((nx + 1) * (ny + 1), 0.0);
+  for (size_t iy = 0; iy <= ny; ++iy) {
+    const double y_c = y0_geom + static_cast<double>(iy) * dy;
+    for (size_t ix = 0; ix <= nx; ++ix) {
+      const double x_c = x0_geom + static_cast<double>(ix) * dx;
+      double elev = 0.0;
+      if (hasRelief) {
+        elev = relief.sample(x_c, y_c);
+        if (elev == mod3d::GRID_DUMMY || std::isnan(elev))
+          elev = relief.mean();
+      }
+      topo_nodes[iy * (nx + 1) + ix] = std::max(0.0, zDomainTop - elev);
+    }
+  }
+  std::vector<double> surf_cols(nx * ny, 0.0);
+  for (size_t ix = 0; ix < nx; ++ix)
+    for (size_t iy = 0; iy < ny; ++iy)
+      surf_cols[ix * ny + iy] =
+          inv::column_surface_z(topo_nodes, nx, ny, ix, iy, z0_geom) - z0_geom;
+
   const auto t_start = std::chrono::high_resolution_clock::now();
   inv::VoxelGrid<double> pred_grid;
   std::string err;
@@ -1458,9 +1494,9 @@ void Inversion3DDialog::onInstantAiClicked() {
     modelPath = inv::NeuralPriorInference::default_model_path();
   }
 
-  bool ok = inv::NeuralPriorInference::predict(d_fine, nx, ny, nz, x0_geom,
-                                               y0_geom, z0_geom, dx, dy, dz,
-                                               pred_grid, err, modelPath);
+  bool ok = inv::NeuralPriorInference::predict(
+      d_fine, nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz, pred_grid, err,
+      modelPath, surf_cols);
 
   const auto t_end = std::chrono::high_resolution_clock::now();
   const double elapsed_ms =
@@ -1506,24 +1542,6 @@ void Inversion3DDialog::onInstantAiClicked() {
   // Compute forward response using pfld::InterfaceMesh with relief & background
   // alignment
   inv::GridGeometry g{nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
-  const double zDomainTop = m_doc->model().z_max().value();
-  const auto &relief = m_doc->observation().surface_relief();
-  const bool hasRelief =
-      !relief.empty() && relief.rows() >= 2 && relief.cols() >= 2;
-  std::vector<double> topo_nodes((nx + 1) * (ny + 1), 0.0);
-  for (size_t iy = 0; iy <= ny; ++iy) {
-    const double y_c = y0_geom + static_cast<double>(iy) * dy;
-    for (size_t ix = 0; ix <= nx; ++ix) {
-      const double x_c = x0_geom + static_cast<double>(ix) * dx;
-      double elev = 0.0;
-      if (hasRelief) {
-        elev = relief.sample(x_c, y_c);
-        if (elev == mod3d::GRID_DUMMY || std::isnan(elev))
-          elev = relief.mean();
-      }
-      topo_nodes[iy * (nx + 1) + ix] = std::max(0.0, zDomainTop - elev);
-    }
-  }
 
   std::vector<char> active(g.cells(), 1);
   std::vector<double> col_surface(g.columns(), z0_geom);

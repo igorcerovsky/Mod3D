@@ -29,51 +29,48 @@ public:
     }
 
     static std::string default_model_path() {
+        // The model may be a single .onnx file or .onnx + external .onnx.data weights.
         std::error_code ec;
         auto cur = std::filesystem::current_path(ec);
         if (!ec) {
             for (int i = 0; i < 6; ++i) {
-                auto candidate = cur / ".inv" / "python" / "models" / "inv_swin3d.onnx";
-                if (std::filesystem::exists(candidate, ec) && std::filesystem::exists(candidate.string() + ".data", ec)) {
-                    return std::filesystem::absolute(candidate).string();
-                }
-                auto candidate2 = cur / "models" / "inv_swin3d.onnx";
-                if (std::filesystem::exists(candidate2, ec) && std::filesystem::exists(candidate2.string() + ".data", ec)) {
-                    return std::filesystem::absolute(candidate2).string();
+                for (const auto& candidate : {cur / ".inv" / "python" / "models" / "inv_swin3d.onnx",
+                                              cur / "models" / "inv_swin3d.onnx"}) {
+                    if (std::filesystem::exists(candidate, ec)) {
+                        return std::filesystem::absolute(candidate).string();
+                    }
                 }
                 if (!cur.has_parent_path() || cur == cur.parent_path()) break;
                 cur = cur.parent_path();
             }
         }
-
-        const std::vector<std::string> candidates = {
-            ".inv/python/models/inv_swin3d.onnx",
-            "../.inv/python/models/inv_swin3d.onnx",
-            "../../.inv/python/models/inv_swin3d.onnx",
-            "../../../.inv/python/models/inv_swin3d.onnx",
-            "models/inv_swin3d.onnx",
-            "../models/inv_swin3d.onnx"
-        };
-        for (const auto& p : candidates) {
-            if (std::filesystem::exists(p, ec) && std::filesystem::exists(p + ".data", ec)) {
-                return std::filesystem::absolute(p).string();
-            }
-        }
         return "";
     }
 
+    /// Training geometry of the network (see .inv/python/dataset.py).
+    static constexpr double kTrainCell = 50.0;      ///< training cell size [m]
+    static constexpr double kMaxReliefFrac = 0.25;  ///< max terrain relief / domain depth seen in training
+
     /**
-     * @brief Evaluates the 3D Swin Transformer ONNX model on a 2D surface gravity grid.
+     * @brief Evaluates the 3D transformer ONNX model on a 2D surface gravity grid.
+     *
+     * Model input  (1, 2, Hn, Wn): [gz (mGal), terrain depth below the grid top / domain depth].
+     * Model output (1, 1, Dn, Hn, Wn): density contrast (g/cm^3) for kTrainCell training cells.
+     * The output is rescaled for the real domain size (gravity of a geometrically similar model
+     * scales with length) and set to zero in cells whose centre lies above the terrain.
+     * Legacy 1-channel models (gz only) are still accepted.
      *
      * @param obs_cols Observation data arranged in columns, size nx * ny (index: ix * ny + iy)
      * @param nx Number of columns in X
      * @param ny Number of rows in Y
      * @param target_nz Target vertical layers in output VoxelGrid
-     * @param x0, y0, z0 Origin coordinates
+     * @param x0, y0, z0 Origin coordinates (z down, z0 = grid top)
      * @param dx, dy, dz Spacings
      * @param out_grid Resulting 3D VoxelGrid with predicted density contrast (g/cm^3)
      * @param err_msg Output error message if inference fails
      * @param custom_model_path Optional user-specified path to the .onnx model
+     * @param surface_depth_cols Optional terrain depth below the grid top per column (size nx*ny,
+     *        index ix * ny + iy, metres, e.g. inv::column_surface_z - z0). Empty = flat terrain.
      * @return true on success, false on failure
      */
     static bool predict(const std::vector<double>& obs_cols,
@@ -83,21 +80,13 @@ public:
                         double dx, double dy, double dz,
                         VoxelGrid<double>& out_grid,
                         std::string& err_msg,
-                        const std::string& custom_model_path = "")
+                        const std::string& custom_model_path = "",
+                        const std::vector<double>& surface_depth_cols = {})
     {
 #if !defined(MOD3D_HAS_ONNX) || !MOD3D_HAS_ONNX
-        (void)obs_cols;
-        (void)nx;
-        (void)ny;
-        (void)target_nz;
-        (void)x0;
-        (void)y0;
-        (void)z0;
-        (void)dx;
-        (void)dy;
-        (void)dz;
-        (void)out_grid;
-        (void)custom_model_path;
+        (void)obs_cols; (void)nx; (void)ny; (void)target_nz;
+        (void)x0; (void)y0; (void)z0; (void)dx; (void)dy; (void)dz;
+        (void)out_grid; (void)custom_model_path; (void)surface_depth_cols;
         err_msg = "ONNX Runtime support is not compiled into Mod3D.";
         return false;
 #else
@@ -106,130 +95,116 @@ public:
             err_msg = "ONNX model file not found: " + (model_path.empty() ? "inv_swin3d.onnx" : model_path);
             return false;
         }
-
         if (obs_cols.size() != nx * ny || nx == 0 || ny == 0 || target_nz == 0) {
             err_msg = "Invalid observation grid dimensions for neural inference.";
             return false;
         }
+        const bool has_terrain = surface_depth_cols.size() == nx * ny;
 
         try {
-            // 1. Initialize ONNX Runtime session
             Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "Mod3D_NeuralPrior");
             Ort::SessionOptions session_options;
             session_options.SetIntraOpNumThreads(2);
             session_options.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
-
             Ort::Session session(env, model_path.c_str(), session_options);
 
-            // 2. Prepare 64x64 input tensor matching Swin3D footprint
-            constexpr std::size_t kTrainNx = 64;
-            constexpr std::size_t kTrainNy = 64;
-            constexpr std::size_t kTrainNz = 32;
+            // Network footprint from the model itself (static shapes): (1, C, Hn, Wn)
+            const auto in_shape = session.GetInputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+            const auto out_shape = session.GetOutputTypeInfo(0).GetTensorTypeAndShapeInfo().GetShape();
+            if (in_shape.size() != 4 || out_shape.size() != 5) {
+                err_msg = "Unexpected ONNX model input/output rank.";
+                return false;
+            }
+            const std::size_t kC = in_shape[1] > 0 ? static_cast<std::size_t>(in_shape[1]) : 1;
+            const std::size_t kNx = in_shape[2] > 0 ? static_cast<std::size_t>(in_shape[2]) : 64;
+            const std::size_t kNy = in_shape[3] > 0 ? static_cast<std::size_t>(in_shape[3]) : 64;
+            const std::size_t kNz = out_shape[2] > 0 ? static_cast<std::size_t>(out_shape[2]) : 32;
 
-            std::vector<float> in_buf(kTrainNx * kTrainNy, 0.0f);
-            for (std::size_t ix = 0; ix < kTrainNx; ++ix) {
-                double u = (kTrainNx > 1) ? static_cast<double>(ix) / (kTrainNx - 1) : 0.0;
-                double src_x = u * (nx - 1);
-                std::size_t x0_idx = std::clamp(static_cast<std::size_t>(src_x), std::size_t{0}, nx - 1);
-                std::size_t x1_idx = std::min(x0_idx + 1, nx - 1);
-                double fx = src_x - x0_idx;
-
-                for (std::size_t iy = 0; iy < kTrainNy; ++iy) {
-                    double v = (kTrainNy > 1) ? static_cast<double>(iy) / (kTrainNy - 1) : 0.0;
-                    double src_y = v * (ny - 1);
-                    std::size_t y0_idx = std::clamp(static_cast<std::size_t>(src_y), std::size_t{0}, ny - 1);
-                    std::size_t y1_idx = std::min(y0_idx + 1, ny - 1);
-                    double fy = src_y - y0_idx;
-
-                    // Bilinear interpolation from obs_cols [src_ix * ny + src_iy]
-                    double v00 = obs_cols[x0_idx * ny + y0_idx];
-                    double v10 = obs_cols[x1_idx * ny + y0_idx];
-                    double v01 = obs_cols[x0_idx * ny + y1_idx];
-                    double v11 = obs_cols[x1_idx * ny + y1_idx];
-
-                    double val = (1.0 - fx) * (1.0 - fy) * v00 +
-                                 fx * (1.0 - fy) * v10 +
-                                 (1.0 - fx) * fy * v01 +
-                                 fx * fy * v11;
-
-                    in_buf[ix * kTrainNy + iy] = static_cast<float>(val);
+            // Bilinear resample of a column field (ix * ny + iy) onto the network grid
+            auto resample2d = [&](const std::vector<double>& src, float* dst) {
+                for (std::size_t ix = 0; ix < kNx; ++ix) {
+                    const double sx = (kNx > 1 ? static_cast<double>(ix) / (kNx - 1) : 0.0) * (nx - 1);
+                    const std::size_t a0 = std::min(static_cast<std::size_t>(sx), nx - 1);
+                    const std::size_t a1 = std::min(a0 + 1, nx - 1);
+                    const double fx = sx - a0;
+                    for (std::size_t iy = 0; iy < kNy; ++iy) {
+                        const double sy = (kNy > 1 ? static_cast<double>(iy) / (kNy - 1) : 0.0) * (ny - 1);
+                        const std::size_t b0 = std::min(static_cast<std::size_t>(sy), ny - 1);
+                        const std::size_t b1 = std::min(b0 + 1, ny - 1);
+                        const double fy = sy - b0;
+                        const double v = (1 - fx) * (1 - fy) * src[a0 * ny + b0] + fx * (1 - fy) * src[a1 * ny + b0] +
+                                         (1 - fx) * fy * src[a0 * ny + b1] + fx * fy * src[a1 * ny + b1];
+                        dst[ix * kNy + iy] = static_cast<float>(v);
+                    }
                 }
+            };
+
+            const double depth_total = static_cast<double>(target_nz) * dz;
+            std::vector<float> in_buf(kC * kNx * kNy, 0.0f);
+            resample2d(obs_cols, in_buf.data());
+            if (kC >= 2 && has_terrain) {
+                std::vector<double> t_norm(nx * ny);
+                for (std::size_t i = 0; i < nx * ny; ++i) {
+                    t_norm[i] = std::clamp(surface_depth_cols[i] / depth_total, 0.0, kMaxReliefFrac);
+                }
+                resample2d(t_norm, in_buf.data() + kNx * kNy);
             }
 
-            // 3. Create input tensor [1, 1, 64, 64]
             Ort::MemoryInfo mem_info = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-            std::vector<int64_t> in_dims = {1, 1, static_cast<int64_t>(kTrainNx), static_cast<int64_t>(kTrainNy)};
-
+            std::vector<int64_t> in_dims = {1, static_cast<int64_t>(kC), static_cast<int64_t>(kNx),
+                                            static_cast<int64_t>(kNy)};
             Ort::Value in_tensor = Ort::Value::CreateTensor<float>(
                 mem_info, in_buf.data(), in_buf.size(), in_dims.data(), in_dims.size());
-
             const char* in_names[] = {"observation_field"};
             const char* out_names[] = {"density_volume"};
-
-            // 4. Run inference
             auto out_tensors = session.Run(Ort::RunOptions{nullptr}, in_names, &in_tensor, 1, out_names, 1);
             if (out_tensors.empty()) {
                 err_msg = "ONNX session returned no output tensor.";
                 return false;
             }
+            const float* out_data = out_tensors[0].GetTensorData<float>();   // [iz, ix, iy]
 
-            const float* out_data = out_tensors[0].GetTensorData<float>();
-            // Output shape is [1, 1, 32, 64, 64], i.e., [batch, channel, iz, ix, iy]
+            // Amplitude: the network predicts for kTrainCell cells; a geometrically similar model
+            // L times larger produces L times the gravity, so divide by L.
+            double scale = 1.0;
+            if (kC >= 2) {
+                const double eff = (nx * dx / kNx) * (ny * dy / kNy) * (depth_total / kNz);
+                scale = kTrainCell / std::cbrt(eff);
+            }
 
-            // 5. Initialize output VoxelGrid (nx, ny, target_nz)
             out_grid = VoxelGrid<double>(nx, ny, target_nz, x0, y0, z0, dx, dy, dz, 0.0);
-
-            // 6. Trilinear resample from (32, 64, 64) [iz, ix, iy] to target (nx, ny, target_nz)
+            auto sample = [&](std::size_t z, std::size_t x, std::size_t y) -> double {
+                return static_cast<double>(out_data[(z * kNx + x) * kNy + y]);
+            };
             for (std::size_t ix = 0; ix < nx; ++ix) {
-                double u = (nx > 1) ? static_cast<double>(ix) / (nx - 1) : 0.0;
-                double src_x = u * (kTrainNx - 1);
-                std::size_t sx0 = std::clamp(static_cast<std::size_t>(src_x), std::size_t{0}, kTrainNx - 1);
-                std::size_t sx1 = std::min(sx0 + 1, kTrainNx - 1);
-                double fx = src_x - sx0;
-
+                const double sx = (nx > 1 ? static_cast<double>(ix) / (nx - 1) : 0.0) * (kNx - 1);
+                const std::size_t x0i = std::min(static_cast<std::size_t>(sx), kNx - 1);
+                const std::size_t x1i = std::min(x0i + 1, kNx - 1);
+                const double fx = sx - x0i;
                 for (std::size_t iy = 0; iy < ny; ++iy) {
-                    double v = (ny > 1) ? static_cast<double>(iy) / (ny - 1) : 0.0;
-                    double src_y = v * (kTrainNy - 1);
-                    std::size_t sy0 = std::clamp(static_cast<std::size_t>(src_y), std::size_t{0}, kTrainNy - 1);
-                    std::size_t sy1 = std::min(sy0 + 1, kTrainNy - 1);
-                    double fy = src_y - sy0;
-
+                    const double sy = (ny > 1 ? static_cast<double>(iy) / (ny - 1) : 0.0) * (kNy - 1);
+                    const std::size_t y0i = std::min(static_cast<std::size_t>(sy), kNy - 1);
+                    const std::size_t y1i = std::min(y0i + 1, kNy - 1);
+                    const double fy = sy - y0i;
+                    const double surf = has_terrain ? surface_depth_cols[ix * ny + iy] : 0.0;
                     for (std::size_t iz = 0; iz < target_nz; ++iz) {
-                        double w = (target_nz > 1) ? static_cast<double>(iz) / (target_nz - 1) : 0.0;
-                        double src_z = w * (kTrainNz - 1);
-                        std::size_t sz0 = std::clamp(static_cast<std::size_t>(src_z), std::size_t{0}, kTrainNz - 1);
-                        std::size_t sz1 = std::min(sz0 + 1, kTrainNz - 1);
-                        double fz = src_z - sz0;
-
-                        // Tensor index in [iz, ix, iy]: (sz * kTrainNx + sx) * kTrainNy + sy
-                        auto sample = [&](std::size_t z, std::size_t x, std::size_t y) -> double {
-                            return static_cast<double>(out_data[(z * kTrainNx + x) * kTrainNy + y]);
-                        };
-
-                        double c000 = sample(sz0, sx0, sy0);
-                        double c100 = sample(sz0, sx1, sy0);
-                        double c010 = sample(sz0, sx0, sy1);
-                        double c110 = sample(sz0, sx1, sy1);
-                        double c001 = sample(sz1, sx0, sy0);
-                        double c101 = sample(sz1, sx1, sy0);
-                        double c011 = sample(sz1, sx0, sy1);
-                        double c111 = sample(sz1, sx1, sy1);
-
-                        double c00 = c000 * (1.0 - fx) + c100 * fx;
-                        double c10 = c010 * (1.0 - fx) + c110 * fx;
-                        double c01 = c001 * (1.0 - fx) + c101 * fx;
-                        double c11 = c011 * (1.0 - fx) + c111 * fx;
-
-                        double c0 = c00 * (1.0 - fy) + c10 * fy;
-                        double c1 = c01 * (1.0 - fy) + c11 * fy;
-
-                        double density = c0 * (1.0 - fz) + c1 * fz;
-
-                        out_grid(ix, iy, iz) = density;
+                        if ((static_cast<double>(iz) + 0.5) * dz < surf) continue;   // above terrain
+                        // cell-centre mapping between the target and network depth axes
+                        const double sz = std::clamp((static_cast<double>(iz) + 0.5) * kNz / target_nz - 0.5,
+                                                     0.0, static_cast<double>(kNz - 1));
+                        const std::size_t z0i = std::min(static_cast<std::size_t>(sz), kNz - 1);
+                        const std::size_t z1i = std::min(z0i + 1, kNz - 1);
+                        const double fz = sz - z0i;
+                        const double c00 = sample(z0i, x0i, y0i) * (1 - fx) + sample(z0i, x1i, y0i) * fx;
+                        const double c10 = sample(z0i, x0i, y1i) * (1 - fx) + sample(z0i, x1i, y1i) * fx;
+                        const double c01 = sample(z1i, x0i, y0i) * (1 - fx) + sample(z1i, x1i, y0i) * fx;
+                        const double c11 = sample(z1i, x0i, y1i) * (1 - fx) + sample(z1i, x1i, y1i) * fx;
+                        const double c0 = c00 * (1 - fy) + c10 * fy;
+                        const double c1 = c01 * (1 - fy) + c11 * fy;
+                        out_grid(ix, iy, iz) = scale * (c0 * (1 - fz) + c1 * fz);
                     }
                 }
             }
-
             return true;
         } catch (const std::exception& e) {
             err_msg = std::string("ONNX Runtime exception: ") + e.what();

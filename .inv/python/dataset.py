@@ -1,154 +1,184 @@
-"""Procedural 3D Geological Model & Potential Field Dataset Generator.
+"""Synthetic training data: ISOLATED bodies + cavities below a random terrain (anomaly only, no trend).
 
-Synthetic subsurface density-contrast models (undulating strata, faults with throw, compact
-intrusions) and their PHYSICAL gravity response, computed with the same Nagy-prism FFT operator
-as the C++ engine (see ``forward.py``).
+Each sample
+-----------
+* Random terrain (smooth Gaussian-filtered noise, optional tilt; 15 % flat), relief up to
+  ``MAX_RELIEF_FRAC`` of the domain depth. ``t[i, j]`` = terrain depth below the grid top (z down,
+  0 at the highest point). Stations are DRAPED on the terrain, ``clearance`` 0.30-0.40 m (30-40 cm,
+  typical tripod/ground height for relative gravity meters) above it.
+* 1 body (40 %) or 2-4 bodies (60 %), well separated (>= 2 empty cells), fully below the terrain
+  and away from the lateral borders. Shapes: rotated ellipsoids or boxes.
+    - rock bodies   +/-0.1 ... 0.8 g/cm^3 (random sign)
+    - cavities      (25 % of bodies, small & shallow): air -2.0 ... -2.67, water -1.0 ... -1.67
+* Background contrast is exactly zero (terrain-corrected anomaly: the relief carries no contrast).
+* Field: exact Nagy-prism response on the draped stations (``TerrainGravityOperator``) plus
+  Gaussian noise with sigma = U(0.5 %, 4 %) * max|clean field|. No regional trend.
 
-Design decisions (see README-train.md, "Training data"):
-
-* **Anomaly models.** Gravity surveys are anomalies. The laterally uniform part of every depth
-  layer (the horizontal-slab / regional component) is removed from the model, so the target
-  contains only lateral density variations. This makes Minimum Support meaningful (the target
-  is sparse-ish) and removes the edge-effect ambiguity of finite slabs.
-* **Noise relative to signal.** Gaussian noise has sigma = noise_frac * max|clean field| with
-  noise_frac ~ U(0.01, 0.05) per sample, so the signal-to-noise ratio is 20-100 by construction.
-* **Reproducibility.** ``seed`` makes sample ``idx`` deterministic (validation sets); without it
-  every access draws fresh entropy (also safe with multiple DataLoader workers).
-* Flat observation plane at constant height; no topography is generated (the C++ engine handles
-  topography at inversion time).
+The cheap part (geometry, numpy) runs in DataLoader workers via ``BodyTerrainDataset``; the forward
+model runs batched on the training device via ``simulate_batch`` (~2 ms per sample on Apple MPS).
 """
 
 import math
 
 import numpy as np
 import torch
+from scipy.ndimage import binary_dilation, gaussian_filter
 from torch.utils.data import Dataset
 
-from forward import GravityFFTOperator
+from forward import TerrainGravityOperator
+
+# Training geometry (the C++ inference resamples any domain onto this grid; see neural_prior.hpp)
+NX, NY, NZ, CELL = 64, 64, 32, 50.0
+MAX_RELIEF_FRAC = 0.25          # max terrain relief / domain depth
+CLEARANCE = (0.30, 0.40)        # ground gravimeter sensor height above terrain [m] (30-40 cm)
+NOISE_FRAC = (0.005, 0.04)      # noise sigma / max|field|
 
 
-class ProceduralGeologyGenerator:
-    """Generates synthetic 3D geological volumes with lateral density contrasts (g/cm^3)."""
-
-    def __init__(self, nx=64, ny=64, nz=32, dx=50.0, dy=50.0, dz=50.0):
-        self.nx, self.ny, self.nz = nx, ny, nz
-        self.dx, self.dy, self.dz = dx, dy, dz
-
-    def generate_random_model(self, rng=None) -> np.ndarray:
-        """Returns a (nz, nx, ny) float32 density-contrast model."""
-        rng = rng if rng is not None else np.random.default_rng()
-        nx, ny, nz = self.nx, self.ny, self.nz
-        model = np.zeros((nz, nx, ny), dtype=np.float32)
-        xg, yg = np.meshgrid(np.arange(nx), np.arange(ny), indexing="ij")
-        zg = np.arange(nz)[:, None, None]
-        scale = nx / 64.0
-
-        # 1. Undulating strata
-        for _ in range(int(rng.integers(2, 5))):
-            fx = rng.uniform(0.02, 0.08) / scale
-            fy = rng.uniform(0.02, 0.08) / scale
-            ph_x, ph_y = rng.uniform(0, 2 * math.pi, 2)
-            undulation = 2.0 * np.sin(fx * xg + ph_x) * np.cos(fy * yg + ph_y)
-            z_contact = int(rng.integers(max(2, nz // 8), max(3, nz - nz // 8)))
-            step = rng.uniform(-0.25, 0.25)
-            model += (step * ((zg + undulation[None]) > z_contact)).astype(np.float32)
-
-        # 2. Faults with throw (strike along x or y). Copy from the ORIGINAL model (no read-after-write).
-        if rng.random() > 0.5:
-            src = model.copy()
-            axis_len = nx
-            fault = int(rng.integers(axis_len // 3, 2 * axis_len // 3))
-            dip = rng.uniform(math.radians(45), math.radians(75))
-            throw = int(rng.integers(-max(1, nz // 8), max(1, nz // 8) + 1))
-            along_x = rng.random() > 0.5
-            for iz in range(nz):
-                src_iz = iz + throw
-                if not 0 <= src_iz < nz:
-                    continue
-                shift = iz / math.tan(dip)
-                for i in range(axis_len):
-                    if (i - fault) - shift > 0:
-                        if along_x:
-                            model[iz, i, :] = src[src_iz, i, :]
-                        else:
-                            model[iz, :, i] = src[src_iz, :, i]
-
-        # 3. Compact intrusions / ore pockets (focusing targets)
-        iz_g, ix_g, iy_g = np.ogrid[:nz, :nx, :ny]
-        for _ in range(int(rng.integers(1, 4))):
-            cx = int(rng.integers(nx // 4, 3 * nx // 4))
-            cy = int(rng.integers(ny // 4, 3 * ny // 4))
-            cz = int(rng.integers(max(2, nz // 10), max(3, nz - nz // 10)))
-            rx = max(1.5, rng.uniform(3, 8) * scale)
-            ry = max(1.5, rng.uniform(3, 8) * scale)
-            rz = max(1.0, rng.uniform(2, 6) * nz / 32.0)
-            density = float(rng.choice([-0.35, 0.35, 0.50]))
-            d2 = ((ix_g - cx) / rx) ** 2 + ((iy_g - cy) / ry) ** 2 + ((iz_g - cz) / rz) ** 2
-            model[d2 <= 1.0] = density
-
-        # Anomaly model: remove the laterally uniform component of every depth layer.
-        model -= model.mean(axis=(1, 2), keepdims=True)
-        return np.clip(model, -0.6, 0.8)
+def random_terrain(rng, nx, ny, depth_total):
+    """Terrain depth below the grid top, (nx, ny) metres, min == 0."""
+    if rng.random() < 0.15:
+        return np.zeros((nx, ny), np.float32)
+    corr = rng.uniform(4.0, 16.0) * nx / 64.0
+    h = gaussian_filter(rng.normal(size=(nx, ny)), corr, mode="reflect")
+    if rng.random() < 0.3:                                   # regional slope
+        xg, yg = np.meshgrid(np.linspace(-1, 1, nx), np.linspace(-1, 1, ny), indexing="ij")
+        h = h / (h.std() + 1e-12) + rng.uniform(-1.5, 1.5) * xg + rng.uniform(-1.5, 1.5) * yg
+    h = (h - h.min()) / (h.max() - h.min() + 1e-12)
+    relief = rng.uniform(0.03, MAX_RELIEF_FRAC) * depth_total
+    t = ((1.0 - h) * relief).astype(np.float32)              # highest point -> depth 0
+    return t - t.min()
 
 
-class SyntheticPotentialFieldDataset(Dataset):
-    """Paired (noisy gravity map, 3D density-contrast volume) samples.
+def random_bodies(rng, t, nz, dz, dx):
+    """Density model (nz, nx, ny) with isolated bodies strictly below terrain depth ``t`` (nx, ny)."""
+    nx, ny = t.shape
+    rho = np.zeros((nz, nx, ny), np.float32)
+    blocked = np.zeros((nz, nx, ny), bool)
+    t_cells = t / dz                                         # terrain depth in layer units
+    hs = nx / 64.0                                           # horizontal size scale
+    n_bodies = 1 if rng.random() < 0.4 else int(rng.integers(2, 5))
+    placed, attempts = 0, 0
+    while placed < n_bodies and attempts < 60:
+        attempts += 1
+        cavity = rng.random() < 0.25
+        if cavity:
+            rx, ry = rng.uniform(1.0, 3.5, 2) * hs
+            rz = rng.uniform(0.8, 2.5) * nz / 32.0
+            gap = rng.uniform(0.5, 6.0) * nz / 32.0          # top of cavity below terrain [cells]
+            rho_val = -rng.uniform(2.0, 2.67) if rng.random() < 0.7 else -rng.uniform(1.0, 1.67)
+        else:
+            rx, ry = rng.uniform(1.5, 9.0, 2) * hs
+            rz = rng.uniform(1.0, 6.0) * nz / 32.0
+            gap = rng.uniform(0.5, 0.55 * nz)
+            rho_val = rng.uniform(0.1, 0.8) * (1.0 if rng.random() < 0.5 else -1.0)
+        rmax = max(rx, ry)
+        margin = 3 + rmax
+        if 2 * margin >= min(nx, ny):
+            continue
+        cx = rng.uniform(margin, nx - margin)
+        cy = rng.uniform(margin, ny - margin)
+        i0, i1 = int(max(0, cx - rmax - 1)), int(min(nx, cx + rmax + 2))
+        j0, j1 = int(max(0, cy - rmax - 1)), int(min(ny, cy + rmax + 2))
+        top_surface = float(t_cells[i0:i1, j0:j1].max())     # body must clear the highest relief above it
+        cz = top_surface + gap + rz
+        if cz + rz > nz - 0.5:
+            continue
+        k0, k1 = int(max(0, cz - rz - 1)), int(min(nz, cz + rz + 2))
+        zz, xx, yy = np.meshgrid(np.arange(k0, k1) + 0.5, np.arange(i0, i1) + 0.5,
+                                 np.arange(j0, j1) + 0.5, indexing="ij")
+        th = rng.uniform(0, math.pi)
+        u = (xx - cx) * math.cos(th) + (yy - cy) * math.sin(th)
+        v = -(xx - cx) * math.sin(th) + (yy - cy) * math.cos(th)
+        w = zz - cz
+        if rng.random() < 0.6:
+            sub = (u / rx) ** 2 + (v / ry) ** 2 + (w / rz) ** 2 <= 1.0
+        else:
+            sub = (np.abs(u) <= rx) & (np.abs(v) <= ry) & (np.abs(w) <= rz)
+        if not sub.any():
+            sub[sub.shape[0] // 2, sub.shape[1] // 2, sub.shape[2] // 2] = True
+        mask = np.zeros_like(blocked)
+        mask[k0:k1, i0:i1, j0:j1] = sub
+        if (mask & blocked).any():
+            continue
+        rho[mask] = rho_val
+        blocked |= binary_dilation(mask, iterations=2)
+        placed += 1
+    # safety: no density in cells whose top is above the terrain
+    above = (np.arange(nz)[:, None, None] * dz) < t[None]
+    rho[above] = 0.0
+    return rho
 
-    __getitem__ returns ``(obs, density)`` with shapes ``(1, nx, ny)`` and ``(1, nz, nx, ny)``.
-    Set ``return_clean=True`` to also get the noise-free field (for diagnostics).
+
+def sample_geometry(rng, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL):
+    t = random_terrain(rng, nx, ny, nz * dz)
+    rho = random_bodies(rng, t, nz, dz, dx)
+    clearance = np.float32(rng.uniform(*CLEARANCE))
+    noise_frac = np.float32(rng.uniform(*NOISE_FRAC))
+    return rho, t, clearance, noise_frac
+
+
+class BodyTerrainDataset(Dataset):
+    """Yields geometry only: ``(rho (1,nz,nx,ny), t (nx,ny), clearance, noise_frac)``.
+
+    ``seed=None`` -> fresh random sample on every access (infinite training data);
+    ``seed=int``  -> sample ``idx`` is deterministic (validation).
     """
 
-    def __init__(self, n_samples=1000, nx=64, ny=64, nz=32, dx=50.0, dy=50.0, dz=50.0,
-                 noise_frac=(0.01, 0.05), z_obs=-10.0, seed=None, return_clean=False, operator=None):
-        self.n_samples = n_samples
-        self.nx, self.ny, self.nz = nx, ny, nz
-        self.generator = ProceduralGeologyGenerator(nx, ny, nz, dx, dy, dz)
-        self.noise_frac = noise_frac if isinstance(noise_frac, (tuple, list)) else (noise_frac, noise_frac)
-        self.seed = seed
-        self.return_clean = return_clean
-        self.operator = operator or GravityFFTOperator(nx, ny, nz, dx, dy, dz, z_obs=z_obs)
+    def __init__(self, n_samples=2000, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL, seed=None):
+        self.n, self.seed = n_samples, seed
+        self.g = (nx, ny, nz, dx, dy, dz)
 
     def __len__(self):
-        return self.n_samples
-
-    def _rng(self, idx):
-        if self.seed is None:
-            return np.random.default_rng()
-        return np.random.default_rng([self.seed, idx])
+        return self.n
 
     def __getitem__(self, idx):
-        rng = self._rng(idx)
-        density = self.generator.generate_random_model(rng)             # (nz, nx, ny)
-        clean = self.operator.forward_numpy(density)                    # (nx, ny) mGal
-        peak = float(np.abs(clean).max())
-        frac = rng.uniform(*self.noise_frac)
-        noise = rng.normal(0.0, frac * peak, clean.shape).astype(np.float32)
-        obs = torch.from_numpy(clean + noise).unsqueeze(0)
-        dens = torch.from_numpy(density).unsqueeze(0)
-        if self.return_clean:
-            return obs, dens, torch.from_numpy(clean).unsqueeze(0)
-        return obs, dens
+        rng = np.random.default_rng() if self.seed is None else np.random.default_rng([self.seed, idx])
+        rho, t, c, nf = sample_geometry(rng, *self.g)
+        noise_seed = int(rng.integers(0, 2**31 - 1))
+        return (torch.from_numpy(rho)[None], torch.from_numpy(t), torch.tensor(c), torch.tensor(nf),
+                torch.tensor(noise_seed))
+
+
+@torch.no_grad()
+def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, noise_seed=None):
+    """Batched forward on ``op``'s device. Returns ``(obs_noisy, obs_clean, z_obs)``.
+
+    obs: (B, 1, nx, ny) mGal; z_obs: (B, nx, ny) station depth = t - clearance.
+    """
+    z_obs = t - clearance.view(-1, 1, 1)
+    clean = op(rho, z_obs)
+    peak = clean.abs().amax(dim=(1, 2, 3), keepdim=True)
+    if noise_seed is None:
+        noise = torch.randn_like(clean)
+    else:   # deterministic noise (validation)
+        noise = torch.stack([torch.randn(clean.shape[1:], generator=torch.Generator().manual_seed(int(s)))
+                             for s in noise_seed.cpu()]).to(clean.device)
+    noisy = clean + noise * noise_frac.view(-1, 1, 1, 1) * peak
+    return noisy, clean, z_obs
+
+
+def terrain_channel(t, depth_total):
+    """Network terrain input: terrain depth / domain depth, (B, 1, nx, ny)."""
+    return (t / depth_total).unsqueeze(1)
 
 
 if __name__ == "__main__":
     import argparse
     import os
 
-    parser = argparse.ArgumentParser(description="Procedural 3D Geology & Potential Field Data Generator")
-    parser.add_argument("--samples", type=int, default=100)
-    parser.add_argument("--nx", type=int, default=64)
-    parser.add_argument("--ny", type=int, default=64)
-    parser.add_argument("--nz", type=int, default=32)
-    parser.add_argument("--output", type=str, default="", help="Optional directory for a .npz preview")
-    args = parser.parse_args()
-
-    print(f"Generating {args.samples} synthetic models ({args.nx}x{args.ny}x{args.nz})...")
-    ds = SyntheticPotentialFieldDataset(n_samples=args.samples, nx=args.nx, ny=args.ny, nz=args.nz, seed=0)
-    obs, dens = ds[0]
-    print(f"Observation tensor shape: {tuple(obs.shape)} | range: [{obs.min():.4f}, {obs.max():.4f}] mGal")
-    print(f"Density tensor shape:     {tuple(dens.shape)} | range: [{dens.min():.4f}, {dens.max():.4f}] g/cm^3")
-    if args.output:
-        os.makedirs(args.output, exist_ok=True)
-        path = os.path.join(args.output, "sample_preview.npz")
-        np.savez_compressed(path, obs=obs.numpy(), density=dens.numpy())
-        print(f"Saved sample preview to: {path}")
+    ap = argparse.ArgumentParser(description="Preview synthetic isolated-body samples")
+    ap.add_argument("--samples", type=int, default=4)
+    ap.add_argument("--output", type=str, default="", help="Optional directory for a .npz preview")
+    args = ap.parse_args()
+    ds = BodyTerrainDataset(args.samples, seed=0)
+    op = TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL)
+    for i in range(args.samples):
+        rho, t, c, nf, ns = ds[i]
+        obs, clean, _ = simulate_batch(op, rho[None], t[None], c[None], nf[None], ns[None])
+        nb = len(np.unique(rho[rho != 0].numpy()))
+        print(f"sample {i}: bodies~{nb} rho[{rho.min():.2f},{rho.max():.2f}] relief {t.max():.0f} m "
+              f"field[{clean.min():.3f},{clean.max():.3f}] mGal")
+        if args.output:
+            os.makedirs(args.output, exist_ok=True)
+            np.savez_compressed(os.path.join(args.output, f"sample_{i}.npz"), rho=rho.numpy(), t=t.numpy(),
+                                obs=obs.numpy(), clean=clean.numpy())

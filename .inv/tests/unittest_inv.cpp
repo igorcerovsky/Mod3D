@@ -649,13 +649,26 @@ TEST(NeuralPriorTest, Swin3DOnnxInferenceEvaluatesObservationField) {
 
     inv::VoxelGrid<double> prior;
     std::string err;
-    bool ok = inv::NeuralPriorInference::predict(obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0, prior, err, model_path);
+    std::vector<double> surf_depth(nx * ny, 60.0); // 60 m terrain depth: layer iz=0 (centre 25 m) is above terrain
+    bool ok = inv::NeuralPriorInference::predict(obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0, prior, err, model_path, surf_depth);
     ASSERT_TRUE(ok) << "Error: " << err;
     EXPECT_EQ(prior.nx(), nx);
     EXPECT_EQ(prior.ny(), ny);
     EXPECT_EQ(prior.nz(), nz);
     EXPECT_EQ(prior.total_cells(), nx * ny * nz);
     EXPECT_GT(prior.max_value(), 0.0);
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) {
+            EXPECT_DOUBLE_EQ(prior(ix, iy, 0), 0.0); // strictly masked above relief
+        }
+    }
+
+    // Negative anomaly (cavity) produces negative density contrast below terrain
+    std::vector<double> cav_obs(nx * ny, 0.0);
+    for (std::size_t i = 0; i < nx * ny; ++i) cav_obs[i] = -obs[i];
+    inv::VoxelGrid<double> cav_prior;
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(cav_obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0, cav_prior, err, model_path, surf_depth));
+    EXPECT_LT(cav_prior.min_value(), 0.0);
 }
 
 TEST(SensitivityKernelTest, PfldInterfaceMeshWithDeepReliefTopographyMatchesSubsurface) {

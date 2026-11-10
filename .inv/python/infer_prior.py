@@ -8,9 +8,9 @@ Pipeline: scattered stations -> bin-average onto the TRAINING grid columns (neig
 columns) -> network -> trilinear resample to the setup grid -> ``setup["prior"]["values"]`` in
 VoxelGrid order ``(ix*ny + iy)*nz + iz``.
 
-Caveats (printed as warnings): the network was trained on a flat observation plane with the cell size
-stored in the checkpoint; other spacings degrade the prior (the solver still enforces the data fit,
-and rescales the prior amplitude by least squares). Planar modelling only.
+Terrain: ``setup["topography"]`` (DEM node depths below the grid top) is fed as the 2nd channel.
+The amplitude is rescaled for domains whose cell size differs from training (``amplitude_scale``);
+very different depth/width aspect ratios still degrade the prior. Planar modelling only.
 """
 
 import argparse
@@ -57,25 +57,40 @@ def scattered_to_columns(x, y, v, nx, ny, x0, y0, dx, dy):
     return out
 
 
+def column_surface_depth(topo_nodes, nx, ny):
+    """Mean of the 4 DEM corner depths per column (same as inv::column_surface_z). (nx, ny) metres."""
+    if topo_nodes is None or len(topo_nodes) != (nx + 1) * (ny + 1):
+        return np.zeros((nx, ny))
+    t = np.asarray(topo_nodes, dtype=np.float64).reshape(ny + 1, nx + 1).T   # [ix, iy]
+    return 0.25 * (t[:-1, :-1] + t[1:, :-1] + t[:-1, 1:] + t[1:, 1:])
+
+
+def amplitude_scale(nx, ny, nz, dx, dy, dz, g):
+    """Gravity of a geometrically similar model scales with length: divide the network output by
+    L = (effective cell volume)^(1/3) / training cell (mirrors neural_prior.hpp)."""
+    eff = (nx * dx / g["nx"]) * (ny * dy / g["ny"]) * (nz * dz / g["nz"])
+    return 1.0 / (eff ** (1.0 / 3.0) / g["cell"])
+
+
 def predict_prior(setup, checkpoint, device="cpu"):
     ck = torch.load(checkpoint, map_location=device)
-    g = ck.get("grid", {"nx": 64, "ny": 64, "nz": 32, "dx": 50.0, "dy": 50.0, "dz": 50.0})
+    g = ck.get("grid", {"nx": 64, "ny": 64, "nz": 32, "cell": 50.0})
     vd = setup["voxel_domain"]
     nx, ny, nz = vd["nx"], vd["ny"], vd["nz"]
-    for k in ("dx", "dy", "dz"):
-        if abs(vd[k] - g[k]) > 1e-6:
-            print(f"WARNING: setup {k}={vd[k]} m differs from training {g[k]} m; prior quality will degrade")
-
     obs = setup["observations"]
-    # observations on the TRAINING grid footprint (same physical extent as the setup domain)
-    cols = scattered_to_columns(obs["x"], obs["y"], obs["gz"], g["nx"], g["ny"], vd["x0"], vd["y0"],
-                                vd["nx"] * vd["dx"] / g["nx"], vd["ny"] * vd["dy"] / g["ny"])
-    model = PotentialFieldTransformer3D(in_channels=1, out_depth=g["nz"], embed_dim=96, num_heads=4)
+    fdx, fdy = vd["nx"] * vd["dx"] / g["nx"], vd["ny"] * vd["dy"] / g["ny"]
+    cols = scattered_to_columns(obs["x"], obs["y"], obs["gz"], g["nx"], g["ny"], vd["x0"], vd["y0"], fdx, fdy)
+    t = column_surface_depth(setup.get("topography"), nx, ny)
+    t = F.interpolate(torch.from_numpy(t)[None, None].float(), size=(g["nx"], g["ny"]), mode="bilinear",
+                      align_corners=True)[0, 0].numpy()
+    t_norm = np.clip(t / (nz * vd["dz"]), 0.0, 0.25)
+
+    model = PotentialFieldTransformer3D(g["nx"], g["ny"], g["nz"], **ck.get("arch", {}))
     model.load_state_dict(ck["model_state_dict"])
     model.to(device).eval()
     with torch.no_grad():
-        x = torch.from_numpy(cols.astype(np.float32))[None, None].to(device)    # (1,1,nx,ny)
-        pred = model(x)                                                           # (1,1,nz,nx,ny)
+        x = torch.from_numpy(np.stack([cols, t_norm]).astype(np.float32))[None].to(device)   # (1,2,nx,ny)
+        pred = model(x) * amplitude_scale(nx, ny, nz, vd["dx"], vd["dy"], vd["dz"], g)
         pred = F.interpolate(pred, size=(nz, nx, ny), mode="trilinear", align_corners=False)
     vol = pred[0, 0].cpu().numpy()                                                # (nz, nx, ny)
     return np.transpose(vol, (1, 2, 0)).ravel(order="C")                          # (ix*ny+iy)*nz+iz

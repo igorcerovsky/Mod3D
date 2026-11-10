@@ -53,47 +53,50 @@ class ZhdanovFocusingLoss(nn.Module):
 
 
 class CompoundInversionLoss(nn.Module):
-    """Supervised + physics data misfit + Zhdanov focusing, with a curriculum on e.
+    """Scale-normalised supervised + physics loss for isolated-body inversion.
 
-    1. Weighted L1 to the ground truth (anomalous cells weighted ``1 + anomaly_boost``): L1, not
-       smooth-L1/L2, so the network is not pulled towards blurred means.
-    2. Relative data misfit ``||G m_pred - d_obs||^2 / ||d_obs||^2`` through the physical forward
-       operator ``forward_op`` (per sample, averaged over the batch). Disabled if forward_op is None.
-    3. S_MS and S_MGS with e annealed geometrically e_start -> e_end over the epochs [g/cm^3].
+    Every term is normalised PER SAMPLE by ``a = max|m_true|`` and by the active body support, so
+    a weak +0.1 g/cm^3 body and a -2.67 g/cm^3 cavity of any size contribute equally without
+    collapsing to the trivial zero model:
+
+    1. Foreground L1+L2 error averaged over the true body cells.
+    2. Symmetric relative L1 (Bray-Curtis) ``||p - t||_1 / (||p||_1 + ||t||_1)``: penalises
+       false-positive halos outside the body at the exact scale of the body volume.
+    3. Signed soft Dice ``1 - 2 <p, t> / (||p||_2^2 + ||t||_2^2)``: aligns support, sign, and amplitude.
+    4. Relative data misfit ``||G m_pred - d_clean||^2 / ||d_clean||^2`` through the draped-station
+       operator ``forward_op(m, z_obs)`` (disabled if None).
     """
 
-    def __init__(self, lambda_sup=1.0, lambda_data=1.0, lambda_ms=0.02, lambda_mgs=0.01,
-                 e_start=0.1, e_end=0.005, anomaly_boost=4.0, spacing=(1.0, 1.0, 1.0),
-                 forward_op=None):
+    def __init__(self, lambda_data=0.25, lambda_ms=0.05, body_boost=9.0, e_rel=0.05, forward_op=None):
         super().__init__()
-        self.lambda_sup, self.lambda_data = lambda_sup, lambda_data
-        self.lambda_ms, self.lambda_mgs = lambda_ms, lambda_mgs
-        self.e_start, self.e_end = e_start, e_end
-        self.anomaly_boost = anomaly_boost
+        self.lambda_data, self.lambda_ms = lambda_data, lambda_ms
+        self.body_boost, self.e_rel = body_boost, e_rel
         self.forward_op = forward_op
-        self.focusing = ZhdanovFocusingLoss(spacing)
 
-    def e_at(self, epoch, total_epochs):
-        progress = min(1.0, max(0.0, (epoch - 1) / max(1, total_epochs - 1)))
-        return self.e_start * math.pow(self.e_end / self.e_start, progress)
+    def forward(self, m_pred, m_true, d_clean=None, z_obs=None):
+        a = m_true.abs().amax(dim=(1, 2, 3, 4), keepdim=True).clamp_min(0.05)
+        pn, tn = m_pred / a, m_true / a
+        fg_mask = (m_true != 0).float()
+        fg_cnt = fg_mask.flatten(1).sum(1).clamp_min(1.0)
+        err = (pn - tn).abs() + 0.5 * (pn - tn) ** 2
+        l_fg = ((err * fg_mask).flatten(1).sum(1) / fg_cnt).mean()
 
-    def forward(self, m_pred, m_true, d_obs=None, epoch=1, total_epochs=50):
-        weights = 1.0 + self.anomaly_boost * (m_true.abs() > 0.05).float()
-        l_sup = torch.mean(weights * (m_pred - m_true).abs())
+        diff_l1 = (pn - tn).abs().flatten(1).sum(1)
+        sum_l1 = pn.abs().flatten(1).sum(1) + tn.abs().flatten(1).sum(1) + 1e-6
+        l_rel_l1 = (diff_l1 / sum_l1).mean()
+
+        inter = (pn * tn).flatten(1).sum(1)
+        denom = (pn * pn).flatten(1).sum(1) + (tn * tn).flatten(1).sum(1) + 1e-6
+        l_dice = (1.0 - (2.0 * inter + 1e-6) / denom).clamp_min(0.0).mean()
+        l_sup = (l_fg + l_rel_l1 + l_dice) / 3.0
 
         l_data = torch.zeros((), device=m_pred.device)
-        if self.forward_op is not None and d_obs is not None:
-            d_pred = self.forward_op(m_pred)
-            num = ((d_pred - d_obs) ** 2).flatten(1).sum(dim=1)
-            den = (d_obs ** 2).flatten(1).sum(dim=1) + 1e-12
-            l_data = torch.mean(num / den)
+        if self.forward_op is not None and d_clean is not None:
+            d_pred = self.forward_op(m_pred, z_obs)
+            num = ((d_pred - d_clean) ** 2).flatten(1).sum(1)
+            den = (d_clean ** 2).flatten(1).sum(1) + 1e-12
+            l_data = (num / den).mean()
 
-        e_curr = self.e_at(epoch, total_epochs)
-        ms_loss, mgs_loss = self.focusing(m_pred, e_curr)
-
-        total = (self.lambda_sup * l_sup + self.lambda_data * l_data
-                 + self.lambda_ms * ms_loss + self.lambda_mgs * mgs_loss)
-        return total, {
-            "loss_total": total.item(), "loss_sup": l_sup.item(), "loss_data": l_data.item(),
-            "loss_ms": ms_loss.item(), "loss_mgs": mgs_loss.item(), "annealed_e": e_curr,
-        }
+        total = l_sup + self.lambda_data * l_data
+        return total, {"loss_total": total.item(), "loss_sup": l_sup.item(),
+                       "loss_data": l_data.item(), "loss_ms": l_rel_l1.item()}
