@@ -15,7 +15,7 @@ import numpy as np
 import torch
 
 from dataset import CELL, NX, NY, NZ
-from model_swin3d import PotentialFieldTransformer3D
+from model_swin3d import create_model
 
 
 def main():
@@ -28,7 +28,7 @@ def main():
 
     ck = torch.load(args.checkpoint, map_location="cpu")
     g = ck.get("grid", {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL})
-    model = PotentialFieldTransformer3D(g["nx"], g["ny"], g["nz"], **ck.get("arch", {}))
+    model = create_model(g["nx"], g["ny"], g["nz"], **ck.get("arch", {}))
     model.load_state_dict(ck["model_state_dict"])
     model.eval()
 

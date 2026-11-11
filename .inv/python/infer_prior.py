@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 from evaluate import project_amplitude
 from forward import TerrainGravityOperator
-from model_swin3d import PotentialFieldTransformer3D
+from model_swin3d import create_model
 
 
 def scattered_to_columns(x, y, v, nx, ny, x0, y0, dx, dy):
@@ -68,36 +68,41 @@ def column_surface_depth(topo_nodes, nx, ny):
 
 
 def amplitude_scale(nx, ny, nz, dx, dy, dz, g):
-    """Gravity of a geometrically similar model scales with length: divide the network output by
-    L = (effective cell volume)^(1/3) / training cell (mirrors neural_prior.hpp)."""
+    """Gravity of a geometrically similar model scales with length: rescale input observations by
+    kTrainCell / L_eff = 1 / ((effective cell volume)^(1/3) / training cell) so physical contrasts
+    (-2.67 air, -1.67 water, [-1.55, +1.85] lithology bands) match 50 m training units (mirrors neural_prior.hpp)."""
     eff = (nx * dx / g["nx"]) * (ny * dy / g["ny"]) * (nz * dz / g["nz"])
     return 1.0 / (eff ** (1.0 / 3.0) / g["cell"])
 
 
-def predict_prior(setup, checkpoint, device="cpu", project=True):
+def predict_prior(setup, checkpoint, device="cpu", project=None):
     ck = torch.load(checkpoint, map_location=device)
     g = ck.get("grid", {"nx": 64, "ny": 64, "nz": 32, "cell": 50.0})
+    arch = ck.get("arch", {})
+    if project is None:
+        project = arch.get("variant", "v1") != "v2"
     vd = setup["voxel_domain"]
     nx, ny, nz = vd["nx"], vd["ny"], vd["nz"]
     obs = setup["observations"]
     fdx, fdy = vd["nx"] * vd["dx"] / g["nx"], vd["ny"] * vd["dy"] / g["ny"]
     cols = scattered_to_columns(obs["x"], obs["y"], obs["gz"], g["nx"], g["ny"], vd["x0"], vd["y0"], fdx, fdy)
+    scale_in = amplitude_scale(nx, ny, nz, vd["dx"], vd["dy"], vd["dz"], g)
+    cols_scaled = cols * scale_in
     t = column_surface_depth(setup.get("topography"), nx, ny)
     t = F.interpolate(torch.from_numpy(t)[None, None].float(), size=(g["nx"], g["ny"]), mode="bilinear",
                       align_corners=True)[0, 0].numpy()
     t_norm = np.clip(t / (nz * vd["dz"]), 0.0, 0.25)
 
-    model = PotentialFieldTransformer3D(g["nx"], g["ny"], g["nz"], **ck.get("arch", {}))
+    model = create_model(g["nx"], g["ny"], g["nz"], **arch)
     model.load_state_dict(ck["model_state_dict"])
     model.to(device).eval()
     with torch.no_grad():
-        x = torch.from_numpy(np.stack([cols, t_norm]).astype(np.float32))[None].to(device)   # (1,2,nx,ny)
+        x = torch.from_numpy(np.stack([cols_scaled, t_norm]).astype(np.float32))[None].to(device)   # (1,2,nx,ny)
         pred = model(x)
         if project:
             op = TerrainGravityOperator(g["nx"], g["ny"], g["nz"], g["cell"], g["cell"], g["cell"]).to(device)
             z_obs = torch.from_numpy(t_norm * (g["nz"] * g["cell"]) - 0.35).float()[None].to(device)
             pred = project_amplitude(pred, x[:, :1], z_obs, op)
-        pred = pred * amplitude_scale(nx, ny, nz, vd["dx"], vd["dy"], vd["dz"], g)
         pred = F.interpolate(pred, size=(nz, nx, ny), mode="trilinear", align_corners=False)
     vol = pred[0, 0].cpu().numpy()                                                # (nz, nx, ny)
     return np.transpose(vol, (1, 2, 0)).ravel(order="C")                          # (ix*ny+iy)*nz+iz

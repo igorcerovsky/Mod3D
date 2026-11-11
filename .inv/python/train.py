@@ -24,9 +24,35 @@ from dataset import CELL, NX, NY, NZ, BodyTerrainDataset, augment_d4, simulate_b
 from evaluate import compute_metrics, make_fixed_set
 from forward import TerrainGravityOperator
 from losses import CompoundInversionLoss
-from model_swin3d import PotentialFieldTransformer3D
+from model_swin3d import PotentialFieldTransformer3D, create_model
 
-ARCH = {"embed_dim": 96, "num_heads": 4, "depth": 4}
+ARCH = {"variant": "v2", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 24, "ch_vox": 16,
+        "n_sub": 3, "num_classes": 7}
+
+
+class ModelEMA:
+    """Exponential moving average weights with early-step decay warmup."""
+
+    def __init__(self, model: torch.nn.Module, decay: float, create_fn, initial_updates: int = 0):
+        self.decay = float(decay)
+        self.updates = int(initial_updates)
+        self.ema = create_fn().eval() if self.decay > 0.0 else None
+        if self.ema is not None:
+            self.ema.load_state_dict(model.state_dict())
+            for p in self.ema.parameters():
+                p.requires_grad_(False)
+
+    @torch.no_grad()
+    def update(self, model: torch.nn.Module) -> None:
+        if self.ema is None:
+            return
+        self.updates += 1
+        d = min(self.decay, (1.0 + self.updates) / (10.0 + self.updates))
+        for ev, mv in zip(self.ema.state_dict().values(), model.state_dict().values()):
+            if ev.is_floating_point():
+                ev.mul_(d).add_(mv.detach(), alpha=1.0 - d)
+            else:
+                ev.copy_(mv)
 
 
 def parse_args():
@@ -39,7 +65,9 @@ def parse_args():
     p.add_argument("--num-workers", type=int, default=0)
     p.add_argument("--lambda-data", type=float, default=0.25)
     p.add_argument("--lambda-ms", type=float, default=0.05)
+    p.add_argument("--lambda-cls", type=float, default=0.25, help="lithology cross-entropy weight")
     p.add_argument("--depth-boost", type=float, default=0.5, help="depth sensitivity ramp in loss [0.0 = uniform]")
+    p.add_argument("--ema-decay", type=float, default=0.995, help="EMA decay for eval/best weights (0 disables)")
     p.add_argument("--save-dir", type=str, default="./checkpoints")
     p.add_argument("--resume", type=str, default="", help="continue from a checkpoint")
     p.add_argument("--gui", action="store_true", help="open a live native GUI window with training graphs")
@@ -1585,19 +1613,31 @@ def main():
                         persistent_workers=args.num_workers > 0, drop_last=True)
     vx, vtrue, vclean, vz = make_fixed_set(args.n_val, 2024, op, dev, grid)
 
-    model = PotentialFieldTransformer3D(NX, NY, NZ, **ARCH).to(dev)
-    print(f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
-    crit = CompoundInversionLoss(lambda_data=args.lambda_data, lambda_ms=args.lambda_ms,
-                                depth_boost=args.depth_boost, forward_op=op)
-    start_epoch, best = 1, float("inf")
+    arch = ARCH
+    start_epoch, best, ck_resumed = 1, float("inf"), None
     if args.resume:
-        ck = torch.load(args.resume, map_location="cpu")
-        model.load_state_dict(ck["model_state_dict"])
-        if "epoch" in ck:
-            start_epoch = ck["epoch"] + 1
-        if "val_loss" in ck:
-            best = ck["val_loss"]
-        print(f"Resumed weights from {args.resume} (checkpoint epoch {ck.get('epoch')}, starting epoch {start_epoch})")
+        ck_resumed = torch.load(args.resume, map_location="cpu")
+        arch = ck_resumed.get("arch", {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4})
+        if "epoch" in ck_resumed:
+            start_epoch = ck_resumed["epoch"] + 1
+        if "val_loss" in ck_resumed:
+            best = ck_resumed["val_loss"]
+        print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
+
+    model = create_model(NX, NY, NZ, **arch).to(dev)
+    if ck_resumed is not None:
+        model.load_state_dict(ck_resumed.get("raw_model_state_dict", ck_resumed["model_state_dict"]))
+    init_updates = (start_epoch - 1) * args.steps if args.resume else 0
+    ema = ModelEMA(model, args.ema_decay, lambda: create_model(NX, NY, NZ, **arch).to(dev), initial_updates=init_updates)
+    if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
+        ema.ema.load_state_dict(ck_resumed["ema_state_dict"])
+    eval_model = ema.ema if ema.ema is not None else model
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if arch.get("variant", "v1") == "v2"
+                        else (lambda m, inp: (m(inp), None)))
+
+    print(f"Architecture: {arch.get('variant', 'v1')} | Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
+    crit = CompoundInversionLoss(lambda_data=args.lambda_data, lambda_ms=args.lambda_ms,
+                                 lambda_cls=args.lambda_cls, depth_boost=args.depth_boost, forward_op=op)
 
     end_epoch = start_epoch + args.epochs - 1
     total_steps = max(1, (end_epoch - start_epoch + 1) * args.steps)
@@ -1606,14 +1646,25 @@ def main():
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=total_steps, eta_min=args.lr * 0.02)
     else:
         pct_start = min(0.3, max(0.05, 2.0 / total_steps)) if total_steps > 2 else 0.5
-        sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=total_steps, pct_start=pct_start)
+        sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=total_steps,
+                                                    pct_start=pct_start, div_factor=10.0, final_div_factor=50.0)
 
     def validate():
-        model.eval()
+        eval_model.eval()
+        preds, aux_chunks = [], []
         with torch.no_grad():
-            pred = torch.cat([model(vx[i:i + 8]) for i in range(0, len(vx), 8)])
-            vloss, _ = crit(pred, vtrue, vclean, vz)
-        model.train()
+            for i in range(0, len(vx), 8):
+                p_i, a_i = forward_with_aux(eval_model, vx[i:i + 8])
+                preds.append(p_i)
+                if a_i is not None:
+                    aux_chunks.append(a_i)
+            pred = torch.cat(preds)
+            vaux = ({k: torch.cat([c[k] for c in aux_chunks])
+                     if isinstance(aux_chunks[0][k], torch.Tensor) else aux_chunks[0][k]
+                     for k in aux_chunks[0]} if aux_chunks else None)
+            vloss, _ = crit(pred, vtrue, vclean, vz, aux=vaux)
+        if eval_model is model:
+            model.train()
         return float(vloss), compute_metrics(pred, vtrue, vclean, vz, op, CELL), pred
 
     if args.resume:
@@ -1629,12 +1680,13 @@ def main():
             obs, clean, z_obs = simulate_batch(op, rho, t, c, nf)
             rho, t, obs, clean, z_obs = augment_d4(rho, t, obs, clean, z_obs)
             x = torch.cat([obs, terrain_channel(t, depth_total)], dim=1)
-            pred = model(x)
-            loss, m = crit(pred, rho, clean, z_obs)
+            pred, aux = forward_with_aux(model, x)
+            loss, m = crit(pred, rho, clean, z_obs, aux=aux)
             opt.zero_grad(set_to_none=True)
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
             opt.step()
+            ema.update(model)
             sched.step()
             for k, v in m.items():
                 acc[k] = acc.get(k, 0.0) + v
@@ -1645,8 +1697,11 @@ def main():
               f"L1 {vm['l1_rel']:.3f} bodyL1 {vm['body_l1_rel']:.3f} data {vm['data_rel_misfit']:.3f} "
               f"IoU {vm['iou']:.2f} dz {vm['centroid_dz']:.0f} m amp {vm['amp_ratio']:.2f} "
               f"halo {vm['halo_opp']:.3f}", flush=True)
-        ck = {"epoch": epoch, "model_state_dict": model.state_dict(), "val_loss": vloss, "metrics": vm,
-              "grid": {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL}, "arch": ARCH}
+        ck = {"epoch": epoch, "model_state_dict": eval_model.state_dict(),
+              "raw_model_state_dict": model.state_dict(), "val_loss": vloss, "metrics": vm,
+              "grid": {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL}, "arch": arch}
+        if ema.ema is not None:
+            ck["ema_state_dict"] = ema.ema.state_dict()
         torch.save(ck, os.path.join(args.save_dir, "last_swin3d.pt"))
         if vloss < best:
             best = vloss

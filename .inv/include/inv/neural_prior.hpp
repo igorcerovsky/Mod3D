@@ -140,8 +140,22 @@ public:
             };
 
             const double depth_total = static_cast<double>(target_nz) * dz;
+            // Amplitude calibration: gravity of a geometrically similar model scales linearly with length.
+            // Multiply input gz by scale = kTrainCell / L_eff so physical contrast units (-2.67 air,
+            // -1.67 water, [-1.55,+1.85] lithology bands) match 50 m training units (backward-compatible with v1).
+            double scale = 1.0;
+            if (kC >= 2) {
+                const double eff = (nx * dx / kNx) * (ny * dy / kNy) * (depth_total / kNz);
+                scale = kTrainCell / std::cbrt(eff);
+            }
             std::vector<float> in_buf(kC * kNx * kNy, 0.0f);
             resample2d(obs_cols, in_buf.data());
+            if (scale != 1.0) {
+                const float fscale = static_cast<float>(scale);
+                for (std::size_t i = 0; i < kNx * kNy; ++i) {
+                    in_buf[i] *= fscale;
+                }
+            }
             if (kC >= 2 && has_terrain) {
                 std::vector<double> t_norm(nx * ny);
                 for (std::size_t i = 0; i < nx * ny; ++i) {
@@ -163,14 +177,6 @@ public:
                 return false;
             }
             const float* out_data = out_tensors[0].GetTensorData<float>();   // [iz, ix, iy]
-
-            // Amplitude: the network predicts for kTrainCell cells; a geometrically similar model
-            // L times larger produces L times the gravity, so divide by L.
-            double scale = 1.0;
-            if (kC >= 2) {
-                const double eff = (nx * dx / kNx) * (ny * dy / kNy) * (depth_total / kNz);
-                scale = kTrainCell / std::cbrt(eff);
-            }
 
             out_grid = VoxelGrid<double>(nx, ny, target_nz, x0, y0, z0, dx, dy, dz, 0.0);
             auto sample = [&](std::size_t z, std::size_t x, std::size_t y) -> double {
@@ -201,7 +207,7 @@ public:
                         const double c11 = sample(z1i, x0i, y1i) * (1 - fx) + sample(z1i, x1i, y1i) * fx;
                         const double c0 = c00 * (1 - fy) + c10 * fy;
                         const double c1 = c01 * (1 - fy) + c11 * fy;
-                        out_grid(ix, iy, iz) = scale * (c0 * (1 - fz) + c1 * fz);
+                        out_grid(ix, iy, iz) = c0 * (1 - fz) + c1 * fz;
                     }
                 }
             }

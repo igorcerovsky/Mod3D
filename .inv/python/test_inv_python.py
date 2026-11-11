@@ -112,8 +112,9 @@ def test_dataset_determinism_and_noise_level():
 
 
 def test_model_mask_and_amplitude_equivariance():
+    from model_swin3d import PotentialFieldTransformer3DV1
     torch.manual_seed(0)
-    m = PotentialFieldTransformer3D(32, 32, 16, embed_dim=32, num_heads=2, depth=1).eval()
+    m = PotentialFieldTransformer3DV1(32, 32, 16, embed_dim=32, num_heads=2, depth=1).eval()
     x = torch.randn(2, 2, 32, 32)
     x[:, 1] = 0.2
     with torch.no_grad():
@@ -122,6 +123,120 @@ def test_model_mask_and_amplitude_equivariance():
     assert y.shape == (2, 1, 16, 32, 32)
     assert not y[:, :, :3].any() and y[:, :, 4:].abs().sum() > 0       # top 0.2 of depth masked
     assert torch.allclose(y3, 3.0 * y, rtol=1e-4, atol=1e-6)            # linear in data amplitude
+
+
+def test_dataset_lithology_density_bounds():
+    from dataset import (RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN, RHO_MAFIC_MAX, RHO_MAFIC_MIN,
+                         RHO_ORE_MAX, RHO_ORE_MIN, RHO_SEDIMENT_MAX, RHO_SEDIMENT_MIN, RHO_WATER,
+                         random_bodies)
+    rng = np.random.default_rng(7)
+    t = np.zeros((32, 32), dtype=np.float32)
+    seen = {"air": False, "water": False, "light": False, "sediment": False, "mafic": False, "ore": False}
+    for _ in range(80):
+        rho = random_bodies(rng, t, 16, 50.0, 50.0)
+        for v in np.unique(rho[rho != 0.0]):
+            is_air = np.isclose(v, RHO_AIR, atol=1e-5)
+            is_water = np.isclose(v, RHO_WATER, atol=1e-5)
+            is_light = (RHO_LIGHT_MIN - 1e-5) <= v <= (RHO_LIGHT_MAX + 1e-5)
+            is_sed = (RHO_SEDIMENT_MIN - 1e-5) <= v <= (RHO_SEDIMENT_MAX + 1e-5)
+            is_mafic = (RHO_MAFIC_MIN - 1e-5) <= v <= (RHO_MAFIC_MAX + 1e-5)
+            is_ore = (RHO_ORE_MIN - 1e-5) <= v <= (RHO_ORE_MAX + 1e-5)
+            assert is_air or is_water or is_light or is_sed or is_mafic or is_ore, f"Out-of-range lithology {v}"
+            seen["air"] |= bool(is_air)
+            seen["water"] |= bool(is_water)
+            seen["light"] |= bool(is_light)
+            seen["sediment"] |= bool(is_sed)
+            seen["mafic"] |= bool(is_mafic)
+            seen["ore"] |= bool(is_ore)
+    assert all(seen.values()), f"Missing lithology classes in sample: {seen}"
+
+
+def test_v2_model_bounds_masking_and_aux():
+    from dataset import RHO_AIR, RHO_LIGHT_MIN, RHO_LIGHT_MAX, RHO_MAFIC_MAX, RHO_MAFIC_MIN, RHO_ORE_MAX, RHO_WATER
+    from losses import CompoundInversionLoss
+    from model_swin3d import create_model
+    torch.manual_seed(0)
+    m = create_model(32, 32, 16, variant="v2", embed_dim=32, num_heads=2, depth=1,
+                     ch_mid=8, ch_vox=8, n_sub=2, num_classes=7).eval()
+    assert isinstance(m, PotentialFieldTransformer3D)
+    x = torch.cat([5.0 * torch.randn(2, 1, 32, 32), torch.full((2, 1, 32, 32), 0.2)], dim=1)
+    with torch.no_grad():
+        y, aux = m(x, return_aux=True)
+    assert y.shape == (2, 1, 16, 32, 32)
+    assert not y[:, :, :3].any() and y[:, :, 4:].abs().sum() > 0
+    assert float(y.min()) >= RHO_AIR - 1e-4 and float(y.max()) <= RHO_ORE_MAX + 1e-4
+    assert aux["logits"].shape == (2, 7, 16, 32, 32)
+    assert float(aux["rho_light"].min()) >= RHO_LIGHT_MIN - 1e-5
+    assert float(aux["rho_mafic"].max()) <= RHO_MAFIC_MAX + 1e-5
+    target = torch.zeros_like(y)
+    target[0, 0, 5:7, 6:10, 6:10] = RHO_AIR
+    target[0, 0, 8:10, 14:22, 14:20] = 0.5 * (RHO_LIGHT_MIN + RHO_LIGHT_MAX)
+    target[0, 0, 11:13, 6:10, 16:22] = -0.45
+    target[1, 0, 5:8, 8:12, 8:12] = RHO_WATER
+    target[1, 0, 8:11, 16:22, 16:22] = 0.5 * (RHO_MAFIC_MIN + RHO_MAFIC_MAX)
+    target[1, 0, 11:14, 6:10, 18:24] = 1.25
+    crit = CompoundInversionLoss(lambda_data=0.0, lambda_ms=0.05, lambda_cls=0.25)
+    loss, parts = crit(y, target, aux=aux)
+    assert torch.isfinite(loss) and parts["loss_cls"] > 0.0
+
+
+def test_v2_onnx_export_opset17_parity():
+    import os
+    import tempfile
+    from model_swin3d import create_model
+    torch.manual_seed(0)
+    m = create_model(16, 16, 8, variant="v2", embed_dim=32, num_heads=2, depth=1,
+                     ch_mid=8, ch_vox=8, n_sub=2).eval()
+    x = torch.randn(1, 2, 16, 16)
+    with torch.no_grad():
+        y_pt = m(x).numpy()
+    with tempfile.TemporaryDirectory() as td:
+        onnx_path = os.path.join(td, "v2_test.onnx")
+        torch.onnx.export(m, (x,), onnx_path, export_params=True, opset_version=17,
+                          do_constant_folding=True, input_names=["observation_field"],
+                          output_names=["density_volume"], dynamo=False)
+        try:
+            import onnxruntime as ort
+        except ImportError:
+            return
+        sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+        y_ort = sess.run(None, {"observation_field": x.numpy()})[0]
+        assert np.allclose(y_pt, y_ort, rtol=1e-4, atol=1e-4)
+
+
+def test_infer_prior_input_rescaling():
+    import os
+    import tempfile
+    from dataset import RHO_AIR, RHO_ORE_MAX
+    from infer_prior import amplitude_scale, predict_prior
+    from model_swin3d import create_model
+
+    g = {"nx": 16, "ny": 16, "nz": 8, "cell": 50.0}
+    assert np.isclose(amplitude_scale(16, 16, 8, 50.0, 50.0, 50.0, g), 1.0)
+    assert np.isclose(amplitude_scale(16, 16, 8, 100.0, 100.0, 100.0, g), 0.5)
+
+    torch.manual_seed(1)
+    arch = {"variant": "v2", "embed_dim": 32, "num_heads": 2, "depth": 1, "ch_mid": 8, "ch_vox": 8, "n_sub": 2}
+    m = create_model(16, 16, 8, **arch).eval()
+    xx, yy = np.meshgrid(np.arange(16), np.arange(16), indexing="ij")
+    gz_base = -2.0 * np.exp(-((xx - 8.0) ** 2 + (yy - 8.0) ** 2) / 10.0)
+
+    def _make_setup(cell):
+        px = (xx.ravel() + 0.5) * cell
+        py = (yy.ravel() + 0.5) * cell
+        scale = cell / 50.0
+        return {
+            "voxel_domain": {"nx": 16, "ny": 16, "nz": 8, "dx": cell, "dy": cell, "dz": cell, "x0": 0.0, "y0": 0.0},
+            "observations": {"x": px.tolist(), "y": py.tolist(), "gz": (scale * gz_base.ravel()).tolist()},
+        }
+
+    with tempfile.TemporaryDirectory() as td:
+        ckpt = os.path.join(td, "v2.pt")
+        torch.save({"model_state_dict": m.state_dict(), "grid": g, "arch": arch}, ckpt)
+        p50 = predict_prior(_make_setup(50.0), ckpt)
+        p100 = predict_prior(_make_setup(100.0), ckpt)
+    assert np.allclose(p50, p100, rtol=1e-5, atol=1e-5)
+    assert p50.min() >= RHO_AIR - 1e-4 and p50.max() <= RHO_ORE_MAX + 1e-4
 
 
 def _block(n, h):

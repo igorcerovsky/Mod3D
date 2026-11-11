@@ -128,7 +128,7 @@ def make_fixed_set(n, seed, op, device, grid):
 def main():
     from dataset import NX, NY, NZ, CELL
     from forward import TerrainGravityOperator
-    from model_swin3d import PotentialFieldTransformer3D
+    from model_swin3d import create_model
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
@@ -141,7 +141,7 @@ def main():
     ck = torch.load(args.checkpoint, map_location="cpu")
     g = ck.get("grid", {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL})
     grid = (g["nx"], g["ny"], g["nz"], g["cell"], g["cell"], g["cell"])
-    model = PotentialFieldTransformer3D(g["nx"], g["ny"], g["nz"], **ck.get("arch", {}))
+    model = create_model(g["nx"], g["ny"], g["nz"], **ck.get("arch", {}))
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
     op = TerrainGravityOperator(*grid).to(args.device)
