@@ -42,6 +42,7 @@ __pycache__/
 *.pyc
 .venv/
 checkpoints/
+checkpoints_*/
 *.pt
 *.onnx
 !.inv/python/models/*.onnx

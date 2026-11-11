@@ -314,6 +314,64 @@ def build_dashboard_html():
     width: 100%;
   }
   @media (max-width: 900px) { .voxel-grid-card { grid-template-columns: 1fr; } }
+  .overview-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    width: 100%;
+  }
+  @media (max-width: 1100px) { .overview-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .overview-grid { grid-template-columns: 1fr; } }
+  .sample-card-item {
+    background: #0f172a;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    transition: border-color 0.15s, transform 0.1s;
+  }
+  .sample-card-item:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .sample-card-item.selected { border-color: var(--accent); box-shadow: 0 0 8px rgba(56, 189, 248, 0.4); }
+  .sample-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+  }
+  .sample-card-header span.tag-pill {
+    color: var(--accent);
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+  }
+  .sample-subpair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+  }
+  .sample-subcol {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .sample-subcol-title {
+    font-size: 0.62rem;
+    color: var(--text-secondary);
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  canvas.sample-mini-canvas {
+    width: 100%;
+    aspect-ratio: 2 / 1;
+    image-rendering: pixelated;
+    border-radius: 3px;
+    background: #000;
+  }
   .canvas-panel {
     background: #0f172a;
     border: 1px solid var(--border);
@@ -442,10 +500,18 @@ def build_dashboard_html():
   </select>
 
   <div class="toggle-group">
+    <div style="display:flex;align-items:center;background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;">
+      <label style="cursor:pointer;padding:2px 6px;border-radius:4px;" id="lblViewSide" title="Side-by-side view with Truth, Prediction, and Difference">
+        <input type="radio" name="viewMode" value="single" id="radViewSingle" checked style="cursor:pointer;"> Single
+      </label>
+      <label style="cursor:pointer;padding:2px 6px;border-radius:4px;" id="lblViewAll" title="All 8 validation sample pairs at once">
+        <input type="radio" name="viewMode" value="all8" id="radViewAll8" style="cursor:pointer;"> All 8
+      </label>
+    </div>
     <label title="Automatically advance to new epochs during training">
       <input type="checkbox" id="chkFollowLive" checked> Follow Live
     </label>
-    <label title="Toggle residual difference map (Predicted - Ground Truth)">
+    <label title="Toggle residual difference map (Predicted - Ground Truth)" id="lblDiffToggle">
       <input type="checkbox" id="chkShowDiff"> Difference Map
     </label>
   </div>
@@ -489,6 +555,8 @@ def build_dashboard_html():
       <canvas id="cvsDiff" class="voxel-canvas" width="640" height="320" style="max-height:220px;"></canvas>
     </div>
   </div>
+
+  <div class="overview-grid" id="overviewGrid" style="display:none;"></div>
 
   <div class="colorbar-row">
     <span id="cbarMin">-0.50</span>
@@ -555,6 +623,7 @@ def build_dashboard_html():
   let trainingData = normalizeTrainingData(window.TRAINING_DATA || window.TRAINING_HISTORY || null);
   let currentIndex = -1;
   let currentSampleIndex = 0;
+  let viewMode = 'single'; // 'single' or 'all8'
   let isPlaying = false;
   let playTimer = null;
   let hoverCell = null;
@@ -564,6 +633,13 @@ def build_dashboard_html():
   const sampleSlider = document.getElementById('sampleSlider');
   const sampleDisplay = document.getElementById('sampleDisplay');
   const sampleSliderGroup = document.getElementById('sampleSliderGroup');
+  const radViewSingle = document.getElementById('radViewSingle');
+  const radViewAll8 = document.getElementById('radViewAll8');
+  const lblViewSide = document.getElementById('lblViewSide');
+  const lblViewAll = document.getElementById('lblViewAll');
+  const lblDiffToggle = document.getElementById('lblDiffToggle');
+  const voxelCardGrid = document.getElementById('voxelCardGrid');
+  const overviewGrid = document.getElementById('overviewGrid');
   const btnFirst = document.getElementById('btnFirst');
   const btnPrev = document.getElementById('btnPrev');
   const btnPlay = document.getElementById('btnPlay');
@@ -606,6 +682,32 @@ def build_dashboard_html():
         showSample(parseInt(e.target.value, 10));
       });
     }
+
+    function setViewMode(mode) {
+      viewMode = mode;
+      if (mode === 'all8') {
+        voxelCardGrid.style.display = 'none';
+        overviewGrid.style.display = 'grid';
+        if (sampleSliderGroup) sampleSliderGroup.style.display = 'none';
+        if (lblDiffToggle) lblDiffToggle.style.opacity = '0.35';
+        if (lblViewAll) { lblViewAll.style.background = '#0284c7'; lblViewAll.style.color = '#fff'; }
+        if (lblViewSide) { lblViewSide.style.background = 'transparent'; lblViewSide.style.color = 'inherit'; }
+      } else {
+        voxelCardGrid.style.display = 'grid';
+        overviewGrid.style.display = 'none';
+        const meta = getMeta();
+        if (sampleSliderGroup && meta && meta.samples && meta.samples.length > 1) {
+          sampleSliderGroup.style.display = 'flex';
+        }
+        if (lblDiffToggle) lblDiffToggle.style.opacity = '1';
+        if (lblViewSide) { lblViewSide.style.background = '#0284c7'; lblViewSide.style.color = '#fff'; }
+        if (lblViewAll) { lblViewAll.style.background = 'transparent'; lblViewAll.style.color = 'inherit'; }
+      }
+      renderCurrentVoxelData();
+    }
+
+    if (radViewSingle) radViewSingle.addEventListener('change', () => setViewMode('single'));
+    if (radViewAll8) radViewAll8.addEventListener('change', () => setViewMode('all8'));
 
     btnFirst.addEventListener('click', () => { stopPlayback(); showEpoch(0); });
     btnPrev.addEventListener('click', () => { stopPlayback(); if (currentIndex > 0) showEpoch(currentIndex - 1); });
@@ -859,6 +961,12 @@ def build_dashboard_html():
     const epochs = getEpochs();
     if (!meta || !epochs.length || currentIndex < 0 || !epochs[currentIndex]) return;
     const entry = epochs[currentIndex];
+
+    if (viewMode === 'all8') {
+      renderOverviewGrid(meta, entry);
+      return;
+    }
+
     const vmax = (sm && sm.vmax) || (entry.slice && entry.slice.vmax) || (meta && meta.vmax) || 0.6;
     const terrain = (sm && sm.terrain) || (entry.slice && entry.slice.terrain) || (meta && meta.terrain) || [];
     const truthSlice = (sm && sm.truth_slice) || (entry.slice && entry.slice.truth) || (meta && meta.truth_slice) || [];
@@ -895,6 +1003,76 @@ def build_dashboard_html():
       drawPlaceholder(cvsPred, msg);
       if (chkShowDiff.checked) {
         drawPlaceholder(cvsDiff, `No slice data for Epoch ${entry.epoch || (currentIndex + 1)}`);
+      }
+    }
+  }
+
+  function renderOverviewGrid(meta, entry) {
+    if (!overviewGrid) return;
+    const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : [meta];
+    const n = Math.min(8, samples.length);
+
+    // Build or reuse mini card elements
+    let existingCards = overviewGrid.querySelectorAll('.sample-card-item');
+    if (existingCards.length !== n) {
+      overviewGrid.innerHTML = '';
+      for (let i = 0; i < n; ++i) {
+        const card = document.createElement('div');
+        card.className = 'sample-card-item' + (i === currentSampleIndex ? ' selected' : '');
+        card.dataset.index = i;
+        card.innerHTML = `
+          <div class="sample-card-header">
+            <span>Sample #${i}</span>
+            <span class="tag-pill" id="cardY_${i}">Y=-- km</span>
+          </div>
+          <div class="sample-subpair">
+            <div class="sample-subcol">
+              <span class="sample-subcol-title">Truth</span>
+              <canvas class="sample-mini-canvas" id="miniTruth_${i}" width="320" height="160"></canvas>
+            </div>
+            <div class="sample-subcol">
+              <span class="sample-subcol-title">Predicted</span>
+              <canvas class="sample-mini-canvas" id="miniPred_${i}" width="320" height="160"></canvas>
+            </div>
+          </div>
+        `;
+        card.addEventListener('click', () => {
+          showSample(i);
+          overviewGrid.querySelectorAll('.sample-card-item').forEach((c, ci) => {
+            c.classList.toggle('selected', ci === i);
+          });
+        });
+        overviewGrid.appendChild(card);
+      }
+    }
+
+    // Paint each sample's truth and predicted cross-sections
+    for (let i = 0; i < n; ++i) {
+      const s = samples[i];
+      const yTag = document.getElementById(`cardY_${i}`);
+      if (yTag) yTag.textContent = `Y=${s.y_km || '--'} km`;
+
+      const cvsT = document.getElementById(`miniTruth_${i}`);
+      const cvsP = document.getElementById(`miniPred_${i}`);
+      const vmax = s.vmax || 0.6;
+      const terrain = s.terrain || [];
+      const tSlice = s.truth_slice || [];
+      let pSlice = [];
+      if (entry.pred_slices && Array.isArray(entry.pred_slices) && entry.pred_slices[i]) {
+        pSlice = entry.pred_slices[i];
+      } else if (i === 0) {
+        pSlice = entry.pred_slice || (entry.slice && entry.slice.pred) || [];
+      }
+
+      if (cvsT && tSlice.length) {
+        drawVoxelSection(cvsT, tSlice, terrain, vmax, null, false);
+      }
+      if (cvsP) {
+        if (pSlice.length) {
+          drawVoxelSection(cvsP, pSlice, terrain, vmax, null, false);
+        } else {
+          drawPlaceholder(cvsP, "No pred");
+        }
       }
     }
   }
