@@ -21,7 +21,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from dataset import CELL, NX, NY, NZ, BodyTerrainDataset, augment_d4, simulate_batch, terrain_channel
-from evaluate import compute_metrics, make_fixed_set
+from evaluate import compute_metrics, make_category_showcase, make_fixed_set
 from forward import TerrainGravityOperator
 from losses import CompoundInversionLoss
 from model_swin3d import PotentialFieldTransformer3D, create_model
@@ -62,6 +62,8 @@ def parse_args():
     p.add_argument("--batch-size", type=int, default=8)
     p.add_argument("--lr", type=float, default=5e-4)
     p.add_argument("--n-val", type=int, default=64)
+    p.add_argument("--hard-prob", type=float, default=0.50,
+                   help="fraction of training samples using harder/larger composite & contact scenes [0.0-1.0]")
     p.add_argument("--num-workers", type=int, default=0)
     p.add_argument("--lambda-data", type=float, default=0.25)
     p.add_argument("--lambda-ms", type=float, default=0.05)
@@ -348,8 +350,12 @@ def build_dashboard_html():
     gap: 8px;
     width: 100%;
   }
+  .overview-grid.grid-16 { gap: 6px; }
   @media (max-width: 1100px) { .overview-grid { grid-template-columns: repeat(2, 1fr); } }
   @media (max-width: 600px) { .overview-grid { grid-template-columns: 1fr; } }
+  .overview-grid.grid-16 .sample-card-item { padding: 5px; gap: 3px; }
+  .overview-grid.grid-16 .sample-card-header { font-size: 0.68rem; }
+  .overview-grid.grid-16 .sample-card-header span.tag-pill { font-size: 0.64rem; }
   .sample-card-item {
     background: #0f172a;
     border: 1px solid var(--border);
@@ -516,7 +522,7 @@ def build_dashboard_html():
 
   <div class="slider-group" id="sampleSliderGroup">
     <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Val Sample</span>
-    <input type="range" id="sampleSlider" min="0" max="7" value="0">
+    <input type="range" id="sampleSlider" min="0" max="15" value="0">
     <span class="epoch-label" id="sampleDisplay" style="color:var(--accent);">Sample #0</span>
   </div>
 
@@ -528,12 +534,15 @@ def build_dashboard_html():
   </select>
 
   <div class="toggle-group">
-    <div style="display:flex;align-items:center;background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;">
-      <label style="cursor:pointer;padding:2px 6px;border-radius:4px;" id="lblViewSide" title="Side-by-side view with Truth, Prediction, and Difference">
-        <input type="radio" name="viewMode" value="single" id="radViewSingle" checked style="cursor:pointer;"> Single
+    <div style="display:flex;align-items:center;background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Number of validation samples displayed">
+      <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView1" title="Single side-by-side view with Truth, Prediction, and Difference">
+        <input type="radio" name="viewMode" value="1" id="radView1" checked style="cursor:pointer;"> 1
       </label>
-      <label style="cursor:pointer;padding:2px 6px;border-radius:4px;" id="lblViewAll" title="All 8 validation sample pairs at once">
-        <input type="radio" name="viewMode" value="all8" id="radViewAll8" style="cursor:pointer;"> All 8
+      <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView8" title="8 validation sample pairs (use Val Sample slider to flip #0-#7 vs #8-#15)">
+        <input type="radio" name="viewMode" value="8" id="radView8" style="cursor:pointer;"> 8
+      </label>
+      <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView16" title="All 16 validation & category showcase pairs at once">
+        <input type="radio" name="viewMode" value="16" id="radView16" style="cursor:pointer;"> 16
       </label>
     </div>
     <label title="Automatically advance to new epochs during training">
@@ -596,7 +605,20 @@ def build_dashboard_html():
 
 <div class="charts-grid">
   <div class="chart-card">
-    <h4>Loss &amp; Data Misfit <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
+    <h4>
+      <span>Loss &amp; Data Misfit</span>
+      <span style="display:flex;align-items:center;gap:6px;">
+        <span style="display:inline-flex;align-items:center;background:#0f172a;border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
+          <label id="lblLossLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:#0284c7;color:#fff;" title="Logarithmic Y axis">
+            <input type="radio" name="lossScale" value="log" id="radLossLog" checked style="display:none;">Log
+          </label>
+          <label id="lblLossLin" style="cursor:pointer;padding:1px 5px;border-radius:3px;" title="Linear Y axis">
+            <input type="radio" name="lossScale" value="lin" id="radLossLin" style="display:none;">Lin
+          </label>
+        </span>
+        <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span>
+      </span>
+    </h4>
     <svg id="svgLoss" class="chart-svg"></svg>
   </div>
   <div class="chart-card">
@@ -651,7 +673,8 @@ def build_dashboard_html():
   let trainingData = normalizeTrainingData(window.TRAINING_DATA || window.TRAINING_HISTORY || null);
   let currentIndex = -1;
   let currentSampleIndex = 0;
-  let viewMode = 'single'; // 'single' or 'all8'
+  let viewMode = '1'; // '1', '8', or '16'
+  let lossLogScale = true;
   let isPlaying = false;
   let playTimer = null;
   let hoverCell = null;
@@ -661,10 +684,12 @@ def build_dashboard_html():
   const sampleSlider = document.getElementById('sampleSlider');
   const sampleDisplay = document.getElementById('sampleDisplay');
   const sampleSliderGroup = document.getElementById('sampleSliderGroup');
-  const radViewSingle = document.getElementById('radViewSingle');
-  const radViewAll8 = document.getElementById('radViewAll8');
-  const lblViewSide = document.getElementById('lblViewSide');
-  const lblViewAll = document.getElementById('lblViewAll');
+  const radView1 = document.getElementById('radView1');
+  const radView8 = document.getElementById('radView8');
+  const radView16 = document.getElementById('radView16');
+  const lblView1 = document.getElementById('lblView1');
+  const lblView8 = document.getElementById('lblView8');
+  const lblView16 = document.getElementById('lblView16');
   const lblDiffToggle = document.getElementById('lblDiffToggle');
   const voxelCardGrid = document.getElementById('voxelCardGrid');
   const overviewGrid = document.getElementById('overviewGrid');
@@ -712,30 +737,47 @@ def build_dashboard_html():
     }
 
     function setViewMode(mode) {
-      viewMode = mode;
-      if (mode === 'all8') {
-        voxelCardGrid.style.display = 'none';
-        overviewGrid.style.display = 'grid';
-        if (sampleSliderGroup) sampleSliderGroup.style.display = 'none';
-        if (lblDiffToggle) lblDiffToggle.style.opacity = '0.35';
-        if (lblViewAll) { lblViewAll.style.background = '#0284c7'; lblViewAll.style.color = '#fff'; }
-        if (lblViewSide) { lblViewSide.style.background = 'transparent'; lblViewSide.style.color = 'inherit'; }
-      } else {
-        voxelCardGrid.style.display = 'grid';
-        overviewGrid.style.display = 'none';
-        const meta = getMeta();
-        if (sampleSliderGroup && meta && meta.samples && meta.samples.length > 1) {
-          sampleSliderGroup.style.display = 'flex';
+      if (mode === 'single') mode = '1';
+      else if (mode === 'all8') mode = '8';
+      viewMode = (mode === '8' || mode === '16') ? mode : '1';
+      const isGrid = viewMode !== '1';
+      voxelCardGrid.style.display = isGrid ? 'none' : 'grid';
+      overviewGrid.style.display = isGrid ? 'grid' : 'none';
+      overviewGrid.classList.toggle('grid-16', viewMode === '16');
+
+      const meta = getMeta();
+      const count = (meta && meta.samples && meta.samples.length) ? meta.samples.length : 1;
+      updateSampleSliderVisibility(count);
+      if (lblDiffToggle) lblDiffToggle.style.opacity = isGrid ? '0.35' : '1';
+
+      for (const [m, rad, lbl] of [['1', radView1, lblView1], ['8', radView8, lblView8], ['16', radView16, lblView16]]) {
+        const active = viewMode === m;
+        if (rad) rad.checked = active;
+        if (lbl) {
+          lbl.style.background = active ? '#0284c7' : 'transparent';
+          lbl.style.color = active ? '#fff' : 'inherit';
         }
-        if (lblDiffToggle) lblDiffToggle.style.opacity = '1';
-        if (lblViewSide) { lblViewSide.style.background = '#0284c7'; lblViewSide.style.color = '#fff'; }
-        if (lblViewAll) { lblViewAll.style.background = 'transparent'; lblViewAll.style.color = 'inherit'; }
       }
       renderCurrentVoxelData();
     }
 
-    if (radViewSingle) radViewSingle.addEventListener('change', () => setViewMode('single'));
-    if (radViewAll8) radViewAll8.addEventListener('change', () => setViewMode('all8'));
+    if (radView1) radView1.addEventListener('change', () => setViewMode('1'));
+    if (radView8) radView8.addEventListener('change', () => setViewMode('8'));
+    if (radView16) radView16.addEventListener('change', () => setViewMode('16'));
+    setViewMode(viewMode);
+
+    const radLossLog = document.getElementById('radLossLog');
+    const radLossLin = document.getElementById('radLossLin');
+    const lblLossLog = document.getElementById('lblLossLog');
+    const lblLossLin = document.getElementById('lblLossLin');
+    function setLossScale(useLog) {
+      lossLogScale = useLog;
+      if (lblLossLog) { lblLossLog.style.background = useLog ? '#0284c7' : 'transparent'; lblLossLog.style.color = useLog ? '#fff' : 'inherit'; }
+      if (lblLossLin) { lblLossLin.style.background = useLog ? 'transparent' : '#0284c7'; lblLossLin.style.color = useLog ? 'inherit' : '#fff'; }
+      renderAllCharts();
+    }
+    if (radLossLog) radLossLog.addEventListener('change', () => setLossScale(true));
+    if (radLossLin) radLossLin.addEventListener('change', () => setLossScale(false));
 
     btnFirst.addEventListener('click', () => { stopPlayback(); showEpoch(0); });
     btnPrev.addEventListener('click', () => { stopPlayback(); if (currentIndex > 0) showEpoch(currentIndex - 1); });
@@ -797,12 +839,24 @@ def build_dashboard_html():
     return meta;
   }
 
+  function formatSampleLabel(idx, sampleMeta) {
+    return (sampleMeta && sampleMeta.tag) ? `#${idx} \u00b7 ${sampleMeta.tag}` : `Sample #${idx}`;
+  }
+
+  function updateSampleSliderVisibility(sampleCount) {
+    if (!sampleSliderGroup) return;
+    const show = (viewMode === '1' && sampleCount > 1) || (viewMode === '8' && sampleCount > 8);
+    sampleSliderGroup.style.display = show ? 'flex' : 'none';
+  }
+
   function showSample(idx) {
     const meta = getMeta();
-    const count = (meta && meta.samples && meta.samples.length) ? meta.samples.length : 1;
+    const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : null;
+    const count = samples ? samples.length : 1;
     currentSampleIndex = Math.max(0, Math.min(idx, count - 1));
     if (sampleSlider) sampleSlider.value = currentSampleIndex;
-    if (sampleDisplay) sampleDisplay.textContent = `Sample #${currentSampleIndex}`;
+    const activeSm = samples ? samples[currentSampleIndex] : meta;
+    if (sampleDisplay) sampleDisplay.textContent = formatSampleLabel(currentSampleIndex, activeSm);
     updateMetaDisplay();
     renderCurrentVoxelData();
     renderProfileCanvas();
@@ -812,7 +866,7 @@ def build_dashboard_html():
     const meta = getMeta();
     const sm = getActiveSampleMeta();
     if (sm) {
-      if (profileYVal) profileYVal.textContent = `Y = ${sm.y_km} km`;
+      if (profileYVal) profileYVal.textContent = sm.tag ? `Y = ${sm.y_km} km (${sm.tag})` : `Y = ${sm.y_km} km`;
       if (gridDimVal) gridDimVal.textContent = `${meta ? meta.nx : 64} \u00d7 ${meta ? meta.nz : 32} Voxels (dx = ${meta ? meta.cell : 50} m, dz = ${meta ? meta.cell : 50} m)`;
       const vm = sm.vmax || 0.6;
       if (cbarMin) cbarMin.textContent = `-${vm.toFixed(2)}`;
@@ -832,14 +886,14 @@ def build_dashboard_html():
 
     if (sampleSlider && sampleSliderGroup) {
       if (meta && meta.samples && meta.samples.length > 1) {
-        sampleSliderGroup.style.display = 'flex';
         sampleSlider.min = 0;
         sampleSlider.max = meta.samples.length - 1;
         if (currentSampleIndex >= meta.samples.length) currentSampleIndex = 0;
         sampleSlider.value = currentSampleIndex;
-        if (sampleDisplay) sampleDisplay.textContent = `Sample #${currentSampleIndex}`;
+        if (sampleDisplay) sampleDisplay.textContent = formatSampleLabel(currentSampleIndex, meta.samples[currentSampleIndex]);
+        updateSampleSliderVisibility(meta.samples.length);
       } else {
-        sampleSliderGroup.style.display = 'none';
+        updateSampleSliderVisibility(1);
       }
     }
 
@@ -990,7 +1044,7 @@ def build_dashboard_html():
     if (!meta || !epochs.length || currentIndex < 0 || !epochs[currentIndex]) return;
     const entry = epochs[currentIndex];
 
-    if (viewMode === 'all8') {
+    if (viewMode === '8' || viewMode === '16') {
       renderOverviewGrid(meta, entry);
       return;
     }
@@ -1038,19 +1092,27 @@ def build_dashboard_html():
   function renderOverviewGrid(meta, entry) {
     if (!overviewGrid) return;
     const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : [meta];
-    const n = Math.min(8, samples.length);
+    const pageSize = viewMode === '16' ? 16 : 8;
+    const pageStart = (pageSize === 8 && samples.length > 8)
+      ? Math.floor(currentSampleIndex / 8) * 8
+      : 0;
+    const start = Math.min(pageStart, Math.max(0, samples.length - pageSize));
+    const end = Math.min(samples.length, start + pageSize);
+    const rangeKey = `${start}:${end}:${viewMode}:${samples.length}`;
 
-    // Build or reuse mini card elements
-    let existingCards = overviewGrid.querySelectorAll('.sample-card-item');
-    if (existingCards.length !== n) {
+    // Build or reuse mini card elements for the visible range
+    if (overviewGrid.dataset.rangeKey !== rangeKey) {
       overviewGrid.innerHTML = '';
-      for (let i = 0; i < n; ++i) {
+      overviewGrid.dataset.rangeKey = rangeKey;
+      for (let i = start; i < end; ++i) {
+        const s = samples[i];
         const card = document.createElement('div');
         card.className = 'sample-card-item' + (i === currentSampleIndex ? ' selected' : '');
         card.dataset.index = i;
+        const cardTitle = s.tag ? `#${i} \u00b7 ${s.tag}` : `Sample #${i}`;
         card.innerHTML = `
           <div class="sample-card-header">
-            <span>Sample #${i}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cardTitle}</span>
             <span class="tag-pill" id="cardY_${i}">Y=-- km</span>
           </div>
           <div class="sample-subpair">
@@ -1066,19 +1128,23 @@ def build_dashboard_html():
         `;
         card.addEventListener('click', () => {
           showSample(i);
-          overviewGrid.querySelectorAll('.sample-card-item').forEach((c, ci) => {
-            c.classList.toggle('selected', ci === i);
+          overviewGrid.querySelectorAll('.sample-card-item').forEach(c => {
+            c.classList.toggle('selected', Number(c.dataset.index) === i);
           });
         });
         overviewGrid.appendChild(card);
       }
+    } else {
+      overviewGrid.querySelectorAll('.sample-card-item').forEach(c => {
+        c.classList.toggle('selected', Number(c.dataset.index) === currentSampleIndex);
+      });
     }
 
-    // Paint each sample's truth and predicted cross-sections
-    for (let i = 0; i < n; ++i) {
+    // Paint each visible sample's truth and predicted cross-sections
+    for (let i = start; i < end; ++i) {
       const s = samples[i];
       const yTag = document.getElementById(`cardY_${i}`);
-      if (yTag) yTag.textContent = `Y=${s.y_km || '--'} km`;
+      if (yTag) yTag.textContent = `Y=${s.y_km != null ? s.y_km : '--'} km`;
 
       const cvsT = document.getElementById(`miniTruth_${i}`);
       const cvsP = document.getElementById(`miniPred_${i}`);
@@ -1318,52 +1384,97 @@ def build_dashboard_html():
       { key: 'train_loss', color: '#38bdf8', label: 'Train Loss' },
       { key: 'val_loss', color: '#4ade80', label: 'Val Loss' },
       { key: 'data_rel_misfit', color: '#c084fc', label: 'Data Misfit' }
-    ]);
+    ], null, null, lossLogScale);
     renderSvgChart('svgIoU', [
       { key: 'iou', color: '#4ade80', label: '3D IoU' },
       { key: 'amp_ratio', color: '#38bdf8', label: 'Amp Ratio' }
-    ], 0.0, 1.0);
+    ], 0.0, 1.0, false);
     renderSvgChart('svgDz', [
       { key: 'centroid_dz', color: '#f87171', label: '|dz| [m]' }
-    ]);
+    ], null, null, false);
   }
 
-  function renderSvgChart(svgId, series, fixedMin = null, fixedMax = null) {
+  function formatChartTick(val, useLog) {
+    if (useLog) {
+      if (val >= 10) return val.toFixed(0);
+      if (val >= 1) return val.toFixed(1);
+      if (val >= 0.05) return val.toFixed(2);
+      return val.toFixed(3);
+    }
+    return val.toFixed(val < 10 ? 2 : 0);
+  }
+
+  function renderSvgChart(svgId, series, fixedMin = null, fixedMax = null, useLog = false) {
     const svg = document.getElementById(svgId);
     const epochs = getEpochs();
     if (!svg || !epochs.length) return;
     const N = epochs.length;
-    const w = 420, h = 125, padL = 40, padR = 14, padT = 10, padB = 22;
+    const w = 420, h = 125, padL = 42, padR = 14, padT = 10, padB = 22;
     const pw = w - padL - padR, ph = h - padT - padB;
 
     let yMin = fixedMin != null ? fixedMin : Infinity;
     let yMax = fixedMax != null ? fixedMax : -Infinity;
+    const LOG_FLOOR = 1e-4;
 
     if (fixedMin == null || fixedMax == null) {
       series.forEach(s => {
         epochs.forEach(r => {
           const v = r[s.key];
           if (v != null && isFinite(v)) {
-            if (fixedMin == null && v < yMin) yMin = v;
-            if (fixedMax == null && v > yMax) yMax = v;
+            const tv = useLog ? Math.max(v, LOG_FLOOR) : v;
+            if (fixedMin == null && (!useLog || v > 0) && tv < yMin) yMin = tv;
+            if (fixedMax == null && tv > yMax) yMax = tv;
           }
         });
       });
-      if (!isFinite(yMin) || !isFinite(yMax) || yMin === yMax) { yMin = 0; yMax = 1; }
-      const margin = (yMax - yMin) * 0.08;
-      yMin = Math.max(0, yMin - margin);
-      yMax += margin;
+      if (!isFinite(yMin) || !isFinite(yMax)) {
+        yMin = useLog ? 1e-2 : 0;
+        yMax = 1;
+      }
+      if (useLog) {
+        let lMin = Math.log10(Math.max(yMin, LOG_FLOOR));
+        let lMax = Math.log10(Math.max(yMax, LOG_FLOOR * 10));
+        if (lMax <= lMin) { lMin -= 0.5; lMax += 0.5; }
+        const pad = (lMax - lMin) * 0.08;
+        yMin = Math.pow(10, lMin - pad);
+        yMax = Math.pow(10, lMax + pad);
+      } else {
+        if (yMin === yMax) { yMin = 0; yMax = 1; }
+        const margin = (yMax - yMin) * 0.08;
+        yMin = Math.max(0, yMin - margin);
+        yMax += margin;
+      }
     }
 
+    const lMin = useLog ? Math.log10(Math.max(yMin, LOG_FLOOR)) : 0;
+    const lMax = useLog ? Math.log10(Math.max(yMax, LOG_FLOOR * 10)) : 1;
     const xCoord = (idx) => padL + (N > 1 ? (idx / (N - 1)) * pw : pw * 0.5);
-    const yCoord = (val) => padT + ph - ((val - yMin) / (yMax - yMin)) * ph;
+    const yCoord = (val) => {
+      if (!useLog) return padT + ph - ((val - yMin) / (yMax - yMin)) * ph;
+      const lv = Math.log10(Math.max(val, yMin));
+      return padT + ph - ((lv - lMin) / (lMax - lMin)) * ph;
+    };
+
+    let gridSvg = '';
+    if (useLog) {
+      const k0 = Math.ceil(lMin + 1e-6), k1 = Math.floor(lMax - 1e-6);
+      for (let k = k0; k <= k1; ++k) {
+        const tick = Math.pow(10, k);
+        const gy = yCoord(tick).toFixed(1);
+        gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="#1e293b" stroke-width="1" stroke-dasharray="2,2"/>`;
+        if (gy > padT + 14 && gy < padT + ph - 10) {
+          gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="#475569" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, true)}</text>`;
+        }
+      }
+    }
 
     let content = `
       <rect width="${w}" height="${h}" fill="#0f172a" rx="4"/>
+      ${gridSvg}
       <line x1="${padL}" y1="${padT + ph}" x2="${w - padR}" y2="${padT + ph}" stroke="#334155" stroke-width="1"/>
       <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#334155" stroke-width="1"/>
-      <text x="${padL - 4}" y="${padT + 9}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${yMax.toFixed(yMax < 10 ? 2 : 0)}</text>
-      <text x="${padL - 4}" y="${padT + ph}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${yMin.toFixed(yMin < 10 ? 2 : 0)}</text>
+      <text x="${padL - 4}" y="${padT + 9}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${formatChartTick(yMax, useLog)}</text>
+      <text x="${padL - 4}" y="${padT + ph}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${formatChartTick(yMin, useLog)}</text>
     `;
 
     // Polylines
@@ -1399,7 +1510,7 @@ def build_dashboard_html():
     const epochs = getEpochs();
     if (!epochs.length) return;
     const N = epochs.length;
-    const w = 420, padL = 40, padR = 14;
+    const w = 420, padL = 42, padR = 14;
     const pw = w - padL - padR;
     const x = padL + (N > 1 ? (idx / (N - 1)) * pw : pw * 0.5);
 
@@ -1461,24 +1572,32 @@ class TrainingMonitor:
 
     def _write_html(self):
         html_path = os.path.join(self.save_dir, "dashboard.html")
-        with open(html_path, "w") as f:
+        tmp_path = html_path + ".tmp"
+        with open(tmp_path, "w") as f:
             f.write(build_dashboard_html())
+        os.replace(tmp_path, html_path)
 
-    def update(self, rec, vx, vtrue, vpred, vclean, vz):
-        # Extract slices across up to 8 representative validation samples
-        n_samples = min(8, vtrue.shape[0])
+    def update(self, rec, vx, vtrue, vpred, vclean, vz, sample_labels=None):
+        # Extract slices across up to 16 representative validation samples (val + curated categories)
+        n_samples = min(16, vtrue.shape[0])
         x_km = np.arange(NX) * CELL / 1000.0
         y_km = np.arange(NY) * CELL / 1000.0
         z_m = np.arange(NZ) * CELL
 
-        if self.meta is None or "samples" not in self.meta:
+        existing_samples = (self.meta or {}).get("samples") or []
+        needs_meta = (
+            self.meta is None
+            or len(existing_samples) != n_samples
+            or (sample_labels is not None and any("tag" not in s for s in existing_samples))
+        )
+        if needs_meta:
             samples_meta = []
             for s_idx in range(n_samples):
                 t_vol_s = vtrue[s_idx, 0].detach().cpu().numpy()
                 obs_map_s = vx[s_idx, 0].detach().cpu().numpy()
                 terr_m_s = vx[s_idx, 1].detach().cpu().numpy() * (NZ * CELL)
                 iz_pk_s, ix_pk_s, iy_pk_s = np.unravel_index(np.argmax(np.abs(t_vol_s)), t_vol_s.shape)
-                samples_meta.append({
+                item = {
                     "id": s_idx,
                     "iy": int(iy_pk_s),
                     "y_km": round(float(y_km[iy_pk_s]), 2),
@@ -1486,7 +1605,10 @@ class TrainingMonitor:
                     "truth_slice": np.round(t_vol_s[:, :, iy_pk_s], 3).tolist(),
                     "terrain": np.round(terr_m_s[:, iy_pk_s], 1).tolist(),
                     "obs_profile": np.round(obs_map_s[:, iy_pk_s], 3).tolist(),
-                })
+                }
+                if sample_labels is not None and s_idx < len(sample_labels):
+                    item["tag"] = str(sample_labels[s_idx])
+                samples_meta.append(item)
             self.meta = {
                 "nx": NX,
                 "ny": NY,
@@ -1533,14 +1655,15 @@ class TrainingMonitor:
         self.fig.clf()
         ax = self.fig.subplots(2, 3)
 
-        # 1. Losses
-        ax[0, 0].plot(ep, [r["train_loss"] for r in self.hist], "o-", label="Train Total")
-        ax[0, 0].plot(ep, [r["val_loss"] for r in self.hist], "s-", label="Val Total")
-        ax[0, 0].plot(ep, [r["data_rel_misfit"] for r in self.hist], "^--", label="Val Data Misfit ||Gm-d||/||d||")
-        ax[0, 0].plot(ep, [r.get("halo_opp", 0.0) for r in self.hist], "d:", label="Val Opposite-Sign Halo")
-        ax[0, 0].set_title("Loss, Data Misfit & Opposite Halo")
+        # 1. Losses (log y-axis so late fine-tuning drops remain clearly visible)
+        ax[0, 0].plot(ep, [max(1e-4, r["train_loss"]) for r in self.hist], "o-", label="Train Total")
+        ax[0, 0].plot(ep, [max(1e-4, r["val_loss"]) for r in self.hist], "s-", label="Val Total")
+        ax[0, 0].plot(ep, [max(1e-4, r["data_rel_misfit"]) for r in self.hist], "^--", label="Val Data Misfit ||Gm-d||/||d||")
+        ax[0, 0].plot(ep, [max(1e-4, r.get("halo_opp", 0.0)) for r in self.hist], "d:", label="Val Opposite-Sign Halo")
+        ax[0, 0].set_yscale("log")
+        ax[0, 0].set_title("Loss, Data Misfit & Opposite Halo (Log)")
         ax[0, 0].set_xlabel("Epoch")
-        ax[0, 0].grid(True, alpha=0.3)
+        ax[0, 0].grid(True, which="both", alpha=0.25)
         ax[0, 0].legend(fontsize=8)
 
         # 2. 3D IoU & Amplitude Recovery
@@ -1599,19 +1722,29 @@ def main():
     args = parse_args()
     os.makedirs(args.save_dir, exist_ok=True)
     dev = args.device
+    hard_prob = min(1.0, max(0.0, float(args.hard_prob)))
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
     print(f"Device {dev} | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
-          f"grid {NX}x{NY}x{NZ} @ {CELL} m | ground clearance 0.30-0.40 m")
+          f"grid {NX}x{NY}x{NZ} @ {CELL} m | hard-prob {hard_prob:.2f} | ground clearance 0.30-0.40 m")
     print(f"Monitor: {os.path.join(args.save_dir, 'training_monitor.png')} "
           f"| HTML: {os.path.join(args.save_dir, 'dashboard.html')} | GUI window: {'ON' if args.gui else 'OFF (pass --gui)'}")
 
     monitor = TrainingMonitor(args.save_dir, gui=args.gui)
     op = TerrainGravityOperator(*grid).to(dev)
-    train_ds = BodyTerrainDataset(args.steps * args.batch_size, *grid)
+    train_ds = BodyTerrainDataset(args.steps * args.batch_size, *grid, hard_prob=hard_prob)
     loader = DataLoader(train_ds, batch_size=args.batch_size, num_workers=args.num_workers,
                         persistent_workers=args.num_workers > 0, drop_last=True)
-    vx, vtrue, vclean, vz = make_fixed_set(args.n_val, 2024, op, dev, grid)
+    vx, vtrue, vclean, vz = make_fixed_set(args.n_val, 2024, op, dev, grid, hard_prob=0.0)
+    hard_val = None
+    if hard_prob > 0.0:
+        n_hard = max(8, args.n_val // 2)
+        hard_val = make_fixed_set(n_hard, 3024, op, dev, grid, hard_prob=1.0)
+    show_x, show_true, show_clean, show_z, show_labels = make_category_showcase(op, dev, grid, seed=4024)
+    if hard_val is not None:
+        mon_labels = ("Std",) * min(4, len(vx)) + ("Hard",) * min(4, len(hard_val[0])) + show_labels
+    else:
+        mon_labels = ("Std",) * min(8, len(vx)) + show_labels
 
     arch = ARCH
     start_epoch, best, ck_resumed = 1, float("inf"), None
@@ -1649,12 +1782,11 @@ def main():
         sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=args.lr, total_steps=total_steps,
                                                     pct_start=pct_start, div_factor=10.0, final_div_factor=50.0)
 
-    def validate():
-        eval_model.eval()
+    def _eval_split(xs, ys, cs, zs):
         preds, aux_chunks = [], []
         with torch.no_grad():
-            for i in range(0, len(vx), 8):
-                p_i, a_i = forward_with_aux(eval_model, vx[i:i + 8])
+            for i in range(0, len(xs), 8):
+                p_i, a_i = forward_with_aux(eval_model, xs[i:i + 8])
                 preds.append(p_i)
                 if a_i is not None:
                     aux_chunks.append(a_i)
@@ -1662,16 +1794,62 @@ def main():
             vaux = ({k: torch.cat([c[k] for c in aux_chunks])
                      if isinstance(aux_chunks[0][k], torch.Tensor) else aux_chunks[0][k]
                      for k in aux_chunks[0]} if aux_chunks else None)
-            vloss, _ = crit(pred, vtrue, vclean, vz, aux=vaux)
+            sloss, _ = crit(pred, ys, cs, zs, aux=vaux)
+        return float(sloss), compute_metrics(pred, ys, cs, zs, op, CELL), pred
+
+    def _pack_monitor(parts):
+        xs, ts, ps, cs, zs = zip(*parts)
+        return tuple(torch.cat(seq, dim=0) for seq in (xs, ts, ps, cs, zs))
+
+    def validate():
+        eval_model.eval()
+        std_loss, std_m, std_pred = _eval_split(vx, vtrue, vclean, vz)
+        with torch.no_grad():
+            show_pred, _ = forward_with_aux(eval_model, show_x)
+        show_part = (show_x, show_true, show_pred, show_clean, show_z)
+        if hard_val is not None:
+            vhx, vhtrue, vhclean, vhz = hard_val
+            hard_loss, hard_m, hard_pred = _eval_split(vhx, vhtrue, vhclean, vhz)
+            if eval_model is model:
+                model.train()
+            comb_loss = (1.0 - hard_prob) * std_loss + hard_prob * hard_loss
+            comb_m = {}
+            for k in std_m:
+                vs, vh = std_m[k], hard_m[k]
+                if np.isnan(vs) and np.isnan(vh):
+                    comb_m[k] = float("nan")
+                elif np.isnan(vs):
+                    comb_m[k] = vh
+                elif np.isnan(vh):
+                    comb_m[k] = vs
+                else:
+                    comb_m[k] = (1.0 - hard_prob) * vs + hard_prob * vh
+            n_s = min(4, len(vx), len(std_pred))
+            n_h = min(4, len(vhx), len(hard_pred))
+            mon_tensors = _pack_monitor([
+                (vx[:n_s], vtrue[:n_s], std_pred[:n_s], vclean[:n_s], vz[:n_s]),
+                (vhx[:n_h], vhtrue[:n_h], hard_pred[:n_h], vhclean[:n_h], vhz[:n_h]),
+                show_part,
+            ])
+            return comb_loss, comb_m, std_loss, std_m, hard_loss, hard_m, mon_tensors
         if eval_model is model:
             model.train()
-        return float(vloss), compute_metrics(pred, vtrue, vclean, vz, op, CELL), pred
+        n_s = min(8, len(vx), len(std_pred))
+        mon_tensors = _pack_monitor([
+            (vx[:n_s], vtrue[:n_s], std_pred[:n_s], vclean[:n_s], vz[:n_s]),
+            show_part,
+        ])
+        return std_loss, std_m, std_loss, std_m, None, None, mon_tensors
 
     if args.resume:
-        best, _, _ = validate()
+        best, *_ = validate()
 
     zero = compute_metrics(torch.zeros_like(vtrue), vtrue, vclean, vz, op, CELL)
-    print("Zero predictor: " + " ".join(f"{k} {v:.3f}" for k, v in zero.items()))
+    print("Zero predictor (std): " + " ".join(f"{k} {v:.3f}" for k, v in zero.items()))
+    if hard_val is not None:
+        vhx, vhtrue, vhclean, vhz = hard_val
+        zero_h = compute_metrics(torch.zeros_like(vhtrue), vhtrue, vhclean, vhz, op, CELL)
+        print("Zero predictor (hard): " + " ".join(f"{k} {v:.3f}" for k, v in zero_h.items()))
 
     for epoch in range(start_epoch, end_epoch + 1):
         t0, acc, n = time.time(), {}, 0
@@ -1691,23 +1869,37 @@ def main():
             for k, v in m.items():
                 acc[k] = acc.get(k, 0.0) + v
             n += 1
-        vloss, vm, vpred = validate()
+        vloss, vm, std_loss, std_m, hard_loss, hard_m, mon_t = validate()
         tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items())
-        print(f"Epoch {epoch:02d}/{end_epoch} [{time.time() - t0:.0f}s] train {tr} | val loss {vloss:.3f} "
-              f"L1 {vm['l1_rel']:.3f} bodyL1 {vm['body_l1_rel']:.3f} data {vm['data_rel_misfit']:.3f} "
-              f"IoU {vm['iou']:.2f} dz {vm['centroid_dz']:.0f} m amp {vm['amp_ratio']:.2f} "
-              f"halo {vm['halo_opp']:.3f}", flush=True)
+        msg = (f"Epoch {epoch:02d}/{end_epoch} [{time.time() - t0:.0f}s] train {tr} | "
+               f"val loss {std_loss:.3f} L1 {std_m['l1_rel']:.3f} bodyL1 {std_m['body_l1_rel']:.3f} "
+               f"data {std_m['data_rel_misfit']:.3f} IoU {std_m['iou']:.2f} dz {std_m['centroid_dz']:.0f} m "
+               f"amp {std_m['amp_ratio']:.2f} halo {std_m['halo_opp']:.3f}")
+        if hard_m is not None:
+            msg += (f" | hard loss {hard_loss:.3f} data {hard_m['data_rel_misfit']:.3f} "
+                    f"IoU {hard_m['iou']:.2f} dz {hard_m['centroid_dz']:.0f} m amp {hard_m['amp_ratio']:.2f}")
+        print(msg, flush=True)
         ck = {"epoch": epoch, "model_state_dict": eval_model.state_dict(),
-              "raw_model_state_dict": model.state_dict(), "val_loss": vloss, "metrics": vm,
+              "raw_model_state_dict": model.state_dict(), "val_loss": vloss, "metrics": std_m,
+              "hard_prob": hard_prob,
               "grid": {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL}, "arch": arch}
+        if hard_m is not None:
+            ck["val_std_loss"] = std_loss
+            ck["val_hard_loss"] = hard_loss
+            ck["hard_metrics"] = hard_m
         if ema.ema is not None:
             ck["ema_state_dict"] = ema.ema.state_dict()
         torch.save(ck, os.path.join(args.save_dir, "last_swin3d.pt"))
         if vloss < best:
             best = vloss
             torch.save(ck, os.path.join(args.save_dir, "best_swin3d.pt"))
-        monitor.update({"epoch": epoch, "train_loss": acc["loss_total"] / n, "val_loss": vloss, **vm},
-                       vx, vtrue, vpred, vclean, vz)
+        rec_mon = {"epoch": epoch, "train_loss": acc["loss_total"] / n, "val_loss": vloss, **vm}
+        if hard_m is not None:
+            rec_mon["val_std_loss"] = std_loss
+            rec_mon["val_hard_loss"] = hard_loss
+            rec_mon["hard_iou"] = hard_m["iou"]
+            rec_mon["hard_dz"] = hard_m["centroid_dz"]
+        monitor.update(rec_mon, *mon_t, sample_labels=mon_labels)
     print(f"Done. Best val loss {best:.4f}. Checkpoint: {os.path.join(args.save_dir, 'best_swin3d.pt')}")
 
 

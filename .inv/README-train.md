@@ -88,8 +88,13 @@ Rather than hand-labeling or hunting for paired data, `.inv/python/dataset.py` s
      * **Sediments / Compacted Clay / Waste Rock** (`[-0.80, -0.10] g/cm³`, 32% of rocks): sandstone, shale, compacted clay, evaporites/halite, mining waste (45% tabular beds).
      * **Mafic / Ultramafic / Disseminated Ore** (`[+0.15, +0.75] g/cm³`, 32% of rocks): basalt, gabbro, peridotite/dunite/pyroxenite, skarn, weak mineralization (30% dipping sills/dikes).
      * **High-Grade Mineral Ore** (`[+0.80, +1.85] g/cm³`, 15% of rocks): massive sulfide, magnetite/hematite, chromite pods & veins.
-2. **Depth Stratification, Spacing & Multi-Body SNR Guard**:
-   * 40% single-body models, 60% multi-body models (2 to 4 distinct bodies) with minimum separation $\ge 2$ cells and lateral border margin $\ge 3 + r_{\max}$ cells.
+2. **Depth Stratification, Hard Contact/Composite Scenes & Multi-Body SNR Guard**:
+   * **Mixed Regime (`hard_prob = 0.50`, configurable via `--hard-prob`)**: Half of training scenes follow the standard isolated distribution (`40%` single body, `60%` 2–4 bodies with $\ge 2$-cell separation and lateral margin $\ge 3$ cells), and half sample 5 physically well-posed harder geological archetypes while avoiding full-domain DC Bouguer slab ambiguity and sub-noise companions:
+     * `large_composite`: multi-lobe non-convex intrusions, bent seams, and L-shapes (`~1–2.4 km` span, bounded away from lateral edges so anomaly flanks remain inside the observation window, including ridge-hosted crops).
+     * `nested_halo`: `ore` cores embedded inside `mafic` halos or `air`/`water` cavities carved inside rock hosts with analytical gravity parity (`0.20–5.0×`).
+     * `abutting_contact`: zero-gap adjacent lithology boundaries, fault-thrown offset blocks, and steep dyke feeders intersecting shallower sills.
+     * `vertical_stack`: shallow overburden/water lenses directly overlying deeper dense targets (`0.25–4.0×` mGal parity).
+     * `tight_cluster`: `3–5` closely spaced (`1`-cell minimum clearance) mixed-lithology targets.
    * Non-cavity rock tops follow explicit **35% shallow / 35% mid / 30% deep** depth stratification below topography.
    * Depth-proportional minimum radii ($r_x, r_y \ge 0.20 \cdot \text{gap} \cdot (n_x/64)$, $r_z \ge 0.14 \cdot \text{gap} \cdot (n_z/32)$) and deep rock contrast floor ($|\Delta\rho| \ge 0.32\text{ g/cm}^3$ when $\text{gap} > 0.22\,n_z$).
    * **Multi-Body Analytical SNR Guard**: Estimates peak surface gravity contribution $\propto |\Delta\rho|\cdot V / z_{\text{eff}}^2$; boosts or skips weaker bodies below $0.10\text{–}0.14\times$ the scene peak so shallow air cavities do not drown weaker targets below noise.
@@ -233,7 +238,8 @@ python train.py --resume checkpoints/best_swin3d.pt --epochs 40 --lr 1.5e-4 --n-
 | `--lambda-cls` | `0.25` | Weight on 7-class lithology prototype cross-entropy + soft Dice ($\mathcal{L}_{\text{cls}}$). |
 | `--depth-boost`| `0.5` | Linear vertical sensitivity ramp $w_z(z) = 1.0 + \text{depth\_boost} \cdot z/z_{\max}$. |
 | `--ema-decay` | `0.995` | Exponential moving average (`ModelEMA`) decay for validation and `best_swin3d.pt` weights (`0` disables). |
-| `--n-val` | `64` | Fixed seeded validation samples for deterministic tracking. |
+| `--n-val` | `64` | Fixed seeded standard validation samples (`hard_prob=0.0`, `seed=2024`, plus `n_val//2` hard-only samples `seed=3024` when `--hard-prob > 0`). |
+| `--hard-prob` | `0.50` | Fraction of training batches using harder composite, nested, abutting, stacked, and tight-cluster scenes `[0.0-1.0]`. |
 | `--num-workers` | `0` | PyTorch DataLoader workers (set `2–4` for fast on-the-fly CPU synthesis). |
 | `--gui` | `False` | Opens a live native GUI window with 6 real-time training graphs. |
 | `--save-dir` | `./checkpoints` | Checkpoint directory (`best_swin3d.pt`, `last_swin3d.pt`). |
@@ -264,9 +270,10 @@ Even when running headless or via SSH, `train.py` continuously updates:
 | `halo_opp` | Mass fraction sitting in opposite-sign compensating halos | `0.000` | `0.000` |
 
 #### Standalone Evaluation CLI
-To evaluate any trained checkpoint on independent test sets:
+To evaluate any trained checkpoint on independent standard or hard-only test sets:
 ```bash
 python evaluate.py --checkpoint checkpoints/best_swin3d.pt --samples 64
+python evaluate.py --checkpoint checkpoints/best_swin3d.pt --samples 64 --hard-prob 1.0
 ```
 
 ---

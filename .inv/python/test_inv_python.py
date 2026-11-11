@@ -387,6 +387,116 @@ def test_scattered_gridding_and_voxel_order():
     assert flat[(2 * ny + 1) * nz + 1] == vol[1, 2, 1]
 
 
+def test_hard_scene_archetypes_bounds_flanks_and_contacts():
+    from scipy.ndimage import binary_dilation
+    from dataset import (HARD_SCENE_TYPES, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN, RHO_MAFIC_MAX,
+                         RHO_MAFIC_MIN, RHO_ORE_MAX, RHO_ORE_MIN, RHO_SEDIMENT_MAX, RHO_SEDIMENT_MIN,
+                         RHO_WATER)
+    rng = np.random.default_rng(123)
+    nz, nx, ny, dz = 32, 64, 64, 50.0
+    max_fills = {}
+    saw_contact = False
+    for st in HARD_SCENE_TYPES:
+        fills = []
+        for _ in range(12):
+            t = random_terrain(rng, nx, ny, nz * dz)
+            rho = random_bodies(rng, t, nz, dz, 50.0, scene_type=st)
+            assert np.isfinite(rho).all() and (rho != 0).any()
+            above = (np.arange(nz)[:, None, None] * dz) < t[None]
+            assert not rho[above].any()
+            # Keep interior flanks within survey footprint (no full-domain boundary slabs)
+            assert not rho[:, :3].any() and not rho[:, -3:].any()
+            assert not rho[:, :, :3].any() and not rho[:, :, -3:].any()
+            fills.append(float((rho != 0).mean()))
+            vals = np.unique(rho[rho != 0])
+            for v in vals:
+                ok = (np.isclose(v, RHO_AIR, atol=1e-5) or np.isclose(v, RHO_WATER, atol=1e-5)
+                      or (RHO_LIGHT_MIN - 1e-5 <= v <= RHO_LIGHT_MAX + 1e-5)
+                      or (RHO_SEDIMENT_MIN - 1e-5 <= v <= RHO_SEDIMENT_MAX + 1e-5)
+                      or (RHO_MAFIC_MIN - 1e-5 <= v <= RHO_MAFIC_MAX + 1e-5)
+                      or (RHO_ORE_MIN - 1e-5 <= v <= RHO_ORE_MAX + 1e-5))
+                assert ok, f"{st}: unexpected density {v}"
+            if st in ("nested_halo", "abutting_contact") and len(vals) >= 2:
+                v0, v1 = vals[0], vals[1]
+                if (binary_dilation(rho == v0, iterations=1) & (rho == v1)).any():
+                    saw_contact = True
+        max_fills[st] = max(fills)
+    assert max_fills["large_composite"] > 0.02 and max_fills["large_composite"] < 0.45
+    assert saw_contact, "Expected zero-gap voxel face contacts in nested_halo / abutting_contact"
+
+
+def test_evaluate_metrics_exact_on_nested_and_stacked_same_sign():
+    from evaluate import make_fixed_set
+    op = TerrainGravityOperator(32, 32, 16)
+    z = torch.full((1, 32, 32), -0.35)
+    t = torch.zeros(1, 1, 16, 32, 32)
+    # 1. Nested same-sign (+1.4 ore inside +0.4 mafic shell) + vertically stacked lens directly above
+    t[0, 0, 9:15, 10:22, 10:22] = 0.40
+    t[0, 0, 11:13, 14:18, 14:18] = 1.40
+    t[0, 0, 2:4, 13:19, 13:19] = 0.50
+    t[0, 0, 3:6, 22:26, 22:26] = -1.67
+    d = op(t, z)
+    met = compute_metrics(t, t, d, z, op, dz=50.0)
+    assert abs(met["iou"] - 1.0) < 1e-6, f"Expected exact IoU=1.0 on nested+stacked truth, got {met['iou']}"
+    assert met["centroid_dz"] < 1e-5, f"Expected exact centroid_dz=0 on nested+stacked truth, got {met['centroid_dz']}"
+    assert abs(met["amp_ratio"] - 1.0) < 1e-6 and met["halo_opp"] == 0.0
+    x_h, truth_h, _, _ = make_fixed_set(4, 99, op, "cpu", (32, 32, 16, 50.0, 50.0, 50.0), hard_prob=1.0)
+    assert x_h.shape == (4, 2, 32, 32) and (truth_h != 0).any()
+
+
+def test_showcase_and_16_sample_dashboard():
+    import json
+    import tempfile
+    from dataset import CELL, NX, NY, NZ, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN, RHO_MAFIC_MIN, RHO_WATER
+    from evaluate import make_category_showcase
+    from train import TrainingMonitor, build_dashboard_html
+
+    grid = (NX, NY, NZ, CELL, CELL, CELL)
+    op = TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL)
+    sx, strue, sclean, sz, labels = make_category_showcase(op, "cpu", grid, seed=4024)
+    assert sx.shape == (8, 2, NX, NY) and strue.shape == (8, 1, NZ, NX, NY)
+    assert labels == (
+        "Cavities", "Light / Coal", "Tight Cluster", "Mafic / Ore",
+        "Large Composite", "Nested Halo", "Abutting Contact", "Vertical Stack",
+    )
+    truth_np = strue[:, 0].numpy()
+    slices = [truth_np[i, :, :, int(np.unravel_index(np.argmax(np.abs(truth_np[i])), truth_np[i].shape)[2])]
+              for i in range(8)]
+    assert (np.isclose(slices[0], RHO_AIR, atol=0.05) | np.isclose(slices[0], RHO_WATER, atol=0.05)).any()
+    assert ((slices[1] <= RHO_LIGHT_MAX + 0.02) & (slices[1] >= RHO_LIGHT_MIN - 0.02)).any()
+    assert np.count_nonzero(slices[2]) >= 12
+    assert slices[3].max() >= RHO_MAFIC_MIN and slices[3].min() >= -0.05
+    assert np.count_nonzero(slices[4]) >= 24
+    for idx in (5, 6, 7):
+        nz_vals = slices[idx][slices[idx] != 0]
+        assert len(np.unique(np.round(nz_vals, 2))) >= 2
+
+    html = build_dashboard_html()
+    assert 'id="radView1"' in html and 'id="radView8"' in html and 'id="radView16"' in html
+    assert 'radViewSingle' not in html and 'radViewAll8' not in html
+
+    with tempfile.TemporaryDirectory() as tmp:
+        mon = TrainingMonitor(tmp, gui=False)
+        rec = {
+            "epoch": 1, "train_loss": 1.0, "val_loss": 0.9, "l1_rel": 0.2,
+            "body_l1_rel": 0.3, "data_rel_misfit": 0.1, "iou": 0.5,
+            "centroid_dz": 50.0, "amp_ratio": 0.9, "halo_opp": 0.01,
+        }
+        # First write 8 samples, then upgrade to 16 labeled samples (resume compatibility)
+        mon.update(rec, sx, strue, strue * 0.8, sclean, sz)
+        vx16 = torch.cat([sx, sx], dim=0)
+        vt16 = torch.cat([strue, strue], dim=0)
+        vc16 = torch.cat([sclean, sclean], dim=0)
+        vz16 = torch.cat([sz, sz], dim=0)
+        labels16 = ("Std",) * 4 + ("Hard",) * 4 + labels
+        mon.update({**rec, "epoch": 2}, vx16, vt16, vt16 * 0.9, vc16, vz16, sample_labels=labels16)
+        with open(f"{tmp}/training_history.json") as f:
+            payload = json.load(f)
+        assert len(payload["meta"]["samples"]) == 16
+        assert [s["tag"] for s in payload["meta"]["samples"]] == list(labels16)
+        assert len(payload["epochs"][-1]["pred_slices"]) == 16
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

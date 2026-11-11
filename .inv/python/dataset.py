@@ -1,4 +1,4 @@
-"""Synthetic training data: ISOLATED bodies + cavities below a random terrain (anomaly only, no trend).
+"""Synthetic training data: standard isolated & harder composite/contact bodies below random terrain.
 
 Each sample
 -----------
@@ -6,9 +6,15 @@ Each sample
   ``MAX_RELIEF_FRAC`` of the domain depth. ``t[i, j]`` = terrain depth below the grid top (z down,
   0 at the highest point). Stations are DRAPED on the terrain, ``clearance`` 0.30-0.40 m (30-40 cm,
   typical tripod/ground height for relative gravity meters) above it.
-* 1 body (40 %) or 2-4 bodies (60 %), well separated (>= 2 empty cells), fully below the terrain
-  and away from the lateral borders. Shapes cover compact pods/tunnels and flat/dipping tabular
-  seams/sills across 6 physical non-background lithology classes (vs 2.67 g/cm^3 host rock):
+* By default (``hard_prob=0.50``), half of scenes are standard isolated 1-4 bodies (>= 2 empty cell
+  clearance) and half draw from 5 harder well-posed geological archetypes while remaining bounded
+  inside the observation flanks (no full-domain DC slabs) and balanced in surface SNR:
+    - ``large_composite``: multi-lobe plutons, bent seams, L-shapes (~1-2.4 km)
+    - ``nested_halo``: ore/cavity cores embedded in mafic/sediment/light host envelopes
+    - ``abutting_contact``: zero-gap lithology contacts, fault throws & dyke-sill intersections
+    - ``vertical_stack``: shallow lenses overlying deeper balanced dense targets
+    - ``tight_cluster``: 3-5 closely spaced (1-cell gap) anomalies under rough terrain
+  Across all 6 physical non-background lithology classes (vs 2.67 g/cm^3 host rock):
     - air cavities               exact -2.67 g/cm^3 (shallow compact voids & tunnels)
     - water-filled cavities      exact -1.67 g/cm^3 (shallow flooded voids & conduits)
     - light rock / coal / clay   -1.55 ... -0.85 g/cm^3 (coal seams, soft porous clay, loose fill)
@@ -71,6 +77,11 @@ def random_terrain(rng, nx, ny, depth_total):
     return t - t.min()
 
 
+# Hard scene archetypes mixed into training (see random_bodies / hard_prob)
+HARD_SCENE_TYPES = ("large_composite", "nested_halo", "abutting_contact", "vertical_stack", "tight_cluster")
+_HARD_SCENE_PROBS = (0.25, 0.25, 0.20, 0.15, 0.15)
+
+
 # (prob_among_rocks, rho_lo, rho_hi, tabular_prob, dip_range)
 _ROCK_SPECS = (
     (0.21, RHO_LIGHT_MIN, RHO_LIGHT_MAX, 0.55, (-0.25, 0.25)),
@@ -78,6 +89,21 @@ _ROCK_SPECS = (
     (0.85, RHO_MAFIC_MIN, RHO_MAFIC_MAX, 0.30, (-0.55, 0.55)),
     (1.00, RHO_ORE_MIN, RHO_ORE_MAX, 0.20, (-0.45, 0.45)),
 )
+
+
+def _pick_rock_lithology(rng, nz, gap, class_probs=None):
+    """Draw (rho_val, lo, hi, p_tab, dip_range) from the 4 continuous non-cavity lithology bands."""
+    u_cls = rng.random()
+    specs = _ROCK_SPECS if class_probs is None else tuple(
+        (cp, lo, hi, p_tab, dip_r) for cp, (_, lo, hi, p_tab, dip_r) in zip(class_probs, _ROCK_SPECS)
+    )
+    for cum_p, lo, hi, p_tab, dip_rng in specs:
+        if u_cls <= cum_p:
+            break
+    rho_val = float(rng.uniform(lo, hi))
+    if gap > 0.22 * nz and abs(rho_val) < 0.32:
+        rho_val = float(np.clip(0.32 + 0.5 * rho_val if rho_val > 0 else -(0.32 + 0.35 * abs(rho_val)), lo, hi))
+    return rho_val, lo, hi, p_tab, dip_rng
 
 
 def _sample_body_spec(rng, nz, hs, vs):
@@ -104,13 +130,7 @@ def _sample_body_spec(rng, nz, hs, vs):
     else:
         gap = rng.uniform(g_hi_mid, g_hi_dp)
 
-    u_cls = rng.random()
-    for cum_p, lo, hi, p_tab, dip_rng in _ROCK_SPECS:
-        if u_cls <= cum_p:
-            break
-    rho_val = float(rng.uniform(lo, hi))
-    if gap > 0.22 * nz and abs(rho_val) < 0.32:
-        rho_val = float(np.clip(0.32 + 0.5 * rho_val if rho_val > 0 else -(0.32 + 0.35 * abs(rho_val)), lo, hi))
+    rho_val, lo, hi, p_tab, dip_rng = _pick_rock_lithology(rng, nz, gap)
     if rng.random() < p_tab:                                 # tabular seam / bed / sill / vein
         rx = rng.uniform(4.0, 11.0) * hs
         ry = (rng.uniform(1.5, 5.5) if lo > 0 else rng.uniform(3.2, 9.5)) * hs
@@ -125,90 +145,487 @@ def _sample_body_spec(rng, nz, hs, vs):
     return rx, ry, rz, gap, dip, rho_val, lo, hi, False, False
 
 
-def random_bodies(rng, t, nz, dz, dx):
-    """Density model (nz, nx, ny) with isolated bodies strictly below terrain depth ``t`` (nx, ny)."""
-    nx, ny = t.shape
-    rho = np.zeros((nz, nx, ny), np.float32)
-    blocked = np.zeros((nz, nx, ny), bool)
-    t_cells = t / dz                                         # terrain depth in layer units
-    hs = nx / 64.0                                           # horizontal size scale
-    vs = nz / 32.0                                           # vertical size scale
-    n_bodies = 1 if rng.random() < 0.4 else int(rng.integers(2, 5))
-    placed, attempts = 0, 0
+def _primitive_reaches(rx, ry, rz, th, dip, is_box):
+    cd, sd = math.cos(dip), math.sin(dip)
+    ct, st = abs(math.cos(th)), abs(math.sin(th))
+    rx_h = rx * abs(cd) + rz * abs(sd)
+    if is_box:
+        reach_x = rx_h * ct + ry * st
+        reach_y = rx_h * st + ry * ct
+    else:
+        reach_x = math.hypot(rx_h * ct, ry * st)
+        reach_y = math.hypot(rx_h * st, ry * ct)
+    z_extent = rz * abs(cd) + rx * abs(sd)
+    return reach_x, reach_y, z_extent
+
+
+def _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, cavity=False, border_margin=3):
+    """Rasterize an ellipsoid or box strictly within lateral margins and below terrain ``t_cells``."""
+    nx, ny = t_cells.shape
+    reach_x, reach_y, z_extent = _primitive_reaches(rx, ry, rz, th, dip, is_box)
+    i0 = int(max(border_margin, math.floor(cx - reach_x - 1.0)))
+    i1 = int(min(nx - border_margin, math.ceil(cx + reach_x + 2.0)))
+    j0 = int(max(border_margin, math.floor(cy - reach_y - 1.0)))
+    j1 = int(min(ny - border_margin, math.ceil(cy + reach_y + 2.0)))
+    k0 = int(max(0, math.floor(cz - z_extent - 1.0)))
+    k1 = int(min(nz, math.ceil(cz + z_extent + 2.0)))
+    if i1 <= i0 or j1 <= j0 or k1 <= k0:
+        return None
+    zz, xx, yy = np.meshgrid(np.arange(k0, k1) + 0.5, np.arange(i0, i1) + 0.5,
+                             np.arange(j0, j1) + 0.5, indexing="ij")
+    ct, st = math.cos(th), math.sin(th)
+    u0 = (xx - cx) * ct + (yy - cy) * st
+    v = -(xx - cx) * st + (yy - cy) * ct
+    w0 = zz - cz
+    if dip != 0.0:
+        cd, sd = math.cos(dip), math.sin(dip)
+        u = u0 * cd + w0 * sd
+        w = -u0 * sd + w0 * cd
+    else:
+        u, w = u0, w0
+    if not is_box:
+        sub = (u / max(rx, 0.25)) ** 2 + (v / max(ry, 0.25)) ** 2 + (w / max(rz, 0.25)) ** 2 <= 1.0
+    else:
+        sub = (np.abs(u) <= rx) & (np.abs(v) <= ry) & (np.abs(w) <= rz)
+    min_top = t_cells[None, i0:i1, j0:j1] + (0.5 if cavity else 0.0)
+    z_top = np.arange(k0, k1)[:, None, None]
+    sub &= (z_top >= min_top)
+    if not sub.any():
+        return None
+    mask = np.zeros((nz, nx, ny), dtype=bool)
+    mask[k0:k1, i0:i1, j0:j1] = sub
+    return mask
+
+
+def _body_gravity_est(rho_val, mask, t_cells):
+    """Analytical buried-voxel gravity proxy ``|rho| * V / z_eff^2``."""
+    kz, kx, ky = np.nonzero(mask)
+    if not kz.size:
+        return 0.0
+    z_eff = max(1.0, float((kz - t_cells[kx, ky]).mean()) + 0.5)
+    return abs(float(rho_val)) * float(kz.size) / (z_eff * z_eff)
+
+
+def _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, n_bodies, dilate_iters=2,
+                            anchor=None, cluster_spread=None, min_g_ratio=0.14):
+    """Place ``n_bodies`` separated bodies with >= ``dilate_iters`` cell clearance & SNR parity."""
+    nx, ny = t_cells.shape
+    blocked = binary_dilation(rho != 0, iterations=dilate_iters) if (rho != 0).any() else np.zeros((nz, nx, ny), bool)
     max_g_est = 0.0
-    while placed < n_bodies and attempts < 60:
+    if (rho != 0).any():
+        for v in np.unique(rho[rho != 0]):
+            max_g_est = max(max_g_est, _body_gravity_est(v, rho == v, t_cells))
+    placed, attempts = 0, 0
+    while placed < n_bodies and attempts < 80:
         attempts += 1
         rx, ry, rz, gap, dip, rho_val, lo, hi, cavity, force_box = _sample_body_spec(rng, nz, hs, vs)
         th = rng.uniform(0.0, math.pi)
         is_box = force_box or (rng.random() >= 0.55)
-        cd, sd = math.cos(dip), math.sin(dip)
-        ct, st = abs(math.cos(th)), abs(math.sin(th))
-        rx_h = rx * abs(cd) + rz * abs(sd)
-        if is_box:
-            reach_x = rx_h * ct + ry * st
-            reach_y = rx_h * st + ry * ct
-        else:
-            reach_x = math.hypot(rx_h * ct, ry * st)
-            reach_y = math.hypot(rx_h * st, ry * ct)
+        reach_x, reach_y, z_extent = _primitive_reaches(rx, ry, rz, th, dip, is_box)
         margin_x, margin_y = 3.0 + reach_x, 3.0 + reach_y
         if 2.0 * margin_x >= nx or 2.0 * margin_y >= ny:
             continue
-        cx = rng.uniform(margin_x, nx - margin_x)
-        cy = rng.uniform(margin_y, ny - margin_y)
+        if anchor is not None and cluster_spread is not None:
+            lo_x = max(margin_x, anchor[0] - cluster_spread)
+            hi_x = min(nx - margin_x, anchor[0] + cluster_spread)
+            lo_y = max(margin_y, anchor[1] - cluster_spread)
+            hi_y = min(ny - margin_y, anchor[1] + cluster_spread)
+            cx = rng.uniform(lo_x, hi_x) if hi_x > lo_x else rng.uniform(margin_x, nx - margin_x)
+            cy = rng.uniform(lo_y, hi_y) if hi_y > lo_y else rng.uniform(margin_y, ny - margin_y)
+        else:
+            cx = rng.uniform(margin_x, nx - margin_x)
+            cy = rng.uniform(margin_y, ny - margin_y)
         i0, i1 = int(max(3, cx - reach_x - 1)), int(min(nx - 3, cx + reach_x + 2))
         j0, j1 = int(max(3, cy - reach_y - 1)), int(min(ny - 3, cy + reach_y + 2))
-        top_surface = float(t_cells[i0:i1, j0:j1].max())     # body must clear the highest relief above it
-        z_extent = rz * abs(cd) + rx * abs(sd)
+        top_surface = float(t_cells[i0:i1, j0:j1].max())
         cz = top_surface + gap + z_extent
         if cz + z_extent > nz - 0.5:
             continue
-        k0, k1 = int(max(0, cz - z_extent - 1)), int(min(nz, cz + z_extent + 2))
 
-        # Keep multi-body targets above the surface noise floor so strong cavities don't drown rocks
         est_vol = (4.0 / 3.0) * math.pi * rx * ry * rz
         z_eff = max(1.0, gap + z_extent)
         g_est = abs(rho_val) * est_vol / (z_eff * z_eff)
-        if placed > 0 and max_g_est > 0.0 and g_est < 0.14 * max_g_est:
+        if max_g_est > 0.0 and g_est < min_g_ratio * max_g_est:
             if not cavity:
                 rho_val = float(rng.uniform(0.75 * hi, hi) if rho_val > 0 else rng.uniform(lo, 0.75 * lo))
                 g_est = abs(rho_val) * est_vol / (z_eff * z_eff)
-            if g_est < 0.10 * max_g_est:
+            if g_est < 0.75 * min_g_ratio * max_g_est:
                 continue
 
-        zz, xx, yy = np.meshgrid(np.arange(k0, k1) + 0.5, np.arange(i0, i1) + 0.5,
-                                 np.arange(j0, j1) + 0.5, indexing="ij")
-        u0 = (xx - cx) * math.cos(th) + (yy - cy) * math.sin(th)
-        v = -(xx - cx) * math.sin(th) + (yy - cy) * math.cos(th)
-        w0 = zz - cz
-        if dip != 0.0:
-            u = u0 * cd + w0 * sd
-            w = -u0 * sd + w0 * cd
-        else:
-            u, w = u0, w0
-        if not is_box:
-            sub = (u / rx) ** 2 + (v / ry) ** 2 + (w / rz) ** 2 <= 1.0
-        else:
-            sub = (np.abs(u) <= rx) & (np.abs(v) <= ry) & (np.abs(w) <= rz)
-        if not sub.any():
-            sub[sub.shape[0] // 2, sub.shape[1] // 2, sub.shape[2] // 2] = True
-        mask = np.zeros_like(blocked)
-        mask[k0:k1, i0:i1, j0:j1] = sub
-        if (mask & blocked).any():
+        mask = _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, cavity=cavity)
+        if mask is None or (mask & blocked).any():
             continue
         rho[mask] = rho_val
-        blocked |= binary_dilation(mask, iterations=2)
-        g_actual = abs(rho_val) * float(sub.sum()) / (z_eff * z_eff)
-        max_g_est = max(max_g_est, g_actual)
+        blocked |= binary_dilation(mask, iterations=dilate_iters)
+        max_g_est = max(max_g_est, _body_gravity_est(rho_val, mask, t_cells))
         placed += 1
+    return placed
+
+
+def _pick_parity_rock(rng, nz, gap, mask, t_cells, ref_g, min_ratio=0.20, max_ratio=5.0, class_probs=None):
+    """Sample a continuous rock density whose surface gravity stays within ``[min_ratio, max_ratio]`` of ``ref_g``."""
+    rho_val, lo, hi, _, _ = _pick_rock_lithology(rng, nz, gap, class_probs=class_probs)
+    if ref_g <= 0.0:
+        return True, rho_val
+    g_raw = _body_gravity_est(rho_val, mask, t_cells)
+    if min_ratio <= (g_raw / ref_g) <= max_ratio:
+        return True, rho_val
+    # Retarget within the same physical band if amplitude adjustment keeps physical bounds
+    kz, kx, ky = np.nonzero(mask)
+    if not kz.size:
+        return False, rho_val
+    z_eff = max(1.0, float((kz - t_cells[kx, ky]).mean()) + 0.5)
+    geom = float(kz.size) / (z_eff * z_eff)
+    need_abs = ref_g * (0.35 if g_raw < min_ratio * ref_g else 3.0) / max(geom, 1e-9)
+    rho_try = math.copysign(need_abs, lo)
+    if lo <= rho_try <= hi:
+        return True, float(rho_try)
+    rho_edge = float(hi if (lo > 0 and g_raw < min_ratio * ref_g) or (lo < 0 and g_raw > max_ratio * ref_g) else lo)
+    g_edge = abs(rho_edge) * geom
+    return (min_ratio <= (g_edge / ref_g) <= max_ratio), rho_edge
+
+
+def _build_large_composite(rng, t_cells, nz, hs, vs):
+    """Build a large multi-lobe non-convex body (pluton, bent seam, L-shape) well inside interior flanks."""
+    nx, ny = t_cells.shape
+    rho = np.zeros((nz, nx, ny), np.float32)
+    max_reach = max(3.5, 0.34 * (nx - 6))
+    gap = rng.uniform(0.5, max(1.5, 5.0 * vs))
+    rho_val, lo, hi, _, dip_rng = _pick_rock_lithology(rng, nz, gap, class_probs=(0.20, 0.55, 0.90, 1.00))
+    rx = min(max_reach * 0.85, rng.uniform(7.5, 15.5) * hs)
+    ry = min(max_reach * 0.85, rng.uniform(5.0, 12.5) * hs)
+    rz = min(0.28 * nz, rng.uniform(3.0, 6.8) * vs)
+    th = rng.uniform(0.0, math.pi)
+    dip = float(rng.uniform(*dip_rng)) if rng.random() < 0.45 else 0.0
+    is_box = rng.random() >= 0.50
+    reach_x, reach_y, z_ext = _primitive_reaches(rx, ry, rz, th, dip, is_box)
+    mx = min(0.42 * nx, 3.0 + reach_x)
+    my = min(0.42 * ny, 3.0 + reach_y)
+    cx = rng.uniform(mx, nx - mx) if nx > 2.0 * mx else 0.5 * nx
+    cy = rng.uniform(my, ny - my) if ny > 2.0 * my else 0.5 * ny
+    i0, i1 = int(max(3, cx - reach_x)), int(min(nx - 3, cx + reach_x + 1))
+    j0, j1 = int(max(3, cy - reach_y)), int(min(ny - 3, cy + reach_y + 1))
+    cols = t_cells[max(0, i0):max(i0 + 1, i1), max(0, j0):max(j0 + 1, j1)]
+    # Mix ridge-hosted bodies (truncated naturally by terrain) and valley-cleared deep roots
+    top_ref = float(np.percentile(cols, rng.uniform(35.0, 95.0))) if cols.size else float(t_cells.max())
+    cz = min(nz - z_ext - 0.5, top_ref + gap + z_ext)
+    mask = _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box)
+    min_vox = max(12, int(35 * hs * hs * vs))
+    if mask is None or mask.sum() < min_vox:
+        return rho
+
+    # Union 1-3 attached shifted lobes of identical lithology to create non-convex shapes (L, elbow, branched)
+    n_lobes = int(rng.integers(1, 4))
+    max_span = 0.78 * (nx - 6)
+    for _ in range(n_lobes):
+        ang = rng.uniform(0.0, 2.0 * math.pi)
+        dx_s = math.cos(ang) * rng.uniform(0.40, 0.85) * rx
+        dy_s = math.sin(ang) * rng.uniform(0.40, 0.85) * ry
+        dz_s = rng.uniform(-0.45, 0.55) * rz
+        rx2 = min(max_reach * 0.75, rx * rng.uniform(0.45, 0.90))
+        ry2 = min(max_reach * 0.75, ry * rng.uniform(0.45, 0.90))
+        rz2 = min(0.24 * nz, rz * rng.uniform(0.50, 0.95))
+        th2 = th + rng.uniform(-0.8, 0.8)
+        dip2 = float(np.clip(dip + rng.uniform(-0.3, 0.3), -0.65, 0.65))
+        cx2 = float(np.clip(cx + dx_s, 3.0 + 0.5 * rx2, nx - 3.0 - 0.5 * rx2))
+        cy2 = float(np.clip(cy + dy_s, 3.0 + 0.5 * ry2, ny - 3.0 - 0.5 * ry2))
+        cz2 = float(np.clip(cz + dz_s, 1.0, nz - rz2 - 0.5))
+        lobe = _rasterize_primitive(t_cells, nz, cx2, cy2, cz2, rx2, ry2, rz2, th2, dip2, rng.random() >= 0.45)
+        if lobe is not None:
+            cand = mask | lobe
+            _, kx_c, ky_c = np.nonzero(cand)
+            if (kx_c.max() - kx_c.min() + 1) <= max_span and (ky_c.max() - ky_c.min() + 1) <= max_span:
+                mask = cand
+
+    rho[mask] = rho_val
+    if rng.random() < 0.35:
+        _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, 1, dilate_iters=2, min_g_ratio=0.25)
+    return rho
+
+
+def _build_nested_halo(rng, t_cells, nz, hs, vs):
+    """Nested core-in-host zones (ore-in-mafic, cavity-in-host, coal-in-sediment) with SNR parity."""
+    nx, ny = t_cells.shape
+    rho = np.zeros((nz, nx, ny), np.float32)
+    max_reach = max(3.5, 0.32 * (nx - 6))
+    for _ in range(16):
+        gap = rng.uniform(0.6, max(1.5, 4.5 * vs))
+        motif = rng.random()
+        if motif < 0.45:                              # high-grade ore core inside mafic/ultramafic halo
+            host_probs = (0.0, 0.0, 1.0, 1.0)
+            core_kind = "ore"
+        elif motif < 0.80:                            # air/water cavity inside sediment/light/ore host
+            host_probs = (0.25, 0.65, 0.85, 1.0)
+            core_kind = "cavity"
+        else:                                         # contrasting core inside sediment/light host
+            host_probs = (0.35, 1.0, 1.0, 1.0)
+            core_kind = "mafic_or_light"
+        rho_host, _, _, _, dip_rng = _pick_rock_lithology(rng, nz, gap, class_probs=host_probs)
+        rx = min(max_reach, rng.uniform(5.5, 12.0) * hs)
+        ry = min(max_reach, rng.uniform(4.5, 10.5) * hs)
+        rz = min(0.24 * nz, rng.uniform(2.8, 5.5) * vs)
+        th = rng.uniform(0.0, math.pi)
+        dip = float(rng.uniform(*dip_rng)) if rng.random() < 0.35 else 0.0
+        is_box = rng.random() >= 0.55
+        reach_x, reach_y, z_ext = _primitive_reaches(rx, ry, rz, th, dip, is_box)
+        if 2.0 * (3.0 + reach_x) >= nx or 2.0 * (3.0 + reach_y) >= ny:
+            continue
+        cx = rng.uniform(3.0 + reach_x, nx - 3.0 - reach_x)
+        cy = rng.uniform(3.0 + reach_y, ny - 3.0 - reach_y)
+        i0, i1 = int(max(3, cx - reach_x)), int(min(nx - 3, cx + reach_x + 1))
+        j0, j1 = int(max(3, cy - reach_y)), int(min(ny - 3, cy + reach_y + 1))
+        cols = t_cells[i0:i1, j0:j1]
+        top_ref = float(np.percentile(cols, rng.uniform(45.0, 95.0))) if cols.size else float(t_cells.max())
+        cz = top_ref + gap + z_ext
+        if cz + z_ext > nz - 0.5:
+            continue
+        host_mask = _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box)
+        if host_mask is None or host_mask.sum() < max(16, int(36 * hs * hs * vs)):
+            continue
+
+        # Build eccentric inner core replacing ~14%-55% of host
+        f_xy = rng.uniform(0.45, 0.72)
+        f_z = rng.uniform(0.45, 0.72)
+        core_cav = core_kind == "cavity"
+        core_mask = _rasterize_primitive(
+            t_cells, nz,
+            cx + rng.uniform(-0.20, 0.20) * rx,
+            cy + rng.uniform(-0.20, 0.20) * ry,
+            cz + rng.uniform(-0.20, 0.20) * rz,
+            rx * f_xy, ry * f_xy, rz * f_z, th, dip, is_box, cavity=core_cav,
+        )
+        if core_mask is None:
+            continue
+        core_in_host = core_mask & host_mask
+        frac = float(core_in_host.sum()) / float(host_mask.sum())
+        if frac < 0.12 or frac > 0.58:
+            continue
+        shell_mask = host_mask & (~core_mask)
+        if shell_mask.sum() < max(10, int(18 * hs * hs * vs)):
+            continue
+
+        g_host = _body_gravity_est(rho_host, shell_mask, t_cells)
+        if core_cav:
+            rho_core = RHO_AIR if rng.random() < 0.55 else RHO_WATER
+            g_core = _body_gravity_est(rho_core, core_mask, t_cells)
+            ok = 0.20 <= (g_core / max(g_host, 1e-9)) <= 5.0
+        else:
+            probs_c = (0.0, 0.0, 0.0, 1.0) if core_kind == "ore" else ((1.0, 1.0, 1.0, 1.0) if rho_host > -0.8 else (0.0, 0.0, 1.0, 1.0))
+            ok, rho_core = _pick_parity_rock(rng, nz, gap, core_mask, t_cells, g_host, class_probs=probs_c)
+        if not ok:
+            continue
+        rho[host_mask] = rho_host
+        rho[core_mask] = rho_core
+        return rho
+    return rho
+
+
+def _build_abutting_contact(rng, t_cells, nz, hs, vs):
+    """Zero-gap lithology contacts, faulted offsets, and dyke-meets-sill intersections."""
+    nx, ny = t_cells.shape
+    rho = np.zeros((nz, nx, ny), np.float32)
+    max_reach = max(3.0, 0.28 * (nx - 6))
+    for _ in range(18):
+        gap1 = rng.uniform(0.8, max(2.0, 7.0 * vs))
+        rho1, _, _, _, dip_rng1 = _pick_rock_lithology(rng, nz, gap1)
+        is_dyke_sill = rng.random() < 0.42
+        if is_dyke_sill:
+            rx1, ry1, rz1 = rng.uniform(5.0, 10.0) * hs, rng.uniform(3.0, 7.0) * hs, rng.uniform(1.0, 2.2) * vs
+            dip1 = float(rng.uniform(-0.25, 0.25))
+            is_box1 = True
+        else:
+            rx1 = min(max_reach, rng.uniform(4.0, 9.5) * hs)
+            ry1 = min(max_reach, rng.uniform(3.0, 7.5) * hs)
+            rz1 = rng.uniform(1.8, 4.6) * vs
+            dip1 = float(rng.uniform(*dip_rng1)) if rng.random() < 0.4 else 0.0
+            is_box1 = rng.random() >= 0.45
+        th1 = rng.uniform(0.0, math.pi)
+        r1x, r1y, z1e = _primitive_reaches(rx1, ry1, rz1, th1, dip1, is_box1)
+        if 2.0 * (3.0 + r1x) >= nx or 2.0 * (3.0 + r1y) >= ny:
+            continue
+        cx1 = rng.uniform(3.0 + r1x, nx - 3.0 - r1x)
+        cy1 = rng.uniform(3.0 + r1y, ny - 3.0 - r1y)
+        top1 = float(t_cells[int(max(3, cx1 - r1x)):int(min(nx - 3, cx1 + r1x + 1)),
+                             int(max(3, cy1 - r1y)):int(min(ny - 3, cy1 + r1y + 1))].max())
+        cz1 = top1 + gap1 + z1e
+        if cz1 + z1e > nz - 0.5:
+            continue
+        m1 = _rasterize_primitive(t_cells, nz, cx1, cy1, cz1, rx1, ry1, rz1, th1, dip1, is_box1)
+        if m1 is None or m1.sum() < max(10, int(18 * hs * hs * vs)):
+            continue
+        g1 = _body_gravity_est(rho1, m1, t_cells)
+
+        if is_dyke_sill:
+            # Steep feeder/dyke intersecting the underside/flank of sill m1
+            rx2, ry2, rz2 = rng.uniform(2.0, 4.2) * hs, rng.uniform(1.6, 4.2) * hs, rng.uniform(3.2, 6.2) * vs
+            dip2 = float(rng.choice([-1.0, 1.0]) * rng.uniform(0.55, 1.05))
+            th2 = th1 + rng.uniform(-0.5, 0.5)
+            cx2 = cx1 + rng.uniform(-0.35, 0.35) * rx1
+            cy2 = cy1 + rng.uniform(-0.35, 0.35) * ry1
+            cz2 = cz1 + rz1 * 0.4 + rz2 * 0.75
+        else:
+            # Side-by-side contact or fault throw along/across strike
+            rx2 = min(max_reach, rx1 * rng.uniform(0.65, 1.25))
+            ry2 = min(max_reach, ry1 * rng.uniform(0.65, 1.25))
+            rz2 = rz1 * rng.uniform(0.75, 1.25)
+            th2 = th1 + rng.uniform(-0.3, 0.3)
+            dip2 = dip1
+            along = rng.random() < 0.55
+            sgn = float(rng.choice([-1.0, 1.0]))
+            step = (rx1 + rx2) * rng.uniform(0.72, 0.96) if along else (ry1 + ry2) * rng.uniform(0.72, 0.96)
+            ang = th1 if along else (th1 + 0.5 * math.pi)
+            cx2 = cx1 + sgn * math.cos(ang) * step
+            cy2 = cy1 + sgn * math.sin(ang) * step
+            z_throw = rng.choice([-1.0, 1.0]) * rng.uniform(0.0, 3.5) * vs
+            cz2 = cz1 + z_throw
+
+        r2x, r2y, z2e = _primitive_reaches(rx2, ry2, rz2, th2, dip2, is_box1)
+        if cx2 - r2x < 3.0 or cx2 + r2x > nx - 3.0 or cy2 - r2y < 3.0 or cy2 + r2y > ny - 3.0:
+            continue
+        if cz2 - z2e < 0.0 or cz2 + z2e > nz - 0.5:
+            continue
+        m2 = _rasterize_primitive(t_cells, nz, cx2, cy2, cz2, rx2, ry2, rz2, th2, dip2, is_box1)
+        if m2 is None:
+            continue
+        m2_clean = m2 & (~m1)
+        if m2_clean.sum() < max(10, int(16 * hs * hs * vs)):
+            continue
+        # Ensure bodies actually abut or sit within 1 voxel face
+        if not (binary_dilation(m1, iterations=1) & m2_clean).any():
+            continue
+        same_fault = (not is_dyke_sill) and (rng.random() < 0.20)
+        if same_fault:
+            rho2 = rho1
+            g2 = _body_gravity_est(rho2, m2_clean, t_cells)
+            ok = 0.20 <= (g2 / max(g1, 1e-9)) <= 5.0
+        else:
+            ok, rho2 = _pick_parity_rock(rng, nz, max(0.5, cz2 - z2e - top1), m2_clean, t_cells, g1)
+            if ok and abs(rho2 - rho1) < 0.25:
+                continue
+        if not ok:
+            continue
+        rho[m1] = rho1
+        rho[m2_clean] = rho2
+        return rho
+    return rho
+
+
+def _build_vertical_stack(rng, t_cells, nz, hs, vs):
+    """Vertically stacked / depth-shielded bodies at contrasting depths with balanced surface mGal."""
+    nx, ny = t_cells.shape
+    rho = np.zeros((nz, nx, ny), np.float32)
+    for _ in range(18):
+        # 1. Shallow wide/moderate cap (or shallow water cavity)
+        cav_sh = rng.random() < 0.25
+        gap1 = rng.uniform(0.7, max(1.4, 3.2 * vs))
+        rx1, ry1 = rng.uniform(3.2, 8.5, 2) * hs
+        rz1 = rng.uniform(1.0, 2.5) * vs
+        th1 = rng.uniform(0.0, math.pi)
+        is_box1 = rng.random() >= 0.45
+        r1x, r1y, z1e = _primitive_reaches(rx1, ry1, rz1, th1, 0.0, is_box1)
+        if 2.0 * (3.0 + r1x) >= nx or 2.0 * (3.0 + r1y) >= ny:
+            continue
+        cx1 = rng.uniform(3.5 + r1x, nx - 3.5 - r1x)
+        cy1 = rng.uniform(3.5 + r1y, ny - 3.5 - r1y)
+        top_local = float(t_cells[int(max(3, cx1 - r1x)):int(min(nx - 3, cx1 + r1x + 1)),
+                                  int(max(3, cy1 - r1y)):int(min(ny - 3, cy1 + r1y + 1))].max())
+        cz1 = top_local + gap1 + z1e
+        if cz1 + z1e > 0.45 * nz:
+            continue
+        m1 = _rasterize_primitive(t_cells, nz, cx1, cy1, cz1, rx1, ry1, rz1, th1, 0.0, is_box1, cavity=cav_sh)
+        if m1 is None or m1.sum() < max(8, int(14 * hs * hs * vs)):
+            continue
+        if cav_sh:
+            rho1 = RHO_WATER if rng.random() < 0.65 else RHO_AIR
+        else:
+            rho1, _, _, _, _ = _pick_rock_lithology(rng, nz, gap1, class_probs=(0.30, 0.70, 0.95, 1.00))
+        g1 = _body_gravity_est(rho1, m1, t_cells)
+
+        # 2. Deeper larger/stronger target beneath shallow cap (0-3 cells vertical gap)
+        rx2, ry2 = rng.uniform(4.0, 10.5, 2) * hs
+        rz2 = rng.uniform(2.2, 5.2) * vs
+        th2 = rng.uniform(0.0, math.pi)
+        dip2 = float(rng.uniform(-0.35, 0.35)) if rng.random() < 0.4 else 0.0
+        r2x, r2y, z2e = _primitive_reaches(rx2, ry2, rz2, th2, dip2, False)
+        cx2 = float(np.clip(cx1 + rng.uniform(-3.0, 3.0) * hs, 3.0 + r2x, nx - 3.0 - r2x))
+        cy2 = float(np.clip(cy1 + rng.uniform(-3.0, 3.0) * hs, 3.0 + r2y, ny - 3.0 - r2y))
+        v_gap = rng.uniform(0.0, 3.5 * vs)
+        cz2 = cz1 + z1e + v_gap + z2e
+        if cz2 + z2e > nz - 0.5 or cx2 - r2x < 3.0 or cy2 - r2y < 3.0:
+            continue
+        m2 = _rasterize_primitive(t_cells, nz, cx2, cy2, cz2, rx2, ry2, rz2, th2, dip2, rng.random() >= 0.55)
+        if m2 is None:
+            continue
+        m2_clean = m2 & (~m1)
+        if m2_clean.sum() < max(10, int(18 * hs * hs * vs)):
+            continue
+        ok, rho2 = _pick_parity_rock(rng, nz, cz2 - z2e - top_local, m2_clean, t_cells, g1,
+                                      min_ratio=0.25, max_ratio=4.0, class_probs=(0.15, 0.30, 0.65, 1.00))
+        if not ok:
+            continue
+        rho[m1] = rho1
+        rho[m2_clean] = rho2
+        return rho
+    return rho
+
+
+def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None):
+    """Density model (nz, nx, ny) strictly below terrain depth ``t`` (nx, ny).
+
+    Draws either standard isolated bodies (``dilate_iters=2``, ``1-4`` bodies) or, with
+    probability ``hard_prob``, one of 5 physically well-posed harder geological archetypes
+    (``large_composite``, ``nested_halo``, ``abutting_contact``, ``vertical_stack``,
+    ``tight_cluster``). Never places full-domain DC slabs or sub-noise masked ghosts.
+    """
+    nx, ny = t.shape
+    t_cells = t / dz                                         # terrain depth in layer units
+    hs = nx / 64.0                                           # horizontal size scale
+    vs = nz / 32.0                                           # vertical size scale
+    rho = np.zeros((nz, nx, ny), np.float32)
+
+    can_hard = min(nx, ny) >= 24 and nz >= 12
+    if scene_type is None and can_hard and rng.random() < hard_prob:
+        scene_type = str(rng.choice(HARD_SCENE_TYPES, p=_HARD_SCENE_PROBS))
+
+    if scene_type == "large_composite":
+        rho = _build_large_composite(rng, t_cells, nz, hs, vs)
+    elif scene_type == "nested_halo":
+        rho = _build_nested_halo(rng, t_cells, nz, hs, vs)
+    elif scene_type == "abutting_contact":
+        rho = _build_abutting_contact(rng, t_cells, nz, hs, vs)
+    elif scene_type == "vertical_stack":
+        rho = _build_vertical_stack(rng, t_cells, nz, hs, vs)
+    elif scene_type == "tight_cluster":
+        n_b = int(rng.integers(3, 6))
+        anchor = (rng.uniform(0.28 * nx, 0.72 * nx), rng.uniform(0.28 * ny, 0.72 * ny))
+        _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, n_b, dilate_iters=1,
+                                anchor=anchor, cluster_spread=0.22 * nx, min_g_ratio=0.16)
+    else:
+        n_b = 1 if rng.random() < 0.4 else int(rng.integers(2, 5))
+        _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, n_b, dilate_iters=2)
+
+    if not (rho != 0).any():
+        _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, 1 if rng.random() < 0.4 else int(rng.integers(2, 5)),
+                                dilate_iters=2)
+    if not (rho != 0).any():
+        # Guaranteed center rock body on degenerate small/steep test grids
+        rx_g, ry_g, rz_g = max(1.2, 3.0 * hs), max(1.2, 3.0 * hs), max(1.0, 2.0 * vs)
+        top_c = float(t_cells[max(0, nx // 2 - 2):min(nx, nx // 2 + 3), max(0, ny // 2 - 2):min(ny, ny // 2 + 3)].max())
+        cz_g = min(nz - rz_g - 0.5, top_c + 1.0 + rz_g)
+        m_g = _rasterize_primitive(t_cells, nz, 0.5 * nx, 0.5 * ny, cz_g, rx_g, ry_g, rz_g, 0.0, 0.0, False)
+        if m_g is not None:
+            rho_g, *_ = _pick_rock_lithology(rng, nz, 2.0)
+            rho[m_g] = rho_g
+
     # safety: no density in cells whose top is above the terrain
     above = (np.arange(nz)[:, None, None] * dz) < t[None]
     rho[above] = 0.0
     return rho
 
 
-def sample_geometry(rng, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL):
+def sample_geometry(rng, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL, hard_prob=0.50):
     t = random_terrain(rng, nx, ny, nz * dz)
-    rho = random_bodies(rng, t, nz, dz, dx)
+    rho = random_bodies(rng, t, nz, dz, dx, hard_prob=hard_prob)
     clearance = np.float32(rng.uniform(*CLEARANCE))
     noise_frac = np.float32(rng.uniform(*NOISE_FRAC))
     return rho, t, clearance, noise_frac
@@ -221,8 +638,9 @@ class BodyTerrainDataset(Dataset):
     ``seed=int``  -> sample ``idx`` is deterministic (validation).
     """
 
-    def __init__(self, n_samples=2000, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL, seed=None):
-        self.n, self.seed = n_samples, seed
+    def __init__(self, n_samples=2000, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL,
+                 seed=None, hard_prob=0.50):
+        self.n, self.seed, self.hard_prob = n_samples, seed, float(hard_prob)
         self.g = (nx, ny, nz, dx, dy, dz)
 
     def __len__(self):
@@ -230,7 +648,7 @@ class BodyTerrainDataset(Dataset):
 
     def __getitem__(self, idx):
         rng = np.random.default_rng() if self.seed is None else np.random.default_rng([self.seed, idx])
-        rho, t, c, nf = sample_geometry(rng, *self.g)
+        rho, t, c, nf = sample_geometry(rng, *self.g, hard_prob=self.hard_prob)
         noise_seed = int(rng.integers(0, 2**31 - 1))
         return (torch.from_numpy(rho)[None], torch.from_numpy(t), torch.tensor(c), torch.tensor(nf),
                 torch.tensor(noise_seed))
