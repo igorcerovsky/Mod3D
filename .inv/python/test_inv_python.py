@@ -450,7 +450,7 @@ def test_showcase_and_16_sample_dashboard():
     import tempfile
     from dataset import CELL, NX, NY, NZ, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN, RHO_MAFIC_MIN, RHO_WATER
     from evaluate import make_category_showcase
-    from train import TrainingMonitor, build_dashboard_html
+    from dashboard import TrainingMonitor, build_dashboard_html
 
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     op = TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL)
@@ -487,6 +487,9 @@ def test_showcase_and_16_sample_dashboard():
     assert 'uField' in html and 'uSurfaceMode' in html and 'data-field-mode="inv"' in html and 'vol3dFieldScale' in html
     assert 'bouguerMod3dColor(' in html and 'diffMod3dColor(' in html
     assert 'data-vol3d-ep="best"' in html and 'data-vol3d-ep="latest"' in html and 'data-vol3d-ep="match"' in html and 'resolveVol3dEpoch' in html
+    assert 'pitch: -0.22, dist: 4.0' in html and 'cam3d.pitch = -0.22;' in html
+    assert 'cam3d.pitch >= -0.02' not in html
+    assert 'float endDiff = uvwEnd.z - texture(uTerrain, uvwEnd.xy).r;' in html
 
     with tempfile.TemporaryDirectory() as tmp:
         mon = TrainingMonitor(tmp, gui=False, vol3d_stride=2, forward_op=op)
@@ -647,7 +650,7 @@ def test_demo_export_and_html():
     from dataset import CELL, NX, NY, NZ
     from evaluate import make_category_showcase
     from export_demo import export_demo
-    from train import TrainingMonitor, build_dashboard_html
+    from dashboard import TrainingMonitor, build_dashboard_html
 
     demo_html = build_dashboard_html(demo_mode=True)
     assert "const IS_DEMO_MODE = true;" in demo_html

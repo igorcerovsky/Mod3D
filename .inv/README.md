@@ -146,7 +146,8 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
     ├── forward.py              # Batched draped Nagy-prism and flat FFT gravity operators
     ├── model_swin3d.py         # v2 U-Net + 2.5D Swin3D + lithology prototype embeddings (with create_model & v1 compat)
     ├── losses.py               # Scale-normalized CompoundInversionLoss, fixed-denom grad, multi-band, lithology CE+Dice, MGS & Charbonnier RMSE
-    ├── train.py                # On-the-fly training loop, ModelEMA, OneCycle/Cosine resume, GUI monitor & HTML5 dashboard
+    ├── train.py                # On-the-fly training loop, ModelEMA & OneCycle/Cosine resume
+    ├── dashboard.py            # Live matplotlib/GUI TrainingMonitor, HTML5/WebGL2 dashboard builder & sidecar writer
     ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, local contrast IoU, amp & halo metrics
     ├── infer_prior.py          # Input-scaled (50 m / L_eff) neural prior writer into Mod3D setup JSON
     ├── export_onnx.py          # PyTorch to ONNX (opset 17) export with terrain relief masking

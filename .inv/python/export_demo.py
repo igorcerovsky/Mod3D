@@ -9,7 +9,7 @@ import argparse
 import json
 import os
 
-from train import build_dashboard_html
+from dashboard import build_dashboard_html
 from vol3d_io import _atomic_write, decode_field2d_i16_b64, decode_vol3d_rle_b64
 
 

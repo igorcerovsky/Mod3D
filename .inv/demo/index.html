@@ -824,7 +824,7 @@
   let hoverCell = null;
 
   // Shared 3D camera & transfer-function state (guarantees identical transforms for Truth, Pred, Diff)
-  const cam3d = { yaw: -0.62, pitch: 0.42, dist: 3.15 };
+  const cam3d = { yaw: -0.62, pitch: -0.22, dist: 4.0 };
   const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, fieldMode: 'inv', epMode: 'best' };
   const vol3dCache = new Map();
   const terr3dCache = new Map();
@@ -1063,7 +1063,7 @@
       if (preset === 'front') { cam3d.yaw = 0.0; cam3d.pitch = 0.0; cam3d.dist = 2.95; }
       else if (preset === 'top') { cam3d.yaw = 0.0; cam3d.pitch = 1.53; cam3d.dist = 3.20; }
       else if (preset === 'side') { cam3d.yaw = Math.PI * 0.5; cam3d.pitch = 0.0; cam3d.dist = 2.95; }
-      else { cam3d.yaw = -0.62; cam3d.pitch = 0.42; cam3d.dist = 3.15; preset = 'iso'; }
+      else { cam3d.yaw = -0.62; cam3d.pitch = -0.22; cam3d.dist = 4.0; preset = 'iso'; }
       document.querySelectorAll('[data-cam-preset]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.camPreset === preset);
       });
@@ -2124,7 +2124,7 @@ vec4 shadeTerrainHit(vec3 ro, vec3 rd, float tHit) {
   vec3 nTerr = normalize(vec3(-dzdx, -dzdy, 1.0));
 
   vec3 sunDir = normalize(vec3(-0.55, 0.55, 0.72));
-  float diff = max(0.0, dot(nTerr, sunDir));
+  float diff = mix(abs(dot(nTerr, sunDir)), max(0.0, dot(nTerr, sunDir)), 0.72);
   vec3 halfV = normalize(sunDir - rd);
   float spec = pow(max(0.0, dot(nTerr, halfV)), 24.0) * 0.12;
   float rim = pow(1.0 - max(0.0, abs(dot(nTerr, -rd))), 2.0);
@@ -2220,8 +2220,16 @@ void main() {
   float dt = (tEnd - tStart) / float(nSteps);
   float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 0.85;
   float tPrev = tStart;
-  float prevAirDiff = 0.0;
+  vec3 uvwStart = worldToTex(ro + rd * tStart);
+  float prevAirDiff = uvwStart.z - texture(uTerrain, uvwStart.xy).r;
   bool terrainHit = false;
+  if (uShowTerrain == 1 && tNear > 0.0 && abs(uvwStart.z) < 0.008 && abs(prevAirDiff) <= 0.015) {
+    terrainHit = true;
+    vec4 tSurf = shadeTerrainHit(ro, rd, tStart);
+    float aT = tSurf.a * (1.0 - accumAlpha);
+    accumCol += tSurf.rgb * aT;
+    accumAlpha += aT;
+  }
   vec3 lightDir = normalize(uCamFwd * -0.65 + uCamUp * 0.55 + uCamRight * 0.35);
 
   float mipMaxAbs = 0.0;
@@ -2244,9 +2252,8 @@ void main() {
     float airDiff = uvw.z - terrW;
 
     if (uShowTerrain == 1 && !terrainHit) {
-      bool hitEntryCap = (i == 0 && tNear > 0.0 && abs(p.z - 0.5) < 0.015 && abs(airDiff) <= 0.015);
-      bool crossed = (i > 0 && ((prevAirDiff < 0.0 && airDiff >= 0.0) || (prevAirDiff > 0.0 && airDiff <= 0.0)));
-      if (hitEntryCap || crossed) {
+      bool crossed = (prevAirDiff < 0.0 && airDiff >= 0.0) || (prevAirDiff > 0.0 && airDiff <= 0.0);
+      if (crossed) {
         float tHit = t;
         if (crossed) {
           float lo = tPrev, hi = t;
@@ -2326,6 +2333,36 @@ void main() {
     float aS = sliceEdgeAlpha * (1.0 - accumAlpha);
     accumCol += uAccentColor * aS;
     accumAlpha += aS;
+  }
+
+  if (uShowTerrain == 1 && !terrainHit && accumAlpha <= 0.985) {
+    vec3 pEnd = ro + rd * tEnd;
+    vec3 uvwEnd = worldToTex(pEnd);
+    float endDiff = uvwEnd.z - texture(uTerrain, uvwEnd.xy).r;
+    if (abs(pEnd.z - 0.5) < 0.015 && endDiff <= 0.015 && prevAirDiff >= -0.005) {
+      float tHit = tEnd;
+      if (prevAirDiff > 0.0 && endDiff < 0.0) {
+        float lo = tPrev, hi = tEnd;
+        float fLo = prevAirDiff;
+        for (int b = 0; b < 4; ++b) {
+          float mid = 0.5 * (lo + hi);
+          vec3 uvwM = worldToTex(ro + rd * mid);
+          float fM = uvwM.z - texture(uTerrain, uvwM.xy).r;
+          if (fLo > 0.0 && fM > 0.0) {
+            lo = mid;
+            fLo = fM;
+          } else {
+            hi = mid;
+          }
+        }
+        tHit = 0.5 * (lo + hi);
+      }
+      terrainHit = true;
+      vec4 tSurf = shadeTerrainHit(ro, rd, tHit);
+      float aT = tSurf.a * (1.0 - accumAlpha);
+      accumCol += tSurf.rgb * aT;
+      accumAlpha += aT;
+    }
   }
 
   vec3 finalRgb = accumCol + bgBase * max(0.0, 1.0 - accumAlpha);
@@ -2552,7 +2589,7 @@ void main() {
     const ctx = targetCanvas.getContext('2d');
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(r.canvas, 0, 0, w, h);
-    if (vol3dOpts.showTerrain && terrBytes && !fieldBytes && cam3d.pitch >= -0.02) {
+    if (vol3dOpts.showTerrain && terrBytes && !fieldBytes) {
       const segs = terr3dContours.get(terrBytes);
       if (segs && segs.length >= 6) {
         const tanFov = Math.tan((36.0 * Math.PI / 180.0) * 0.5);
@@ -2644,8 +2681,8 @@ void main() {
     canvas.addEventListener('dblclick', () => {
       if (renderMode !== '3d') return;
       cam3d.yaw = -0.62;
-      cam3d.pitch = 0.42;
-      cam3d.dist = 3.15;
+      cam3d.pitch = -0.22;
+      cam3d.dist = 4.0;
       document.querySelectorAll('[data-cam-preset]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.camPreset === 'iso');
       });
