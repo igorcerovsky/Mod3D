@@ -651,6 +651,8 @@ def test_demo_export_and_html():
 
     demo_html = build_dashboard_html(demo_mode=True)
     assert "const IS_DEMO_MODE = true;" in demo_html
+    assert "let layoutRows = IS_DEMO_MODE ? 2 : 1;" in demo_html
+    assert "let gridStartIndex = IS_DEMO_MODE ? 5 : 0;" in demo_html
     assert 'src="preview_2d.js"' in demo_html
     assert 'src="vol3d_meta.js"' in demo_html and 'src="vol3d_best.js"' in demo_html
     assert 'id="sampleSelect"' in demo_html and 'id="btnSamplePrev"' in demo_html and 'id="btnSampleNext"' in demo_html

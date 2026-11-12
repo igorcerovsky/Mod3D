@@ -1019,10 +1019,10 @@ __DATA_SCRIPTS_HTML__
 
   let trainingData = normalizeTrainingData(IS_DEMO_MODE ? window.PREVIEW_2D : (window.TRAINING_DATA || window.TRAINING_HISTORY || null));
   let currentIndex = -1;
-  let currentSampleIndex = 0;
-  let gridStartIndex = 0;
-  let layoutRows = 1;
-  let layoutCols = 1;
+  let currentSampleIndex = IS_DEMO_MODE ? 5 : 0;
+  let gridStartIndex = IS_DEMO_MODE ? 5 : 0;
+  let layoutRows = IS_DEMO_MODE ? 2 : 1;
+  let layoutCols = IS_DEMO_MODE ? 2 : 1;
   let renderMode = IS_DEMO_MODE ? '3d' : '2d'; // '2d' or '3d'
   let lossLogScale = true;
   let isPlaying = false;
@@ -1364,15 +1364,17 @@ __DATA_SCRIPTS_HTML__
     [cvsTruth, cvsPred, cvsDiff].forEach(bind3dPointerEvents);
     setRenderMode(renderMode);
 
-    function setLayout(rows, cols) {
+    function setLayout(rows, cols, opts) {
       const r = parseInt(rows, 10);
       const c = parseInt(cols, 10);
       layoutRows = Math.max(1, Math.min(8, isNaN(r) ? 1 : r));
       layoutCols = Math.max(1, Math.min(8, isNaN(c) ? 1 : c));
       const key = `${layoutRows}x${layoutCols}`;
-      try {
-        localStorage.setItem(IS_DEMO_MODE ? 'mod3d_demo_layout' : 'mod3d_dashboard_layout', key);
-      } catch (_) {}
+      if (opts && opts.persist) {
+        try {
+          localStorage.setItem(IS_DEMO_MODE ? 'mod3d_demo_layout_v2' : 'mod3d_dashboard_layout', key);
+        } catch (_) {}
+      }
 
       const cap = getLayoutCapacity();
       const isGrid = cap > 1;
@@ -1409,14 +1411,14 @@ __DATA_SCRIPTS_HTML__
     document.querySelectorAll('[data-layout-preset]').forEach(btn => {
       btn.addEventListener('click', () => {
         const parts = (btn.dataset.layoutPreset || '1x1').split('x');
-        setLayout(parts[0], parts[1]);
+        setLayout(parts[0], parts[1], { persist: true });
       });
     });
     const applyLayoutInputs = (commit) => {
       const r = parseInt(inpLayoutRows ? inpLayoutRows.value : layoutRows, 10);
       const c = parseInt(inpLayoutCols ? inpLayoutCols.value : layoutCols, 10);
       if (!commit && (isNaN(r) || r < 1 || r > 8 || isNaN(c) || c < 1 || c > 8)) return;
-      setLayout(isNaN(r) ? layoutRows : r, isNaN(c) ? layoutCols : c);
+      setLayout(isNaN(r) ? layoutRows : r, isNaN(c) ? layoutCols : c, { persist: true });
     };
     if (inpLayoutRows) {
       inpLayoutRows.addEventListener('input', () => applyLayoutInputs(false));
@@ -1428,7 +1430,7 @@ __DATA_SCRIPTS_HTML__
     }
 
     try {
-      const savedLayout = localStorage.getItem(IS_DEMO_MODE ? 'mod3d_demo_layout' : 'mod3d_dashboard_layout');
+      const savedLayout = localStorage.getItem(IS_DEMO_MODE ? 'mod3d_demo_layout_v2' : 'mod3d_dashboard_layout');
       const m = savedLayout && savedLayout.match(/^(\\d+)x(\\d+)$/);
       if (m) {
         layoutRows = Math.max(1, Math.min(8, parseInt(m[1], 10) || 1));
