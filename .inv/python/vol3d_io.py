@@ -93,6 +93,24 @@ def encode_terrain_u16_b64(terr_xy, depth_total_m):
     return base64.b64encode(u16.tobytes()).decode("ascii")
 
 
+def encode_field2d_i16_b64(field_xy, vmax=None):
+    """Encode (NX, NY) surface gravity field [mGal] into (NY, NX) little-endian int16 normalized to vmax."""
+    field_yx = np.transpose(np.asarray(field_xy, dtype=np.float32), (1, 0))
+    scale = float(vmax) if vmax is not None else float(np.abs(field_yx).max())
+    scale = max(1e-4, scale)
+    q = np.clip(np.round((field_yx / scale) * 32767.0), -32767, 32767)
+    i16 = np.ascontiguousarray(q, dtype="<i2")
+    return base64.b64encode(i16.tobytes()).decode("ascii"), round(scale, 4)
+
+
+def decode_field2d_i16_b64(b64_str, shape_xy, vmax):
+    """Decode an ``encode_field2d_i16_b64`` payload back into a (NX, NY) float32 array."""
+    nx, ny = shape_xy
+    i16 = np.frombuffer(base64.b64decode(b64_str), dtype="<i2").reshape(ny, nx)
+    field_yx = i16.astype(np.float32) / 32767.0 * float(vmax)
+    return np.transpose(field_yx, (1, 0)).astype(np.float32)
+
+
 def write_vol3d_sidecars(
     save_dir,
     epoch,
@@ -107,6 +125,8 @@ def write_vol3d_sidecars(
     is_best=False,
     stride=10,
     write_meta=True,
+    obs_fields=None,
+    pred_fields=None,
 ):
     """Write static 3D truth/terrain metadata + per-epoch 3D prediction sidecar files (.json + .js)."""
     os.makedirs(save_dir, exist_ok=True)
@@ -128,6 +148,10 @@ def write_vol3d_sidecars(
                 "truth_b64": t_b64,
                 "terrain_b64": terr_b64,
             }
+            if obs_fields is not None and s_idx < len(obs_fields) and obs_fields[s_idx] is not None:
+                obs_b64, obs_vmax = encode_field2d_i16_b64(obs_fields[s_idx])
+                item["obs_field_b64"] = obs_b64
+                item["obs_field_vmax"] = obs_vmax
             if "tag" in sm:
                 item["tag"] = sm["tag"]
             meta_samples.append(item)
@@ -140,15 +164,24 @@ def write_vol3d_sidecars(
 
     pred_b64_list = []
     vmax_pred_list = []
+    pred_field_b64_list = []
+    pred_field_vmax_list = []
     for s_idx in range(n_samples):
         p_vol = np.asarray(vpred_vols[s_idx], dtype=np.float32)
         vmax_s = max(0.1, float(sample_meta_list[s_idx].get("vmax", 0.6)), float(np.abs(p_vol).max()))
         p_b64, vmax_p = encode_vol3d_rle_b64(p_vol, vmax=vmax_s)
         pred_b64_list.append(p_b64)
         vmax_pred_list.append(vmax_p)
+        if pred_fields is not None and s_idx < len(pred_fields) and pred_fields[s_idx] is not None:
+            pf_b64, pf_vmax = encode_field2d_i16_b64(pred_fields[s_idx])
+            pred_field_b64_list.append(pf_b64)
+            pred_field_vmax_list.append(pf_vmax)
 
     ep_int = int(epoch)
     ep_payload = {"epoch": ep_int, "vmax_preds": vmax_pred_list, "pred_b64": pred_b64_list}
+    if len(pred_field_b64_list) == n_samples:
+        ep_payload["pred_field_b64"] = pred_field_b64_list
+        ep_payload["pred_field_vmax"] = pred_field_vmax_list
     ep_json = json.dumps(ep_payload)
     ep_js = (
         f"window.VOL3D_EPOCHS = window.VOL3D_EPOCHS || {{}};\n"

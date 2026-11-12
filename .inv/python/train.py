@@ -764,6 +764,11 @@ def build_dashboard_html():
       <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
       <button type="button" class="vol3d-btn active" id="btnRayComposite" title="Shaded 3D density compositing">Volume</button>
       <button type="button" class="vol3d-btn" id="btnRayMip" title="Maximum |density| intensity projection (reveals weak halos)">MIP</button>
+      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <span style="font-weight:600;" title="Choose which epoch 3D prediction snapshot is displayed">3D Ep:</span>
+      <button type="button" class="vol3d-btn active" data-vol3d-ep="best" title="Always show the best checkpoint 3D volume (falls back to latest)">Best</button>
+      <button type="button" class="vol3d-btn" data-vol3d-ep="latest" title="Always show the latest recorded 3D volume">Latest</button>
+      <button type="button" class="vol3d-btn" data-vol3d-ep="match" title="Show the 3D snapshot matching the selected Epoch slider">Match</button>
     </div>
     <div class="vol3d-group">
       <label for="vol3dThreshSlider" style="font-weight:600;" title="Hide weak voxels below this fraction of vmax (50% matches IoU)">|&rho;| Thresh</label>
@@ -778,6 +783,12 @@ def build_dashboard_html():
       <label title="Show active 2D Y cross-section frame inside 3D volume" style="display:inline-flex;align-items:center;gap:3px;cursor:pointer;">
         <input type="checkbox" id="chkVol3dSlice" checked> Y-Slice
       </label>
+      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <span style="font-weight:600;" title="Surface Bouguer gravity anomaly gz [mGal] draped onto Predicted terrain relief">Pred g<sub>z</sub>:</span>
+      <button type="button" class="vol3d-btn" data-field-mode="obs" title="Drape Observed Truth Bouguer anomaly on Predicted relief">Truth</button>
+      <button type="button" class="vol3d-btn active" data-field-mode="inv" title="Drape Forward Inversion Bouguer anomaly on Predicted relief">Inversion</button>
+      <button type="button" class="vol3d-btn" data-field-mode="diff" title="Drape Gravity Residual (Inversion minus Truth) on Predicted relief">Diff</button>
+      <span class="vol3d-val" id="vol3dFieldScale" style="min-width:68px;" title="Symmetric Bouguer anomaly color scale on Predicted relief"></span>
       <span id="vol3dStatusPill" class="hover-pill" style="display:none;cursor:pointer;" title="Click to jump to nearest available 3D snapshot"></span>
     </div>
   </div>
@@ -890,9 +901,13 @@ def build_dashboard_html():
 
   // Shared 3D camera & transfer-function state (guarantees identical transforms for Truth, Pred, Diff)
   const cam3d = { yaw: -0.62, pitch: 0.42, dist: 3.15 };
-  const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true };
+  const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, fieldMode: 'inv', epMode: 'best' };
   const vol3dCache = new Map();
   const terr3dCache = new Map();
+  const terr3dRanges = new WeakMap();
+  const terr3dContours = new WeakMap();
+  const field3dCache = new Map();
+  const field3dTexCache = new Map();
   const vol3dFetching = new Set();
   let vol3dRafId = 0;
   let suppressCardClickUntil = 0;
@@ -918,6 +933,7 @@ def build_dashboard_html():
   const vol3dOpacityVal = document.getElementById('vol3dOpacityVal');
   const chkVol3dTerrain = document.getElementById('chkVol3dTerrain');
   const chkVol3dSlice = document.getElementById('chkVol3dSlice');
+  const vol3dFieldScale = document.getElementById('vol3dFieldScale');
   const radView1 = document.getElementById('radView1');
   const radView8 = document.getElementById('radView8');
   const radView16 = document.getElementById('radView16');
@@ -1157,6 +1173,38 @@ def build_dashboard_html():
         scheduleVol3dRender();
       });
     }
+    document.querySelectorAll('[data-field-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.fieldMode || 'inv';
+        vol3dOpts.fieldMode = mode;
+        document.querySelectorAll('[data-field-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.fieldMode === mode);
+        });
+        scheduleVol3dRender();
+      });
+    });
+
+    function setVol3dEpMode(mode) {
+      vol3dOpts.epMode = (mode === 'latest' || mode === 'match') ? mode : 'best';
+      try { localStorage.setItem('mod3d_dashboard_vol3d_ep_mode', vol3dOpts.epMode); } catch (_) {}
+      document.querySelectorAll('[data-vol3d-ep]').forEach(b => {
+        b.classList.toggle('active', b.dataset.vol3dEp === vol3dOpts.epMode);
+      });
+      if (renderMode === '3d') {
+        ensureVol3dForCurrentEpoch();
+        scheduleVol3dRender();
+      }
+    }
+    try {
+      const savedEpMode = localStorage.getItem('mod3d_dashboard_vol3d_ep_mode');
+      if (savedEpMode === 'best' || savedEpMode === 'latest' || savedEpMode === 'match') {
+        vol3dOpts.epMode = savedEpMode;
+      }
+    } catch (_) {}
+    document.querySelectorAll('[data-vol3d-ep]').forEach(b => {
+      b.classList.toggle('active', b.dataset.vol3dEp === vol3dOpts.epMode);
+      b.addEventListener('click', () => setVol3dEpMode(b.dataset.vol3dEp));
+    });
 
     [cvsTruth, cvsPred, cvsDiff].forEach(bind3dPointerEvents);
     setRenderMode(renderMode);
@@ -1397,6 +1445,18 @@ def build_dashboard_html():
     }
     loadJsonOrScript('vol3d_index.json', 'vol3d_index.js', 'vol3dDynIdxScript', (d) => {
       if (d) window.VOL3D_INDEX = d;
+      const store = window.VOL3D_EPOCHS || {};
+      const bestEp = (window.VOL3D_INDEX && window.VOL3D_INDEX.best != null) ? window.VOL3D_INDEX.best : null;
+      if (bestEp != null && !store[bestEp]) {
+        loadJsonOrScript('vol3d_best.json', 'vol3d_best.js', 'vol3dDynBestScript', (bd) => {
+          if (bd && bd.epoch != null) {
+            window.VOL3D_EPOCHS = window.VOL3D_EPOCHS || {};
+            window.VOL3D_EPOCHS[bd.epoch] = bd;
+            window.VOL3D_BEST_EPOCH = bd.epoch;
+          }
+          if (renderMode === '3d') renderCurrentVoxelData();
+        });
+      }
     });
     loadJsonOrScript('vol3d_latest.json', 'vol3d_latest.js', 'vol3dDynLatestScript', (d) => {
       if (d && d.epoch != null) {
@@ -1408,26 +1468,55 @@ def build_dashboard_html():
     });
   }
 
+  function resolveVol3dEpoch(sliderEp) {
+    const idxInfo = window.VOL3D_INDEX || {};
+    const store = window.VOL3D_EPOCHS || {};
+    const pickLoadedOrId = (cands) => {
+      for (const c of cands) {
+        if (c != null && store[c]) return c;
+      }
+      for (const c of cands) {
+        if (c != null) return c;
+      }
+      const keys = Object.keys(store).map(k => parseInt(k, 10)).filter(n => !isNaN(n));
+      if (keys.length) return Math.max(...keys);
+      return sliderEp;
+    };
+    if (vol3dOpts.epMode === 'best') {
+      return pickLoadedOrId([idxInfo.best, window.VOL3D_BEST_EPOCH, idxInfo.latest, window.VOL3D_LATEST_EPOCH, sliderEp]);
+    }
+    if (vol3dOpts.epMode === 'latest') {
+      return pickLoadedOrId([idxInfo.latest, window.VOL3D_LATEST_EPOCH, idxInfo.best, window.VOL3D_BEST_EPOCH, sliderEp]);
+    }
+    return sliderEp;
+  }
+
   function ensureVol3dForCurrentEpoch() {
     const epochs = getEpochs();
     if (!epochs.length || currentIndex < 0 || !epochs[currentIndex]) return;
-    const ep = epochs[currentIndex].epoch || (currentIndex + 1);
+    const sliderEp = epochs[currentIndex].epoch || (currentIndex + 1);
+    const ep = resolveVol3dEpoch(sliderEp);
     const store = window.VOL3D_EPOCHS || {};
     if (store[ep]) return;
     const idxInfo = window.VOL3D_INDEX || {};
     let fileBase = null;
-    if (idxInfo.latest === ep) fileBase = 'vol3d_latest';
+    if (vol3dOpts.epMode === 'best' && idxInfo.best != null) fileBase = 'vol3d_best';
+    else if (vol3dOpts.epMode === 'latest' && idxInfo.latest != null) fileBase = 'vol3d_latest';
+    else if (idxInfo.latest === ep) fileBase = 'vol3d_latest';
     else if (idxInfo.best === ep) fileBase = 'vol3d_best';
     else if (Array.isArray(idxInfo.epochs) && idxInfo.epochs.indexOf(ep) !== -1) {
       fileBase = 'vol3d_ep_' + String(ep).padStart(4, '0');
     }
-    if (!fileBase || vol3dFetching.has(ep)) return;
-    vol3dFetching.add(ep);
+    if (!fileBase || vol3dFetching.has(fileBase + ':' + ep)) return;
+    const fetchKey = fileBase + ':' + ep;
+    vol3dFetching.add(fetchKey);
     loadJsonOrScript(fileBase + '.json', fileBase + '.js', 'vol3dEpScript_' + ep, (d) => {
-      vol3dFetching.delete(ep);
+      vol3dFetching.delete(fetchKey);
       if (d && d.epoch != null) {
         window.VOL3D_EPOCHS = window.VOL3D_EPOCHS || {};
         window.VOL3D_EPOCHS[d.epoch] = d;
+        if (fileBase === 'vol3d_best') window.VOL3D_BEST_EPOCH = d.epoch;
+        if (fileBase === 'vol3d_latest') window.VOL3D_LATEST_EPOCH = d.epoch;
       }
       if (renderMode === '3d') renderCurrentVoxelData();
     });
@@ -1589,6 +1678,68 @@ def build_dashboard_html():
     return out;
   }
 
+  function buildTerrainContourSegments(u16Arr, minB, maxB, nx, ny) {
+    const minF = minB / 65535.0;
+    const maxF = maxB / 65535.0;
+    const spanF = maxF - minF;
+    if (spanF <= 0.005) return new Float32Array(0);
+
+    const elev = new Float32Array(nx * ny);
+    for (let i = 0; i < nx * ny; ++i) {
+      elev[i] = (maxF - u16Arr[i] / 65535.0) / spanF;
+    }
+
+    const MS_TABLE = [
+      [], [3, 0], [0, 1], [3, 1], [1, 2], [3, 0, 1, 2], [0, 2], [3, 2],
+      [3, 2], [0, 2], [0, 1, 2, 3], [1, 2], [3, 1], [0, 1], [3, 0], []
+    ];
+    const levels = [0.2, 0.4, 0.6, 0.8];
+    const segs = [];
+
+    function edgePt(edge, ix, iy, v0, v1, v2, v3, lvl, wz) {
+      let fx = ix, fy = iy, t = 0.5;
+      if (edge === 0) {
+        t = (lvl - v0) / (v1 - v0 || 1e-6);
+        fx = ix + t; fy = iy;
+      } else if (edge === 1) {
+        t = (lvl - v1) / (v2 - v1 || 1e-6);
+        fx = ix + 1; fy = iy + t;
+      } else if (edge === 2) {
+        t = (lvl - v3) / (v2 - v3 || 1e-6);
+        fx = ix + t; fy = iy + 1;
+      } else {
+        t = (lvl - v0) / (v3 - v0 || 1e-6);
+        fx = ix; fy = iy + t;
+      }
+      const wx = ((fx + 0.5) / nx) * 2.0 - 1.0;
+      const wy = ((fy + 0.5) / ny) * 2.0 - 1.0;
+      return [wx, wy, wz];
+    }
+
+    for (const lvl of levels) {
+      const depthF = maxF - lvl * spanF;
+      const wz = 0.5 - depthF;
+      for (let iy = 0; iy < ny - 1; ++iy) {
+        const row = iy * nx;
+        for (let ix = 0; ix < nx - 1; ++ix) {
+          const v0 = elev[row + ix];
+          const v1 = elev[row + ix + 1];
+          const v2 = elev[row + nx + ix + 1];
+          const v3 = elev[row + nx + ix];
+          const mask = (v0 >= lvl ? 1 : 0) | (v1 >= lvl ? 2 : 0) | (v2 >= lvl ? 4 : 0) | (v3 >= lvl ? 8 : 0);
+          const edges = MS_TABLE[mask];
+          if (!edges.length) continue;
+          for (let k = 0; k < edges.length; k += 2) {
+            const pA = edgePt(edges[k], ix, iy, v0, v1, v2, v3, lvl, wz);
+            const pB = edgePt(edges[k + 1], ix, iy, v0, v1, v2, v3, lvl, wz);
+            segs.push(pA[0], pA[1], pA[2], pB[0], pB[1], pB[2]);
+          }
+        }
+      }
+    }
+    return new Float32Array(segs);
+  }
+
   function decodeTerrainU16ToU8Cached(sampleIdx, b64, nx, ny) {
     if (!b64) return null;
     const key = `${sampleIdx}:${nx}x${ny}`;
@@ -1596,12 +1747,92 @@ def build_dashboard_html():
     const raw = decodeBase64ToBytes(b64);
     const n = nx * ny;
     const out = new Uint8Array(n);
+    const u16Arr = new Uint16Array(n);
+    let minB = 65535, maxB = 0;
     for (let i = 0; i < n && (i * 2 + 1) < raw.length; ++i) {
       const u16 = raw[i * 2] | (raw[i * 2 + 1] << 8);
+      u16Arr[i] = u16;
       out[i] = Math.round((u16 / 65535.0) * 255.0);
+      if (u16 < minB) minB = u16;
+      if (u16 > maxB) maxB = u16;
     }
+    terr3dRanges.set(out, [minB / 65535.0, maxB / 65535.0]);
+    terr3dContours.set(out, buildTerrainContourSegments(u16Arr, minB, maxB, nx, ny));
     terr3dCache.set(key, out);
     return out;
+  }
+
+  function decodeFieldI16Cached(key, b64, nx, ny, vmax) {
+    if (!b64) return null;
+    const scale = Math.max(1e-4, Number(vmax) || 1.0);
+    const cacheKey = `${key}:${nx}x${ny}:${scale}`;
+    if (field3dCache.has(cacheKey)) return field3dCache.get(cacheKey);
+    const raw = decodeBase64ToBytes(b64);
+    const n = nx * ny;
+    const arr = new Float32Array(n);
+    let minV = Infinity, maxV = -Infinity, absMax = 0.0;
+    for (let i = 0; i < n && (i * 2 + 1) < raw.length; ++i) {
+      const u16 = raw[i * 2] | (raw[i * 2 + 1] << 8);
+      const i16 = (u16 & 0x8000) ? (u16 - 0x10000) : u16;
+      const val = (i16 / 32767.0) * scale;
+      arr[i] = val;
+      if (val < minV) minV = val;
+      if (val > maxV) maxV = val;
+      const av = Math.abs(val);
+      if (av > absMax) absMax = av;
+    }
+    if (!isFinite(minV)) { minV = 0.0; maxV = 0.0; }
+    const obj = { data: arr, min: minV, max: maxV, vmax: Math.max(1e-4, absMax || scale) };
+    field3dCache.set(cacheKey, obj);
+    return obj;
+  }
+
+  function prepareFieldSurface(texKey, obsObj, invObj, mode, nx, ny) {
+    let srcObj = null;
+    if (mode === 'obs') {
+      if (!obsObj) return null;
+      srcObj = obsObj;
+    } else if (mode === 'inv') {
+      if (!invObj) return null;
+      srcObj = invObj;
+    } else if (mode === 'diff') {
+      if (!obsObj || !invObj) return null;
+    } else {
+      return null;
+    }
+    const fullKey = `${texKey}:${nx}x${ny}:${obsObj ? obsObj.vmax : 0}:${invObj ? invObj.vmax : 0}`;
+    if (field3dTexCache.has(fullKey)) return field3dTexCache.get(fullKey);
+    const n = nx * ny;
+    const out = new Uint8Array(n);
+    let res;
+    if (mode === 'diff') {
+      let maxAbs = 0.0;
+      const diffArr = new Float32Array(n);
+      for (let i = 0; i < n; ++i) {
+        const d = invObj.data[i] - obsObj.data[i];
+        diffArr[i] = d;
+        const av = Math.abs(d);
+        if (av > maxAbs) maxAbs = av;
+      }
+      const scale = Math.max(1e-4, maxAbs);
+      for (let i = 0; i < n; ++i) {
+        const q = Math.round((diffArr[i] / scale) * 127.0) + 128;
+        out[i] = Math.max(1, Math.min(255, q));
+      }
+      res = { bytes: out, min: -scale, max: scale, vmax: scale, mode: 2 };
+    } else {
+      const srcA = srcObj.data;
+      const minV = (obsObj && invObj) ? Math.min(obsObj.min, invObj.min) : srcObj.min;
+      const maxV = (obsObj && invObj) ? Math.max(obsObj.max, invObj.max) : srcObj.max;
+      const span = maxV - minV;
+      for (let i = 0; i < n; ++i) {
+        const t = span > 1e-6 ? Math.max(0.0, Math.min(1.0, (srcA[i] - minV) / span)) : 0.5;
+        out[i] = Math.max(0, Math.min(255, Math.round(t * 255.0)));
+      }
+      res = { bytes: out, min: minV, max: maxV, vmax: Math.max(1e-4, Math.abs(minV), Math.abs(maxV)), mode: 1 };
+    }
+    field3dTexCache.set(fullKey, res);
+    return res;
   }
 
   function getCamBasis() {
@@ -1649,6 +1880,7 @@ out vec4 fragColor;
 uniform sampler3D uVol;
 uniform sampler3D uVolRef;
 uniform sampler2D uTerrain;
+uniform sampler2D uField;
 
 uniform vec3 uCamPos;
 uniform vec3 uCamRight;
@@ -1660,7 +1892,7 @@ uniform float uAspect;
 uniform vec3 uBgColor;
 uniform vec3 uBoxColor;
 uniform vec3 uAccentColor;
-uniform vec3 uTerrainTint;
+uniform vec2 uTerrRange;
 uniform vec3 uTexelStep;
 
 uniform float uVmaxA;
@@ -1673,6 +1905,7 @@ uniform int uIsDiff;
 uniform int uIsMip;
 uniform int uShowTerrain;
 uniform int uShowSlice;
+uniform int uSurfaceMode;
 uniform int uSteps;
 
 vec3 worldToTex(vec3 p) {
@@ -1696,6 +1929,96 @@ vec3 coolwarmColor(float u) {
   }
   vec3 posC = vec3(165.0 / 255.0, 0.0, 38.0 / 255.0);
   return mix(zeroC, posC, clamp(u, 0.0, 1.0));
+}
+
+// Mod3D Bouguer gravity color table (CTBL_FLD / gravPegs):
+// Dark Blue -> Cyan -> Green -> Yellow -> Red -> Magenta -> Light Pink
+vec3 bouguerMod3dColor(float tNorm) {
+  float t = clamp(tNorm, 0.0, 1.0) * 6.0;
+  vec3 c0 = vec3(0.0, 0.0, 153.0 / 255.0);
+  vec3 c1 = vec3(0.0, 204.0 / 255.0, 1.0);
+  vec3 c2 = vec3(0.0, 1.0, 0.0);
+  vec3 c3 = vec3(1.0, 1.0, 0.0);
+  vec3 c4 = vec3(1.0, 0.0, 0.0);
+  vec3 c5 = vec3(1.0, 0.0, 1.0);
+  vec3 c6 = vec3(1.0, 200.0 / 255.0, 1.0);
+  if (t < 1.0) return mix(c0, c1, t);
+  if (t < 2.0) return mix(c1, c2, t - 1.0);
+  if (t < 3.0) return mix(c2, c3, t - 2.0);
+  if (t < 4.0) return mix(c3, c4, t - 3.0);
+  if (t < 5.0) return mix(c4, c5, t - 4.0);
+  return mix(c5, c6, t - 5.0);
+}
+
+// Mod3D difference color table (diffPegs): Blue -> White -> Red
+vec3 diffMod3dColor(float u) {
+  vec3 zeroC = vec3(1.0);
+  if (u < 0.0) {
+    vec3 negC = vec3(0.0, 0.0, 160.0 / 255.0);
+    return mix(zeroC, negC, clamp(-u, 0.0, 1.0));
+  }
+  vec3 posC = vec3(160.0 / 255.0, 0.0, 0.0);
+  return mix(zeroC, posC, clamp(u, 0.0, 1.0));
+}
+
+// Classic cartographic hypsometric topographic ramp (valley green -> buff -> earth brown -> alpine crest)
+vec3 topoColor(float elev) {
+  float t = clamp(elev, 0.0, 1.0);
+  vec3 c0 = vec3(0.22, 0.56, 0.31);
+  vec3 c1 = vec3(0.56, 0.74, 0.40);
+  vec3 c2 = vec3(0.87, 0.81, 0.53);
+  vec3 c3 = vec3(0.71, 0.47, 0.31);
+  vec3 c4 = vec3(0.60, 0.54, 0.50);
+  vec3 c5 = vec3(0.90, 0.89, 0.87);
+  if (t < 0.25) return mix(c0, c1, t / 0.25);
+  if (t < 0.50) return mix(c1, c2, (t - 0.25) / 0.25);
+  if (t < 0.74) return mix(c2, c3, (t - 0.50) / 0.24);
+  if (t < 0.90) return mix(c3, c4, (t - 0.74) / 0.16);
+  return mix(c4, c5, (t - 0.90) / 0.10);
+}
+
+vec4 shadeTerrainHit(vec3 ro, vec3 rd, float tHit) {
+  vec3 ph = ro + rd * tHit;
+  vec3 uvw = worldToTex(ph);
+  float terrW = texture(uTerrain, uvw.xy).r;
+
+  vec2 hs = uTexelStep.xy * 1.5;
+  float tL = texture(uTerrain, clamp(uvw.xy - vec2(hs.x, 0.0), 0.0, 1.0)).r;
+  float tR = texture(uTerrain, clamp(uvw.xy + vec2(hs.x, 0.0), 0.0, 1.0)).r;
+  float tD = texture(uTerrain, clamp(uvw.xy - vec2(0.0, hs.y), 0.0, 1.0)).r;
+  float tU = texture(uTerrain, clamp(uvw.xy + vec2(0.0, hs.y), 0.0, 1.0)).r;
+  float dzdx = -(tR - tL) / (4.0 * hs.x);
+  float dzdy = -(tU - tD) / (4.0 * hs.y);
+  vec3 nTerr = normalize(vec3(-dzdx, -dzdy, 1.0));
+
+  vec3 sunDir = normalize(vec3(-0.55, 0.55, 0.72));
+  float diff = max(0.0, dot(nTerr, sunDir));
+  vec3 halfV = normalize(sunDir - rd);
+  float spec = pow(max(0.0, dot(nTerr, halfV)), 24.0) * 0.12;
+  float rim = pow(1.0 - max(0.0, abs(dot(nTerr, -rd))), 2.0);
+
+  if (uSurfaceMode == 1) {
+    float gNorm = texture(uField, uvw.xy).r;
+    vec3 fCol = bouguerMod3dColor(gNorm);
+    vec3 litF = fCol * (0.68 + 0.36 * diff) + vec3(spec * 0.8);
+    float alphaF = clamp(0.42 + 0.14 * rim, 0.38, 0.58);
+    return vec4(clamp(litF, 0.0, 1.0), alphaF);
+  }
+  if (uSurfaceMode == 2) {
+    float dVal = (texture(uField, uvw.xy).r * 255.0 - 128.0) / 127.0;
+    vec3 dCol = diffMod3dColor(clamp(dVal, -1.0, 1.0));
+    vec3 litD = dCol * (0.65 + 0.40 * diff) + vec3(spec * 0.8);
+    float alphaD = clamp(0.40 + 0.16 * rim + 0.12 * abs(dVal), 0.36, 0.62);
+    return vec4(clamp(litD, 0.0, 1.0), alphaD);
+  }
+
+  float span = max(0.0, uTerrRange.y - uTerrRange.x);
+  float elev = (span > 0.005) ? clamp((uTerrRange.y - terrW) / span, 0.0, 1.0) : 0.35;
+
+  vec3 baseCol = topoColor(elev);
+  vec3 litCol = baseCol * (0.50 + 0.60 * diff) + vec3(spec);
+  float alphaT = clamp(0.32 + 0.14 * rim, 0.30, 0.50);
+  return vec4(clamp(litCol, 0.0, 1.0), alphaT);
 }
 
 float boxEdgeFactor(vec3 p) {
@@ -1764,6 +2087,7 @@ void main() {
   int nSteps = clamp(uSteps, 32, 160);
   float dt = (tEnd - tStart) / float(nSteps);
   float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) * 0.85;
+  float tPrev = tStart;
   float prevAirDiff = 0.0;
   bool terrainHit = false;
   vec3 lightDir = normalize(uCamFwd * -0.65 + uCamUp * 0.55 + uCamRight * 0.35);
@@ -1787,14 +2111,35 @@ void main() {
     float terrW = texture(uTerrain, uvw.xy).r;
     float airDiff = uvw.z - terrW;
 
-    if (uShowTerrain == 1 && !terrainHit && i > 0 && prevAirDiff < 0.0 && airDiff >= 0.0) {
-      terrainHit = true;
-      float contour = 1.0 - smoothstep(0.0, 0.14, abs(fract(terrW * 32.0) - 0.5));
-      float aT = mix(0.10, 0.24, contour) * (1.0 - accumAlpha);
-      vec3 tCol = mix(uTerrainTint, uBoxColor, contour * 0.55);
-      accumCol += tCol * aT;
-      accumAlpha += aT;
+    if (uShowTerrain == 1 && !terrainHit) {
+      bool hitEntryCap = (i == 0 && tNear > 0.0 && abs(p.z - 0.5) < 0.015 && abs(airDiff) <= 0.015);
+      bool crossed = (i > 0 && ((prevAirDiff < 0.0 && airDiff >= 0.0) || (prevAirDiff > 0.0 && airDiff <= 0.0)));
+      if (hitEntryCap || crossed) {
+        float tHit = t;
+        if (crossed) {
+          float lo = tPrev, hi = t;
+          float fLo = prevAirDiff;
+          for (int b = 0; b < 4; ++b) {
+            float mid = 0.5 * (lo + hi);
+            vec3 uvwM = worldToTex(ro + rd * mid);
+            float fM = uvwM.z - texture(uTerrain, uvwM.xy).r;
+            if ((fLo < 0.0 && fM < 0.0) || (fLo > 0.0 && fM > 0.0)) {
+              lo = mid;
+              fLo = fM;
+            } else {
+              hi = mid;
+            }
+          }
+          tHit = 0.5 * (lo + hi);
+        }
+        terrainHit = true;
+        vec4 tSurf = shadeTerrainHit(ro, rd, tHit);
+        float aT = tSurf.a * (1.0 - accumAlpha);
+        accumCol += tSurf.rgb * aT;
+        accumAlpha += aT;
+      }
     }
+    tPrev = t;
     prevAirDiff = airDiff;
 
     if (uShowTerrain == 1 && airDiff < -0.002) {
@@ -1907,12 +2252,19 @@ void main() {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+    const texField = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, texField);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
     const locs = {};
     [
-      'uVol', 'uVolRef', 'uTerrain', 'uCamPos', 'uCamRight', 'uCamUp', 'uCamFwd',
-      'uTanHalfFov', 'uAspect', 'uBgColor', 'uBoxColor', 'uAccentColor', 'uTerrainTint',
+      'uVol', 'uVolRef', 'uTerrain', 'uField', 'uCamPos', 'uCamRight', 'uCamUp', 'uCamFwd',
+      'uTanHalfFov', 'uAspect', 'uBgColor', 'uBoxColor', 'uAccentColor', 'uTerrRange',
       'uTexelStep', 'uVmaxA', 'uVmaxB', 'uVmaxDisplay', 'uThresh', 'uOpacity',
-      'uSliceY', 'uIsDiff', 'uIsMip', 'uShowTerrain', 'uShowSlice', 'uSteps'
+      'uSliceY', 'uIsDiff', 'uIsMip', 'uShowTerrain', 'uShowSlice', 'uSurfaceMode', 'uSteps'
     ].forEach(name => { locs[name] = gl.getUniformLocation(prog, name); });
 
     gl3d = {
@@ -1924,9 +2276,11 @@ void main() {
       texVolA: makeTex3D(),
       texVolB: makeTex3D(),
       texTerrain,
+      texField,
       lastRefA: null,
       lastRefB: null,
       lastRefTerr: null,
+      lastRefField: null,
       lastDims: '',
       unavailable: false,
     };
@@ -1961,7 +2315,9 @@ void main() {
     ctx.restore();
   }
 
-  function drawVolume3D(targetCanvas, volABytes, volBBytes, terrBytes, nx, ny, nz, vmaxA, vmaxB, vmaxDisp, iySlice, isDiff, steps, showTriad) {
+  function drawVolume3D(targetCanvas, volABytes, volBBytes, terrBytes, nx, ny, nz, vmaxA, vmaxB, vmaxDisp, iySlice, isDiff, steps, showTriad, fieldSurf) {
+    const fieldBytes = fieldSurf ? (fieldSurf.bytes || fieldSurf) : null;
+    const surfaceMode = fieldBytes ? ((fieldSurf && fieldSurf.mode) || 1) : 0;
     const r = initWebGL3D();
     if (!r || r.unavailable) {
       drawPlaceholder(targetCanvas, "WebGL2 unavailable in this browser");
@@ -2013,17 +2369,28 @@ void main() {
       gl.bindTexture(gl.TEXTURE_2D, r.texTerrain);
     }
 
+    if (fieldBytes && (dimChanged || r.lastRefField !== fieldBytes)) {
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, r.texField);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, nx, ny, 0, gl.RED, gl.UNSIGNED_BYTE, fieldBytes);
+      r.lastRefField = fieldBytes;
+    } else {
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, r.texField);
+    }
+
     const basis = getCamBasis();
     const pal = getThemePalette();
     const bgRgb = parseHexRgb(pal.surfaceBg);
     const boxRgb = isDarkTheme() ? [0.58, 0.64, 0.74] : [0.28, 0.34, 0.44];
     const accRgb = parseHexRgb(pal.accent);
-    const terrRgb = isDarkTheme() ? [0.55, 0.65, 0.78] : [0.35, 0.42, 0.52];
+    const terrRange = (terrBytes && terr3dRanges.get(terrBytes)) || [0.0, 0.25];
 
     const L = r.locs;
     gl.uniform1i(L.uVol, 0);
     gl.uniform1i(L.uVolRef, 1);
     gl.uniform1i(L.uTerrain, 2);
+    gl.uniform1i(L.uField, 3);
     gl.uniform3fv(L.uCamPos, basis.camPos);
     gl.uniform3fv(L.uCamRight, basis.camRight);
     gl.uniform3fv(L.uCamUp, basis.camUp);
@@ -2033,7 +2400,7 @@ void main() {
     gl.uniform3fv(L.uBgColor, bgRgb);
     gl.uniform3fv(L.uBoxColor, boxRgb);
     gl.uniform3fv(L.uAccentColor, accRgb);
-    gl.uniform3fv(L.uTerrainTint, terrRgb);
+    gl.uniform2f(L.uTerrRange, terrRange[0], terrRange[1]);
     gl.uniform3f(L.uTexelStep, 1.0 / nx, 1.0 / ny, 1.0 / nz);
     gl.uniform1f(L.uVmaxA, vmaxA);
     gl.uniform1f(L.uVmaxB, vmaxB || vmaxA);
@@ -2045,6 +2412,7 @@ void main() {
     gl.uniform1i(L.uIsMip, vol3dOpts.style === 'mip' ? 1 : 0);
     gl.uniform1i(L.uShowTerrain, (vol3dOpts.showTerrain && terrBytes) ? 1 : 0);
     gl.uniform1i(L.uShowSlice, vol3dOpts.showSlice ? 1 : 0);
+    gl.uniform1i(L.uSurfaceMode, surfaceMode);
     gl.uniform1i(L.uSteps, steps || 112);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -2052,6 +2420,37 @@ void main() {
     const ctx = targetCanvas.getContext('2d');
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(r.canvas, 0, 0, w, h);
+    if (vol3dOpts.showTerrain && terrBytes && !fieldBytes && cam3d.pitch >= -0.02) {
+      const segs = terr3dContours.get(terrBytes);
+      if (segs && segs.length >= 6) {
+        const tanFov = Math.tan((36.0 * Math.PI / 180.0) * 0.5);
+        const aspect = w / Math.max(1, h);
+        const cp = basis.camPos, cr = basis.camRight, cu = basis.camUp, cf = basis.camFwd;
+        ctx.save();
+        ctx.strokeStyle = isDarkTheme() ? 'rgba(241, 245, 249, 0.34)' : 'rgba(15, 23, 42, 0.36)';
+        ctx.lineWidth = showTriad ? 0.9 : 0.6;
+        ctx.beginPath();
+        for (let i = 0; i < segs.length; i += 6) {
+          const ax = segs[i] - cp[0], ay = segs[i + 1] - cp[1], az = segs[i + 2] - cp[2];
+          const azc = ax * cf[0] + ay * cf[1] + az * cf[2];
+          const bx = segs[i + 3] - cp[0], by = segs[i + 4] - cp[1], bz = segs[i + 5] - cp[2];
+          const bzc = bx * cf[0] + by * cf[1] + bz * cf[2];
+          if (azc <= 0.1 || bzc <= 0.1) continue;
+          const axc = ax * cr[0] + ay * cr[1] + az * cr[2];
+          const ayc = ax * cu[0] + ay * cu[1] + az * cu[2];
+          const bxc = bx * cr[0] + by * cr[1] + bz * cr[2];
+          const byc = bx * cu[0] + by * cu[1] + bz * cu[2];
+          const sx0 = ((axc / (azc * aspect * tanFov)) * 0.5 + 0.5) * w;
+          const sy0 = (0.5 - (ayc / (azc * tanFov)) * 0.5) * h;
+          const sx1 = ((bxc / (bzc * aspect * tanFov)) * 0.5 + 0.5) * w;
+          const sy1 = (0.5 - (byc / (bzc * tanFov)) * 0.5) * h;
+          ctx.moveTo(sx0, sy0);
+          ctx.lineTo(sx1, sy1);
+        }
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
     if (showTriad) {
       drawAxisTriadOverlay(ctx, w, h, basis.camRight, basis.camUp, pal);
     }
@@ -2122,18 +2521,49 @@ void main() {
     });
   }
 
-  function updateVol3dStatusPill(ep, hasPred) {
+  function updatePredEpochBadge(sliderEp, ep3dKey, hasPred) {
+    if (!predEpochBadge) return;
+    if (renderMode !== '3d') {
+      predEpochBadge.textContent = `Epoch ${sliderEp}`;
+      return;
+    }
+    if (vol3dOpts.epMode === 'best' && hasPred && ep3dKey != null) {
+      predEpochBadge.textContent = `Best Ep ${ep3dKey}`;
+    } else if (vol3dOpts.epMode === 'latest' && hasPred && ep3dKey != null) {
+      predEpochBadge.textContent = `Latest Ep ${ep3dKey}`;
+    } else {
+      predEpochBadge.textContent = `Epoch ${sliderEp}`;
+    }
+  }
+
+  function updateVol3dStatusPill(sliderEp, ep3dKey, hasPred) {
     if (!vol3dStatusPill) return;
-    if (renderMode !== '3d' || hasPred) {
+    if (renderMode !== '3d') {
       vol3dStatusPill.style.display = 'none';
       vol3dStatusPill.onclick = null;
       return;
     }
     const idxInfo = window.VOL3D_INDEX || {};
+    if (hasPred) {
+      if (vol3dOpts.epMode !== 'match' && ep3dKey != null && ep3dKey !== sliderEp) {
+        const label = vol3dOpts.epMode === 'best' ? 'Best' : 'Latest';
+        vol3dStatusPill.style.display = 'inline-block';
+        vol3dStatusPill.textContent = `3D: ${label} Ep ${ep3dKey}`;
+        vol3dStatusPill.onclick = () => {
+          const epochs = getEpochs();
+          const found = epochs.findIndex(e => (e.epoch || 0) === ep3dKey);
+          if (found >= 0) { stopPlayback(); showEpoch(found); }
+        };
+      } else {
+        vol3dStatusPill.style.display = 'none';
+        vol3dStatusPill.onclick = null;
+      }
+      return;
+    }
     const targetEp = (idxInfo.best != null) ? idxInfo.best : idxInfo.latest;
     if (targetEp != null) {
       vol3dStatusPill.style.display = 'inline-block';
-      vol3dStatusPill.textContent = `No 3D at Ep ${ep} \u2022 Jump to Ep ${targetEp}`;
+      vol3dStatusPill.textContent = `No 3D at Ep ${sliderEp} \u2022 Jump to Ep ${targetEp}`;
       vol3dStatusPill.onclick = () => {
         const epochs = getEpochs();
         const found = epochs.findIndex(e => (e.epoch || 0) === targetEp);
@@ -2141,6 +2571,32 @@ void main() {
       };
     } else {
       vol3dStatusPill.style.display = 'none';
+      vol3dStatusPill.onclick = null;
+    }
+  }
+
+  function getSampleFieldSurface(vs, ep3d, ep, sampleIdx, nx, ny, mode) {
+    const obsB64 = vs && vs.obs_field_b64;
+    const obsVmax = (vs && vs.obs_field_vmax) || 1.0;
+    const obsObj = obsB64 ? decodeFieldI16Cached(`obs:${sampleIdx}`, obsB64, nx, ny, obsVmax) : null;
+    const predB64 = (ep3d && Array.isArray(ep3d.pred_field_b64)) ? ep3d.pred_field_b64[sampleIdx] : null;
+    const predVmax = (ep3d && Array.isArray(ep3d.pred_field_vmax) && ep3d.pred_field_vmax[sampleIdx]) || 1.0;
+    const invObj = predB64 ? decodeFieldI16Cached(`inv:${ep}:${sampleIdx}`, predB64, nx, ny, predVmax) : null;
+    return prepareFieldSurface(`${ep}:${sampleIdx}:${mode}`, obsObj, invObj, mode, nx, ny);
+  }
+
+  function updateFieldScaleBadge(surf) {
+    if (!vol3dFieldScale) return;
+    if (renderMode !== '3d' || !vol3dOpts.showTerrain) {
+      vol3dFieldScale.textContent = '';
+      return;
+    }
+    if (!surf) {
+      vol3dFieldScale.textContent = 'topo';
+    } else if (surf.mode === 2) {
+      vol3dFieldScale.textContent = `\u00b1${surf.vmax.toFixed(2)} mGal`;
+    } else {
+      vol3dFieldScale.textContent = `${surf.min.toFixed(2)}..${surf.max.toFixed(2)} mGal`;
     }
   }
 
@@ -2159,7 +2615,8 @@ void main() {
     if (renderMode === '3d') {
       const vMeta = window.VOL3D_META;
       const ep = entry.epoch || (currentIndex + 1);
-      const ep3d = (window.VOL3D_EPOCHS && window.VOL3D_EPOCHS[ep]) || null;
+      const ep3dKey = resolveVol3dEpoch(ep);
+      const ep3d = (window.VOL3D_EPOCHS && window.VOL3D_EPOCHS[ep3dKey]) || null;
       const nx = (vMeta && vMeta.nx) || meta.nx || 64;
       const ny = (vMeta && vMeta.ny) || meta.ny || 64;
       const nz = (vMeta && vMeta.nz) || meta.nz || 32;
@@ -2171,20 +2628,24 @@ void main() {
       const terrBytes = (vs && vs.terrain_b64) ? decodeTerrainU16ToU8Cached(currentSampleIndex, vs.terrain_b64, nx, ny) : null;
       const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[currentSampleIndex] : null;
       const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[currentSampleIndex]) || vmaxT;
-      const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep}:${currentSampleIndex}`, pB64, nx, ny, nz) : null;
+      const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep3dKey}:${currentSampleIndex}`, pB64, nx, ny, nz) : null;
+      const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, vol3dOpts.fieldMode);
+      const diffSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, 'diff');
 
-      updateVol3dStatusPill(ep, Boolean(pBytes));
+      updatePredEpochBadge(ep, ep3dKey, Boolean(pBytes));
+      updateVol3dStatusPill(ep, ep3dKey, Boolean(pBytes));
+      updateFieldScaleBadge(predSurf);
 
       if (tBytes) {
-        drawVolume3D(cvsTruth, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, 112, true);
+        drawVolume3D(cvsTruth, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, 112, true, null);
       } else {
         drawPlaceholder(cvsTruth, "No 3D truth volume loaded (vol3d_meta.js)");
       }
 
       if (pBytes) {
-        drawVolume3D(cvsPred, pBytes, null, terrBytes, nx, ny, nz, vmaxP, vmaxP, vmaxT, iySlice, false, 112, true);
+        drawVolume3D(cvsPred, pBytes, null, terrBytes, nx, ny, nz, vmaxP, vmaxP, vmaxT, iySlice, false, 112, true, predSurf);
         if (chkShowDiff.checked && tBytes) {
-          drawVolume3D(cvsDiff, pBytes, tBytes, terrBytes, nx, ny, nz, vmaxP, vmaxT, vmaxT * 0.7, iySlice, true, 112, true);
+          drawVolume3D(cvsDiff, pBytes, tBytes, terrBytes, nx, ny, nz, vmaxP, vmaxT, vmaxT * 0.7, iySlice, true, 112, true, diffSurf);
         }
       } else {
         const msg3d = !vMeta
@@ -2196,7 +2657,8 @@ void main() {
       return;
     }
 
-    updateVol3dStatusPill(0, true);
+    updatePredEpochBadge(entry.epoch || (currentIndex + 1), null, true);
+    updateVol3dStatusPill(0, null, true);
     const vmax = (sm && sm.vmax) || (entry.slice && entry.slice.vmax) || (meta && meta.vmax) || 0.6;
     const terrain = (sm && sm.terrain) || (entry.slice && entry.slice.terrain) || (meta && meta.terrain) || [];
     const truthSlice = (sm && sm.truth_slice) || (entry.slice && entry.slice.truth) || (meta && meta.truth_slice) || [];
@@ -2297,7 +2759,8 @@ void main() {
     if (renderMode === '3d') {
       const vMeta = window.VOL3D_META;
       const ep = entry.epoch || (currentIndex + 1);
-      const ep3d = (window.VOL3D_EPOCHS && window.VOL3D_EPOCHS[ep]) || null;
+      const ep3dKey = resolveVol3dEpoch(ep);
+      const ep3d = (window.VOL3D_EPOCHS && window.VOL3D_EPOCHS[ep3dKey]) || null;
       const nx = (vMeta && vMeta.nx) || meta.nx || 64;
       const ny = (vMeta && vMeta.ny) || meta.ny || 64;
       const nz = (vMeta && vMeta.nz) || meta.nz || 32;
@@ -2316,23 +2779,27 @@ void main() {
         const terrBytes = (vs && vs.terrain_b64) ? decodeTerrainU16ToU8Cached(i, vs.terrain_b64, nx, ny) : null;
         const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[i] : null;
         const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[i]) || vmaxT;
-        const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep}:${i}`, pB64, nx, ny, nz) : null;
+        const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep3dKey}:${i}`, pB64, nx, ny, nz) : null;
+        const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, vol3dOpts.fieldMode);
+        if (i === currentSampleIndex) updateFieldScaleBadge(predSurf);
         if (pBytes) anyPred = true;
 
         if (cvsT) {
-          if (tBytes) drawVolume3D(cvsT, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, stepsMini, false);
+          if (tBytes) drawVolume3D(cvsT, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, stepsMini, false, null);
           else drawPlaceholder(cvsT, "No 3D");
         }
         if (cvsP) {
-          if (pBytes) drawVolume3D(cvsP, pBytes, null, terrBytes, nx, ny, nz, vmaxP, vmaxP, vmaxT, iySlice, false, stepsMini, false);
+          if (pBytes) drawVolume3D(cvsP, pBytes, null, terrBytes, nx, ny, nz, vmaxP, vmaxP, vmaxT, iySlice, false, stepsMini, false, predSurf);
           else drawPlaceholder(cvsP, "No 3D");
         }
       }
-      updateVol3dStatusPill(ep, anyPred);
+      updatePredEpochBadge(ep, ep3dKey, anyPred);
+      updateVol3dStatusPill(ep, ep3dKey, anyPred);
       return;
     }
 
-    updateVol3dStatusPill(0, true);
+    updatePredEpochBadge(entry.epoch || (currentIndex + 1), null, true);
+    updateVol3dStatusPill(0, null, true);
     // Paint each visible sample's truth and predicted cross-sections
     for (let i = start; i < end; ++i) {
       const s = samples[i];
@@ -2733,7 +3200,7 @@ class TrainingMonitor:
     gravity + vertical cross-section under terrain) to a native GUI window and an interactive
     HTML/JS web dashboard that directly paints the actual numerical voxel data on HTML5 canvas."""
 
-    def __init__(self, save_dir, gui=False, vol3d_stride=10):
+    def __init__(self, save_dir, gui=False, vol3d_stride=10, forward_op=None):
         import matplotlib
         if not gui:
             matplotlib.use("Agg")
@@ -2742,6 +3209,7 @@ class TrainingMonitor:
         self.save_dir = save_dir
         self.gui = gui
         self.vol3d_stride = int(vol3d_stride)
+        self.forward_op = forward_op
         self.meta = None
         hist_path = os.path.join(self.save_dir, "training_history.json")
         if os.path.exists(hist_path):
@@ -2855,10 +3323,18 @@ class TrainingMonitor:
         vtrue_vols = [vtrue[i, 0].detach().cpu().numpy() for i in range(n_samples)]
         vpred_vols = [vpred[i, 0].detach().cpu().numpy() for i in range(n_samples)]
         terr_xy_list = [vx[i, 1].detach().cpu().numpy() * (NZ * CELL) for i in range(n_samples)]
+        obs_fields = [vx[i, 0].detach().cpu().numpy() for i in range(n_samples)]
+        pred_fields = None
+        if self.forward_op is not None:
+            with torch.no_grad():
+                pf_chunks = [self.forward_op(vpred[i:i + 8], vz[i:i + 8]) for i in range(0, n_samples, 8)]
+                pf_cat = torch.cat(pf_chunks, dim=0)
+                pred_fields = [pf_cat[i, 0].detach().cpu().numpy() for i in range(n_samples)]
         write_vol3d_sidecars(
             self.save_dir, rec["epoch"], NX, NY, NZ, CELL,
             vtrue_vols, vpred_vols, terr_xy_list, self.meta["samples"],
             is_best=is_best, stride=self.vol3d_stride, write_meta=needs_meta,
+            obs_fields=obs_fields, pred_fields=pred_fields,
         )
 
         ep = [r["epoch"] for r in self.hist]
@@ -2940,8 +3416,8 @@ def main():
     print(f"Monitor: {os.path.join(args.save_dir, 'training_monitor.png')} "
           f"| HTML: {os.path.join(args.save_dir, 'dashboard.html')} | GUI window: {'ON' if args.gui else 'OFF (pass --gui)'}")
 
-    monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride)
     op = TerrainGravityOperator(*grid).to(dev)
+    monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride, forward_op=op)
     train_ds = BodyTerrainDataset(args.steps * args.batch_size, *grid, hard_prob=hard_prob)
     loader = DataLoader(train_ds, batch_size=args.batch_size, num_workers=args.num_workers,
                         persistent_workers=args.num_workers > 0, drop_last=True)

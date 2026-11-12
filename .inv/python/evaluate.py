@@ -318,20 +318,25 @@ def export_vol3d_snapshot(model, op, device, grid, out_dir, epoch=None, is_best=
     """Evaluate the 16 dashboard validation/showcase samples and write 3D volume sidecars."""
     nx, ny, nz, _, _, dz = grid
     y_km = np.arange(ny) * dz / 1000.0
-    sx, st, _, _ = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0)
-    hx, ht, _, _ = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0)
-    cx, ct, _, _, show_labels = make_category_showcase(op, device, grid, seed=4024)
+    sx, st, _, sz = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0)
+    hx, ht, _, hz = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0)
+    cx, ct, _, cz, show_labels = make_category_showcase(op, device, grid, seed=4024)
 
     all_x = torch.cat([sx, hx, cx], dim=0)
     all_t = torch.cat([st, ht, ct], dim=0)
+    all_z = torch.cat([sz, hz, cz], dim=0)
     labels = ("Std",) * 4 + ("Hard",) * 4 + show_labels
     preds = [model(all_x[i:i + 8]) for i in range(0, len(all_x), 8)]
     all_p = torch.cat(preds, dim=0)
+    pred_f_chunks = [op(all_p[i:i + 8], all_z[i:i + 8]) for i in range(0, len(all_p), 8)]
+    all_pf = torch.cat(pred_f_chunks, dim=0)
 
     n_samples = len(all_x)
     vtrue_vols = [all_t[i, 0].detach().cpu().numpy() for i in range(n_samples)]
     vpred_vols = [all_p[i, 0].detach().cpu().numpy() for i in range(n_samples)]
     terr_xy_list = [all_x[i, 1].detach().cpu().numpy() * (nz * dz) for i in range(n_samples)]
+    obs_fields = [all_x[i, 0].detach().cpu().numpy() for i in range(n_samples)]
+    pred_fields = [all_pf[i, 0].detach().cpu().numpy() for i in range(n_samples)]
     sample_meta = []
     for i in range(n_samples):
         tv = vtrue_vols[i]
@@ -349,6 +354,7 @@ def export_vol3d_snapshot(model, op, device, grid, out_dir, epoch=None, is_best=
         out_dir, ep_num, nx, ny, nz, dz,
         vtrue_vols, vpred_vols, terr_xy_list, sample_meta,
         is_best=is_best, stride=0, write_meta=True,
+        obs_fields=obs_fields, pred_fields=pred_fields,
     )
     return out_dir
 

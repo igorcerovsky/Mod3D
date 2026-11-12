@@ -480,9 +480,13 @@ def test_showcase_and_16_sample_dashboard():
     assert 'function getThemePalette()' in html
     assert 'id="radRender2D"' in html and 'id="radRender3D"' in html and 'id="vol3dToolbar"' in html
     assert 'webgl2' in html and 'function drawVolume3D(' in html and 'function getCamBasis()' in html
+    assert 'topoColor(' in html and 'shadeTerrainHit(' in html and 'buildTerrainContourSegments(' in html
+    assert 'uField' in html and 'uSurfaceMode' in html and 'data-field-mode="inv"' in html and 'vol3dFieldScale' in html
+    assert 'bouguerMod3dColor(' in html and 'diffMod3dColor(' in html
+    assert 'data-vol3d-ep="best"' in html and 'data-vol3d-ep="latest"' in html and 'data-vol3d-ep="match"' in html and 'resolveVol3dEpoch' in html
 
     with tempfile.TemporaryDirectory() as tmp:
-        mon = TrainingMonitor(tmp, gui=False, vol3d_stride=2)
+        mon = TrainingMonitor(tmp, gui=False, vol3d_stride=2, forward_op=op)
         rec = {
             "epoch": 1, "train_loss": 1.0, "val_loss": 0.9, "l1_rel": 0.2,
             "body_l1_rel": 0.3, "data_rel_misfit": 0.1, "iou": 0.5,
@@ -505,10 +509,11 @@ def test_showcase_and_16_sample_dashboard():
         with open(f"{tmp}/vol3d_meta.json") as f:
             vmeta = json.load(f)
         assert len(vmeta["samples"]) == 16
-        assert all("truth_b64" in s and "terrain_b64" in s for s in vmeta["samples"])
+        assert all("truth_b64" in s and "terrain_b64" in s and "obs_field_b64" in s and "obs_field_vmax" in s for s in vmeta["samples"])
         with open(f"{tmp}/vol3d_latest.json") as f:
             vlat = json.load(f)
         assert vlat["epoch"] == 2 and len(vlat["pred_b64"]) == 16
+        assert len(vlat["pred_field_b64"]) == 16 and len(vlat["pred_field_vmax"]) == 16
         with open(f"{tmp}/vol3d_index.json") as f:
             vidx = json.load(f)
         assert vidx["best"] == 2 and vidx["latest"] == 2 and 1 in vidx["epochs"] and 2 in vidx["epochs"]
@@ -592,7 +597,10 @@ def test_v3_gap_saddle_and_class_balance_loss():
 
 def test_vol3d_rle_roundtrip_and_axis_order():
     import base64
-    from vol3d_io import decode_vol3d_rle_b64, encode_terrain_u16_b64, encode_vol3d_rle_b64
+    from vol3d_io import (
+        decode_field2d_i16_b64, decode_vol3d_rle_b64,
+        encode_field2d_i16_b64, encode_terrain_u16_b64, encode_vol3d_rle_b64,
+    )
 
     vol = np.zeros((32, 64, 64), dtype=np.float32)
     vol[5:10, 12:18, 40:48] = -2.67
@@ -617,6 +625,15 @@ def test_vol3d_rle_roundtrip_and_axis_order():
     t_b64 = encode_terrain_u16_b64(terr, 1600.0)
     u16 = np.frombuffer(base64.b64decode(t_b64), dtype="<u2").reshape(64, 64)  # (NY, NX)
     assert abs((float(u16[53, 7]) / 65535.0) * 1600.0 - 400.0) < 0.05
+
+    fld = np.zeros((64, 64), dtype=np.float32)
+    fld[7, 53] = -12.34
+    fld[20, 10] = 8.50
+    f_b64, f_vmax = encode_field2d_i16_b64(fld)
+    f_rec = decode_field2d_i16_b64(f_b64, (64, 64), f_vmax)
+    assert f_rec.shape == (64, 64)
+    assert abs(float(f_rec[7, 53]) - (-12.34)) < 1e-3
+    assert abs(float(f_rec[20, 10]) - 8.50) < 1e-3
 
 
 if __name__ == "__main__":
