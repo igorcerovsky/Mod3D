@@ -222,6 +222,96 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120):
     return x, rho_t, clean, z_obs, tuple(name for name, _, _ in specs)
 
 
+@torch.no_grad()
+def export_examples_figure(model, op, device, grid, out_path, epoch=None):
+    """Render the 16 dashboard validation & showcase X-Z cross-sections in ``training_monitor.png`` style.
+
+    Arranges the 16 pairs (4 Std, 4 Hard, 8 curated category showcase) in an 8-row by 2-pair
+    layout (4 cross-section columns: Truth | Pred, Truth | Pred) suited for Markdown README width.
+    """
+    import os
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    nx, ny, nz, dx, _, dz = grid
+    x_km = np.arange(nx) * dx / 1000.0
+    z_m = np.arange(nz) * dz
+
+    sx, st, _, _ = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0)
+    hx, ht, _, _ = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0)
+    cx, ct, _, _, show_labels = make_category_showcase(op, device, grid, seed=4024)
+
+    all_x = torch.cat([sx, hx, cx], dim=0)
+    all_t = torch.cat([st, ht, ct], dim=0)
+    labels = ("Std",) * 4 + ("Hard",) * 4 + show_labels
+    preds = [model(all_x[i:i + 8]) for i in range(0, len(all_x), 8)]
+    all_p = torch.cat(preds, dim=0)
+
+    n_pairs = len(all_x)
+    n_cols = 2
+    n_rows = (n_pairs + n_cols - 1) // n_cols
+    fig = plt.figure(figsize=(15.0, 2.25 * n_rows + 0.9), constrained_layout=True)
+    gs = fig.add_gridspec(n_rows, 5, width_ratios=[1.0, 1.0, 0.12, 1.0, 1.0], wspace=0.06, hspace=0.22)
+    ep_tag = f"Ep {epoch}" if epoch is not None else "Best"
+
+    for r in range(n_rows):
+        sp = fig.add_subplot(gs[r, 2])
+        sp.axis("off")
+
+    for idx in range(n_pairs):
+        row = idx // n_cols
+        col_pair = idx % n_cols
+        c0 = 0 if col_pair == 0 else 3
+
+        t_vol = all_t[idx, 0].detach().cpu().numpy()
+        p_vol = all_p[idx, 0].detach().cpu().numpy()
+        terr_m = all_x[idx, 1].detach().cpu().numpy() * (nz * dz)
+        _, _, iy_pk = np.unravel_index(np.argmax(np.abs(t_vol)), t_vol.shape)
+        t_sec = t_vol[:, :, iy_pk]
+        p_sec = p_vol[:, :, iy_pk]
+        vmax_r = max(0.1, float(max(np.abs(t_sec).max(), np.abs(p_sec).max())))
+
+        ax_t = fig.add_subplot(gs[row, c0])
+        ax_p = fig.add_subplot(gs[row, c0 + 1])
+        pair_titles = (
+            f"#{idx} {labels[idx]} — Truth",
+            f"#{idx} {labels[idx]} — Pred ({ep_tag})",
+        )
+        last_im = None
+        for panel_i, (a, sec, title) in enumerate(zip((ax_t, ax_p), (t_sec, p_sec), pair_titles)):
+            last_im = a.imshow(sec, origin="upper", extent=[x_km[0], x_km[-1], z_m[-1] + dz, 0.0],
+                               cmap="coolwarm", vmin=-vmax_r, vmax=vmax_r, aspect="auto")
+            a.fill_between(x_km, 0.0, terr_m[:, iy_pk], color="#d1d5db", alpha=0.85,
+                           label="Air above relief" if idx == 0 and panel_i == 0 else None)
+            a.plot(x_km, terr_m[:, iy_pk], color="#111827", linewidth=1.4,
+                   label="Terrain surface" if idx == 0 and panel_i == 0 else None)
+            a.set_title(title, fontsize=9.5, pad=3)
+            if row == n_rows - 1:
+                a.set_xlabel("X [km]", fontsize=8.5)
+            else:
+                a.tick_params(axis="x", labelbottom=False)
+            if col_pair == 0 and panel_i == 0:
+                a.set_ylabel("Depth [m]", fontsize=8.5)
+            else:
+                a.tick_params(axis="y", labelleft=False)
+            a.tick_params(labelsize=8)
+        cbar = fig.colorbar(last_im, ax=[ax_t, ax_p], fraction=0.025, pad=0.02)
+        cbar.ax.tick_params(labelsize=7.5)
+        if idx == 0:
+            ax_t.legend(loc="lower right", fontsize=7)
+
+    title_str = (f"Mod3D .inv — Dashboard Validation & Category Showcase X-Z Sections "
+                 f"(Best Checkpoint: Epoch {epoch}, g/cm³)" if epoch is not None
+                 else "Mod3D .inv — Dashboard Validation & Category Showcase X-Z Sections [g/cm³]")
+    fig.suptitle(title_str, fontsize=12, fontweight="bold")
+
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    fig.savefig(out_path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+    return out_path
+
+
 def main():
     from dataset import NX, NY, NZ, CELL
     from forward import TerrainGravityOperator
@@ -232,6 +322,7 @@ def main():
     ap.add_argument("--samples", type=int, default=64)
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--hard-prob", type=float, default=0.0, help="fraction of harder/larger scenes in evaluation [0-1]")
+    ap.add_argument("--export-examples", type=str, default="", help="save 16-sample dashboard Truth/Pred X-Z figure to PNG")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     ap.add_argument("--device", default=default_dev)
     args = ap.parse_args()
@@ -243,6 +334,10 @@ def main():
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
     op = TerrainGravityOperator(*grid).to(args.device)
+    if args.export_examples:
+        out_p = export_examples_figure(model, op, args.device, grid, args.export_examples, epoch=ck.get("epoch"))
+        print(f"Exported examples grid to {out_p}")
+        return
     x, truth, clean, z_obs = make_fixed_set(args.samples, args.seed, op, args.device, grid, hard_prob=args.hard_prob)
     preds = []
     with torch.no_grad():

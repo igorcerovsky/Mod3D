@@ -3,6 +3,12 @@
 > **Next-Generation 3D Gravity & Magnetic Inversion for Mod3D**  
 > *Physics-Guided 3D Swin Transformers & Reweighted Focusing Inversion*
 
+<p align="center">
+  <img src="img/training_examples.png" alt="v3 Neural Inversion vs. Ground Truth X-Z Examples" width="100%">
+  <br>
+  <em>Zero-shot 3D Swin Transformer (<code>v3</code>) gravity inversion directly from surface draped anomalies &amp; terrain relief across 16 synthetic validation and hard composite scenes (cavities, intrusions, clusters, nested halos, abutting contacts, and vertical stacks).</em>
+</p>
+
 ---
 
 ## 1. Overview & Vision
@@ -198,6 +204,14 @@ python evaluate.py --checkpoint ./checkpoints/best_swin3d.pt --samples 64
 # Export trained model to ONNX for Mod3D C++ runtime
 python export_onnx.py --checkpoint ./checkpoints/best_swin3d.pt --output ./models/inv_swin3d.onnx
 ```
+
+#### `v3` Training Monitor
+
+<p align="center">
+  <img src="img/training_monitor.png" alt="v3 Training Monitor Snapshot" width="100%">
+  <br>
+  <em><code>v3</code> convergence curves and Val #0 gravity map &amp; X-Z density cross-section.</em>
+</p>
 
 ---
 

@@ -253,6 +253,18 @@ Even when running headless or via SSH, `train.py` continuously updates:
    * **Panel 5 (Ground Truth X-Z Section)**: Vertical density cross-section below relief with shaded air cells.
    * **Panel 6 (Swin-3D Prediction X-Z Section)**: Predicted vertical density cross-section below relief.
 
+<p align="center">
+  <img src="img/training_monitor.png" alt="v3 Training Monitor Snapshot" width="100%">
+  <br>
+  <em><code>v3</code> training curves (loss, data misfit, opposite-sign halo, 3D IoU, amplitude recovery, depth centroid error) and Val #0 gravity &amp; X-Z density section.</em>
+</p>
+
+<p align="center">
+  <img src="img/training_examples.png" alt="v3 Dashboard Validation and Category Showcase Examples" width="100%">
+  <br>
+  <em>Best <code>v3</code> checkpoint X-Z density predictions vs. ground truth across all 16 dashboard validation &amp; category showcase scenes (4 Std, 4 Hard, and 8 curated lithology/cluster archetypes).</em>
+</p>
+
 #### Validation Metrics Reference
 
 | Metric | Meaning | Ideal Value | Zero Model |
@@ -270,6 +282,7 @@ To evaluate any trained checkpoint on independent standard or hard-only test set
 ```bash
 python evaluate.py --checkpoint checkpoints/best_swin3d.pt --samples 64
 python evaluate.py --checkpoint checkpoints/best_swin3d.pt --samples 64 --hard-prob 1.0
+python evaluate.py --checkpoint checkpoints/best_swin3d.pt --export-examples ../img/training_examples.png
 ```
 
 ---
