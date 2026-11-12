@@ -446,6 +446,7 @@ def test_evaluate_metrics_exact_on_nested_and_stacked_same_sign():
 
 def test_showcase_and_16_sample_dashboard():
     import json
+    import os
     import tempfile
     from dataset import CELL, NX, NY, NZ, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN, RHO_MAFIC_MIN, RHO_WATER
     from evaluate import make_category_showcase
@@ -477,27 +478,41 @@ def test_showcase_and_16_sample_dashboard():
     assert 'data-theme="light"' in html and '[data-theme="dark"]' in html
     assert 'id="btnThemeLight"' in html and 'id="btnThemeDark"' in html
     assert 'function getThemePalette()' in html
+    assert 'id="radRender2D"' in html and 'id="radRender3D"' in html and 'id="vol3dToolbar"' in html
+    assert 'webgl2' in html and 'function drawVolume3D(' in html and 'function getCamBasis()' in html
 
     with tempfile.TemporaryDirectory() as tmp:
-        mon = TrainingMonitor(tmp, gui=False)
+        mon = TrainingMonitor(tmp, gui=False, vol3d_stride=2)
         rec = {
             "epoch": 1, "train_loss": 1.0, "val_loss": 0.9, "l1_rel": 0.2,
             "body_l1_rel": 0.3, "data_rel_misfit": 0.1, "iou": 0.5,
             "centroid_dz": 50.0, "amp_ratio": 0.9, "halo_opp": 0.01,
         }
         # First write 8 samples, then upgrade to 16 labeled samples (resume compatibility)
-        mon.update(rec, sx, strue, strue * 0.8, sclean, sz)
+        mon.update(rec, sx, strue, strue * 0.8, sclean, sz, is_best=True)
         vx16 = torch.cat([sx, sx], dim=0)
         vt16 = torch.cat([strue, strue], dim=0)
         vc16 = torch.cat([sclean, sclean], dim=0)
         vz16 = torch.cat([sz, sz], dim=0)
         labels16 = ("Std",) * 4 + ("Hard",) * 4 + labels
-        mon.update({**rec, "epoch": 2}, vx16, vt16, vt16 * 0.9, vc16, vz16, sample_labels=labels16)
+        mon.update({**rec, "epoch": 2}, vx16, vt16, vt16 * 0.9, vc16, vz16, sample_labels=labels16, is_best=True)
         with open(f"{tmp}/training_history.json") as f:
             payload = json.load(f)
         assert len(payload["meta"]["samples"]) == 16
         assert [s["tag"] for s in payload["meta"]["samples"]] == list(labels16)
         assert len(payload["epochs"][-1]["pred_slices"]) == 16
+
+        with open(f"{tmp}/vol3d_meta.json") as f:
+            vmeta = json.load(f)
+        assert len(vmeta["samples"]) == 16
+        assert all("truth_b64" in s and "terrain_b64" in s for s in vmeta["samples"])
+        with open(f"{tmp}/vol3d_latest.json") as f:
+            vlat = json.load(f)
+        assert vlat["epoch"] == 2 and len(vlat["pred_b64"]) == 16
+        with open(f"{tmp}/vol3d_index.json") as f:
+            vidx = json.load(f)
+        assert vidx["best"] == 2 and vidx["latest"] == 2 and 1 in vidx["epochs"] and 2 in vidx["epochs"]
+        assert os.path.exists(f"{tmp}/vol3d_best.js") and os.path.exists(f"{tmp}/vol3d_ep_0002.js")
 
 
 def test_v3_model_bounds_masking_aux_and_onnx_opset17_parity():
@@ -573,6 +588,35 @@ def test_v3_gap_saddle_and_class_balance_loss():
     l_bridge, _ = crit(bridge, m_true)
     l_outer, _ = crit(outer, m_true)
     assert l_bridge.item() > l_outer.item()
+
+
+def test_vol3d_rle_roundtrip_and_axis_order():
+    import base64
+    from vol3d_io import decode_vol3d_rle_b64, encode_terrain_u16_b64, encode_vol3d_rle_b64
+
+    vol = np.zeros((32, 64, 64), dtype=np.float32)
+    vol[5:10, 12:18, 40:48] = -2.67
+    vol[18:24, 38:44, 10:16] = 1.65
+    # Asymmetric single marker voxel to catch axis transpositions
+    vol[3, 7, 53] = 0.95
+
+    b64, scale = encode_vol3d_rle_b64(vol)
+    assert abs(scale - 2.67) < 1e-3
+    # Mostly-zero 131,072-voxel grid should compress well under ~15 KB raw
+    assert len(base64.b64decode(b64)) < 15000
+
+    rec = decode_vol3d_rle_b64(b64, vol.shape, scale)
+    assert rec.shape == vol.shape
+    max_err = float(np.abs(rec - vol).max())
+    assert max_err <= scale / 127.0 + 1e-4, f"Quantization error too high: {max_err}"
+    assert float(rec[3, 7, 53]) > 0.85 and float(rec[0, 0, 0]) == 0.0
+
+    # Linear texture check: first (iz=0) and marker (iz=3, iy=53, ix=7) linear offset in (NZ, NY, NX)
+    terr = np.full((64, 64), 200.0, dtype=np.float32)
+    terr[7, 53] = 400.0
+    t_b64 = encode_terrain_u16_b64(terr, 1600.0)
+    u16 = np.frombuffer(base64.b64decode(t_b64), dtype="<u2").reshape(64, 64)  # (NY, NX)
+    assert abs((float(u16[53, 7]) / 65535.0) * 1600.0 - 400.0) < 0.05
 
 
 if __name__ == "__main__":

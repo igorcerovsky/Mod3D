@@ -19,6 +19,7 @@ import torch.nn.functional as F
 from scipy.ndimage import distance_transform_edt, label
 
 from losses import _dilate3d
+from vol3d_io import write_vol3d_sidecars
 
 
 @torch.no_grad()
@@ -312,6 +313,46 @@ def export_examples_figure(model, op, device, grid, out_path, epoch=None):
     return out_path
 
 
+@torch.no_grad()
+def export_vol3d_snapshot(model, op, device, grid, out_dir, epoch=None, is_best=True):
+    """Evaluate the 16 dashboard validation/showcase samples and write 3D volume sidecars."""
+    nx, ny, nz, _, _, dz = grid
+    y_km = np.arange(ny) * dz / 1000.0
+    sx, st, _, _ = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0)
+    hx, ht, _, _ = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0)
+    cx, ct, _, _, show_labels = make_category_showcase(op, device, grid, seed=4024)
+
+    all_x = torch.cat([sx, hx, cx], dim=0)
+    all_t = torch.cat([st, ht, ct], dim=0)
+    labels = ("Std",) * 4 + ("Hard",) * 4 + show_labels
+    preds = [model(all_x[i:i + 8]) for i in range(0, len(all_x), 8)]
+    all_p = torch.cat(preds, dim=0)
+
+    n_samples = len(all_x)
+    vtrue_vols = [all_t[i, 0].detach().cpu().numpy() for i in range(n_samples)]
+    vpred_vols = [all_p[i, 0].detach().cpu().numpy() for i in range(n_samples)]
+    terr_xy_list = [all_x[i, 1].detach().cpu().numpy() * (nz * dz) for i in range(n_samples)]
+    sample_meta = []
+    for i in range(n_samples):
+        tv = vtrue_vols[i]
+        _, _, iy_pk = np.unravel_index(np.argmax(np.abs(tv)), tv.shape)
+        sample_meta.append({
+            "id": i,
+            "iy": int(iy_pk),
+            "y_km": round(float(y_km[iy_pk]), 2),
+            "vmax": round(float(np.abs(tv).max()), 3),
+            "tag": str(labels[i]),
+        })
+
+    ep_num = int(epoch) if epoch is not None else 1
+    write_vol3d_sidecars(
+        out_dir, ep_num, nx, ny, nz, dz,
+        vtrue_vols, vpred_vols, terr_xy_list, sample_meta,
+        is_best=is_best, stride=0, write_meta=True,
+    )
+    return out_dir
+
+
 def main():
     from dataset import NX, NY, NZ, CELL
     from forward import TerrainGravityOperator
@@ -323,6 +364,7 @@ def main():
     ap.add_argument("--seed", type=int, default=12345)
     ap.add_argument("--hard-prob", type=float, default=0.0, help="fraction of harder/larger scenes in evaluation [0-1]")
     ap.add_argument("--export-examples", type=str, default="", help="save 16-sample dashboard Truth/Pred X-Z figure to PNG")
+    ap.add_argument("--export-vol3d", type=str, default="", help="write 3D volume sidecar files (.json/.js) to directory for dashboard 3D mode")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     ap.add_argument("--device", default=default_dev)
     args = ap.parse_args()
@@ -334,9 +376,13 @@ def main():
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
     op = TerrainGravityOperator(*grid).to(args.device)
-    if args.export_examples:
-        out_p = export_examples_figure(model, op, args.device, grid, args.export_examples, epoch=ck.get("epoch"))
-        print(f"Exported examples grid to {out_p}")
+    if args.export_examples or args.export_vol3d:
+        if args.export_examples:
+            out_p = export_examples_figure(model, op, args.device, grid, args.export_examples, epoch=ck.get("epoch"))
+            print(f"Exported examples grid to {out_p}")
+        if args.export_vol3d:
+            out_d = export_vol3d_snapshot(model, op, args.device, grid, args.export_vol3d, epoch=ck.get("epoch"), is_best=True)
+            print(f"Exported 3D volume sidecars to {out_d}")
         return
     x, truth, clean, z_obs = make_fixed_set(args.samples, args.seed, op, args.device, grid, hard_prob=args.hard_prob)
     preds = []
