@@ -26,18 +26,18 @@ To solve this, `.inv` employs a **Three-Phase Hybrid Training Strategy**:
 |   +--------------------------+                  +---------------------------+         +-------------------+ |
 |   | On-The-Fly Geometry      |                  | Draped Nagy Operator G    |         | Real Survey Data  | |
 |   | - Waste & ore rock bands |                  | (2B batched forward/step) |         | from Mod3D JSON   | |
-|   | - Exact -2.67/-1.67 cav. |                  +-------------+-------------+         +---------+---------+ |
+|   | - 50/50 air & water cav. |                  +-------------+-------------+         +---------+---------+ |
 |   | - 35/35/30% depth strat. |                                |                                 |           |
 |   | - Smooth/sloped terrain  |                                v                                 v           |
 |   | - 30-40 cm sensor clear. |                  +---------------------------+         +-------------------+ |
-|   | - 3D noise + D4 augm.    |                  | Compound Inversion Loss   |         | Pre-trained v2    | |
-|   +------------+-------------+                  | - Depth-weighted L1+L2    | ------> | Domain-Scaled     | |
-|                |                                | - Multi-band & Litho CE   |         | Input (50m/L_eff) | |
+|   | - 3D noise + D4 augm.    |                  | Compound Inversion Loss   |         | Pre-trained v3    | |
+|   +------------+-------------+                  | - Depth-wtd L1+L2 + gap   | ------> | Domain-Scaled     | |
+|                |                                | - Class-bal CE + bdy Dice |         | Input (50m/L_eff) | |
 |                v                                | - Fixed-denom face jumps  |         +---------+---------+ |
-|   +--------------------------+                  | - Signed L1-IoU & MGS     |                   |           |
-|   | v2 U-Net + 2.5D Swin3D + |                  | - Opposite-halo penalty   |                   v           |
-|   | Lithology Prototypes     |                  | - Charbonnier RMSE + grad |         +-------------------+ |
-|   | [gz, terrain/depth_max]  |                  +---------------------------+         | Focused IRLS      | |
+|   +--------------------------+                  | - Signed L1-IoU + EDT aux |                   |           |
+|   | v3 U-Net + Swin/Axial +  |                  | - Opposite-halo penalty   |                   v           |
+|   | Bidir Prototypes + Subpx |                  | - Charbonnier RMSE + grad |         +-------------------+ |
+|   | 9-ch D4 Stem [gz, terr]  |                  +---------------------------+         | Focused IRLS      | |
 |   +--------------------------+                                                        | Refinement        | |
 |                                                                                       | (with pfld mesh)  | |
 |                                                                                       +-------------------+ |
@@ -82,7 +82,7 @@ python -c "import torch; print('CUDA Available:', torch.cuda.is_available(), '| 
 Rather than hand-labeling or hunting for paired data, `.inv/python/dataset.py` synthesizes thousands of 3D volumes containing isolated geological bodies and subsurface cavities strictly below random terrain relief:
 
 1. **Physical Target Classes & Lithology Bounds**:
-   * **Cavities (24% of bodies)**: Shallow, compact voids or elongated tunnels with **exact physical contrasts** — **air cavities** (`RHO_AIR = -2.67 g/cm³`, 60% of cavities) and **water-filled cavities** (`RHO_WATER = -1.67 g/cm³`, 40% of cavities).
+   * **Cavities (24% of bodies)**: Shallow, compact voids or elongated tunnels with **exact physical contrasts** — **air cavities** (`RHO_AIR = -2.67 g/cm³`, 50% of cavities) and **water-filled cavities** (`RHO_WATER = -1.67 g/cm³`, 50% of cavities).
    * **Non-Cavity Geological Lithologies (76% of bodies)**: Rotated compact ellipsoids/blocks and flat or dipping tabular seams/beds/sills across 4 distinct continuous contrast bands:
      * **Light Rock / Coal / Loose Clay & Fill** (`[-1.55, -0.85] g/cm³`, 21% of rocks): coal seams (lignite/bituminous/anthracite), peat, soft porous clay, unconsolidated overburden (55% tabular seam geometry).
      * **Sediments / Compacted Clay / Waste Rock** (`[-0.80, -0.10] g/cm³`, 32% of rocks): sandstone, shale, compacted clay, evaporites/halite, mining waste (45% tabular beds).
@@ -125,25 +125,22 @@ op = TerrainGravityOperator(64, 64, 32, 50.0, 50.0, 50.0).to("mps")
 
 ---
 
-### Step 2: v2 U-Net + 2.5D Swin3D & Lithology Prototype Architecture
+### Step 2: v3 Terrain-Aware Axial+Swin3D & Lithology Prototype Architecture
 
-The default v2 model (`PotentialFieldTransformer3D` in `.inv/python/model_swin3d.py`, `2.07 M` params, instantiated alongside legacy `PotentialFieldTransformer3DV1` via `create_model`) replaces `4×4×4` patch blocks with full-resolution 3D coupling and scale-calibrated lithology embeddings:
+The default v3 model (`PotentialFieldTransformer3DV3` in `.inv/python/model_swin3d.py`, `2.70 M` params, instantiated alongside legacy `PotentialFieldTransformer3D` v2 and `PotentialFieldTransformer3DV1` v1 via `create_model`) targets narrow-gap separation, rough topography, and long-range bodies:
 
-1. **Multi-Scale Physics & Dynamic-Range Input + Scale Conditioning**:
-   * Takes the 2-channel input `[gz (mGal), terrain_depth / depth_max]` and internally expands it into 7 channels: normalized linear anomaly `gn = gz / s`, `asinh(8 * gn)` compression (preventing deep rocks from vanishing beside `-2.67` cavities), four local multi-scale bandpass residuals (`3×3`, `9×9`, `17×17`, `25×25`), and scaled terrain relief.
-   * `scale_mlp` embeds `[log(s/SLAB), s/(s+SLAB), max(gz)/s, min(gz)/s]` into global amplitude conditioning `se` so the network recovers physical densities in $\text{g/cm}^3$.
-2. **2D U-Net Encoder & 3D Swin Backbone**:
-   * A 3-stage 2D U-Net encoder (`64 → 32 → 16`) extracts multi-scale horizontal skip features `f0`, `f1`, and global attention bottleneck `f2`.
-   * Depth lifting + 6 shifted-window `SwinBlock3D` layers (`embed_dim=128`, `num_heads=4`, `wh=ww=4`) capture non-local 3D potential-field structure.
-3. **Learnable 7-Class Lithology Prototype Embeddings & Cross-Attention**:
-   * `proto_emb` stores 7 semantic classes (**0: background**, **1: air cavity `-2.67`**, **2: water cavity `-1.67`**, **3: light/coal `[-1.55, -0.85]`**, **4: sediment/waste `[-0.80, -0.10]`**, **5: mafic/ultramafic `[+0.15, +0.75]`**, **6: high-grade ore `[+0.80, +1.85]`**) × `n_sub=3` learnable sub-prototypes, modulated by global scale `se`.
-   * 3D spatial tokens cross-attend (`proto_attn`) with `p_ctx` before decoding.
-4. **Progressive `trilinear` + Separable 2.5D U-Net Decoder (`SepConv25DBlock`)**:
-   * Two progressive `trilinear` upsampling stages (`16 → 32 → 64`) inject depth-gated 2D->3D skips (`skip1`, `skip0`) and apply separable 2.5D convolutions (`Conv2d(3×3)` + `Conv2d((3,1))` along Z-X/Z-Y planes) so adjacent voxel planes couple smoothly without patch-seam boundaries.
-5. **Prototype Classification & Bounded 4-Band Density Mixture Head + Relief Masking**:
-   * LogSumExp similarity over `(7 × 3)` prototypes yields 7-class probabilities `probs`, while `rock_head` predicts sigmoid-bounded `rho_light ∈ [-1.55, -0.85]`, `rho_sediment ∈ [-0.80, -0.10]`, `rho_mafic ∈ [+0.15, +0.75]`, and `rho_ore ∈ [+0.80, +1.85]`:
-     $$\hat{\rho} = \left(P_{\text{air}} (-2.67) + P_{\text{water}} (-1.67) + P_{\text{light}} \rho_{\text{light}} + P_{\text{sediment}} \rho_{\text{sediment}} + P_{\text{mafic}} \rho_{\text{mafic}} + P_{\text{ore}} \rho_{\text{ore}}\right) \cdot \mathbf{1}_{z \ge t}$$
-   * Note: Strict `-2.67`/`-1.67` physical bounds intentionally replace v1's raw amplitude equivariance; spatial cell scaling is handled cleanly on the **input** (`scale = 50 m / L_eff`) in `infer_prior.py` and `neural_prior.hpp`.
+1. **9-Channel Physics Input + Scale Conditioning**:
+   * Expands `[gz (mGal), terrain_depth / depth_max]` into 9 D4-equivariant channels: `gn = gz / s`, `asinh(8 * gn)`, four local multi-scale residuals (`3×3`, `9×9`, `17×17`, `25×25`), **horizontal gradient magnitude** $|\nabla_{xy} g_n|$, smooth **local tilt proxy**, and scaled terrain relief.
+   * `scale_mlp` embeds `[log(s/SLAB), s/(s+SLAB), max(gz)/s, min(gz)/s]` into global amplitude conditioning `se`.
+2. **2D U-Net Encoder + Alternating 3D Swin / Axial-Global Bottleneck**:
+   * A 3-stage 2D U-Net encoder (`64 → 32 → 16`, `c0=32, c1=64, c=128`) feeds global 2D self-attention before depth lifting.
+   * Alternates `SwinBlock3D` (local `8×4×4` joint 3D shifted windows) and `AxialGlobalBlock3D` (full-grid `16×16` horizontal XY + full-depth `Z` column attention) so both `Large Composite` intrusions and `Vertical Stack` columns mix end-to-end.
+3. **Bidirectional Lithology Prototypes (`proto_emb`)**:
+   * 7 semantic classes (**0: bg**, **1: air `-2.67`**, **2: water `-1.67`**, **3: light/coal `[-1.55, -0.85]`**, **4: sediment/waste `[-0.80, -0.10]`**, **5: mafic `[+0.15, +0.75]`**, **6: ore `[+0.80, +1.85]`**) × `n_sub=3` sub-prototypes with bidirectional cross-attention (`voxels ↔ prototypes`) and a learnable logit temperature scale.
+4. **Terrain-Conditioned Subpixel Decoder (`SepSubpixelUp3D` + `DepthConditionedSkip`)**:
+   * Dual-stage upsampling (`16 → 32 → 64`, `ch_mid=40, ch_vox=24`) pairs a smooth trilinear base with learned XY `pixel_shuffle(2)` + Z `2×` detail, injecting 2D skips dynamically gated by exact terrain-relative depth `(z - terr)` (`DepthConditionedSkip`) and `SepConv25DBlock` refinement.
+5. **Bounded Density Head & Training-Only Surface-Distance Head**:
+   * Output contrast combines prototype probabilities with bounded `rock_head` bands, masked above terrain; an auxiliary `edt_head` (`aux["edt"]`) supervises interior distance-to-surface during training only (omitted on ONNX export).
 6. **Differentiable Draped-Station Forward Physics**:
    * `TerrainGravityOperator` (`forward.py`) runs batched (`2B` in a single call inside `simulate_batch`) Nagy-prism gravity forward modeling at $z_{\text{obs}} = t - \text{clearance}$.
 
@@ -153,25 +150,23 @@ The default v2 model (`PotentialFieldTransformer3D` in `.inv/python/model_swin3d
 
 The loss formulation in `.inv/python/losses.py` (`CompoundInversionLoss`) addresses the core physical challenges of potential field inversion:
 
-$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{sup}} + \lambda_{\text{cls}} \mathcal{L}_{\text{cls}} + \lambda_{\text{data}} \mathcal{L}_{\text{data}}$$
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{sup}} + \lambda_{\text{cls}} \mathcal{L}_{\text{cls}} + \mathcal{L}_{\text{edt}} + \lambda_{\text{data}} \mathcal{L}_{\text{data}}$$
 
 Every structural term is **scale-normalized per sample** by $a = \max |m_{\text{true}}|$, ensuring that a weak mineral/waste rock body and a $-2.67\text{ g/cm}^3$ air cavity contribute proportionally without collapsing to zero:
 
-$$\mathcal{L}_{\text{sup}} = 0.23\left(\mathcal{L}_{\text{fg}} + \mathcal{L}_{\text{dist-L1}} + \mathcal{L}_{\text{Tanimoto}} + \mathcal{L}_{\text{grad}}\right) + 0.08\,\mathcal{L}_{\text{band}} + \mathcal{L}_{\text{halo}} + \lambda_{\text{ms}}\,\mathcal{L}_{\text{MGS}}$$
+$$\mathcal{L}_{\text{sup}} = 0.23\left(\mathcal{L}_{\text{fg}} + \mathcal{L}_{\text{dist-L1}} + \mathcal{L}_{\text{Tanimoto}} + \mathcal{L}_{\text{grad}}\right) + 0.12\,\mathcal{L}_{\text{band}} + \mathcal{L}_{\text{halo}} + \lambda_{\text{ms}}\,\mathcal{L}_{\text{MGS}}$$
 
-#### 1. Depth-Weighted & Local-Contrast Foreground Error with Core Overshoot Penalty ($\mathcal{L}_{\text{fg}}$)
-$$\mathcal{L}_{\text{fg}} = \frac{\sum_{j \in \text{body}} w_z(z_j) \left(e_{\text{loc}, j} + \frac{1}{2} e_{\text{loc}, j}^2 + \text{Overshoot}_j + \frac{1}{2}\text{Overshoot}_j^2\right)}{\sum_{j \in \text{body}} w_z(z_j)}$$
+#### 1. Depth-Weighted & Local-Contrast Foreground Error ($\mathcal{L}_{\text{fg}}$)
+$$\mathcal{L}_{\text{fg}} = \frac{\sum_{j \in \text{body}} w_z(z_j) \left(e_{\text{loc}, j} + 0.35\,e_{\text{loc}, j}^2 + 0.20\,\text{Overshoot}_j\right)}{\sum_{j \in \text{body}} w_z(z_j)}$$
 where:
 * **Local Contrast Normalization**: $e_{\text{loc}, j} = \frac{|p_{n,j} - t_{n,j}|}{\max(|t_{n,j}|, 0.05)}$ normalizes error by the body's actual local contrast. In scenes containing both a $-2.67\text{ g/cm}^3$ cavity and a $+0.2\text{ g/cm}^3$ deep rock body, this prevents the cavity from dominating the supervised gradient.
-* **Core Overshoot Penalty**: $\text{Overshoot}_j = \frac{\text{ReLU}(|p_{n,j}| - |t_{n,j}|)}{\max(|t_{n,j}|, 0.05)}$ penalizes central density cones/spikes above the true contrast.
+* **Mild Core Overshoot Guard**: $\text{Overshoot}_j = \frac{\text{ReLU}(|p_{n,j}| - |t_{n,j}|)}{\max(|t_{n,j}|, 0.05)}$ guards against spiky cones without systematically pulling interior amplitudes down.
 * **Depth Ramp**: $w_z(z) = 1.0 + \text{depth\_boost} \cdot z / z_{\max} \in [1.0, 1.5]$ (default `depth_boost = 0.5`) counteracts the natural $1/z^2$ decay of gravity sensitivity, specifically sharpening deep targets and bottom contacts.
 
-#### 2. Multi-Scale 3D Distance-Weighted Background Penalty ($\mathcal{L}_{\text{dist-L1}}$)
-Using separable 3D max-pooling dilations at Chebyshev radii $r = 1, 3, 7$ voxels, distance weights $w_{\text{dist}}$ scale monotonically starting **immediately at the body surface**:
-$$w_{\text{dist}} = 1.0 + 1.5\,(1 - m_{\text{fg}}) + 1.5\,(1 - d_1) + 2.0\,(1 - d_3) + 4.0\,(1 - d_7) \in [1.0, 10.0]$$
-* **Inside true body ($m_{\text{fg}} = 1$)**: $1.0\times$ penalty.
-* **Immediate contact shell ($r = 1$)**: **$2.5\times$ penalty**, actively suppressing 1-voxel boundary smearing and mass spill.
-* **Near background ($r \in [2, 3]$)**: $4.0\times$ penalty; **Intermediate ($r \in [4, 7]$)**: $6.0\times$; **Far field ($r > 7$)**: **$10.0\times$**.
+#### 2. Multi-Scale 3D Distance & Inter-Body Gap Saddle Penalty ($\mathcal{L}_{\text{dist-L1}}$)
+Using separable 3D max-pooling dilations ($r = 1, 3, 7$) plus directional same-axis gap detection (`_gap_saddle_mask`, background voxels bracketed on opposite sides within `1–3` cells):
+$$w_{\text{dist}} = 1.0 + 1.5\,(1 - m_{\text{fg}}) + 1.5\,(1 - d_1) + 2.0\,(1 - d_3) + 4.0\,(1 - d_7) + 6.0\,m_{\text{gap}}$$
+* **Inside true body ($m_{\text{fg}} = 1$)**: $1.0\times$; **Immediate outer shell ($r = 1$)**: $2.5\times$; **Near ($r \in [2, 3]$)**: $4.0\times$; **Far ($r > 7$)**: $10.0\times$; **Inter-body gap saddle ($m_{\text{gap}} = 1$)**: $+6.0\times$ bonus penalty to prevent tightly clustered or stacked bodies from bridging.
 
 #### 3. Opposite-Sign Compensating Halo Penalty ($\mathcal{L}_{\text{halo}}$)
 Sign-aware proximity zones identify regions around positive and negative bodies; opposite-sign compensating halos receive a dedicated proximity-weighted penalty with multiplier $\beta_{\text{halo}} = 3.0$.
@@ -185,10 +180,11 @@ Using only the fixed true gradient norm in the denominator preserves steepness r
 * **$\mathcal{L}_{\text{band}}$**: Enforces regional mass balance separately across strong negative cavities ($t_n \le -0.5$), weak negative waste rock ($-0.5 < t_n < 0$), strong ore ($t_n \ge 0.5$), and weak ore ($0 < t_n < 0.5$) so weaker targets do not disappear beside cavities.
 * **$\mathcal{L}_{\text{MGS}}$**: Evaluates `ZhdanovFocusingLoss.minimum_gradient_support` on predicted vs. true normalized models (weighted by `--lambda-ms`, default `0.05`).
 
-#### 6. Stratified 7-Class Lithology Classification Loss ($\mathcal{L}_{\text{cls}}$)
-When training v2 (`aux["logits"]`, weighted by `--lambda-cls`, default `0.25`), `_lithology_loss` supervises the 7 classes `{bg, air, water, light, sediment, mafic, ore}` with:
-* Stratified cross-entropy weighted $0.55$ interior foreground, $0.30$ boundary shell ($r \le 3$), and $0.15$ far background.
-* Present-class soft Dice plus absent-class leakage suppression so cavities converge cleanly onto exact $-2.67$ / $-1.67\text{ g/cm}^3$ values without intermediate averaging.
+#### 6. Class-Balanced Lithology Loss ($\mathcal{L}_{\text{cls}}$) & Surface-Distance ($\mathcal{L}_{\text{edt}}$)
+When training v2/v3 (`aux["logits"]`, weighted by `--lambda-cls`, default `0.25`), `_lithology_loss` supervises the 7 classes `{bg, air, water, light, sediment, mafic, ore}` with:
+* Class-balanced foreground CE (`50%` voxel-averaged + `50%` per-present-class mean so rare `air`/`water` cavities match `sediment`/`mafic` gradient strength), `gap_mask`-weighted boundary CE (`0.35`), and far background CE (`0.15`).
+* Soft Dice over present foreground classes **plus boundary-shell background (`class 0` inside $d_3$)** and absent-class leakage suppression.
+* **v3 Surface-Distance Head ($\mathcal{L}_{\text{edt}}$)**: Supervises `aux["edt"]` against iterative 3D morphological interior depth (`_interior_edt_proxy`) with gap-saddle weighting (`+3×`) so body cores peak separately from narrow gaps.
 
 #### 7. Signed L1-IoU / Tanimoto Loss ($\mathcal{L}_{\text{Tanimoto}}$)
 $$\mathcal{L}_{\text{Tanimoto}} = 1.0 - \frac{2 \sum \min\left(\text{ReLU}(p_n \cdot \text{sgn}(t_n)), |t_n|\right)}{\|p_n\|_1 + \|t_n\|_1 + \epsilon}$$
@@ -200,7 +196,7 @@ where $\mathcal{L}_{\text{amp}}$ and $\mathcal{L}_{\nabla d}$ use zero-at-exact 
 
 #### 9. Domain Input Scaling & Linear Amplitude Projection at Inference
 * Both `infer_prior.py` (`amplitude_scale`) and C++ `inv::NeuralPriorInference::predict` (`neural_prior.hpp`) rescale input surface `gz` by $50\text{ m} / L_{\text{eff}}$ before ONNX/PyTorch inference so real domains of arbitrary cell size map into calibrated $50\text{ m}$ training gravity units and true $\text{g/cm}^3$ contrast bounds.
-* For legacy **v1** models, `infer_prior.py` (`project=None`, auto-enabled for v1) applies 1-step `project_amplitude` scaling; for calibrated **v2** models, raw bounded predictions are preserved unless `--project` / `project=True` is explicitly requested.
+* For legacy **v1** models, `infer_prior.py` (`project=None`, auto-enabled for v1) applies 1-step `project_amplitude` scaling; for calibrated **v2/v3** models, raw bounded predictions are preserved unless `--project` / `project=True` is explicitly requested.
 
 ---
 
@@ -243,7 +239,7 @@ python train.py --resume checkpoints/best_swin3d.pt --epochs 40 --lr 1.5e-4 --n-
 | `--num-workers` | `0` | PyTorch DataLoader workers (set `2–4` for fast on-the-fly CPU synthesis). |
 | `--gui` | `False` | Opens a live native GUI window with 6 real-time training graphs. |
 | `--save-dir` | `./checkpoints` | Checkpoint directory (`best_swin3d.pt`, `last_swin3d.pt`). |
-| `--resume` | `""` | Checkpoint path to resume from (auto-selects `v1` or `v2` via `ck["arch"]` and loads `raw_model_state_dict` + `ema_state_dict` when present). |
+| `--resume` | `""` | Checkpoint path to resume from (auto-selects `v1`, `v2`, or `v3` via `ck["arch"]` and loads `raw_model_state_dict` + `ema_state_dict` when present). |
 
 #### Live Monitoring (GUI & Web Dashboard)
 Even when running headless or via SSH, `train.py` continuously updates:
@@ -291,7 +287,7 @@ python export_onnx.py \
 * **Model Input**: `(1, 2, 64, 64)` [surface gravity gz scaled by `50 m / L_eff`, normalized terrain depth below grid top].
 * **Model Output**: `(1, 1, 32, 64, 64)` density contrast volume (`g/cm^3`, calibrated in `[-2.67, +1.85]` for 7-class v2).
 * **Relief Masking**: Built-in — cells above the terrain relief surface are automatically zeroed.
-* **C++ Runtime**: Mod3D loads `inv_swin3d.onnx` via `inv::NeuralPriorInference::predict` (`.inv/include/inv/neural_prior.hpp`), which rescales input channel 0 by `kTrainCell / cbrt(eff)` when `kC >= 2` so both legacy `v1` linear models and calibrated `v2` lithology models output physical `g/cm^3` on domains of any voxel spacing.
+* **C++ Runtime**: Mod3D loads `inv_swin3d.onnx` via `inv::NeuralPriorInference::predict` (`.inv/include/inv/neural_prior.hpp`), which rescales input channel 0 by `kTrainCell / cbrt(eff)` when `kC >= 2` so legacy `v1` linear models and calibrated `v2/v3` lithology models output physical `g/cm^3` on domains of any voxel spacing.
 
 #### Generating Neural Priors for Mod3D Inversion JSON
 To inject a neural prior into a Mod3D setup JSON:

@@ -24,9 +24,9 @@ from dataset import CELL, NX, NY, NZ, BodyTerrainDataset, augment_d4, simulate_b
 from evaluate import compute_metrics, make_category_showcase, make_fixed_set
 from forward import TerrainGravityOperator
 from losses import CompoundInversionLoss
-from model_swin3d import PotentialFieldTransformer3D, create_model
+from model_swin3d import PotentialFieldTransformer3D, PotentialFieldTransformer3DV3, create_model
 
-ARCH = {"variant": "v2", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 24, "ch_vox": 16,
+ARCH = {"variant": "v3", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
         "n_sub": 3, "num_classes": 7}
 
 
@@ -1765,7 +1765,7 @@ def main():
     if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
         ema.ema.load_state_dict(ck_resumed["ema_state_dict"])
     eval_model = ema.ema if ema.ema is not None else model
-    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if arch.get("variant", "v1") == "v2"
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if arch.get("variant", "v1") in ("v2", "v3")
                         else (lambda m, inp: (m(inp), None)))
 
     print(f"Architecture: {arch.get('variant', 'v1')} | Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")

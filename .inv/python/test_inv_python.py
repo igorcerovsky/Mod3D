@@ -497,6 +497,81 @@ def test_showcase_and_16_sample_dashboard():
         assert len(payload["epochs"][-1]["pred_slices"]) == 16
 
 
+def test_v3_model_bounds_masking_aux_and_onnx_opset17_parity():
+    import os
+    import tempfile
+    from dataset import RHO_AIR, RHO_ORE_MAX
+    from losses import CompoundInversionLoss
+    from model_swin3d import PotentialFieldTransformer3DV3, create_model
+
+    torch.manual_seed(0)
+    arch = {"variant": "v3", "embed_dim": 32, "num_heads": 2, "depth": 2,
+            "ch_mid": 12, "ch_vox": 8, "n_sub": 2, "num_classes": 7}
+    m = create_model(16, 16, 8, **arch)
+    assert isinstance(m, PotentialFieldTransformer3DV3)
+    x = torch.cat([3.0 * torch.randn(2, 1, 16, 16), torch.full((2, 1, 16, 16), 0.25)], dim=1)
+    y, aux = m(x, return_aux=True)
+    assert y.shape == (2, 1, 8, 16, 16)
+    assert not y[:, :, :2].any() and y[:, :, 3:].abs().sum() > 0
+    assert float(y.min()) >= RHO_AIR - 1e-4 and float(y.max()) <= RHO_ORE_MAX + 1e-4
+    assert aux["edt"].shape == (2, 1, 8, 16, 16) and float(aux["edt"].min()) >= 0.0
+    assert not aux["edt"][:, :, :2].any()
+
+    target = torch.zeros_like(y)
+    target[0, 0, 3:6, 4:8, 4:8] = RHO_AIR
+    target[0, 0, 4:7, 9:13, 4:8] = 0.55
+    target[1, 0, 3:6, 5:9, 5:9] = -1.67
+    target[1, 0, 4:7, 6:8, 10:13] = 1.30
+    crit = CompoundInversionLoss(lambda_data=0.0, lambda_ms=0.05, lambda_cls=0.25)
+    loss, parts = crit(y, target, aux=aux)
+    assert torch.isfinite(loss) and parts["loss_edt"] > 0.0 and parts["loss_cls"] > 0.0
+    loss.backward()
+    for p in (m.edt_head.weight, m.up_vox.z.weight, m.skip_vox.d_gate[0].weight, m.s2p_attn.o.weight):
+        assert p.grad is not None and torch.isfinite(p.grad).all()
+
+    m.eval()
+    x1 = x[:1]
+    with torch.no_grad():
+        y_pt = m(x1).numpy()
+    with tempfile.TemporaryDirectory() as td:
+        onnx_path = os.path.join(td, "v3_test.onnx")
+        torch.onnx.export(m, (x1,), onnx_path, export_params=True, opset_version=17,
+                          do_constant_folding=True, input_names=["observation_field"],
+                          output_names=["density_volume"], dynamo=False)
+        try:
+            import onnxruntime as ort
+            sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+            y_ort = sess.run(None, {"observation_field": x1.numpy()})[0]
+            assert np.allclose(y_pt, y_ort, rtol=1e-4, atol=1e-4)
+        except ImportError:
+            pass
+
+
+def test_v3_gap_saddle_and_class_balance_loss():
+    from losses import CompoundInversionLoss, _gap_saddle_mask, _interior_edt_proxy
+    m_true = torch.zeros(1, 1, 16, 32, 32)
+    m_true[:, :, 6:10, 6:10, 6:10] = 0.5
+    m_true[:, :, 6:10, 11:15, 6:10] = 0.5               # 1-cell inter-body gap at x=10
+
+    fg = (m_true != 0).float()
+    saddle = _gap_saddle_mask(fg, max_gap=2)
+    assert saddle[:, :, 6:10, 10, 6:10].all()
+    assert not saddle[:, :, 6:10, 5, 6:10].any()         # outer wall is NOT a gap saddle
+
+    edt = _interior_edt_proxy(fg, steps=4)
+    assert float(edt[:, :, 6, 6, 6]) == 0.25 and float(edt[:, :, 7, 7, 7]) == 0.5
+    assert float(edt[:, :, 7, 10, 7]) == 0.0
+
+    bridge = m_true.clone()
+    bridge[:, :, 6:10, 10:11, 6:10] = 0.25               # bridges the 1-cell gap
+    outer = m_true.clone()
+    outer[:, :, 6:10, 5:6, 6:10] = 0.25                  # equal-volume blur outside outer flank
+    crit = CompoundInversionLoss()
+    l_bridge, _ = crit(bridge, m_true)
+    l_outer, _ = crit(outer, m_true)
+    assert l_bridge.item() > l_outer.item()
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

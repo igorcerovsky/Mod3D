@@ -115,6 +115,73 @@ class SepConv25DBlock(nn.Module):
         return x + y
 
 
+class AxialGlobalBlock3D(nn.Module):
+    """Global horizontal XY attention per depth layer + full-depth vertical Z column attention."""
+
+    def __init__(self, dim=128, heads=4):
+        super().__init__()
+        self.n1 = nn.LayerNorm(dim)
+        self.attn_xy = Attention(dim, heads)
+        self.nz = nn.LayerNorm(dim)
+        self.attn_z = Attention(dim, heads)
+        self.n2 = nn.LayerNorm(dim)
+        self.mlp = nn.Sequential(nn.Linear(dim, 3 * dim), nn.GELU(), nn.Linear(3 * dim, dim))
+
+    def forward(self, v):
+        b, dp, hp, wp, c = v.shape
+        h = self.n1(v).reshape(b * dp, hp * wp, c)
+        v = v + self.attn_xy(h, h).view(b, dp, hp, wp, c)
+        hz = self.nz(v).permute(0, 2, 3, 1, 4).reshape(b * hp * wp, dp, c)
+        v = v + self.attn_z(hz, hz).view(b, hp, wp, dp, c).permute(0, 3, 1, 2, 4)
+        return v + self.mlp(self.n2(v))
+
+
+class SepSubpixelUp3D(nn.Module):
+    """ONNX/MPS-native 2x (D, H, W) upsampler: trilinear base + learned 2.5D subpixel edge detail."""
+
+    def __init__(self, c_in: int, c_out: int):
+        super().__init__()
+        self.c_out = c_out
+        self.base = nn.Conv2d(c_in, c_out, 1)
+        self.xy = nn.Conv2d(c_in, 4 * c_out, 3, padding=1)
+        self.z = nn.Conv2d(c_out, 2 * c_out, (3, 1), padding=(1, 0))
+
+    def forward(self, x):
+        b, c_in, d, h, w = x.shape
+        co = self.c_out
+        xb = self.base(x.permute(0, 2, 1, 3, 4).reshape(b * d, c_in, h, w))
+        xb = xb.reshape(b, d, co, h, w).permute(0, 2, 1, 3, 4)
+        xb = F.interpolate(xb, size=(2 * d, 2 * h, 2 * w), mode="trilinear", align_corners=False)
+
+        xy = F.pixel_shuffle(self.xy(x.permute(0, 2, 1, 3, 4).reshape(b * d, c_in, h, w)), 2)
+        xz = xy.reshape(b, d, co, 2 * h, 2 * w).permute(0, 3, 2, 1, 4).reshape(b * 2 * h, co, d, 2 * w)
+        xz = self.z(xz)
+        detail = (xz.reshape(b, 2 * h, 2, co, d, 2 * w)
+                  .permute(0, 3, 4, 2, 1, 5)
+                  .reshape(b, co, 2 * d, 2 * h, 2 * w))
+        return xb + 0.5 * F.gelu(detail)
+
+
+class DepthConditionedSkip(nn.Module):
+    """Project a 2D U-Net skip to 3D modulated dynamically by terrain-relative depth (z - terr)."""
+
+    def __init__(self, c_2d: int, ch_out: int, nz_stage: int):
+        super().__init__()
+        self.ch_out = ch_out
+        self.proj = nn.Conv2d(c_2d, ch_out, 1)
+        self.z_gate = nn.Parameter(torch.ones(1, ch_out, nz_stage, 1, 1))
+        self.d_gate = nn.Sequential(nn.Conv2d(2, ch_out, 1), nn.GELU(), nn.Conv2d(ch_out, ch_out, 1))
+        self.d_bias = nn.Conv2d(2, ch_out, 1)
+
+    def forward(self, f_2d, d_surf, z_top_stage):
+        b, _, d, h, w = d_surf.shape
+        dt = torch.cat([d_surf, z_top_stage.expand(b, 1, d, h, w)], dim=1)
+        dt_2d = dt.permute(0, 2, 1, 3, 4).reshape(b * d, 2, h, w)
+        gate = torch.sigmoid(self.d_gate(dt_2d)).reshape(b, d, self.ch_out, h, w).permute(0, 2, 1, 3, 4)
+        bias = self.d_bias(dt_2d).reshape(b, d, self.ch_out, h, w).permute(0, 2, 1, 3, 4)
+        return self.proj(f_2d).unsqueeze(2) * self.z_gate * gate + bias
+
+
 class PotentialFieldTransformer3DV1(nn.Module):
     """Legacy amplitude-equivariant v1 3D Swin Transformer (retained for older checkpoints)."""
 
@@ -359,10 +426,218 @@ class PotentialFieldTransformer3D(nn.Module):
         return pred
 
 
+class PotentialFieldTransformer3DV3(nn.Module):
+    """V3 Terrain-Relative Axial+Swin3D Transformer with Subpixel Decoder & Surface-Distance Auxiliary Head."""
+
+    def __init__(self, nx=64, ny=64, nz=32, embed_dim=128, num_heads=4, depth=6, patch=4,
+                 n_sub=3, ch_mid=40, ch_vox=24, num_classes=len(CLASS_NAMES), **_unused):
+        super().__init__()
+        assert patch == 4 and nx % (4 * patch) == 0 and ny % (4 * patch) == 0 and nz % 4 == 0
+        self.nx, self.ny, self.nz, self.p, self.n_sub = nx, ny, nz, patch, n_sub
+        self.num_classes = num_classes
+        self.hp, self.wp, self.dp = nx // patch, ny // patch, nz // 4
+        c = embed_dim
+        c0, c1 = max(32, c // 4), max(64, c // 2)
+        self.ch_mid, self.ch_vox = ch_mid, ch_vox
+
+        self.scale_mlp = nn.Sequential(nn.Linear(4, c), nn.GELU(), nn.Linear(c, c))
+
+        # 9-channel physics encoder: linear + asinh + 4 high-pass + |grad_h| + tilt + terrain
+        self.enc0 = nn.Sequential(
+            nn.Conv2d(9, c0, 3, padding=1), nn.GELU(),
+            nn.Conv2d(c0, c0, 3, padding=1), nn.GELU(),
+        )
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(c0, c1, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(c1, c1, 3, padding=1), nn.GELU(),
+        )
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(c1, c, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(c, c, 3, padding=1),
+        )
+        self.pos2d = nn.Parameter(torch.randn(1, self.hp * self.wp, c) * 0.02)
+        self.n2d_1 = nn.LayerNorm(c)
+        self.attn2d = Attention(c, num_heads)
+        self.n2d_2 = nn.LayerNorm(c)
+        self.mlp2d = nn.Sequential(nn.Linear(c, 3 * c), nn.GELU(), nn.Linear(3 * c, c))
+
+        # Alternating 3D Swin (local joint 3D windows) + Axial Global (full-XY + full-Z column) blocks
+        self.depth_lift = nn.Sequential(nn.LayerNorm(c), nn.Linear(c, self.dp * c))
+        self.pos3d = nn.Parameter(torch.randn(1, self.dp, self.hp, self.wp, c) * 0.02)
+        self.blocks = nn.ModuleList([
+            (AxialGlobalBlock3D(c, num_heads) if i % 2 else SwinBlock3D(c, num_heads, wh=4, ww=4, shift=(2 if (i // 2) % 2 else 0)))
+            for i in range(depth)
+        ])
+
+        # Bidirectional Lithology Prototype Cross-Attention (voxels <-> scene-adapted prototypes)
+        self.proto_emb = nn.Parameter(torch.randn(1, num_classes * n_sub, c) * 0.05)
+        self.proto_scale = nn.Linear(c, c)
+        self.proto_nq = nn.LayerNorm(c)
+        self.proto_nk = nn.LayerNorm(c)
+        self.proto_attn = Attention(c, num_heads)
+        self.proto_mlp_n = nn.LayerNorm(c)
+        self.proto_mlp = nn.Sequential(nn.Linear(c, 2 * c), nn.GELU(), nn.Linear(2 * c, c))
+        self.s2p_nq = nn.LayerNorm(c)
+        self.s2p_nk = nn.LayerNorm(c)
+        self.s2p_attn = Attention(c, num_heads)
+        self.s2p_mlp_n = nn.LayerNorm(c)
+        self.s2p_mlp = nn.Sequential(nn.Linear(c, 2 * c), nn.GELU(), nn.Linear(2 * c, c))
+        self.norm3d = nn.LayerNorm(c)
+
+        # Dual-stage terrain-conditioned subpixel 2.5D U-Net decoder
+        self.proj_mid = nn.Conv2d(c, c, 1)
+        self.up_mid = SepSubpixelUp3D(c, ch_mid)
+        self.skip_mid = DepthConditionedSkip(c1, ch_mid, nz // 2)
+        self.dec_mid1 = SepConv25DBlock(ch_mid)
+        self.dec_mid2 = SepConv25DBlock(ch_mid)
+
+        self.up_vox = SepSubpixelUp3D(ch_mid, ch_vox)
+        self.skip_vox = DepthConditionedSkip(c0, ch_vox, nz)
+        self.scale_vox = nn.Linear(c, ch_vox)
+        self.dec_vox1 = SepConv25DBlock(ch_vox)
+        self.dec_vox2 = SepConv25DBlock(ch_vox)
+
+        # Sharp prototype head + bounded rock head + training-only surface-distance head
+        self.proto_head = nn.Linear(c, ch_vox)
+        self.proto_bias = nn.Linear(c, num_classes * n_sub)
+        self.logit_log_scale = nn.Parameter(torch.zeros(1))
+        self.rock_head = nn.Conv2d(ch_vox, len(_ROCK_BOUNDS), 1)
+        self.edt_head = nn.Conv2d(ch_vox, 1, 1)
+
+        self.register_buffer("z_top_mid", (torch.arange(nz // 2, dtype=torch.float32) / (nz // 2)).view(1, 1, nz // 2, 1, 1),
+                             persistent=False)
+        self.register_buffer("z_top", (torch.arange(nz, dtype=torch.float32) / nz).view(1, 1, nz, 1, 1),
+                             persistent=False)
+
+    @staticmethod
+    def _avg(g, k: int):
+        p = k // 2
+        return F.avg_pool2d(F.pad(g, (p, p, p, p), mode="replicate"), k, stride=1)
+
+    def forward(self, x, return_aux: bool = False):
+        b = x.shape[0]
+        gz, terr = x[:, 0:1], x[:, 1:2]
+        s = gz.abs().amax(dim=(2, 3), keepdim=True).clamp_min(1e-6)
+        gn = gz / s
+        u8 = 8.0 * gn
+        gn_log = torch.log(u8 + torch.sqrt(u8 * u8 + 1.0)) / math.asinh(8.0)
+
+        gp = F.pad(gn, (1, 1, 1, 1), mode="replicate")
+        gx = 0.5 * (gp[:, :, 2:, 1:-1] - gp[:, :, :-2, 1:-1])
+        gy = 0.5 * (gp[:, :, 1:-1, 2:] - gp[:, :, 1:-1, :-2])
+        grad_mag = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        dz_proxy = gn - self._avg(gn, 5)
+        tilt_sin = dz_proxy / torch.sqrt(dz_proxy * dz_proxy + grad_mag * grad_mag + 1e-4)
+
+        h_in = torch.cat([
+            gn,
+            gn_log,
+            (gn - self._avg(gn, 3)) * 6.0,
+            (gn - self._avg(gn, 9)) * 2.5,
+            (gn - self._avg(gn, 17)) * 1.5,
+            (gn - self._avg(gn, 25)) * 1.2,
+            grad_mag * 6.0,
+            tilt_sin,
+            terr * 4.0,
+        ], dim=1)
+
+        s_flat = s.view(b, 1)
+        s_slab = s_flat / SLAB
+        s_vec = torch.cat([
+            torch.log(s_slab + 1e-4) * 0.25,
+            s_slab / (s_slab + 1.0),
+            gz.amax(dim=(2, 3)).view(b, 1) / s_flat,
+            gz.amin(dim=(2, 3)).view(b, 1) / s_flat,
+        ], dim=1)
+        se = self.scale_mlp(s_vec)
+
+        f0 = self.enc0(h_in)
+        f1 = self.enc1(f0)
+        f2 = self.enc2(f1)
+
+        t2 = f2.flatten(2).transpose(1, 2) + self.pos2d + se.unsqueeze(1)
+        t2 = t2 + self.attn2d(self.n2d_1(t2), self.n2d_1(t2))
+        t2 = t2 + self.mlp2d(self.n2d_2(t2))
+
+        v = self.depth_lift(t2).view(b, self.hp, self.wp, self.dp, -1).permute(0, 3, 1, 2, 4)
+        v = v + self.pos3d + se.view(b, 1, 1, 1, -1)
+        for blk in self.blocks:
+            v = blk(v)
+
+        vf = v.reshape(b, self.dp * self.hp * self.wp, -1)
+        p_ctx = self.proto_emb + self.proto_scale(se).unsqueeze(1)
+        vf = vf + self.proto_attn(self.proto_nq(vf), self.proto_nk(p_ctx))
+        vf = vf + self.proto_mlp(self.proto_mlp_n(vf))
+        p_ctx = p_ctx + self.s2p_attn(self.s2p_nq(p_ctx), self.s2p_nk(vf))
+        p_ctx = p_ctx + self.s2p_mlp(self.s2p_mlp_n(p_ctx))
+        v = self.norm3d(vf).view(b, self.dp, self.hp, self.wp, -1)
+
+        # Stage 1 -> (nz/2, nx/2, ny/2)
+        vc = v.permute(0, 1, 4, 2, 3).reshape(b * self.dp, -1, self.hp, self.wp)
+        vc = self.proj_mid(vc).reshape(b, self.dp, -1, self.hp, self.wp).permute(0, 2, 1, 3, 4)
+        u = self.up_mid(vc)
+        terr_mid = F.avg_pool2d(terr, 2)
+        d_surf_mid = (self.z_top_mid - terr_mid.unsqueeze(2)).clamp_min(0.0)
+        u = u + self.skip_mid(f1, d_surf_mid, self.z_top_mid)
+        u = self.dec_mid2(self.dec_mid1(u))
+
+        # Stage 2 -> (nz, nx, ny)
+        u = self.up_vox(u)
+        d_surf = (self.z_top - terr.unsqueeze(2)).clamp_min(0.0)
+        hv = u + self.skip_vox(f0, d_surf, self.z_top) + self.scale_vox(se).view(b, self.ch_vox, 1, 1, 1)
+        hv = self.dec_vox2(self.dec_vox1(hv))
+
+        p_head = self.proto_head(p_ctx)
+        hv_flat = hv.reshape(b, self.ch_vox, self.nz * self.nx * self.ny)
+        logit_scale = self.logit_log_scale.exp().clamp(0.5, 4.0)
+        sim = torch.bmm(p_head, hv_flat) * (self.ch_vox ** -0.5) * logit_scale
+        sim = (sim.view(b, self.num_classes, self.n_sub, self.nz, self.nx, self.ny)
+               + self.proto_bias(se).view(b, self.num_classes, self.n_sub, 1, 1, 1))
+        logits = torch.logsumexp(sim, dim=2)
+        probs = F.softmax(logits, dim=1)
+
+        hv_2d = hv.permute(0, 2, 1, 3, 4).reshape(b * self.nz, self.ch_vox, self.nx, self.ny)
+        rock = self.rock_head(hv_2d)
+        rock_sig = torch.sigmoid(
+            rock.reshape(b, self.nz, len(_ROCK_BOUNDS), self.nx, self.ny).permute(0, 2, 1, 3, 4)
+        )
+        rho_light, rho_sediment, rho_mafic, rho_ore = [
+            lo + (hi - lo) * rock_sig[:, i:i + 1] for i, (lo, hi) in enumerate(_ROCK_BOUNDS)
+        ]
+
+        y = (
+            probs[:, 1:2] * RHO_AIR
+            + probs[:, 2:3] * RHO_WATER
+            + probs[:, 3:4] * rho_light
+            + probs[:, 4:5] * rho_sediment
+            + probs[:, 5:6] * rho_mafic
+            + probs[:, 6:7] * rho_ore
+        )
+        mask = (self.z_top >= terr.unsqueeze(2)).to(y.dtype)
+        pred = y * mask
+        if return_aux:
+            edt_raw = self.edt_head(hv_2d)
+            edt = F.softplus(edt_raw).reshape(b, self.nz, 1, self.nx, self.ny).permute(0, 2, 1, 3, 4) * mask
+            return pred, {
+                "logits": logits,
+                "probs": probs,
+                "edt": edt,
+                "rho_light": rho_light * mask,
+                "rho_sediment": rho_sediment * mask,
+                "rho_mafic": rho_mafic * mask,
+                "rho_ore": rho_ore * mask,
+                "proto_emb": p_ctx,
+                "mask": mask,
+            }
+        return pred
+
+
 def create_model(nx=64, ny=64, nz=32, **arch):
-    """Instantiate v2 (when ``variant == 'v2'``) or legacy v1 from checkpoint ``arch`` metadata."""
+    """Instantiate v3 (when ``variant == 'v3'``), v2 (``'v2'``), or legacy v1 from checkpoint ``arch``."""
     cfg = dict(arch)
     variant = cfg.pop("variant", "v1")
+    if variant == "v3":
+        return PotentialFieldTransformer3DV3(nx, ny, nz, **cfg)
     if variant == "v2":
         return PotentialFieldTransformer3D(nx, ny, nz, **cfg)
     return PotentialFieldTransformer3DV1(nx, ny, nz, **cfg)

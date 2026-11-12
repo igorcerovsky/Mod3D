@@ -79,7 +79,7 @@ def random_terrain(rng, nx, ny, depth_total):
 
 # Hard scene archetypes mixed into training (see random_bodies / hard_prob)
 HARD_SCENE_TYPES = ("large_composite", "nested_halo", "abutting_contact", "vertical_stack", "tight_cluster")
-_HARD_SCENE_PROBS = (0.25, 0.25, 0.20, 0.15, 0.15)
+_HARD_SCENE_PROBS = (0.20, 0.20, 0.18, 0.21, 0.21)
 
 
 # (prob_among_rocks, rho_lo, rho_hi, tabular_prob, dip_range)
@@ -110,7 +110,7 @@ def _sample_body_spec(rng, nz, hs, vs):
     """Draw (rx, ry, rz, gap, dip, rho_val, lo, hi, cavity, force_box) for one synthetic body."""
     if rng.random() < 0.24:
         gap = rng.uniform(0.5, max(1.2, 4.5 * vs))           # shallow cavity below terrain [cells]
-        rho_val = RHO_AIR if rng.random() < 0.60 else RHO_WATER
+        rho_val = RHO_AIR if rng.random() < 0.50 else RHO_WATER
         if rng.random() < 0.20:                              # horizontal tunnel / conduit
             rx, ry = rng.uniform(3.0, 6.2) * hs, rng.uniform(0.9, 1.8) * hs
             rz = rng.uniform(0.8, 1.8) * vs
@@ -406,7 +406,7 @@ def _build_nested_halo(rng, t_cells, nz, hs, vs):
 
         g_host = _body_gravity_est(rho_host, shell_mask, t_cells)
         if core_cav:
-            rho_core = RHO_AIR if rng.random() < 0.55 else RHO_WATER
+            rho_core = RHO_AIR if rng.random() < 0.48 else RHO_WATER
             g_core = _body_gravity_est(rho_core, core_mask, t_cells)
             ok = 0.20 <= (g_core / max(g_host, 1e-9)) <= 5.0
         else:
