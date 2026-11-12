@@ -4,6 +4,14 @@
 > *Physics-Guided 3D Swin Transformers & Reweighted Focusing Inversion*
 
 <p align="center">
+  <a href="https://igorcerovsky.github.io/Mod3D/">
+    <img src="https://img.shields.io/badge/Live_Web_Preview-Interactive_3D_%26_2D_Inversion_Viewer-0284c7?style=for-the-badge" alt="Live Web Preview — Interactive 3D &amp; 2D Inversion Viewer">
+  </a>
+  <br>
+  <strong><a href="https://igorcerovsky.github.io/Mod3D/">Open Interactive 3D &amp; 2D Web Preview</a></strong> &mdash; WebGL2 volume raycasting, Mod3D Bouguer anomaly terrain draping, and 2D cross-sections across 16 benchmark scenes (<code>v3</code> best model).
+</p>
+
+<p align="center">
   <img src="img/training_examples.png" alt="v3 Neural Inversion vs. Ground Truth X-Z Examples" width="100%">
   <br>
   <em>Zero-shot 3D Swin Transformer (<code>v3</code>) gravity inversion directly from surface draped anomalies &amp; terrain relief across 16 synthetic validation and hard composite scenes (cavities, intrusions, clusters, nested halos, abutting contacts, and vertical stacks).</em>

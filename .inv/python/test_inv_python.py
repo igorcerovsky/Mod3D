@@ -473,7 +473,10 @@ def test_showcase_and_16_sample_dashboard():
         assert len(np.unique(np.round(nz_vals, 2))) >= 2
 
     html = build_dashboard_html()
-    assert 'id="radView1"' in html and 'id="radView8"' in html and 'id="radView16"' in html
+    assert 'id="layoutPicker"' in html and 'id="inpLayoutRows"' in html and 'id="inpLayoutCols"' in html
+    for preset in ("1x1", "2x2", "3x3", "4x4", "2x3", "3x2"):
+        assert f'data-layout-preset="{preset}"' in html
+    assert 'id="radView1"' not in html and 'id="radView8"' not in html and 'id="radView16"' not in html
     assert 'radViewSingle' not in html and 'radViewAll8' not in html
     assert 'data-theme="light"' in html and '[data-theme="dark"]' in html
     assert 'id="btnThemeLight"' in html and 'id="btnThemeDark"' in html
@@ -634,6 +637,68 @@ def test_vol3d_rle_roundtrip_and_axis_order():
     assert f_rec.shape == (64, 64)
     assert abs(float(f_rec[7, 53]) - (-12.34)) < 1e-3
     assert abs(float(f_rec[20, 10]) - 8.50) < 1e-3
+
+
+def test_demo_export_and_html():
+    import json
+    import os
+    import re
+    import tempfile
+    from dataset import CELL, NX, NY, NZ
+    from evaluate import make_category_showcase
+    from export_demo import export_demo
+    from train import TrainingMonitor, build_dashboard_html
+
+    demo_html = build_dashboard_html(demo_mode=True)
+    assert "const IS_DEMO_MODE = true;" in demo_html
+    assert 'src="preview_2d.js"' in demo_html
+    assert 'src="vol3d_meta.js"' in demo_html and 'src="vol3d_best.js"' in demo_html
+    assert 'id="sampleSelect"' in demo_html and 'id="btnSamplePrev"' in demo_html and 'id="btnSampleNext"' in demo_html
+    assert 'id="cvsBouguerBar"' in demo_html
+    assert 'src="training_history.js"' not in demo_html
+    assert 'id="mTrainLoss"' not in demo_html
+    assert 'id="svgLoss"' not in demo_html
+    assert 'id="epochSlider"' not in demo_html
+    assert 'data-vol3d-ep="latest"' not in demo_html
+    assert not re.findall(r"__[A-Z][A-Z0-9_]+__", demo_html)
+
+    grid = (NX, NY, NZ, CELL, CELL, CELL)
+    op = TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL)
+    sx, strue, sclean, sz, labels = make_category_showcase(op, "cpu", grid, seed=4024)
+
+    with tempfile.TemporaryDirectory() as tmp_save, tempfile.TemporaryDirectory() as tmp_demo:
+        mon = TrainingMonitor(tmp_save, gui=False, vol3d_stride=10, forward_op=op)
+        base_rec = {
+            "train_loss": 0.9, "val_loss": 0.8, "l1_rel": 0.2,
+            "body_l1_rel": 0.3, "data_rel_misfit": 0.1, "iou": 0.55,
+            "centroid_dz": 40.0, "amp_ratio": 0.92, "halo_opp": 0.01,
+        }
+        mon.update({**base_rec, "epoch": 1}, sx, strue, strue * 0.85, sclean, sz, sample_labels=labels, is_best=True)
+        mon.update({**base_rec, "epoch": 2, "val_loss": 1.2}, sx, strue, strue * 0.5, sclean, sz, sample_labels=labels, is_best=False)
+
+        summary = export_demo(tmp_save, tmp_demo)
+        assert summary["best_epoch"] == 1 and summary["n_samples"] == 8
+        assert sorted(os.listdir(tmp_demo)) == ["index.html", "preview_2d.js", "vol3d_best.js", "vol3d_meta.js"]
+
+        with open(os.path.join(tmp_demo, "preview_2d.js")) as f:
+            raw_preview = f.read()
+        assert raw_preview.startswith("window.PREVIEW_2D = ")
+        preview = json.loads(raw_preview[len("window.PREVIEW_2D = "):].rstrip(";\n "))
+        assert preview["best_epoch"] == 1
+        assert "epochs" not in preview
+        for k in ("train_loss", "val_loss", "l1_rel", "iou", "centroid_dz"):
+            assert k not in raw_preview
+        samples = preview["meta"]["samples"]
+        assert len(samples) == 8
+        for s in samples:
+            assert len(s["obs_profile"]) == NX
+            assert len(s["pred_profile"]) == NX
+            assert len(s["truth_slice"]) == NZ and len(s["truth_slice"][0]) == NX
+            assert len(s["pred_slice"]) == NZ and len(s["pred_slice"][0]) == NX
+
+        with open(os.path.join(tmp_demo, "vol3d_best.js")) as f:
+            vbest_js = f.read()
+        assert "window.VOL3D_BEST_EPOCH = 1;" in vbest_js
 
 
 if __name__ == "__main__":

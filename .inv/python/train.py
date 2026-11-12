@@ -81,13 +81,158 @@ def parse_args():
     return p.parse_args()
 
 
-def build_dashboard_html():
-    return """<!DOCTYPE html>
+def build_dashboard_html(demo_mode=False):
+    page_title = (
+        "Mod3D .inv \u2014 Swin-3D Virtual Inversion Preview"
+        if demo_mode else
+        "Mod3D .inv \u2014 Interactive Voxel Training Monitor"
+    )
+    header_html = (
+        """<header>
+  <h1>Mod3D .inv &mdash; Swin-3D Virtual Inversion Preview <span class="tag">Best Model &bull; 3D &amp; 2D Results</span></h1>
+  <div class="header-actions">
+    <div class="theme-switch" role="group" aria-label="Color theme">
+      <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
+      <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
+    </div>
+    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">BEST RESULT PREVIEW</span></div>
+  </div>
+</header>"""
+        if demo_mode else
+        """<header>
+  <h1>Mod3D .inv &mdash; Swin 3D Voxel Inversion Monitor <span class="tag">Direct Numerical Voxel Rendering</span></h1>
+  <div class="header-actions">
+    <div class="theme-switch" role="group" aria-label="Color theme">
+      <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
+      <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
+    </div>
+    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">LIVE DATA STREAM</span></div>
+  </div>
+</header>"""
+    )
+    playback_controls_html = (
+        """  <div class="btn-group">
+    <button id="btnSamplePrev" class="playback-btn" title="Previous Sample (&larr;)">&lsaquo; Prev</button>
+    <button id="btnSampleNext" class="playback-btn" title="Next Sample (&rarr;)">Next &rsaquo;</button>
+  </div>
+
+  <div class="slider-group" id="sampleSliderGroup">
+    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Scene</span>
+    <input type="range" id="sampleSlider" min="0" max="15" value="0">
+    <select id="sampleSelect" title="Select benchmark scene" style="max-width:170px;"></select>
+    <span class="epoch-label" id="sampleDisplay" style="color:var(--accent);display:none;">Sample #0</span>
+  </div>"""
+        if demo_mode else
+        """  <div class="btn-group">
+    <button id="btnFirst" class="playback-btn" title="First Epoch (Home)">&laquo; First</button>
+    <button id="btnPrev" class="playback-btn" title="Previous Epoch (&larr;)">&lsaquo; Prev</button>
+    <button id="btnPlay" class="playback-btn" title="Play/Pause Timelapse (Space)">&#9654; Play</button>
+    <button id="btnNext" class="playback-btn" title="Next Epoch (&rarr;)">Next &rsaquo;</button>
+    <button id="btnLatest" class="playback-btn" title="Latest Epoch (End)">Latest &raquo;</button>
+  </div>
+
+  <div class="slider-group">
+    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Epoch</span>
+    <input type="range" id="epochSlider" min="1" max="1" value="1">
+    <span class="epoch-label" id="epochDisplay">Epoch --/--</span>
+  </div>
+
+  <div class="slider-group" id="sampleSliderGroup">
+    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Val Sample</span>
+    <input type="range" id="sampleSlider" min="0" max="15" value="0">
+    <span class="epoch-label" id="sampleDisplay" style="color:var(--accent);">Sample #0</span>
+  </div>
+
+  <select id="speedSelect" title="Playback speed">
+    <option value="1">1 fps (slow)</option>
+    <option value="2" selected>2 fps (normal)</option>
+    <option value="4">4 fps (fast)</option>
+    <option value="8">8 fps (turbo)</option>
+  </select>"""
+    )
+    follow_live_html = (
+        "" if demo_mode else
+        """    <label title="Automatically advance to new epochs during training">
+      <input type="checkbox" id="chkFollowLive" checked> Follow Live
+    </label>"""
+    )
+    metrics_html = (
+        "" if demo_mode else
+        """<div class="metrics-grid">
+  <div class="metric-card"><div class="metric-name">Train Loss</div><div class="metric-value" id="mTrainLoss">--</div></div>
+  <div class="metric-card"><div class="metric-name">Val Loss</div><div class="metric-value" id="mValLoss">--</div></div>
+  <div class="metric-card"><div class="metric-name">Data Misfit</div><div class="metric-value" id="mDataMisfit" style="color:var(--purple);">--</div></div>
+  <div class="metric-card"><div class="metric-name">3D IoU (50%)</div><div class="metric-value" id="mIoU" style="color:var(--green);">--</div></div>
+  <div class="metric-card"><div class="metric-name">Centroid dz</div><div class="metric-value" id="mCentroidDz" style="color:var(--red);">--</div></div>
+  <div class="metric-card"><div class="metric-name">Amp Ratio</div><div class="metric-value" id="mAmpRatio" style="color:var(--accent);">--</div></div>
+  <div class="metric-card"><div class="metric-name">Opp Halo</div><div class="metric-value" id="mHaloOpp" style="color:var(--amber);">--</div></div>
+</div>"""
+    )
+    vol3d_ep_html = (
+        "" if demo_mode else
+        """      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <span style="font-weight:600;" title="Choose which epoch 3D prediction snapshot is displayed">3D Ep:</span>
+      <button type="button" class="vol3d-btn active" data-vol3d-ep="best" title="Always show the best checkpoint 3D volume (falls back to latest)">Best</button>
+      <button type="button" class="vol3d-btn" data-vol3d-ep="latest" title="Always show the latest recorded 3D volume">Latest</button>
+      <button type="button" class="vol3d-btn" data-vol3d-ep="match" title="Show the 3D snapshot matching the selected Epoch slider">Match</button>"""
+    )
+    charts_html = (
+        "" if demo_mode else
+        """<div class="charts-grid">
+  <div class="chart-card">
+    <h4>
+      <span>Loss &amp; Data Misfit</span>
+      <span style="display:flex;align-items:center;gap:6px;">
+        <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
+          <label id="lblLossLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Logarithmic Y axis">
+            <input type="radio" name="lossScale" value="log" id="radLossLog" checked style="display:none;">Log
+          </label>
+          <label id="lblLossLin" style="cursor:pointer;padding:1px 5px;border-radius:3px;" title="Linear Y axis">
+            <input type="radio" name="lossScale" value="lin" id="radLossLin" style="display:none;">Lin
+          </label>
+        </span>
+        <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span>
+      </span>
+    </h4>
+    <svg id="svgLoss" class="chart-svg"></svg>
+  </div>
+  <div class="chart-card">
+    <h4>3D Volumetric IoU &amp; Amplitude Recovery <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
+    <svg id="svgIoU" class="chart-svg"></svg>
+  </div>
+  <div class="chart-card">
+    <h4>Centroid Depth Error |dz| [m] <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
+    <svg id="svgDz" class="chart-svg"></svg>
+  </div>
+</div>"""
+    )
+    shortcut_html = (
+        """<div class="shortcut-footer">
+  Keyboard shortcuts: <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> switch scenes &bull; <kbd>Home</kbd> / <kbd>End</kbd> first/last scene &bull; 2D: hover voxels &bull; 3D: drag to orbit, scroll to zoom, double-click to reset
+</div>"""
+        if demo_mode else
+        """<div class="shortcut-footer">
+  Keyboard shortcuts: <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> step epochs &bull; <kbd>Space</kbd> play/pause &bull; <kbd>Home</kbd> / <kbd>End</kbd> first/latest &bull; 2D: hover voxels &bull; 3D: drag to orbit, scroll to zoom, double-click to reset
+</div>"""
+    )
+    data_scripts_html = (
+        """<script src="preview_2d.js"></script>
+<script src="vol3d_meta.js"></script>
+<script src="vol3d_best.js"></script>"""
+        if demo_mode else
+        """<script src="training_history.js"></script>
+<script src="vol3d_meta.js"></script>
+<script src="vol3d_index.js"></script>
+<script src="vol3d_latest.js"></script>
+<script src="vol3d_best.js"></script>"""
+    )
+
+    html = """<!DOCTYPE html>
 <html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mod3D .inv — Interactive Voxel Training Monitor</title>
+<title>__PAGE_TITLE__</title>
 <script>
   try {
     const savedTheme = localStorage.getItem('mod3d_dashboard_theme');
@@ -446,16 +591,62 @@ def build_dashboard_html():
   @media (max-width: 900px) { .voxel-grid-card { grid-template-columns: 1fr; } }
   .overview-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     width: 100%;
   }
-  .overview-grid.grid-16 { gap: 6px; }
-  @media (max-width: 1100px) { .overview-grid { grid-template-columns: repeat(2, 1fr); } }
-  @media (max-width: 600px) { .overview-grid { grid-template-columns: 1fr; } }
-  .overview-grid.grid-16 .sample-card-item { padding: 5px; gap: 3px; }
-  .overview-grid.grid-16 .sample-card-header { font-size: 0.68rem; }
-  .overview-grid.grid-16 .sample-card-header span.tag-pill { font-size: 0.64rem; }
+  .overview-grid.grid-dense { gap: 6px; }
+  .overview-grid.grid-dense .sample-card-item { padding: 5px; gap: 3px; }
+  .overview-grid.grid-dense .sample-card-header { font-size: 0.68rem; }
+  .overview-grid.grid-dense .sample-card-header span.tag-pill { font-size: 0.64rem; }
+  .layout-picker {
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface-inset);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 4px;
+    gap: 2px;
+  }
+  .layout-btn {
+    background: transparent;
+    color: var(--text-primary);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-size: 0.78rem;
+    font-weight: 500;
+    cursor: pointer;
+    line-height: 1.3;
+  }
+  .layout-btn:hover { background: var(--btn-hover-bg); }
+  .layout-btn.active {
+    background: var(--btn-active-bg);
+    color: var(--btn-active-fg);
+    font-weight: 600;
+  }
+  .layout-sep {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    margin: 0 3px;
+  }
+  .layout-dim-inp {
+    width: 34px;
+    padding: 1px 2px;
+    font-size: 0.74rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    text-align: center;
+    background: var(--control-bg);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  .layout-x {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    user-select: none;
+  }
   .sample-card-item {
     background: var(--surface-inset);
     border: 1px solid var(--border);
@@ -662,44 +853,10 @@ def build_dashboard_html():
 </head>
 <body>
 
-<header>
-  <h1>Mod3D .inv &mdash; Swin 3D Voxel Inversion Monitor <span class="tag">Direct Numerical Voxel Rendering</span></h1>
-  <div class="header-actions">
-    <div class="theme-switch" role="group" aria-label="Color theme">
-      <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
-      <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
-    </div>
-    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">LIVE DATA STREAM</span></div>
-  </div>
-</header>
+__HEADER_HTML__
 
 <div class="controls-panel">
-  <div class="btn-group">
-    <button id="btnFirst" class="playback-btn" title="First Epoch (Home)">&laquo; First</button>
-    <button id="btnPrev" class="playback-btn" title="Previous Epoch (&larr;)">&lsaquo; Prev</button>
-    <button id="btnPlay" class="playback-btn" title="Play/Pause Timelapse (Space)">&#9654; Play</button>
-    <button id="btnNext" class="playback-btn" title="Next Epoch (&rarr;)">Next &rsaquo;</button>
-    <button id="btnLatest" class="playback-btn" title="Latest Epoch (End)">Latest &raquo;</button>
-  </div>
-
-  <div class="slider-group">
-    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Epoch</span>
-    <input type="range" id="epochSlider" min="1" max="1" value="1">
-    <span class="epoch-label" id="epochDisplay">Epoch --/--</span>
-  </div>
-
-  <div class="slider-group" id="sampleSliderGroup">
-    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Val Sample</span>
-    <input type="range" id="sampleSlider" min="0" max="15" value="0">
-    <span class="epoch-label" id="sampleDisplay" style="color:var(--accent);">Sample #0</span>
-  </div>
-
-  <select id="speedSelect" title="Playback speed">
-    <option value="1">1 fps (slow)</option>
-    <option value="2" selected>2 fps (normal)</option>
-    <option value="4">4 fps (fast)</option>
-    <option value="8">8 fps (turbo)</option>
-  </select>
+__PLAYBACK_CONTROLS_HTML__
 
   <div class="toggle-group">
     <div style="display:flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Cross-section 2D X-Z vs synchronized 3D WebGL2 volume raycasting">
@@ -710,35 +867,26 @@ def build_dashboard_html():
         <input type="radio" name="renderMode" value="3d" id="radRender3D" style="cursor:pointer;"> 3D
       </label>
     </div>
-    <div style="display:flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Number of validation samples displayed">
-      <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView1" title="Single side-by-side view with Truth, Prediction, and Difference">
-        <input type="radio" name="viewMode" value="1" id="radView1" checked style="cursor:pointer;"> 1
-      </label>
-      <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView8" title="8 validation sample pairs (use Val Sample slider to flip #0-#7 vs #8-#15)">
-        <input type="radio" name="viewMode" value="8" id="radView8" style="cursor:pointer;"> 8
-      </label>
-      <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView16" title="All 16 validation & category showcase pairs at once">
-        <input type="radio" name="viewMode" value="16" id="radView16" style="cursor:pointer;"> 16
-      </label>
+    <div class="layout-picker" id="layoutPicker" title="Configurable grid layout (Rows &times; Columns) &mdash; presets or custom dimensions">
+      <button type="button" class="layout-btn active" data-layout-preset="1x1" title="Single 1&times;1 view (Truth, Prediction, and optional Difference)">1</button>
+      <button type="button" class="layout-btn" data-layout-preset="2x2" title="2 rows &times; 2 columns (4 scenes)">2&times;2</button>
+      <button type="button" class="layout-btn" data-layout-preset="3x3" title="3 rows &times; 3 columns (9 scenes)">3&times;3</button>
+      <button type="button" class="layout-btn" data-layout-preset="4x4" title="4 rows &times; 4 columns (16 scenes)">4&times;4</button>
+      <button type="button" class="layout-btn" data-layout-preset="2x3" title="2 rows &times; 3 columns (6 scenes)">2&times;3</button>
+      <button type="button" class="layout-btn" data-layout-preset="3x2" title="3 rows &times; 2 columns (6 scenes)">3&times;2</button>
+      <span class="layout-sep" aria-hidden="true"></span>
+      <input type="number" id="inpLayoutRows" class="layout-dim-inp" min="1" max="8" value="1" aria-label="Grid rows" title="Grid rows (1-8)">
+      <span class="layout-x">&times;</span>
+      <input type="number" id="inpLayoutCols" class="layout-dim-inp" min="1" max="8" value="1" aria-label="Grid columns" title="Grid columns (1-8)">
     </div>
-    <label title="Automatically advance to new epochs during training">
-      <input type="checkbox" id="chkFollowLive" checked> Follow Live
-    </label>
+__FOLLOW_LIVE_HTML__
     <label title="Toggle residual difference map (Predicted - Ground Truth)" id="lblDiffToggle">
       <input type="checkbox" id="chkShowDiff"> Difference Map
     </label>
   </div>
 </div>
 
-<div class="metrics-grid">
-  <div class="metric-card"><div class="metric-name">Train Loss</div><div class="metric-value" id="mTrainLoss">--</div></div>
-  <div class="metric-card"><div class="metric-name">Val Loss</div><div class="metric-value" id="mValLoss">--</div></div>
-  <div class="metric-card"><div class="metric-name">Data Misfit</div><div class="metric-value" id="mDataMisfit" style="color:var(--purple);">--</div></div>
-  <div class="metric-card"><div class="metric-name">3D IoU (50%)</div><div class="metric-value" id="mIoU" style="color:var(--green);">--</div></div>
-  <div class="metric-card"><div class="metric-name">Centroid dz</div><div class="metric-value" id="mCentroidDz" style="color:var(--red);">--</div></div>
-  <div class="metric-card"><div class="metric-name">Amp Ratio</div><div class="metric-value" id="mAmpRatio" style="color:var(--accent);">--</div></div>
-  <div class="metric-card"><div class="metric-name">Opp Halo</div><div class="metric-value" id="mHaloOpp" style="color:var(--amber);">--</div></div>
-</div>
+__METRICS_HTML__
 
 <div class="canvas-container" id="canvasContainer">
   <div class="profile-bar-card">
@@ -764,11 +912,7 @@ def build_dashboard_html():
       <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
       <button type="button" class="vol3d-btn active" id="btnRayComposite" title="Shaded 3D density compositing">Volume</button>
       <button type="button" class="vol3d-btn" id="btnRayMip" title="Maximum |density| intensity projection (reveals weak halos)">MIP</button>
-      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
-      <span style="font-weight:600;" title="Choose which epoch 3D prediction snapshot is displayed">3D Ep:</span>
-      <button type="button" class="vol3d-btn active" data-vol3d-ep="best" title="Always show the best checkpoint 3D volume (falls back to latest)">Best</button>
-      <button type="button" class="vol3d-btn" data-vol3d-ep="latest" title="Always show the latest recorded 3D volume">Latest</button>
-      <button type="button" class="vol3d-btn" data-vol3d-ep="match" title="Show the 3D snapshot matching the selected Epoch slider">Match</button>
+__VOL3D_EP_HTML__
     </div>
     <div class="vol3d-group">
       <label for="vol3dThreshSlider" style="font-weight:600;" title="Hide weak voxels below this fraction of vmax (50% matches IoU)">|&rho;| Thresh</label>
@@ -816,50 +960,34 @@ def build_dashboard_html():
     <span id="cbarMax">+0.50</span>
     <span style="margin-left:6px;color:var(--text-secondary);">g/cm&sup3; (Blue: Cavity / Negative contrast &bull; White: 0 &bull; Red: Dense rock)</span>
   </div>
-</div>
-
-<div class="charts-grid">
-  <div class="chart-card">
-    <h4>
-      <span>Loss &amp; Data Misfit</span>
-      <span style="display:flex;align-items:center;gap:6px;">
-        <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
-          <label id="lblLossLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Logarithmic Y axis">
-            <input type="radio" name="lossScale" value="log" id="radLossLog" checked style="display:none;">Log
-          </label>
-          <label id="lblLossLin" style="cursor:pointer;padding:1px 5px;border-radius:3px;" title="Linear Y axis">
-            <input type="radio" name="lossScale" value="lin" id="radLossLin" style="display:none;">Lin
-          </label>
-        </span>
-        <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span>
-      </span>
-    </h4>
-    <svg id="svgLoss" class="chart-svg"></svg>
-  </div>
-  <div class="chart-card">
-    <h4>3D Volumetric IoU &amp; Amplitude Recovery <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
-    <svg id="svgIoU" class="chart-svg"></svg>
-  </div>
-  <div class="chart-card">
-    <h4>Centroid Depth Error |dz| [m] <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
-    <svg id="svgDz" class="chart-svg"></svg>
+  <div class="colorbar-row" id="bouguerBarRow" style="display:none;">
+    <span id="bbarMin">Min</span>
+    <canvas id="cvsBouguerBar" width="260" height="10" style="border-radius:3px;border:1px solid var(--border);"></canvas>
+    <span id="bbarMax">Max</span>
+    <span style="margin-left:6px;color:var(--text-secondary);">mGal (Mod3D Bouguer g<sub>z</sub> draped on Predicted relief)</span>
   </div>
 </div>
 
-<div class="shortcut-footer">
-  Keyboard shortcuts: <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> step epochs &bull; <kbd>Space</kbd> play/pause &bull; <kbd>Home</kbd> / <kbd>End</kbd> first/latest &bull; 2D: hover voxels &bull; 3D: drag to orbit, scroll to zoom, double-click to reset
-</div>
+__CHARTS_HTML__
 
-<script src="training_history.js"></script>
-<script src="vol3d_meta.js"></script>
-<script src="vol3d_index.js"></script>
-<script src="vol3d_latest.js"></script>
-<script src="vol3d_best.js"></script>
+__SHORTCUT_HTML__
+
+__DATA_SCRIPTS_HTML__
 <script>
 (function() {
+  const IS_DEMO_MODE = __IS_DEMO_MODE__;
   function normalizeTrainingData(raw) {
     if (!raw) return { meta: null, epochs: [] };
     if (!Array.isArray(raw)) {
+      if (raw.meta && Array.isArray(raw.meta.samples) && !raw.epochs) {
+        return {
+          meta: raw.meta,
+          epochs: [{
+            epoch: raw.best_epoch || 1,
+            pred_slices: raw.meta.samples.map(s => s.pred_slice || [])
+          }]
+        };
+      }
       if (raw.epochs && Array.isArray(raw.epochs)) return raw;
       return { meta: null, epochs: [] };
     }
@@ -889,11 +1017,13 @@ def build_dashboard_html():
     return { meta, epochs };
   }
 
-  let trainingData = normalizeTrainingData(window.TRAINING_DATA || window.TRAINING_HISTORY || null);
+  let trainingData = normalizeTrainingData(IS_DEMO_MODE ? window.PREVIEW_2D : (window.TRAINING_DATA || window.TRAINING_HISTORY || null));
   let currentIndex = -1;
   let currentSampleIndex = 0;
-  let viewMode = '1'; // '1', '8', or '16'
-  let renderMode = '2d'; // '2d' or '3d'
+  let gridStartIndex = 0;
+  let layoutRows = 1;
+  let layoutCols = 1;
+  let renderMode = IS_DEMO_MODE ? '3d' : '2d'; // '2d' or '3d'
   let lossLogScale = true;
   let isPlaying = false;
   let playTimer = null;
@@ -916,6 +1046,9 @@ def build_dashboard_html():
   const epochDisplay = document.getElementById('epochDisplay');
   const sampleSlider = document.getElementById('sampleSlider');
   const sampleDisplay = document.getElementById('sampleDisplay');
+  const sampleSelect = document.getElementById('sampleSelect');
+  const btnSamplePrev = document.getElementById('btnSamplePrev');
+  const btnSampleNext = document.getElementById('btnSampleNext');
   const sampleSliderGroup = document.getElementById('sampleSliderGroup');
   const canvasContainer = document.getElementById('canvasContainer');
   const sectionMainTitle = document.getElementById('sectionMainTitle');
@@ -934,12 +1067,8 @@ def build_dashboard_html():
   const chkVol3dTerrain = document.getElementById('chkVol3dTerrain');
   const chkVol3dSlice = document.getElementById('chkVol3dSlice');
   const vol3dFieldScale = document.getElementById('vol3dFieldScale');
-  const radView1 = document.getElementById('radView1');
-  const radView8 = document.getElementById('radView8');
-  const radView16 = document.getElementById('radView16');
-  const lblView1 = document.getElementById('lblView1');
-  const lblView8 = document.getElementById('lblView8');
-  const lblView16 = document.getElementById('lblView16');
+  const inpLayoutRows = document.getElementById('inpLayoutRows');
+  const inpLayoutCols = document.getElementById('inpLayoutCols');
   const lblDiffToggle = document.getElementById('lblDiffToggle');
   const voxelCardGrid = document.getElementById('voxelCardGrid');
   const overviewGrid = document.getElementById('overviewGrid');
@@ -968,6 +1097,10 @@ def build_dashboard_html():
   const cvsPred = document.getElementById('cvsPred');
   const cvsDiff = document.getElementById('cvsDiff');
   const cvsColorbar = document.getElementById('cvsColorbar');
+  const bouguerBarRow = document.getElementById('bouguerBarRow');
+  const cvsBouguerBar = document.getElementById('cvsBouguerBar');
+  const bbarMin = document.getElementById('bbarMin');
+  const bbarMax = document.getElementById('bbarMax');
 
   function isDarkTheme() {
     return document.documentElement.getAttribute('data-theme') === 'dark';
@@ -1034,10 +1167,10 @@ def build_dashboard_html():
     }
     if (redraw) {
       drawColorbar();
-      renderAllCharts();
+      if (!IS_DEMO_MODE) renderAllCharts();
       renderCurrentVoxelData();
       renderProfileCanvas();
-      if (currentIndex >= 0) updateChartScrubbers(currentIndex);
+      if (!IS_DEMO_MODE && currentIndex >= 0) updateChartScrubbers(currentIndex);
     }
   }
 
@@ -1045,7 +1178,7 @@ def build_dashboard_html():
     setupControls();
     drawColorbar();
     syncData(trainingData);
-    setInterval(pollData, 3000);
+    if (!IS_DEMO_MODE) setInterval(pollData, 3000);
   }
 
   function setupControls() {
@@ -1053,15 +1186,28 @@ def build_dashboard_html():
     if (btnThemeLight) btnThemeLight.addEventListener('click', () => applyTheme('light', true));
     if (btnThemeDark) btnThemeDark.addEventListener('click', () => applyTheme('dark', true));
 
-    slider.addEventListener('input', e => {
-      stopPlayback();
-      showEpoch(parseInt(e.target.value, 10) - 1);
-    });
+    if (slider) {
+      slider.addEventListener('input', e => {
+        stopPlayback();
+        showEpoch(parseInt(e.target.value, 10) - 1);
+      });
+    }
 
     if (sampleSlider) {
       sampleSlider.addEventListener('input', e => {
         showSample(parseInt(e.target.value, 10));
       });
+    }
+    if (sampleSelect) {
+      sampleSelect.addEventListener('change', e => {
+        showSample(parseInt(e.target.value, 10), { selectOnly: true });
+      });
+    }
+    if (btnSamplePrev) {
+      btnSamplePrev.addEventListener('click', () => showSample(gridStartIndex - 1));
+    }
+    if (btnSampleNext) {
+      btnSampleNext.addEventListener('click', () => showSample(gridStartIndex + 1));
     }
 
     function updateCanvasDimensionsForRenderMode() {
@@ -1079,7 +1225,9 @@ def build_dashboard_html():
 
     function setRenderMode(mode) {
       renderMode = mode === '3d' ? '3d' : '2d';
-      try { localStorage.setItem('mod3d_dashboard_render_mode', renderMode); } catch (_) {}
+      try {
+        localStorage.setItem(IS_DEMO_MODE ? 'mod3d_demo_render_mode' : 'mod3d_dashboard_render_mode', renderMode);
+      } catch (_) {}
       updateCanvasDimensionsForRenderMode();
       for (const [m, rad, lbl] of [['2d', radRender2D, lblRender2D], ['3d', radRender3D, lblRender3D]]) {
         const active = renderMode === m;
@@ -1100,7 +1248,7 @@ def build_dashboard_html():
           : 'Hover over any voxel cell to inspect numerical values';
       }
       updateMetaDisplay();
-      if (renderMode === '3d') ensureVol3dForCurrentEpoch();
+      if (renderMode === '3d' && !IS_DEMO_MODE) ensureVol3dForCurrentEpoch();
       renderCurrentVoxelData();
     }
 
@@ -1108,9 +1256,12 @@ def build_dashboard_html():
     if (radRender3D) radRender3D.addEventListener('change', () => setRenderMode('3d'));
 
     try {
-      const savedRenderMode = localStorage.getItem('mod3d_dashboard_render_mode');
-      if (savedRenderMode === '3d' && (window.VOL3D_META || (window.VOL3D_INDEX && window.VOL3D_INDEX.latest != null))) {
-        renderMode = '3d';
+      const rKey = IS_DEMO_MODE ? 'mod3d_demo_render_mode' : 'mod3d_dashboard_render_mode';
+      const savedRenderMode = localStorage.getItem(rKey);
+      if (savedRenderMode === '2d' || savedRenderMode === '3d') {
+        if (savedRenderMode === '2d' || window.VOL3D_META || (window.VOL3D_INDEX && window.VOL3D_INDEX.latest != null)) {
+          renderMode = savedRenderMode;
+        }
       }
     } catch (_) {}
 
@@ -1195,49 +1346,96 @@ def build_dashboard_html():
         scheduleVol3dRender();
       }
     }
-    try {
-      const savedEpMode = localStorage.getItem('mod3d_dashboard_vol3d_ep_mode');
-      if (savedEpMode === 'best' || savedEpMode === 'latest' || savedEpMode === 'match') {
-        vol3dOpts.epMode = savedEpMode;
-      }
-    } catch (_) {}
-    document.querySelectorAll('[data-vol3d-ep]').forEach(b => {
-      b.classList.toggle('active', b.dataset.vol3dEp === vol3dOpts.epMode);
-      b.addEventListener('click', () => setVol3dEpMode(b.dataset.vol3dEp));
-    });
+    if (!IS_DEMO_MODE) {
+      try {
+        const savedEpMode = localStorage.getItem('mod3d_dashboard_vol3d_ep_mode');
+        if (savedEpMode === 'best' || savedEpMode === 'latest' || savedEpMode === 'match') {
+          vol3dOpts.epMode = savedEpMode;
+        }
+      } catch (_) {}
+      document.querySelectorAll('[data-vol3d-ep]').forEach(b => {
+        b.classList.toggle('active', b.dataset.vol3dEp === vol3dOpts.epMode);
+        b.addEventListener('click', () => setVol3dEpMode(b.dataset.vol3dEp));
+      });
+    } else {
+      vol3dOpts.epMode = 'best';
+    }
 
     [cvsTruth, cvsPred, cvsDiff].forEach(bind3dPointerEvents);
     setRenderMode(renderMode);
 
-    function setViewMode(mode) {
-      if (mode === 'single') mode = '1';
-      else if (mode === 'all8') mode = '8';
-      viewMode = (mode === '8' || mode === '16') ? mode : '1';
-      const isGrid = viewMode !== '1';
-      voxelCardGrid.style.display = isGrid ? 'none' : 'grid';
-      overviewGrid.style.display = isGrid ? 'grid' : 'none';
-      overviewGrid.classList.toggle('grid-16', viewMode === '16');
+    function setLayout(rows, cols) {
+      const r = parseInt(rows, 10);
+      const c = parseInt(cols, 10);
+      layoutRows = Math.max(1, Math.min(8, isNaN(r) ? 1 : r));
+      layoutCols = Math.max(1, Math.min(8, isNaN(c) ? 1 : c));
+      const key = `${layoutRows}x${layoutCols}`;
+      try {
+        localStorage.setItem(IS_DEMO_MODE ? 'mod3d_demo_layout' : 'mod3d_dashboard_layout', key);
+      } catch (_) {}
 
-      const meta = getMeta();
-      const count = (meta && meta.samples && meta.samples.length) ? meta.samples.length : 1;
-      updateSampleSliderVisibility(count);
+      const cap = getLayoutCapacity();
+      const isGrid = cap > 1;
+      if (voxelCardGrid) voxelCardGrid.style.display = isGrid ? 'none' : 'grid';
+      if (overviewGrid) {
+        overviewGrid.style.display = isGrid ? 'grid' : 'none';
+        overviewGrid.style.gridTemplateColumns = `repeat(${layoutCols}, minmax(0, 1fr))`;
+        overviewGrid.classList.toggle('grid-dense', layoutCols >= 4 || cap >= 12);
+        overviewGrid.dataset.rangeKey = '';
+      }
+
+      if (inpLayoutRows && document.activeElement !== inpLayoutRows) inpLayoutRows.value = String(layoutRows);
+      if (inpLayoutCols && document.activeElement !== inpLayoutCols) inpLayoutCols.value = String(layoutCols);
+      document.querySelectorAll('[data-layout-preset]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.layoutPreset === key);
+      });
       if (lblDiffToggle) lblDiffToggle.style.opacity = isGrid ? '0.35' : '1';
 
-      for (const [m, rad, lbl] of [['1', radView1, lblView1], ['8', radView8, lblView8], ['16', radView16, lblView16]]) {
-        const active = viewMode === m;
-        if (rad) rad.checked = active;
-        if (lbl) {
-          lbl.style.background = active ? '#0284c7' : 'transparent';
-          lbl.style.color = active ? '#fff' : 'inherit';
-        }
+      const count = getSampleCount();
+      const maxStart = Math.max(0, count - cap);
+      gridStartIndex = Math.max(0, Math.min(gridStartIndex, maxStart));
+      if (!isGrid) {
+        currentSampleIndex = gridStartIndex;
+      } else if (currentSampleIndex < gridStartIndex || currentSampleIndex >= Math.min(count, gridStartIndex + cap)) {
+        currentSampleIndex = gridStartIndex;
       }
+      updateSampleSliderVisibility(count);
+      syncSampleSelectorUI(count, cap, maxStart);
+      updateMetaDisplay();
       renderCurrentVoxelData();
+      renderProfileCanvas();
     }
 
-    if (radView1) radView1.addEventListener('change', () => setViewMode('1'));
-    if (radView8) radView8.addEventListener('change', () => setViewMode('8'));
-    if (radView16) radView16.addEventListener('change', () => setViewMode('16'));
-    setViewMode(viewMode);
+    document.querySelectorAll('[data-layout-preset]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const parts = (btn.dataset.layoutPreset || '1x1').split('x');
+        setLayout(parts[0], parts[1]);
+      });
+    });
+    const applyLayoutInputs = (commit) => {
+      const r = parseInt(inpLayoutRows ? inpLayoutRows.value : layoutRows, 10);
+      const c = parseInt(inpLayoutCols ? inpLayoutCols.value : layoutCols, 10);
+      if (!commit && (isNaN(r) || r < 1 || r > 8 || isNaN(c) || c < 1 || c > 8)) return;
+      setLayout(isNaN(r) ? layoutRows : r, isNaN(c) ? layoutCols : c);
+    };
+    if (inpLayoutRows) {
+      inpLayoutRows.addEventListener('input', () => applyLayoutInputs(false));
+      inpLayoutRows.addEventListener('change', () => applyLayoutInputs(true));
+    }
+    if (inpLayoutCols) {
+      inpLayoutCols.addEventListener('input', () => applyLayoutInputs(false));
+      inpLayoutCols.addEventListener('change', () => applyLayoutInputs(true));
+    }
+
+    try {
+      const savedLayout = localStorage.getItem(IS_DEMO_MODE ? 'mod3d_demo_layout' : 'mod3d_dashboard_layout');
+      const m = savedLayout && savedLayout.match(/^(\\d+)x(\\d+)$/);
+      if (m) {
+        layoutRows = Math.max(1, Math.min(8, parseInt(m[1], 10) || 1));
+        layoutCols = Math.max(1, Math.min(8, parseInt(m[2], 10) || 1));
+      }
+    } catch (_) {}
+    setLayout(layoutRows, layoutCols);
 
     const radLossLog = document.getElementById('radLossLog');
     const radLossLin = document.getElementById('radLossLin');
@@ -1252,11 +1450,11 @@ def build_dashboard_html():
     if (radLossLog) radLossLog.addEventListener('change', () => setLossScale(true));
     if (radLossLin) radLossLin.addEventListener('change', () => setLossScale(false));
 
-    btnFirst.addEventListener('click', () => { stopPlayback(); showEpoch(0); });
-    btnPrev.addEventListener('click', () => { stopPlayback(); if (currentIndex > 0) showEpoch(currentIndex - 1); });
-    btnNext.addEventListener('click', () => { stopPlayback(); if (currentIndex < getEpochs().length - 1) showEpoch(currentIndex + 1); });
-    btnLatest.addEventListener('click', () => { stopPlayback(); showEpoch(getEpochs().length - 1); });
-    btnPlay.addEventListener('click', togglePlay);
+    if (btnFirst) btnFirst.addEventListener('click', () => { stopPlayback(); showEpoch(0); });
+    if (btnPrev) btnPrev.addEventListener('click', () => { stopPlayback(); if (currentIndex > 0) showEpoch(currentIndex - 1); });
+    if (btnNext) btnNext.addEventListener('click', () => { stopPlayback(); if (currentIndex < getEpochs().length - 1) showEpoch(currentIndex + 1); });
+    if (btnLatest) btnLatest.addEventListener('click', () => { stopPlayback(); showEpoch(getEpochs().length - 1); });
+    if (btnPlay) btnPlay.addEventListener('click', togglePlay);
 
     chkShowDiff.addEventListener('change', () => {
       diffPanel.style.display = chkShowDiff.checked ? 'block' : 'none';
@@ -1267,7 +1465,9 @@ def build_dashboard_html():
       cvs.addEventListener('mousemove', onCanvasHover);
       cvs.addEventListener('mouseleave', () => {
         hoverCell = null;
-        voxelHoverPill.textContent = "Hover over any voxel cell to inspect numerical values";
+        voxelHoverPill.textContent = renderMode === '3d'
+          ? 'Drag any 3D view to orbit (equal Truth/Pred transform) \u2022 Scroll to zoom'
+          : 'Hover over any voxel cell to inspect numerical values';
         profileHoverVal.textContent = "Move mouse over cross-section to inspect coordinates";
         renderCurrentVoxelData();
         renderProfileCanvas();
@@ -1275,7 +1475,22 @@ def build_dashboard_html():
     });
 
     window.addEventListener('keydown', e => {
-      if (e.target.tagName === 'INPUT' && e.target.type !== 'range') return;
+      if ((e.target.tagName === 'INPUT' && e.target.type !== 'range') || e.target.tagName === 'SELECT') return;
+      if (IS_DEMO_MODE) {
+        const cap = getLayoutCapacity();
+        const count = getSampleCount();
+        const maxStart = Math.max(0, count - cap);
+        if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+          e.preventDefault(); showSample(gridStartIndex - 1);
+        } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+          e.preventDefault(); showSample(gridStartIndex + 1);
+        } else if (e.key === 'Home') {
+          e.preventDefault(); showSample(0);
+        } else if (e.key === 'End') {
+          e.preventDefault(); showSample(maxStart);
+        }
+        return;
+      }
       if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
         e.preventDefault(); stopPlayback();
         if (currentIndex > 0) showEpoch(currentIndex - 1);
@@ -1316,20 +1531,73 @@ def build_dashboard_html():
     return (sampleMeta && sampleMeta.tag) ? `#${idx} \u00b7 ${sampleMeta.tag}` : `Sample #${idx}`;
   }
 
-  function updateSampleSliderVisibility(sampleCount) {
-    if (!sampleSliderGroup) return;
-    const show = (viewMode === '1' && sampleCount > 1) || (viewMode === '8' && sampleCount > 8);
-    sampleSliderGroup.style.display = show ? 'flex' : 'none';
+  function getLayoutCapacity() {
+    return Math.max(1, layoutRows * layoutCols);
   }
 
-  function showSample(idx) {
+  function getSampleCount(meta) {
+    const m = meta || getMeta();
+    return (m && Array.isArray(m.samples) && m.samples.length) ? m.samples.length : 1;
+  }
+
+  function updateSampleSliderVisibility(sampleCount) {
+    if (!sampleSliderGroup) return;
+    const maxStart = Math.max(0, sampleCount - getLayoutCapacity());
+    if (IS_DEMO_MODE) {
+      sampleSliderGroup.style.display = 'flex';
+      if (sampleSlider) {
+        sampleSlider.disabled = maxStart <= 0;
+        sampleSlider.style.opacity = maxStart <= 0 ? '0.45' : '1';
+      }
+      return;
+    }
+    sampleSliderGroup.style.display = maxStart > 0 ? 'flex' : 'none';
+  }
+
+  function syncSampleSelectorUI(count, cap, maxStart) {
+    if (sampleSlider) {
+      sampleSlider.min = 0;
+      sampleSlider.max = maxStart;
+      sampleSlider.value = gridStartIndex;
+    }
+    if (sampleSelect) sampleSelect.value = String(currentSampleIndex);
+    if (btnSamplePrev) btnSamplePrev.disabled = gridStartIndex <= 0;
+    if (btnSampleNext) btnSampleNext.disabled = gridStartIndex >= maxStart;
+    if (sampleDisplay) {
+      const meta = getMeta();
+      const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : null;
+      if (cap > 1) {
+        const endIdx = Math.min(count - 1, gridStartIndex + cap - 1);
+        sampleDisplay.style.display = 'inline-block';
+        sampleDisplay.textContent = `#${gridStartIndex}\u2013#${endIdx} / ${count}`;
+      } else {
+        sampleDisplay.style.display = sampleSelect ? 'none' : 'inline-block';
+        const activeSm = samples ? samples[gridStartIndex] : meta;
+        sampleDisplay.textContent = formatSampleLabel(gridStartIndex, activeSm);
+      }
+    }
+  }
+
+  function showSample(idx, opts) {
     const meta = getMeta();
     const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : null;
     const count = samples ? samples.length : 1;
-    currentSampleIndex = Math.max(0, Math.min(idx, count - 1));
-    if (sampleSlider) sampleSlider.value = currentSampleIndex;
-    const activeSm = samples ? samples[currentSampleIndex] : meta;
-    if (sampleDisplay) sampleDisplay.textContent = formatSampleLabel(currentSampleIndex, activeSm);
+    const cap = getLayoutCapacity();
+    const maxStart = Math.max(0, count - cap);
+    const clampedIdx = Math.max(0, Math.min(idx, count - 1));
+    if (opts && opts.selectOnly && cap > 1) {
+      // Selecting a specific scene from dropdown: keep it inside visible window, clamping start at maxStart
+      if (clampedIdx < gridStartIndex) {
+        gridStartIndex = Math.min(clampedIdx, maxStart);
+      } else if (clampedIdx >= gridStartIndex + cap) {
+        gridStartIndex = Math.min(clampedIdx, maxStart);
+      }
+      currentSampleIndex = clampedIdx;
+    } else {
+      gridStartIndex = Math.max(0, Math.min(idx, maxStart));
+      currentSampleIndex = gridStartIndex;
+    }
+    syncSampleSelectorUI(count, cap, maxStart);
     updateMetaDisplay();
     renderCurrentVoxelData();
     renderProfileCanvas();
@@ -1360,27 +1628,43 @@ def build_dashboard_html():
     const meta = getMeta();
     if (!epochs || epochs.length === 0) return;
 
-    slider.min = 1;
-    slider.max = epochs.length;
+    if (slider) {
+      slider.min = 1;
+      slider.max = epochs.length;
+    }
 
+    const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : null;
+    if (sampleSelect && samples && sampleSelect.options.length !== samples.length) {
+      sampleSelect.innerHTML = '';
+      for (let i = 0; i < samples.length; ++i) {
+        const opt = document.createElement('option');
+        opt.value = String(i);
+        opt.textContent = formatSampleLabel(i, samples[i]);
+        sampleSelect.appendChild(opt);
+      }
+    }
+
+    const cap = getLayoutCapacity();
     if (sampleSlider && sampleSliderGroup) {
-      if (meta && meta.samples && meta.samples.length > 1) {
-        sampleSlider.min = 0;
-        sampleSlider.max = meta.samples.length - 1;
-        if (currentSampleIndex >= meta.samples.length) currentSampleIndex = 0;
-        sampleSlider.value = currentSampleIndex;
-        if (sampleDisplay) sampleDisplay.textContent = formatSampleLabel(currentSampleIndex, meta.samples[currentSampleIndex]);
-        updateSampleSliderVisibility(meta.samples.length);
+      if (samples && samples.length > 1) {
+        const maxStart = Math.max(0, samples.length - cap);
+        if (gridStartIndex > maxStart) gridStartIndex = maxStart;
+        if (currentSampleIndex >= samples.length) currentSampleIndex = gridStartIndex;
+        syncSampleSelectorUI(samples.length, cap, maxStart);
+        updateSampleSliderVisibility(samples.length);
       } else {
+        gridStartIndex = 0;
+        currentSampleIndex = 0;
+        syncSampleSelectorUI(1, cap, 0);
         updateSampleSliderVisibility(1);
       }
     }
 
     updateMetaDisplay();
 
-    renderAllCharts();
+    if (!IS_DEMO_MODE) renderAllCharts();
 
-    if (currentIndex === -1 || chkFollowLive.checked) {
+    if (currentIndex === -1 || (chkFollowLive && chkFollowLive.checked)) {
       showEpoch(epochs.length - 1);
     } else {
       showEpoch(currentIndex);
@@ -1525,40 +1809,49 @@ def build_dashboard_html():
   function showEpoch(idx) {
     const epochs = getEpochs();
     if (!epochs || epochs.length === 0) {
-      epochDisplay.textContent = 'Epoch --/--';
+      if (epochDisplay) epochDisplay.textContent = 'Epoch --/--';
       return;
     }
     idx = Math.max(0, Math.min(idx, epochs.length - 1));
     currentIndex = idx;
-    slider.value = idx + 1;
+    if (slider) slider.value = idx + 1;
     const entry = epochs[idx];
     const ep = entry.epoch || (idx + 1);
-    epochDisplay.textContent = `Epoch ${ep}/${epochs[epochs.length - 1].epoch || epochs.length}`;
-    if (predEpochBadge) predEpochBadge.textContent = `Epoch ${ep}`;
+    if (epochDisplay) epochDisplay.textContent = `Epoch ${ep}/${epochs[epochs.length - 1].epoch || epochs.length}`;
+    if (predEpochBadge) predEpochBadge.textContent = IS_DEMO_MODE ? `Best Ep ${ep}` : `Epoch ${ep}`;
 
-    // Update KPI cards
-    document.getElementById('mTrainLoss').textContent = entry.train_loss != null ? entry.train_loss.toFixed(3) : '--';
-    document.getElementById('mValLoss').textContent = entry.val_loss != null ? entry.val_loss.toFixed(3) : '--';
-    document.getElementById('mDataMisfit').textContent = entry.data_rel_misfit != null ? (entry.data_rel_misfit * 100).toFixed(1) + '%' : '--';
-    document.getElementById('mIoU').textContent = entry.iou != null ? (entry.iou * 100).toFixed(1) + '%' : '--';
-    document.getElementById('mCentroidDz').textContent = entry.centroid_dz != null ? Math.round(entry.centroid_dz) + ' m' : '--';
-    document.getElementById('mAmpRatio').textContent = entry.amp_ratio != null ? entry.amp_ratio.toFixed(2) : '--';
-    document.getElementById('mHaloOpp').textContent = entry.halo_opp != null ? entry.halo_opp.toFixed(3) : '--';
+    if (!IS_DEMO_MODE) {
+      const mTrainLoss = document.getElementById('mTrainLoss');
+      const mValLoss = document.getElementById('mValLoss');
+      const mDataMisfit = document.getElementById('mDataMisfit');
+      const mIoU = document.getElementById('mIoU');
+      const mCentroidDz = document.getElementById('mCentroidDz');
+      const mAmpRatio = document.getElementById('mAmpRatio');
+      const mHaloOpp = document.getElementById('mHaloOpp');
+      if (mTrainLoss) mTrainLoss.textContent = entry.train_loss != null ? entry.train_loss.toFixed(3) : '--';
+      if (mValLoss) mValLoss.textContent = entry.val_loss != null ? entry.val_loss.toFixed(3) : '--';
+      if (mDataMisfit) mDataMisfit.textContent = entry.data_rel_misfit != null ? (entry.data_rel_misfit * 100).toFixed(1) + '%' : '--';
+      if (mIoU) mIoU.textContent = entry.iou != null ? (entry.iou * 100).toFixed(1) + '%' : '--';
+      if (mCentroidDz) mCentroidDz.textContent = entry.centroid_dz != null ? Math.round(entry.centroid_dz) + ' m' : '--';
+      if (mAmpRatio) mAmpRatio.textContent = entry.amp_ratio != null ? entry.amp_ratio.toFixed(2) : '--';
+      if (mHaloOpp) mHaloOpp.textContent = entry.halo_opp != null ? entry.halo_opp.toFixed(3) : '--';
+    }
 
-    if (renderMode === '3d') ensureVol3dForCurrentEpoch();
+    if (renderMode === '3d' && !IS_DEMO_MODE) ensureVol3dForCurrentEpoch();
     renderCurrentVoxelData();
     renderProfileCanvas();
-    updateChartScrubbers(currentIndex);
+    if (!IS_DEMO_MODE) updateChartScrubbers(currentIndex);
   }
 
   function togglePlay() {
+    if (!btnPlay) return;
     isPlaying = !isPlaying;
     btnPlay.innerHTML = isPlaying ? '&#10074;&#10074; Pause' : '&#9654; Play';
     btnPlay.classList.toggle('active', isPlaying);
     if (isPlaying) {
       const epochs = getEpochs();
       if (currentIndex >= epochs.length - 1) currentIndex = -1;
-      const fps = parseFloat(speedSelect.value) || 2;
+      const fps = (speedSelect && parseFloat(speedSelect.value)) || 2;
       playTimer = setInterval(() => {
         const epList = getEpochs();
         if (currentIndex < epList.length - 1) {
@@ -1575,16 +1868,20 @@ def build_dashboard_html():
   function stopPlayback() {
     if (isPlaying) {
       isPlaying = false;
-      btnPlay.innerHTML = '&#9654; Play';
-      btnPlay.classList.remove('active');
+      if (btnPlay) {
+        btnPlay.innerHTML = '&#9654; Play';
+        btnPlay.classList.remove('active');
+      }
       clearInterval(playTimer);
       playTimer = null;
     }
   }
 
-  speedSelect.addEventListener('change', () => {
-    if (isPlaying) { togglePlay(); togglePlay(); }
-  });
+  if (speedSelect) {
+    speedSelect.addEventListener('change', () => {
+      if (isPlaying) { togglePlay(); togglePlay(); }
+    });
+  }
 
   // --- Scientific Colormap & Canvas Drawing ---
   function getCoolwarmColor(val, vmax) {
@@ -1604,6 +1901,44 @@ def build_dashboard_html():
     return `rgb(${r},${g},${b})`;
   }
 
+  function bouguerMod3dColorJs(tNorm) {
+    const pegs = [
+      [0.0, 0.0, 153.0 / 255.0],
+      [0.0, 204.0 / 255.0, 1.0],
+      [0.0, 1.0, 0.0],
+      [1.0, 1.0, 0.0],
+      [1.0, 0.0, 0.0],
+      [1.0, 0.0, 1.0],
+      [1.0, 200.0 / 255.0, 1.0],
+    ];
+    const t = Math.max(0.0, Math.min(1.0, tNorm)) * 6.0;
+    const i = Math.min(5, Math.floor(t));
+    const f = t - i;
+    const a = pegs[i], b = pegs[i + 1];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  }
+
+  function diffMod3dColorJs(u) {
+    const c = Math.max(-1.0, Math.min(1.0, u));
+    if (c < 0.0) {
+      const f = -c;
+      return [1.0 - f, 1.0 - f, 1.0 + (160.0 / 255.0 - 1.0) * f];
+    }
+    return [1.0 + (160.0 / 255.0 - 1.0) * c, 1.0 - c, 1.0 - c];
+  }
+
+  function drawBouguerBar(mode) {
+    if (!cvsBouguerBar) return;
+    const ctx = cvsBouguerBar.getContext('2d');
+    const w = cvsBouguerBar.width, h = cvsBouguerBar.height;
+    for (let x = 0; x < w; ++x) {
+      const t = x / (w - 1);
+      const [r, g, b] = mode === 2 ? diffMod3dColorJs(t * 2 - 1) : bouguerMod3dColorJs(t);
+      ctx.fillStyle = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+      ctx.fillRect(x, 0, 1, h);
+    }
+  }
+
   function drawColorbar() {
     const ctx = cvsColorbar.getContext('2d');
     const w = cvsColorbar.width, h = cvsColorbar.height;
@@ -1612,6 +1947,7 @@ def build_dashboard_html():
       ctx.fillStyle = getCoolwarmColor(u, 1.0);
       ctx.fillRect(x, 0, 1, h);
     }
+    drawBouguerBar(1);
   }
 
   function drawPlaceholder(canvas, msg) {
@@ -2538,7 +2874,7 @@ void main() {
 
   function updateVol3dStatusPill(sliderEp, ep3dKey, hasPred) {
     if (!vol3dStatusPill) return;
-    if (renderMode !== '3d') {
+    if (renderMode !== '3d' || (IS_DEMO_MODE && hasPred)) {
       vol3dStatusPill.style.display = 'none';
       vol3dStatusPill.onclick = null;
       return;
@@ -2586,6 +2922,15 @@ void main() {
   }
 
   function updateFieldScaleBadge(surf) {
+    if (bouguerBarRow) {
+      const showBouguerBar = (renderMode === '3d' && vol3dOpts.showTerrain && surf && (surf.mode === 1 || surf.mode === 2));
+      bouguerBarRow.style.display = showBouguerBar ? 'flex' : 'none';
+      if (showBouguerBar) {
+        drawBouguerBar(surf.mode);
+        if (bbarMin) bbarMin.textContent = surf.mode === 2 ? (-surf.vmax).toFixed(2) : surf.min.toFixed(2);
+        if (bbarMax) bbarMax.textContent = surf.mode === 2 ? `+${surf.vmax.toFixed(2)} mGal` : `${surf.max.toFixed(2)} mGal`;
+      }
+    }
     if (!vol3dFieldScale) return;
     if (renderMode !== '3d' || !vol3dOpts.showTerrain) {
       vol3dFieldScale.textContent = '';
@@ -2607,7 +2952,8 @@ void main() {
     if (!meta || !epochs.length || currentIndex < 0 || !epochs[currentIndex]) return;
     const entry = epochs[currentIndex];
 
-    if (viewMode === '8' || viewMode === '16') {
+    if (getLayoutCapacity() > 1) {
+      updateFieldScaleBadge(null);
       renderOverviewGrid(meta, entry);
       return;
     }
@@ -2659,6 +3005,7 @@ void main() {
 
     updatePredEpochBadge(entry.epoch || (currentIndex + 1), null, true);
     updateVol3dStatusPill(0, null, true);
+    updateFieldScaleBadge(null);
     const vmax = (sm && sm.vmax) || (entry.slice && entry.slice.vmax) || (meta && meta.vmax) || 0.6;
     const terrain = (sm && sm.terrain) || (entry.slice && entry.slice.terrain) || (meta && meta.terrain) || [];
     const truthSlice = (sm && sm.truth_slice) || (entry.slice && entry.slice.truth) || (meta && meta.truth_slice) || [];
@@ -2702,14 +3049,13 @@ void main() {
   function renderOverviewGrid(meta, entry) {
     if (!overviewGrid) return;
     const samples = (meta && meta.samples && meta.samples.length) ? meta.samples : [meta];
-    const pageSize = viewMode === '16' ? 16 : 8;
-    const pageStart = (pageSize === 8 && samples.length > 8)
-      ? Math.floor(currentSampleIndex / 8) * 8
-      : 0;
-    const start = Math.min(pageStart, Math.max(0, samples.length - pageSize));
+    const pageSize = getLayoutCapacity();
+    const maxStart = Math.max(0, samples.length - pageSize);
+    const start = Math.max(0, Math.min(gridStartIndex, maxStart));
     const end = Math.min(samples.length, start + pageSize);
-    const rangeKey = `${start}:${end}:${viewMode}:${renderMode}:${samples.length}`;
-    const miniW = 320, miniH = renderMode === '3d' ? 200 : 160;
+    const rangeKey = `${start}:${end}:${layoutRows}x${layoutCols}:${renderMode}:${samples.length}`;
+    const miniW = layoutCols <= 2 ? 420 : 320;
+    const miniH = renderMode === '3d' ? Math.round(miniW * 10 / 16) : Math.round(miniW / 2);
 
     // Build or reuse mini card elements for the visible range
     if (overviewGrid.dataset.rangeKey !== rangeKey) {
@@ -2739,7 +3085,10 @@ void main() {
         `;
         card.addEventListener('click', () => {
           if (performance.now() < suppressCardClickUntil) return;
-          showSample(i);
+          currentSampleIndex = i;
+          if (sampleSelect) sampleSelect.value = String(i);
+          updateMetaDisplay();
+          renderProfileCanvas();
           overviewGrid.querySelectorAll('.sample-card-item').forEach(c => {
             c.classList.toggle('selected', Number(c.dataset.index) === i);
           });
@@ -2764,7 +3113,7 @@ void main() {
       const nx = (vMeta && vMeta.nx) || meta.nx || 64;
       const ny = (vMeta && vMeta.ny) || meta.ny || 64;
       const nz = (vMeta && vMeta.nz) || meta.nz || 32;
-      const stepsMini = pageSize === 16 ? 64 : 84;
+      const stepsMini = pageSize >= 12 ? 64 : (pageSize >= 6 ? 76 : 92);
       let anyPred = false;
       for (let i = start; i < end; ++i) {
         const s = samples[i];
@@ -2800,6 +3149,7 @@ void main() {
 
     updatePredEpochBadge(entry.epoch || (currentIndex + 1), null, true);
     updateVol3dStatusPill(0, null, true);
+    updateFieldScaleBadge(null);
     // Paint each visible sample's truth and predicted cross-sections
     for (let i = start; i < end; ++i) {
       const s = samples[i];
@@ -2910,6 +3260,7 @@ void main() {
     const ctx = cvsProfile.getContext('2d');
     const w = cvsProfile.width, h = cvsProfile.height;
     const prof = (sm && sm.obs_profile) || (meta && meta.obs_profile) || [];
+    const predProf = (sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : [];
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = pal.surfaceBg;
     ctx.fillRect(0, 0, w, h);
@@ -2926,6 +3277,10 @@ void main() {
 
     let pMin = Math.min(0, Math.min(...prof));
     let pMax = Math.max(0, Math.max(...prof));
+    if (predProf.length === N) {
+      pMin = Math.min(pMin, ...predProf);
+      pMax = Math.max(pMax, ...predProf);
+    }
     const span = Math.max(1e-3, pMax - pMin);
     pMin -= span * 0.1; pMax += span * 0.1;
 
@@ -2941,7 +3296,7 @@ void main() {
     ctx.lineTo(padL + pw, yZero);
     ctx.stroke();
 
-    // Shaded fill under curve
+    // Shaded fill under observed curve
     ctx.beginPath();
     ctx.moveTo(xCoord(0), yZero);
     for (let i = 0; i < N; ++i) ctx.lineTo(xCoord(i), yCoord(prof[i]));
@@ -2950,7 +3305,7 @@ void main() {
     ctx.fillStyle = pal.profileFill;
     ctx.fill();
 
-    // Line curve
+    // Observed curve
     ctx.beginPath();
     for (let i = 0; i < N; ++i) {
       const cx = xCoord(i), cy = yCoord(prof[i]);
@@ -2960,6 +3315,39 @@ void main() {
     ctx.strokeStyle = pal.accent;
     ctx.lineWidth = 2.0;
     ctx.stroke();
+
+    // Predicted forward gravity curve (when provided, e.g. best preview)
+    if (predProf.length === N) {
+      const predColor = isDarkTheme() ? '#fbbf24' : '#d97706';
+      ctx.save();
+      ctx.setLineDash([5, 3]);
+      ctx.beginPath();
+      for (let i = 0; i < N; ++i) {
+        const cx = xCoord(i), cy = yCoord(predProf[i]);
+        if (i === 0) ctx.moveTo(cx, cy);
+        else ctx.lineTo(cx, cy);
+      }
+      ctx.strokeStyle = predColor;
+      ctx.lineWidth = 1.9;
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Compact top-right legend
+      ctx.font = "9px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      ctx.textAlign = "left";
+      const lx = w - padR - 118, ly = padT + 7;
+      ctx.strokeStyle = pal.accent;
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(lx, ly - 3); ctx.lineTo(lx + 14, ly - 3); ctx.stroke();
+      ctx.fillStyle = pal.axisText;
+      ctx.fillText("Obs", lx + 18, ly);
+      ctx.setLineDash([4, 2]);
+      ctx.strokeStyle = predColor;
+      ctx.beginPath(); ctx.moveTo(lx + 48, ly - 3); ctx.lineTo(lx + 62, ly - 3); ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillText("Pred (Best)", lx + 66, ly);
+      ctx.restore();
+    }
 
     // Axis labels
     ctx.fillStyle = pal.axisText;
@@ -3034,9 +3422,11 @@ void main() {
     }
 
     const obsProf = (sm && sm.obs_profile) || meta.obs_profile;
+    const predProf = (sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : null;
     if (obsProf && obsProf.length) {
       const gzVal = obsProf[ix] != null ? obsProf[ix].toFixed(2) : '--';
-      profileHoverVal.textContent = `Profile X = ${xKm} km | gz = ${gzVal} mGal | Relief Depth = ${terrM} m`;
+      const predTxt = (predProf && predProf[ix] != null) ? ` | Inv gz = ${predProf[ix].toFixed(2)} mGal` : '';
+      profileHoverVal.textContent = `Profile X = ${xKm} km | Obs gz = ${gzVal} mGal${predTxt} | Relief Depth = ${terrM} m`;
     }
 
     renderCurrentVoxelData();
@@ -3193,6 +3583,20 @@ void main() {
 </body>
 </html>
 """
+    for token, val in (
+        ("__PAGE_TITLE__", page_title),
+        ("__HEADER_HTML__", header_html),
+        ("__PLAYBACK_CONTROLS_HTML__", playback_controls_html),
+        ("__FOLLOW_LIVE_HTML__", follow_live_html),
+        ("__METRICS_HTML__", metrics_html),
+        ("__VOL3D_EP_HTML__", vol3d_ep_html),
+        ("__CHARTS_HTML__", charts_html),
+        ("__SHORTCUT_HTML__", shortcut_html),
+        ("__DATA_SCRIPTS_HTML__", data_scripts_html),
+        ("__IS_DEMO_MODE__", "true" if demo_mode else "false"),
+    ):
+        html = html.replace(token, val)
+    return html
 
 
 class TrainingMonitor:
