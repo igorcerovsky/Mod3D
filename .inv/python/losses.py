@@ -51,11 +51,11 @@ class ZhdanovFocusingLoss(nn.Module):
 
 
 def _dilate3d(mask, r: int):
-    """Fast separable 3D max-pool dilation with Chebyshev radius ``r`` (native on MPS/CUDA/CPU)."""
+    """Fast separable 3D max-pool dilation with Chebyshev radius ``r`` (supports multi-channel ``(B, C, D, H, W)``)."""
     B, C, D, H, W = mask.shape
     k = 2 * r + 1
-    x = F.max_pool2d(mask.reshape(B * D, 1, H, W), kernel_size=k, stride=1, padding=r)
-    x = x.reshape(B, D, H * W).transpose(1, 2)
+    x = F.max_pool2d(mask.reshape(B * C * D, 1, H, W), kernel_size=k, stride=1, padding=r)
+    x = x.reshape(B * C, D, H * W).transpose(1, 2)
     x = F.max_pool1d(x, kernel_size=k, stride=1, padding=r)
     return x.transpose(1, 2).reshape(B, C, D, H, W)
 
@@ -212,28 +212,33 @@ class CompoundInversionLoss(nn.Module):
         l_fg = ((err * fg_w).flatten(1).sum(1) / fg_cnt).mean()
 
         with torch.no_grad():
-            d1 = _dilate3d(fg_mask, 1)
-            d3 = _dilate3d(fg_mask, 3)
-            d7 = _dilate3d(fg_mask, 7)
+            pos_mask = (tn > 0).float()
+            neg_mask = (tn < 0).float()
+            hi_neg = ((tn <= -0.5) & (tn < 0)).float()
+            lo_neg = ((tn > -0.5) & (tn < 0)).float()
+            hi_pos = (tn >= 0.5).float()
+            lo_pos = ((tn > 0) & (tn < 0.5)).float()
+
+            # Fused multi-channel Chebyshev dilations: r=1 (all 7 masks), then chained +2 (r=3) and +4 (r=7)
+            m_stack = torch.cat([fg_mask, pos_mask, neg_mask, hi_neg, lo_neg, hi_pos, lo_pos], dim=1)
+            d1_all = _dilate3d(m_stack, 1)
+            d3_sub = _dilate3d(d1_all[:, :3], 2)
+            d7_sub = _dilate3d(d3_sub, 4)
+
+            d1, d3, d7 = d1_all[:, 0:1], d3_sub[:, 0:1], d7_sub[:, 0:1]
+            pos_prox = d1_all[:, 1:2] + d3_sub[:, 1:2] + d7_sub[:, 1:2]
+            neg_prox = d1_all[:, 2:3] + d3_sub[:, 2:3] + d7_sub[:, 2:3]
+            band_d1 = (d1_all[:, 3:4], d1_all[:, 4:5], d1_all[:, 5:6], d1_all[:, 6:7])
+
             gap_mask = _gap_saddle_mask(fg_mask, max_gap=3)
             edt_tgt = _interior_edt_proxy(fg_mask, steps=4) if (aux is not None and "edt" in aux) else None
             w_dist = (1.0 + 1.5 * (1.0 - fg_mask) + 1.5 * (1.0 - d1)
                       + 2.0 * (1.0 - d3) + 4.0 * (1.0 - d7) + 6.0 * gap_mask)
 
-            pos_mask = (tn > 0).float()
-            neg_mask = (tn < 0).float()
-            pos_prox = _dilate3d(pos_mask, 1) + _dilate3d(pos_mask, 3) + _dilate3d(pos_mask, 7)
-            neg_prox = _dilate3d(neg_mask, 1) + _dilate3d(neg_mask, 3) + _dilate3d(neg_mask, 7)
             only_pos = (neg_mask.amax(dim=(1, 2, 3, 4), keepdim=True) == 0).float()
             only_neg = (pos_mask.amax(dim=(1, 2, 3, 4), keepdim=True) == 0).float()
             pos_zone = (((pos_prox > neg_prox).float() + only_pos).clamp_max(1.0)) * (tn >= 0).float()
             neg_zone = (((neg_prox > pos_prox).float() + only_neg).clamp_max(1.0)) * (tn <= 0).float()
-
-            # Disjoint contrast-band dilated zones for per-band mass preservation (scale-invariant)
-            hi_neg = ((tn <= -0.5) & (tn < 0)).float()
-            lo_neg = ((tn > -0.5) & (tn < 0)).float()
-            hi_pos = (tn >= 0.5).float()
-            lo_pos = ((tn > 0) & (tn < 0.5)).float()
 
         opp_mag = F.relu(-pn) * pos_zone + F.relu(pn) * neg_zone
         opp_prox_w = 1.0 + pos_prox * pos_zone + neg_prox * neg_zone
@@ -269,10 +274,10 @@ class CompoundInversionLoss(nn.Module):
 
         # Multi-band mass conservation (exact core mass + 1-cell zone prevents skirt amplitude bleed)
         band_errs = []
-        for bm in (hi_neg, lo_neg, hi_pos, lo_pos):
+        for bm, bm_d1 in zip((hi_neg, lo_neg, hi_pos, lo_pos), band_d1):
             has_b = bm.flatten(1).sum(1) > 0
             if has_b.any():
-                b_zone = _dilate3d(bm, 1) * (1.0 - (fg_mask - bm)).clamp_min(0.0)
+                b_zone = bm_d1 * (1.0 - (fg_mask - bm)).clamp_min(0.0)
                 t_sgn = torch.where(tn < 0, -torch.ones_like(tn), torch.ones_like(tn))
                 m_true_b = (tn.abs() * bm).flatten(1).sum(1)
                 m_pred_core = (F.relu(pn * t_sgn) * bm).flatten(1).sum(1)
@@ -304,13 +309,16 @@ class CompoundInversionLoss(nn.Module):
 
         l_data = torch.zeros((), device=m_pred.device)
         if self.forward_op is not None and d_clean is not None:
-            d_pred = self.forward_op(m_pred, z_obs)
-            num = ((d_pred - d_clean) ** 2).flatten(1).sum(1)
+            try:
+                d_err = self.forward_op(m_pred - m_true, z_obs, level_stride=2)
+            except TypeError:
+                d_err = self.forward_op(m_pred, z_obs) - d_clean
+            num = (d_err ** 2).flatten(1).sum(1)
             den = (d_clean ** 2).flatten(1).sum(1) + 1e-12
             l_amp = _charbonnier_rmse(num, den)
-            dx_p, dy_p = d_pred[:, :, 1:, :] - d_pred[:, :, :-1, :], d_pred[:, :, :, 1:] - d_pred[:, :, :, :-1]
+            dx_e, dy_e = d_err[:, :, 1:, :] - d_err[:, :, :-1, :], d_err[:, :, :, 1:] - d_err[:, :, :, :-1]
             dx_c, dy_c = d_clean[:, :, 1:, :] - d_clean[:, :, :-1, :], d_clean[:, :, :, 1:] - d_clean[:, :, :, :-1]
-            g_num = ((dx_p - dx_c) ** 2).flatten(1).sum(1) + ((dy_p - dy_c) ** 2).flatten(1).sum(1)
+            g_num = (dx_e ** 2).flatten(1).sum(1) + (dy_e ** 2).flatten(1).sum(1)
             g_den = (dx_c ** 2).flatten(1).sum(1) + (dy_c ** 2).flatten(1).sum(1) + 1e-12
             l_dgrad = _charbonnier_rmse(g_num, g_den)
             l_data = 0.65 * l_amp + 0.35 * l_dgrad

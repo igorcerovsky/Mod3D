@@ -149,8 +149,7 @@ class SepSubpixelUp3D(nn.Module):
     def forward(self, x):
         b, c_in, d, h, w = x.shape
         co = self.c_out
-        xb = self.base(x.permute(0, 2, 1, 3, 4).reshape(b * d, c_in, h, w))
-        xb = xb.reshape(b, d, co, h, w).permute(0, 2, 1, 3, 4)
+        xb = self.base(x.reshape(b, c_in, d * h, w)).reshape(b, co, d, h, w)
         xb = F.interpolate(xb, size=(2 * d, 2 * h, 2 * w), mode="trilinear", align_corners=False)
 
         xy = F.pixel_shuffle(self.xy(x.permute(0, 2, 1, 3, 4).reshape(b * d, c_in, h, w)), 2)
@@ -175,10 +174,9 @@ class DepthConditionedSkip(nn.Module):
 
     def forward(self, f_2d, d_surf, z_top_stage):
         b, _, d, h, w = d_surf.shape
-        dt = torch.cat([d_surf, z_top_stage.expand(b, 1, d, h, w)], dim=1)
-        dt_2d = dt.permute(0, 2, 1, 3, 4).reshape(b * d, 2, h, w)
-        gate = torch.sigmoid(self.d_gate(dt_2d)).reshape(b, d, self.ch_out, h, w).permute(0, 2, 1, 3, 4)
-        bias = self.d_bias(dt_2d).reshape(b, d, self.ch_out, h, w).permute(0, 2, 1, 3, 4)
+        dt_flat = torch.cat([d_surf, z_top_stage.expand(b, 1, d, h, w)], dim=1).reshape(b, 2, d * h, w)
+        gate = torch.sigmoid(self.d_gate(dt_flat)).reshape(b, self.ch_out, d, h, w)
+        bias = self.d_bias(dt_flat).reshape(b, self.ch_out, d, h, w)
         return self.proj(f_2d).unsqueeze(2) * self.z_gate * gate + bias
 
 
@@ -573,8 +571,9 @@ class PotentialFieldTransformer3DV3(nn.Module):
         v = self.norm3d(vf).view(b, self.dp, self.hp, self.wp, -1)
 
         # Stage 1 -> (nz/2, nx/2, ny/2)
-        vc = v.permute(0, 1, 4, 2, 3).reshape(b * self.dp, -1, self.hp, self.wp)
-        vc = self.proj_mid(vc).reshape(b, self.dp, -1, self.hp, self.wp).permute(0, 2, 1, 3, 4)
+        vc = self.proj_mid(v.permute(0, 4, 1, 2, 3).reshape(b, -1, self.dp * self.hp, self.wp)).reshape(
+            b, -1, self.dp, self.hp, self.wp
+        )
         u = self.up_mid(vc)
         terr_mid = F.avg_pool2d(terr, 2)
         d_surf_mid = (self.z_top_mid - terr_mid.unsqueeze(2)).clamp_min(0.0)
@@ -596,11 +595,8 @@ class PotentialFieldTransformer3DV3(nn.Module):
         logits = torch.logsumexp(sim, dim=2)
         probs = F.softmax(logits, dim=1)
 
-        hv_2d = hv.permute(0, 2, 1, 3, 4).reshape(b * self.nz, self.ch_vox, self.nx, self.ny)
-        rock = self.rock_head(hv_2d)
-        rock_sig = torch.sigmoid(
-            rock.reshape(b, self.nz, len(_ROCK_BOUNDS), self.nx, self.ny).permute(0, 2, 1, 3, 4)
-        )
+        hv_1x1 = hv.reshape(b, self.ch_vox, self.nz * self.nx, self.ny)
+        rock_sig = torch.sigmoid(self.rock_head(hv_1x1).reshape(b, len(_ROCK_BOUNDS), self.nz, self.nx, self.ny))
         rho_light, rho_sediment, rho_mafic, rho_ore = [
             lo + (hi - lo) * rock_sig[:, i:i + 1] for i, (lo, hi) in enumerate(_ROCK_BOUNDS)
         ]
@@ -616,8 +612,7 @@ class PotentialFieldTransformer3DV3(nn.Module):
         mask = (self.z_top >= terr.unsqueeze(2)).to(y.dtype)
         pred = y * mask
         if return_aux:
-            edt_raw = self.edt_head(hv_2d)
-            edt = F.softplus(edt_raw).reshape(b, self.nz, 1, self.nx, self.ny).permute(0, 2, 1, 3, 4) * mask
+            edt = F.softplus(self.edt_head(hv_1x1)).reshape(b, 1, self.nz, self.nx, self.ny) * mask
             return pred, {
                 "logits": logits,
                 "probs": probs,
@@ -632,10 +627,269 @@ class PotentialFieldTransformer3DV3(nn.Module):
         return pred
 
 
+class PotentialFieldTransformer3DV4(PotentialFieldTransformer3DV3):
+    """Physics- & Structural-Geology-Informed 3D Swin Transformer (v4).
+
+    Upgrades over v3:
+      1. 16-channel physics & structural geology surface stem:
+         Laplace vertical second derivatives (g_zz = -(g_xx + g_yy)), Euler deconvolution
+         depth proxy, 2D structure-tensor strike & coherence, and terrain slope/curvature.
+      2. Terrain-depth & physical sensitivity modulation at the coarse 3D bottleneck.
+      3. Coarse Stage-1 physical gravity forward residual feedback block (adjoint backprojection).
+      4. Depth-conditioned lithology log-odds prior + sharpened occupancy / conditional
+         lithology mixture head to prevent background probability dilution.
+    """
+
+    def __init__(self, nx=64, ny=64, nz=32, patch=4, embed_dim=128, num_heads=4, depth=6,
+                 ch_mid=40, ch_vox=24, n_sub=3, num_classes=7):
+        super().__init__(
+            nx=nx, ny=ny, nz=nz, patch=patch, embed_dim=embed_dim, num_heads=num_heads,
+            depth=depth, ch_mid=ch_mid, ch_vox=ch_vox, n_sub=n_sub, num_classes=num_classes,
+        )
+        c = embed_dim
+        c0 = max(32, c // 4)
+        self.scale_mlp = nn.Sequential(nn.Linear(6, c), nn.GELU(), nn.Linear(c, c))
+        self.enc0 = nn.Sequential(
+            nn.Conv2d(16, c0, 3, padding=1), nn.GELU(),
+            nn.Conv2d(c0, c0, 3, padding=1), nn.GELU(),
+        )
+        self.register_buffer(
+            "z_top_coarse",
+            (torch.arange(self.dp, dtype=torch.float32) / self.dp).view(1, 1, self.dp, 1, 1),
+            persistent=False,
+        )
+        self.depth_cond = nn.Sequential(
+            nn.Conv2d(3, c, 1),
+            nn.GELU(),
+            nn.Conv2d(c, c, 1),
+        )
+
+        # Coarse Stage-1 physics residual feedback
+        nz_mid = nz // 2
+        self.coarse_rho_head = nn.Conv2d(ch_mid, 1, 1)
+        self.coarse_fwd_conv = nn.Conv2d(nz_mid, 1, 5, padding=2, bias=False)
+        with torch.no_grad():
+            zk = torch.linspace(0.5 / nz_mid, 1.0 - 0.5 / nz_mid, nz_mid).view(1, nz_mid, 1, 1)
+            offs = torch.arange(-2, 3, dtype=torch.float32) * (2.0 / nx)
+            dy, dx = torch.meshgrid(offs, offs, indexing="ij")
+            r2 = dx.unsqueeze(0).unsqueeze(0) ** 2 + dy.unsqueeze(0).unsqueeze(0) ** 2 + (zk + 0.08) ** 2
+            w_kern = (zk + 0.08) / (r2 ** 1.5)
+            w_kern = w_kern / w_kern.sum().clamp_min(1e-6)
+            self.coarse_fwd_conv.weight.copy_(w_kern)
+
+        self.res_feedback_2d = nn.Sequential(
+            nn.Conv2d(3, ch_mid, 3, padding=1), nn.GELU(),
+            nn.Conv2d(ch_mid, ch_mid, 1),
+        )
+        self.res_depth_gate = nn.Sequential(
+            nn.Conv2d(2, ch_mid, 1),
+            nn.Sigmoid(),
+        )
+        self.res_gate = nn.Parameter(torch.tensor(0.25))
+
+        # Depth-conditioned class prior + sharpened foreground occupancy mixture
+        self.cls_depth_prior = nn.Sequential(
+            nn.Conv2d(2, 16, 1),
+            nn.GELU(),
+            nn.Conv2d(16, num_classes, 1),
+        )
+        self.occ_sharpness = nn.Parameter(torch.tensor(1.35))
+        self.cls_sharpness = nn.Parameter(torch.tensor(1.25))
+        self.occ_bias = nn.Parameter(torch.tensor(0.15))
+
+    def _stem_features(self, gn: torch.Tensor, terr: torch.Tensor) -> torch.Tensor:
+        u8 = 8.0 * gn
+        gn_log = torch.log(u8 + torch.sqrt(u8 * u8 + 1.0)) / math.asinh(8.0)
+        lp3 = self._avg(gn, 3)
+        lp9 = self._avg(gn, 9)
+        lp17 = self._avg(gn, 17)
+        lp25 = self._avg(gn, 25)
+        r3, r9, r17, r25 = (gn - lp3) * 6.0, (gn - lp9) * 2.5, (gn - lp17) * 1.5, (gn - lp25) * 1.2
+
+        gp = F.pad(gn, (1, 1, 1, 1), mode="replicate")
+        gx = 0.5 * (gp[:, :, 2:, 1:-1] - gp[:, :, :-2, 1:-1])
+        gy = 0.5 * (gp[:, :, 1:-1, 2:] - gp[:, :, 1:-1, :-2])
+        gxx = gp[:, :, 2:, 1:-1] - 2.0 * gn + gp[:, :, :-2, 1:-1]
+        gyy = gp[:, :, 1:-1, 2:] - 2.0 * gn + gp[:, :, 1:-1, :-2]
+        gzz_fine = -(gxx + gyy) * 4.0
+
+        lp3_p = F.pad(lp3, (1, 1, 1, 1), mode="replicate")
+        gzz_mid = -(
+            (lp3_p[:, :, 2:, 1:-1] - 2.0 * lp3 + lp3_p[:, :, :-2, 1:-1])
+            + (lp3_p[:, :, 1:-1, 2:] - 2.0 * lp3 + lp3_p[:, :, 1:-1, :-2])
+        ) * 6.0
+
+        grad_mag = torch.sqrt(gx * gx + gy * gy + 1e-8)
+        dz_proxy = gn - self._avg(gn, 5)
+        tilt_sin = dz_proxy / torch.sqrt(dz_proxy * dz_proxy + grad_mag * grad_mag + 1e-4)
+        tot_grad = torch.sqrt(grad_mag * grad_mag + dz_proxy * dz_proxy + 1e-5)
+        euler_depth = torch.tanh((gn.abs() + (gn - lp17).abs()) / (tot_grad * 4.0 + 0.05))
+
+        jxx = self._avg(gx * gx, 3)
+        jyy = self._avg(gy * gy, 3)
+        jxy = self._avg(gx * gy, 3)
+        anis = torch.sqrt((jxx - jyy) ** 2 + 4.0 * jxy * jxy + 1e-8)
+        coherence = anis / (jxx + jyy + 1e-5)
+        strike_sin2 = (2.0 * jxy) / (anis + 1e-5)
+
+        tp = F.pad(terr, (1, 1, 1, 1), mode="replicate")
+        tx = 0.5 * (tp[:, :, 2:, 1:-1] - tp[:, :, :-2, 1:-1])
+        ty = 0.5 * (tp[:, :, 1:-1, 2:] - tp[:, :, 1:-1, :-2])
+        terr_slope = torch.sqrt(tx * tx + ty * ty + 1e-8) * 16.0
+        terr_curv = (
+            (tp[:, :, 2:, 1:-1] - 2.0 * terr + tp[:, :, :-2, 1:-1])
+            + (tp[:, :, 1:-1, 2:] - 2.0 * terr + tp[:, :, 1:-1, :-2])
+        ) * 16.0
+
+        return torch.cat([
+            gn, gn_log, r3, r9, r17, r25,
+            gzz_fine, gzz_mid, grad_mag * 6.0, tilt_sin, euler_depth,
+            coherence, strike_sin2,
+            terr * 4.0, terr_slope, terr_curv,
+        ], dim=1)
+
+    def forward(self, x: torch.Tensor, return_aux: bool = False):
+        b = x.shape[0]
+        gz, terr = x[:, 0:1], x[:, 1:2]
+
+        s = gz.abs().amax(dim=(2, 3), keepdim=True).clamp_min(1e-6)
+        gn = gz / s
+        h_in = self._stem_features(gn, terr)
+
+        s_flat = s.view(b, 1)
+        s_slab = s_flat / SLAB
+        s_vec = torch.cat([
+            torch.log(s_slab + 1e-4) * 0.25,
+            s_slab / (s_slab + 1.0),
+            gz.amax(dim=(2, 3)).view(b, 1) / s_flat,
+            gz.amin(dim=(2, 3)).view(b, 1) / s_flat,
+            terr.mean(dim=(2, 3)).view(b, 1) * 4.0,
+            terr.std(dim=(2, 3)).view(b, 1) * 8.0,
+        ], dim=1)
+        se = self.scale_mlp(s_vec)
+
+        f0 = self.enc0(h_in)
+        f1 = self.enc1(f0)
+        f2 = self.enc2(f1)
+
+        t2 = f2.flatten(2).transpose(1, 2) + self.pos2d + se.unsqueeze(1)
+        t2 = t2 + self.attn2d(self.n2d_1(t2), self.n2d_1(t2))
+        t2 = t2 + self.mlp2d(self.n2d_2(t2))
+
+        v = self.depth_lift(t2).view(b, self.hp, self.wp, self.dp, -1).permute(0, 3, 1, 2, 4)
+        terr_coarse = F.avg_pool2d(terr, 4)
+        d_surf_coarse = (self.z_top_coarse - terr_coarse.unsqueeze(2)).clamp_min(0.0)
+        z_c = self.z_top_coarse.expand(b, 1, self.dp, self.hp, self.wp)
+        sens_c = 0.04 / ((d_surf_coarse + 0.18) ** 2)
+        dc_in = torch.cat([d_surf_coarse, z_c, sens_c], dim=1).reshape(b, 3, self.dp * self.hp, self.wp)
+        dc_mod = self.depth_cond(dc_in).reshape(b, -1, self.dp, self.hp, self.wp).permute(0, 2, 3, 4, 1)
+        v = v + self.pos3d + dc_mod + se.view(b, 1, 1, 1, -1)
+
+        for blk in self.blocks:
+            v = blk(v)
+
+        vf = v.reshape(b, self.dp * self.hp * self.wp, -1)
+        p_ctx = self.proto_emb.expand(b, -1, -1) + self.proto_scale(se).unsqueeze(1)
+        vf = vf + self.proto_attn(self.proto_nq(vf), self.proto_nk(p_ctx))
+        vf = vf + self.proto_mlp(self.proto_mlp_n(vf))
+        p_ctx = p_ctx + self.s2p_attn(self.s2p_nq(p_ctx), self.s2p_nk(vf))
+        p_ctx = p_ctx + self.s2p_mlp(self.s2p_mlp_n(p_ctx))
+        v = self.norm3d(vf).view(b, self.dp, self.hp, self.wp, -1)
+
+        # Stage 1 -> (nz/2, nx/2, ny/2) + Coarse Physics Residual Feedback
+        vc = self.proj_mid(v.permute(0, 4, 1, 2, 3).reshape(b, -1, self.dp * self.hp, self.wp)).reshape(
+            b, -1, self.dp, self.hp, self.wp
+        )
+        u = self.up_mid(vc)
+        terr_mid = F.avg_pool2d(terr, 2)
+        d_surf_mid = (self.z_top_mid - terr_mid.unsqueeze(2)).clamp_min(0.0)
+        u = u + self.skip_mid(f1, d_surf_mid, self.z_top_mid)
+        u = self.dec_mid1(u)
+
+        nz_mid, nx_mid, ny_mid = self.nz // 2, self.nx // 2, self.ny // 2
+        mask_mid = (self.z_top_mid >= terr_mid.unsqueeze(2)).to(u.dtype)
+        coarse_raw = self.coarse_rho_head(u.reshape(b, self.ch_mid, nz_mid * nx_mid, ny_mid)).reshape(
+            b, 1, nz_mid, nx_mid, ny_mid
+        )
+        coarse_pred = (RHO_AIR + (RHO_ORE_MAX - RHO_AIR) * torch.sigmoid(coarse_raw)) * mask_mid
+        g_hat_mid = self.coarse_fwd_conv(coarse_pred.squeeze(1) / 2500.0)
+        gn_mid = F.avg_pool2d(gn, 2)
+        g_res_mid = gn_mid - g_hat_mid
+        res_2d = self.res_feedback_2d(torch.cat([gn_mid, g_hat_mid, g_res_mid], dim=1)).unsqueeze(2)
+        z_m = self.z_top_mid.expand(b, 1, nz_mid, nx_mid, ny_mid)
+        d_gate = self.res_depth_gate(
+            torch.cat([d_surf_mid, z_m], dim=1).reshape(b, 2, nz_mid * nx_mid, ny_mid)
+        ).reshape(b, self.ch_mid, nz_mid, nx_mid, ny_mid)
+        u = u + self.res_gate.tanh() * (res_2d * d_gate * mask_mid)
+        u = self.dec_mid2(u)
+
+        # Stage 2 -> (nz, nx, ny)
+        u = self.up_vox(u)
+        d_surf = (self.z_top - terr.unsqueeze(2)).clamp_min(0.0)
+        hv = u + self.skip_vox(f0, d_surf, self.z_top) + self.scale_vox(se).view(b, self.ch_vox, 1, 1, 1)
+        hv = self.dec_vox2(self.dec_vox1(hv))
+
+        p_head = self.proto_head(p_ctx)
+        hv_flat = hv.reshape(b, self.ch_vox, self.nz * self.nx * self.ny)
+        logit_scale = self.logit_log_scale.exp().clamp(0.5, 4.0)
+        sim = torch.bmm(p_head, hv_flat) * (self.ch_vox ** -0.5) * logit_scale
+        sim = (sim.view(b, self.num_classes, self.n_sub, self.nz, self.nx, self.ny)
+               + self.proto_bias(se).view(b, self.num_classes, self.n_sub, 1, 1, 1))
+        z_full = self.z_top.expand(b, 1, self.nz, self.nx, self.ny)
+        depth_prior = self.cls_depth_prior(
+            torch.cat([d_surf, z_full], dim=1).reshape(b, 2, self.nz * self.nx, self.ny)
+        ).reshape(b, self.num_classes, self.nz, self.nx, self.ny)
+        logits = torch.logsumexp(sim, dim=2) + depth_prior
+        probs = F.softmax(logits, dim=1)
+
+        # Sharpened foreground occupancy + conditional lithology mixture
+        fg_lse = torch.logsumexp(logits[:, 1:], dim=1, keepdim=True)
+        occ_sharp = self.occ_sharpness.clamp(0.5, 3.0)
+        cls_sharp = self.cls_sharpness.clamp(0.5, 3.0)
+        occ = torch.sigmoid(occ_sharp * (fg_lse - logits[:, 0:1]) + self.occ_bias)
+        active_probs = F.softmax(logits[:, 1:] * cls_sharp, dim=1)
+        w_active = 0.45 * probs[:, 1:] + 0.55 * (occ * active_probs)
+
+        hv_1x1 = hv.reshape(b, self.ch_vox, self.nz * self.nx, self.ny)
+        rock_sig = torch.sigmoid(self.rock_head(hv_1x1).reshape(b, len(_ROCK_BOUNDS), self.nz, self.nx, self.ny))
+        rho_light, rho_sediment, rho_mafic, rho_ore = [
+            lo + (hi - lo) * rock_sig[:, i:i + 1] for i, (lo, hi) in enumerate(_ROCK_BOUNDS)
+        ]
+
+        y = (
+            w_active[:, 0:1] * RHO_AIR
+            + w_active[:, 1:2] * RHO_WATER
+            + w_active[:, 2:3] * rho_light
+            + w_active[:, 3:4] * rho_sediment
+            + w_active[:, 4:5] * rho_mafic
+            + w_active[:, 5:6] * rho_ore
+        )
+        mask = (self.z_top >= terr.unsqueeze(2)).to(y.dtype)
+        pred = y * mask
+        if return_aux:
+            edt = F.softplus(self.edt_head(hv_1x1)).reshape(b, 1, self.nz, self.nx, self.ny) * mask
+            return pred, {
+                "logits": logits,
+                "probs": probs,
+                "edt": edt,
+                "rho_light": rho_light * mask,
+                "rho_sediment": rho_sediment * mask,
+                "rho_mafic": rho_mafic * mask,
+                "rho_ore": rho_ore * mask,
+                "proto_emb": p_ctx,
+                "mask": mask,
+                "coarse_pred": coarse_pred,
+                "occ": occ * mask,
+            }
+        return pred
+
+
 def create_model(nx=64, ny=64, nz=32, **arch):
-    """Instantiate v3 (when ``variant == 'v3'``), v2 (``'v2'``), or legacy v1 from checkpoint ``arch``."""
+    """Instantiate v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
     cfg = dict(arch)
     variant = cfg.pop("variant", "v1")
+    if variant == "v4":
+        return PotentialFieldTransformer3DV4(nx, ny, nz, **cfg)
     if variant == "v3":
         return PotentialFieldTransformer3DV3(nx, ny, nz, **cfg)
     if variant == "v2":

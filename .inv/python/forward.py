@@ -148,30 +148,40 @@ class TerrainGravityOperator:
         self.k_re, self.k_im = self.k_re.to(device), self.k_im.to(device)
         return self
 
-    def __call__(self, rho, z_obs):
-        """rho: (B, 1, nz, nx, ny) g/cm^3; z_obs: (B, nx, ny) station depth [m] -> (B, 1, nx, ny) mGal."""
-        b = rho.shape[0]
+    def __call__(self, rho, z_obs, level_stride: int = 1):
+        """rho: (B, C, nz, nx, ny) g/cm^3; z_obs: (B, nx, ny) station depth [m] -> (B, C, nx, ny) mGal."""
+        b, c_in = rho.shape[0], rho.shape[1]
         pyh = self.py // 2 + 1
-        pos = ((z_obs - self.h0) / self.step).clamp(0.0, self.n_levels - 1 - 1e-4)
+        s_lvl = max(1, int(level_stride))
+        eff_step = self.step * s_lvl
+        max_idx = (self.n_levels - 1) // s_lvl
+        pos = ((z_obs - self.h0) / eff_step).clamp(0.0, max_idx - 1e-4)
         i0 = torch.floor(pos)
-        frac = (pos - i0).unsqueeze(1)
-        i0 = i0.long()
-        kmin, kmax = int(i0.min()), int(i0.max()) + 1
-        kr = self.k_re[:, :, kmin:kmax + 1]
-        ki = self.k_im[:, :, kmin:kmax + 1]
+        frac = (pos - i0).view(b, 1, 1, self.nx, self.ny)
+        i0_long = i0.long()
+        kmin = int(i0_long.amin().item())
+        kmax = min(max_idx, int(i0_long.amax().item()) + 1)
+        lvl_idx = slice(kmin * s_lvl, kmax * s_lvl + 1, s_lvl)
+        kr = self.k_re[:, :, lvl_idx]
+        ki = self.k_im[:, :, lvl_idx]
+        k_cnt = kr.shape[2]
 
-        x = rho.reshape(b, self.nz, self.nx, self.ny)
+        x = rho.reshape(b * c_in, self.nz, self.nx, self.ny)
         x = torch.nn.functional.pad(x, (0, self.py - self.ny, 0, self.px - self.nx))
-        xf = torch.fft.rfft2(x).reshape(b, self.nz, -1).permute(2, 0, 1)   # (F, B, nz)
-        xr, xi = xf.real.contiguous(), xf.imag.contiguous()
-        dr = torch.bmm(xr, kr) - torch.bmm(xi, ki)                         # (F, B, K')
-        di = torch.bmm(xr, ki) + torch.bmm(xi, kr)
-        df = torch.complex(dr, di).permute(1, 2, 0).reshape(b, -1, self.px, pyh)
-        d = torch.fft.irfft2(df, s=(self.px, self.py))[:, :, : self.nx, : self.ny]   # (B, K', nx, ny)
-        j0 = (i0 - kmin).unsqueeze(1)
-        lo = torch.gather(d, 1, j0)
-        hi = torch.gather(d, 1, j0 + 1)
-        return lo * (1.0 - frac) + hi * frac
+        xf = torch.fft.rfft2(x).reshape(b * c_in, self.nz, -1).permute(2, 0, 1)  # (F, B*C, nz)
+        x_cat = torch.cat([xf.real, xf.imag], dim=1)                             # (F, 2*B*C, nz)
+        m_re = torch.bmm(x_cat, kr)                                              # (F, 2*B*C, K')
+        m_im = torch.bmm(x_cat, ki)                                              # (F, 2*B*C, K')
+        bc = b * c_in
+        dr = m_re[:, :bc] - m_im[:, bc:]
+        di = m_im[:, :bc] + m_re[:, bc:]
+        df = torch.complex(dr, di).permute(1, 2, 0).reshape(bc, k_cnt, self.px, pyh)
+        d = torch.fft.irfft2(df, s=(self.px, self.py))[:, :, : self.nx, : self.ny]
+        d = d.view(b, c_in, k_cnt, self.nx, self.ny)
+        j0 = (i0_long - kmin).view(b, 1, 1, self.nx, self.ny).expand(b, c_in, 1, self.nx, self.ny)
+        lo = torch.gather(d, 2, j0)
+        hi = torch.gather(d, 2, j0 + 1)
+        return (lo * (1.0 - frac) + hi * frac).squeeze(2)
 
     def forward_numpy(self, rho, z_obs):
         with torch.no_grad():

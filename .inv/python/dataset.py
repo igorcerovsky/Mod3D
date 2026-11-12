@@ -159,10 +159,13 @@ def _primitive_reaches(rx, ry, rz, th, dip, is_box):
     return reach_x, reach_y, z_extent
 
 
-def _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, cavity=False, border_margin=3):
-    """Rasterize an ellipsoid or box strictly within lateral margins and below terrain ``t_cells``."""
+def _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, cavity=False, border_margin=3,
+                         taper=0.0, fold_amp=0.0, fold_freq=2.2, bend=0.0):
+    """Rasterize an ellipsoid or box (with optional geological taper, folding & arcuate bend) below ``t_cells``."""
     nx, ny = t_cells.shape
-    reach_x, reach_y, z_extent = _primitive_reaches(rx, ry, rz, th, dip, is_box)
+    rz_eff = rz * (1.0 + abs(float(fold_amp)) + 0.35 * abs(float(taper)))
+    ry_eff = ry * (1.0 + 0.35 * abs(float(bend)))
+    reach_x, reach_y, z_extent = _primitive_reaches(rx, ry_eff, rz_eff, th, dip, is_box)
     i0 = int(max(border_margin, math.floor(cx - reach_x - 1.0)))
     i1 = int(min(nx - border_margin, math.ceil(cx + reach_x + 2.0)))
     j0 = int(max(border_margin, math.floor(cy - reach_y - 1.0)))
@@ -183,10 +186,16 @@ def _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, c
         w = -u0 * sd + w0 * cd
     else:
         u, w = u0, w0
+    u_norm = np.clip(u / max(rx, 0.5), -1.2, 1.2)
+    if bend != 0.0:
+        v = v - float(bend) * ry * (u_norm * u_norm - 0.30)
+    if fold_amp != 0.0:
+        w = w - float(fold_amp) * rz * np.sin(float(fold_freq) * u_norm)
+    rz_loc = rz * np.clip(1.0 + float(taper) * u_norm, 0.45, 1.45) if taper != 0.0 else rz
     if not is_box:
-        sub = (u / max(rx, 0.25)) ** 2 + (v / max(ry, 0.25)) ** 2 + (w / max(rz, 0.25)) ** 2 <= 1.0
+        sub = (u / max(rx, 0.25)) ** 2 + (v / max(ry, 0.25)) ** 2 + (w / np.maximum(rz_loc, 0.25)) ** 2 <= 1.0
     else:
-        sub = (np.abs(u) <= rx) & (np.abs(v) <= ry) & (np.abs(w) <= rz)
+        sub = (np.abs(u) <= rx) & (np.abs(v) <= ry) & (np.abs(w) <= np.maximum(rz_loc, 0.25))
     min_top = t_cells[None, i0:i1, j0:j1] + (0.5 if cavity else 0.0)
     z_top = np.arange(k0, k1)[:, None, None]
     sub &= (z_top >= min_top)
@@ -195,6 +204,21 @@ def _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, c
     mask = np.zeros((nz, nx, ny), dtype=bool)
     mask[k0:k1, i0:i1, j0:j1] = sub
     return mask
+
+
+def _dilate_into_blocked(blocked, mask, iters: int):
+    """Update ``blocked`` in-place by dilating ``mask`` only within its padded bounding box."""
+    if iters <= 0:
+        blocked |= mask
+        return
+    kz, kx, ky = np.nonzero(mask)
+    if not kz.size:
+        return
+    nz, nx, ny = mask.shape
+    z0, z1 = max(0, int(kz.min()) - iters), min(nz, int(kz.max()) + iters + 1)
+    x0, x1 = max(0, int(kx.min()) - iters), min(nx, int(kx.max()) + iters + 1)
+    y0, y1 = max(0, int(ky.min()) - iters), min(ny, int(ky.max()) + iters + 1)
+    blocked[z0:z1, x0:x1, y0:y1] |= binary_dilation(mask[z0:z1, x0:x1, y0:y1], iterations=iters)
 
 
 def _body_gravity_est(rho_val, mask, t_cells):
@@ -210,7 +234,9 @@ def _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, n_bodies, dilate_iter
                             anchor=None, cluster_spread=None, min_g_ratio=0.14):
     """Place ``n_bodies`` separated bodies with >= ``dilate_iters`` cell clearance & SNR parity."""
     nx, ny = t_cells.shape
-    blocked = binary_dilation(rho != 0, iterations=dilate_iters) if (rho != 0).any() else np.zeros((nz, nx, ny), bool)
+    blocked = np.zeros((nz, nx, ny), bool)
+    if (rho != 0).any():
+        _dilate_into_blocked(blocked, rho != 0, dilate_iters)
     max_g_est = 0.0
     if (rho != 0).any():
         for v in np.unique(rho[rho != 0]):
@@ -252,11 +278,20 @@ def _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, n_bodies, dilate_iter
             if g_est < 0.75 * min_g_ratio * max_g_est:
                 continue
 
-        mask = _rasterize_primitive(t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, cavity=cavity)
+        # Deterministic continuous geological shape modifiers (wedge taper, folding, arcuate bend)
+        h1 = math.sin(cx * 12.9898 + cy * 78.233 + th * 37.719)
+        h2 = math.cos(cx * 39.346 + cy * 11.135 - th * 53.19)
+        taper = 0.28 * h1 if (not cavity and rx > 2.2 * rz and abs(h1) > 0.35) else 0.0
+        fold_amp = 0.22 * h2 if (not cavity and rx > 2.5 * rz and abs(h2) > 0.45) else 0.0
+        bend = 0.20 * (h1 * h2) if (rx > 1.8 * ry) else 0.0
+        mask = _rasterize_primitive(
+            t_cells, nz, cx, cy, cz, rx, ry, rz, th, dip, is_box, cavity=cavity,
+            taper=taper, fold_amp=fold_amp, bend=bend,
+        )
         if mask is None or (mask & blocked).any():
             continue
         rho[mask] = rho_val
-        blocked |= binary_dilation(mask, iterations=dilate_iters)
+        _dilate_into_blocked(blocked, mask, dilate_iters)
         max_g_est = max(max_g_est, _body_gravity_est(rho_val, mask, t_cells))
         placed += 1
     return placed
@@ -679,14 +714,23 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
         below = (z_top >= t.unsqueeze(1).unsqueeze(2)).to(rho.dtype)
         amp = rho.abs().amax(dim=(1, 2, 3, 4), keepdim=True).clamp_min(0.1)
         sigma_vox = body_vox_noise * rho.abs() + bg_vox_scale * noise_frac.view(-1, 1, 1, 1, 1) * amp
-        rho_vox = rho + sigma_vox * vox_n * below
-        both = op(torch.cat([rho, rho_vox], dim=0), torch.cat([z_obs, z_obs], dim=0))
-        clean, obs_vox = both[:b], both[b:]
+        # Mix white voxel heterogeneity with 3x3x3 spatially correlated petrophysical clutter
+        vox_corr = torch.nn.functional.avg_pool3d(vox_n, kernel_size=3, stride=1, padding=1) * 3.0
+        vox_mix = 0.72 * vox_n + 0.28 * vox_corr
+        rho_vox = rho + sigma_vox * vox_mix * below
+        try:
+            both = op(torch.cat([rho, rho_vox], dim=1), z_obs)
+            clean, obs_vox = both[:, 0:1], both[:, 1:2]
+        except Exception:
+            both = op(torch.cat([rho, rho_vox], dim=0), torch.cat([z_obs, z_obs], dim=0))
+            clean, obs_vox = both[:b], both[b:]
     else:
         clean = op(rho, z_obs)
         obs_vox = clean
     peak = clean.abs().amax(dim=(1, 2, 3), keepdim=True)
-    noisy = obs_vox + noise * noise_frac.view(-1, 1, 1, 1) * peak
+    noise_corr = torch.nn.functional.avg_pool2d(noise, kernel_size=3, stride=1, padding=1) * 2.1
+    noise_mix = 0.80 * noise + 0.20 * noise_corr
+    noisy = obs_vox + noise_mix * noise_frac.view(-1, 1, 1, 1) * peak
     return noisy, clean, z_obs
 
 

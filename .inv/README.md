@@ -8,7 +8,7 @@
     <img src="https://img.shields.io/badge/Live_Web_Preview-Interactive_3D_%26_2D_Inversion_Viewer-0284c7?style=for-the-badge" alt="Live Web Preview — Interactive 3D &amp; 2D Inversion Viewer">
   </a>
   <br>
-  <strong><a href="https://igorcerovsky.github.io/Mod3D/">Open Interactive 3D &amp; 2D Web Preview</a></strong> &mdash; WebGL2 volume raycasting, Mod3D Bouguer anomaly terrain draping, and 2D cross-sections across 16 benchmark scenes (<code>v3</code> best model).
+  <strong><a href="https://igorcerovsky.github.io/Mod3D/">Open Interactive 3D &amp; 2D Web Preview</a></strong> &mdash; WebGL2 volume raycasting (2&times;2 grid, default scene <code>#5</code>, underside/above terrain contours &amp; flat exit cap), Mod3D Bouguer anomaly terrain draping, and 2D cross-sections across 16 benchmark scenes (exported from <code>.inv/demo</code>).
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
 
 The **`.inv`** sub-project provides an automated, physics-guided 3D potential field inversion framework integrated within **Mod3D**. It bridges classic potential field inverse theory—specifically **Portniaguine & Zhdanov's Reweighted Focusing Inversion**—with state-of-the-art **Transformer architectures** inspired by 3D weather and earth system modeling (**Pangu-Weather**, **GraphCast**, **ClimaX**).
 
-The system divides the subsurface modeling space into 3D voxel cells, predicts physical parameter distributions (density contrast $\Delta \rho$ and magnetic susceptibility $\chi$) directly from surface potential field observations and terrain relief, and refines them using analytical forward operators. Using 7-class learnable lithology prototype embeddings, the v2 neural prior classifies background ($0.0\text{ g/cm}^3$), strict **air cavities** ($-2.67\text{ g/cm}^3$), strict **water-filled cavities** ($-1.67\text{ g/cm}^3$), **light rock / coal / soft clay** ($[-1.55, -0.85]\text{ g/cm}^3$), **sediments / waste** ($[-0.80, -0.10]\text{ g/cm}^3$), **mafic / ultramafic intrusions** ($[+0.15, +0.75]\text{ g/cm}^3$), and **high-grade mineral ore** ($[+0.80, +1.85]\text{ g/cm}^3$) strictly below topography relief.
+The system divides the subsurface modeling space into 3D voxel cells, predicts physical parameter distributions (density contrast $\Delta \rho$ and magnetic susceptibility $\chi$) directly from surface potential field observations and terrain relief, and refines them using analytical forward operators. Using 7-class learnable lithology prototype embeddings (`v2`/`v3`/`v4`), the neural prior classifies background ($0.0\text{ g/cm}^3$), strict **air cavities** ($-2.67\text{ g/cm}^3$), strict **water-filled cavities** ($-1.67\text{ g/cm}^3$), **light rock / coal / soft clay** ($[-1.55, -0.85]\text{ g/cm}^3$), **sediments / waste** ($[-0.80, -0.10]\text{ g/cm}^3$), **mafic / ultramafic intrusions** ($[+0.15, +0.75]\text{ g/cm}^3$), and **high-grade mineral ore** ($[+0.80, +1.85]\text{ g/cm}^3$) strictly below topography relief.
 
 ### Key Architectural Invariant: Complete Core Independence
 
@@ -55,9 +55,9 @@ Like **`pfld`** (Mod3D's standalone facet physics engine), the computational cor
 |                                                                                         |
 |   +---------------------------------------------------------------------------------+   |
 |   |                           .inv/python (Training Sub-Project)                    |   |
-|   |  - Stratified Bodies, Exact -2.67/-1.67 Cavities  - Multi-Band & Lithology Loss   |   |
-|   |  - 35%/35%/30% Depth Stratification & SNR Guard   - Signed L1-IoU & Charb. RMSE   |   |
-|   |  - v2 U-Net + 2.5D Swin3D + Proto Embeddings      - EMA, HTML5 Monitor & ONNX     |   |
+|   |  - Stratified/Tapered/Folded Bodies & Cavities     - Fused Dilations & Delta G  |   |
+|   |  - 35%/35%/30% Depth + Correlated 3D/2D Clutter    - Lithology CE+Dice & EDT    |   |
+|   |  - v4 16-ch Physics/Geology Stem + Feedback + Occ  - EMA, Decoupled Dash & ONNX |   |
 |   +---------------------------------------------------------------------------------+   |
 +-----------------------------------------------------------------------------------------+
 ```
@@ -140,18 +140,26 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │   ├── CMakeLists.txt          # Test discovery
 │   └── unittest_inv.cpp        # Tests for voxel indexing, Nagy kernel, and Zhdanov metrics
 │
+├── demo/                       # Static best-result WebGL2 + 2D HTML preview (GitHub Pages root)
+│   ├── index.html              # Stripped static demo viewer (2x2 layout, scene #5 default, no metrics)
+│   ├── preview_2d.js           # Pre-extracted 2D profiles & X-Z cross-sections for best epoch
+│   ├── vol3d_meta.js           # Terrain relief & RLE-encoded ground-truth 3D volumes
+│   └── vol3d_best.js           # RLE-encoded best-epoch predicted 3D volumes & Bouguer fields
+│
 └── python/                     # Python training & research sub-project
     ├── requirements.txt        # PyTorch, ONNX, and scientific dependencies
-    ├── dataset.py              # Stratified compact/tabular bodies, exact -2.67/-1.67 cavities, [-1.55,+1.85] lithology bands, terrain & noise
-    ├── forward.py              # Batched draped Nagy-prism and flat FFT gravity operators
-    ├── model_swin3d.py         # v2 U-Net + 2.5D Swin3D + lithology prototype embeddings (with create_model & v1 compat)
-    ├── losses.py               # Scale-normalized CompoundInversionLoss, fixed-denom grad, multi-band, lithology CE+Dice, MGS & Charbonnier RMSE
-    ├── train.py                # On-the-fly training loop, ModelEMA & OneCycle/Cosine resume
-    ├── dashboard.py            # Live matplotlib/GUI TrainingMonitor, HTML5/WebGL2 dashboard builder & sidecar writer
+    ├── dataset.py              # Stratified/deformed bodies (taper, fold, bend), -2.67/-1.67 cavities, correlated 3D/2D clutter
+    ├── forward.py              # Multi-channel draped Nagy-prism (level_stride, fused bmm) & flat FFT operators
+    ├── model_swin3d.py         # v4 16-ch physics/geology Axial+Swin3D + coarse feedback + occupancy head (v1-v3 compat)
+    ├── losses.py               # CompoundInversionLoss with fused 3D dilations, delta-forward (stride 2), CE+Dice & EDT
+    ├── train.py                # Dedicated on-the-fly training loop (v4 default, ModelEMA, OneCycle/Cosine resume)
+    ├── dashboard.py            # Decoupled GUI/matplotlib TrainingMonitor & HTML5/WebGL2 dashboard generator
+    ├── export_demo.py          # Exports best-epoch 2D/3D static viewer bundle to .inv/demo/
     ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, local contrast IoU, amp & halo metrics
-    ├── infer_prior.py          # Input-scaled (50 m / L_eff) neural prior writer into Mod3D setup JSON
-    ├── export_onnx.py          # PyTorch to ONNX (opset 17) export with terrain relief masking
-    └── test_inv_python.py      # Automated 17-test Python & ONNX runtime parity test suite
+    ├── infer_prior.py          # Input-scaled (50 m / L_eff) neural prior writer (v2/v3/v4 calibrated) into Mod3D JSON
+    ├── export_onnx.py          # PyTorch to ONNX (opset 17) static export with built-in terrain relief masking
+    ├── vol3d_io.py             # Compact base64 RLE 3D volume & int16 2D field codecs for HTML/demo serialization
+    └── test_inv_python.py      # Automated 26-test Python, v4 physics/grad & ONNX Runtime parity suite
 ```
 
 ---
@@ -198,7 +206,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run automated Python test suite (17 tests verifying physics, lithology bounds, losses & ONNX parity)
+# Run automated Python test suite (26 tests verifying physics, v4 architecture, deformations, losses & ONNX parity)
 python test_inv_python.py
 
 # Train 3D Swin Transformer with live macOS GUI window

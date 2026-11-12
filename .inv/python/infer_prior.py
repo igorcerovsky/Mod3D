@@ -80,7 +80,7 @@ def predict_prior(setup, checkpoint, device="cpu", project=None):
     g = ck.get("grid", {"nx": 64, "ny": 64, "nz": 32, "cell": 50.0})
     arch = ck.get("arch", {})
     if project is None:
-        project = arch.get("variant", "v1") not in ("v2", "v3")
+        project = arch.get("variant", "v1") not in ("v2", "v3", "v4")
     vd = setup["voxel_domain"]
     nx, ny, nz = vd["nx"], vd["ny"], vd["nz"]
     obs = setup["observations"]

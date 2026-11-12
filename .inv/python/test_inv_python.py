@@ -576,6 +576,101 @@ def test_v3_model_bounds_masking_aux_and_onnx_opset17_parity():
             pass
 
 
+def test_v4_model_physics_feedback_occupancy_and_onnx_parity():
+    """Verify v4 physics/geology stem, coarse gravity residual feedback, occupancy head, and ONNX parity."""
+    import os
+    import tempfile
+    from model_swin3d import RHO_AIR, RHO_ORE_MAX, create_model
+
+    torch.manual_seed(17)
+    arch = {
+        "variant": "v4",
+        "embed_dim": 64,
+        "num_heads": 4,
+        "depth": 2,
+        "ch_mid": 24,
+        "ch_vox": 16,
+        "n_sub": 2,
+        "num_classes": 7,
+    }
+    model = create_model(64, 64, 32, **arch)
+    x = torch.randn(2, 2, 64, 64)
+    x[:, 1] = torch.rand(2, 64, 64) * 0.18
+
+    pred, aux = model(x, return_aux=True)
+    assert pred.shape == (2, 1, 32, 64, 64)
+    assert aux["logits"].shape == (2, 7, 32, 64, 64)
+    assert aux["probs"].shape == (2, 7, 32, 64, 64)
+    assert aux["edt"].shape == (2, 1, 32, 64, 64)
+    assert aux["coarse_pred"].shape == (2, 1, 16, 32, 32)
+    assert aux["occ"].shape == (2, 1, 32, 64, 64)
+    assert float(pred.detach().min()) >= RHO_AIR - 1e-4
+    assert float(pred.detach().max()) <= RHO_ORE_MAX + 1e-4
+
+    # Air voxels above terrain must be strictly zero
+    above_air = aux["mask"] < 0.5
+    assert int(above_air.sum()) > 0
+    assert torch.all(pred[above_air] == 0.0)
+
+    # Verify gradients flow through coarse physics residual feedback and occupancy parameters
+    loss = pred.square().mean() + aux["edt"].mean()
+    loss.backward()
+    assert model.res_gate.grad is not None and torch.isfinite(model.res_gate.grad)
+    assert model.occ_sharpness.grad is not None and torch.isfinite(model.occ_sharpness.grad)
+    assert model.cls_sharpness.grad is not None and torch.isfinite(model.cls_sharpness.grad)
+
+    model.eval()
+    x1 = x[:1]
+    with torch.no_grad():
+        y_pt = model(x1).numpy()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        onnx_path = os.path.join(tmpdir, "v4.onnx")
+        torch.onnx.export(model, (x1,), onnx_path, export_params=True, opset_version=17,
+                          do_constant_folding=True, input_names=["observation_field"],
+                          output_names=["density_volume"], dynamo=False)
+        try:
+            import onnxruntime as ort
+            sess = ort.InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
+            y_ort = sess.run(None, {"observation_field": x1.numpy()})[0]
+            assert np.allclose(y_pt, y_ort, rtol=1e-4, atol=1e-4)
+        except ImportError:
+            pass
+
+
+def test_fast_forward_and_geological_deformations():
+    """Verify multi-channel TerrainGravityOperator parity, level_stride=2, and geological body deformations."""
+    from dataset import _rasterize_primitive
+
+    op = TerrainGravityOperator(16, 16, 8, 50.0, 50.0, 50.0)
+    torch.manual_seed(23)
+    rho1 = torch.randn(2, 1, 8, 16, 16) * 400.0
+    rho2 = torch.randn(2, 1, 8, 16, 16) * 400.0
+    z_obs = torch.rand(2, 1, 16, 16) * 0.15
+
+    g1 = op(rho1, z_obs)
+    g2 = op(rho2, z_obs)
+    g12 = op(torch.cat([rho1, rho2], dim=1), z_obs)
+    assert g12.shape == (2, 2, 16, 16)
+    assert torch.allclose(g12[:, 0:1], g1, rtol=1e-5, atol=1e-5)
+    assert torch.allclose(g12[:, 1:2], g2, rtol=1e-5, atol=1e-5)
+
+    g_s2 = op(rho1, z_obs, level_stride=2)
+    assert g_s2.shape == (2, 1, 16, 16)
+    assert torch.isfinite(g_s2).all()
+    assert float((g_s2 - g1).abs().max()) < float(g1.abs().max()) * 0.15
+
+    t_cells = np.zeros((32, 32), dtype=np.float32)
+    m_base = _rasterize_primitive(t_cells, 16, 16.0, 16.0, 8.0, 7.0, 3.0, 3.5, 0.3, 0.15, False)
+    m_deformed = _rasterize_primitive(
+        t_cells, 16, 16.0, 16.0, 8.0, 7.0, 3.0, 3.5, 0.3, 0.15, False,
+        taper=0.35, fold_amp=0.3, fold_freq=2.2, bend=0.4,
+    )
+    assert m_base is not None and m_deformed is not None
+    assert m_base.shape == (16, 32, 32) and m_deformed.shape == (16, 32, 32)
+    assert int(m_deformed.sum()) > 0
+    assert not np.array_equal(m_base, m_deformed)
+
+
 def test_v3_gap_saddle_and_class_balance_loss():
     from losses import CompoundInversionLoss, _gap_saddle_mask, _interior_edt_proxy
     m_true = torch.zeros(1, 1, 16, 32, 32)

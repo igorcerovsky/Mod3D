@@ -1,7 +1,7 @@
 # .inv: Technical Specification for 3D Potential Field Neural Inversion
 
-> **Document Version**: 1.0.0  
-> **Status**: Approved Architecture & Specification  
+> **Document Version**: 2.0.0  
+> **Status**: Implemented Specification (`v4` Neural Architecture, Multi-Channel Draped Physics & C++20 Core)  
 > **Target System**: Mod3D Inversion Sub-Project  
 > **Languages**: ISO C++20 (Inference & Core Physics) | Python 3.10+ / PyTorch 2.x (Training Pipeline)
 
@@ -207,121 +207,102 @@ The mathematical structure of 3D geophysical inversion closely mirrors modern nu
 
 ---
 
-## 4. Deep Network Architecture
+## 4. Deep Network Architecture (`PotentialFieldTransformer3DV4` / Legacy `v1`–`v3`)
 
-The `.inv` neural architecture consists of four distinct stages:
+The production neural prior architecture (`v4` in `.inv/python/model_swin3d.py`, `2,721,831` parameters, instantiated alongside legacy `v3`, `v2`, and `v1` via `create_model`) maps static 2-channel surface inputs `(B, 2, 64, 64)` (`[gz, terrain_depth / depth_max]`) to terrain-masked density contrast volumes `(B, 1, 32, 64, 64)` calibrated in `[-2.67, +1.85] g/cm³`:
 
 ```
-[2D Observation Map: Δg, g_zz, ΔT] (H × W × C_in)
+[2D Input: gz (mGal), terrain/depth_max] (B, 2, 64, 64)
+                    │
+                    ▼  Scale & Terrain Normalization: gn = gz / s; se = scale_mlp(6-dim)
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 16-Channel Physics & Structural-Geology Stem (_stem_features)           │
+│   gn, asinh(8·gn), 4 multi-scale residuals (r3, r9, r17, r25),          │
+│   g_zz fine & smooth (Laplace -(g_xx+g_yy)), |∇_xy gn|, tilt sin,       │
+│   Euler depth proxy, structure-tensor coherence & strike sin(2α),       │
+│   terrain relief, terrain slope |∇t|, terrain Laplacian curvature       │
+└─────────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
-       ┌────────────────────────┐
-       │ 2D Patch Tokenizer     │ -> Patch size: 4 × 4, Token dim: 192
-       └────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 3-Stage 2D U-Net Encoder + 2D Global Self-Attention                     │
+│   enc0 (16→32, 64×64) → enc1 (32→64, 32×32) → enc2 (64→128, 16×16)      │
+└─────────────────────────────────────────────────────────────────────────┘
+                    │  f2 (16×16) + 64×64 (f0) / 32×32 (f1) skips
+                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Terrain-Depth & Physical Sensitivity Bottleneck Lifter                  │
+│   depth_lift → (8×16×16×128) + depth_cond([d_coarse, z_coarse, 1/d²])   │
+│   Alternating SwinBlock3D (W=4×4) & AxialGlobalBlock3D (full XY & Z)    │
+│   Bidirectional Lithology Prototype Cross-Attention (7 classes × 3 sub) │
+└─────────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
-       ┌────────────────────────┐
-       │ 2D-to-3D Cross-Lift    │ -> Queries: 3D regular grid (H/4 × W/4 × D/4)
-       │ Attention + B_phys     │    Keys/Values: 2D surface tokens
-       └────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Stage-1 Decoder (16×32×32, ch_mid=40) + Coarse Physics Residual Loop    │
+│   up_mid (zero-copy 1×1 + pixel_shuffle + trilinear) + skip_mid(f1)     │
+│   coarse_rho_head → 5×5 inverse-cube coarse_fwd_conv → Δg_mid residual  │
+│   u ← u + tanh(res_gate) · (res_feedback_2d(gn, ĝ, Δg) ⊙ d_gate ⊙ mask)│
+└─────────────────────────────────────────────────────────────────────────┘
                     │
                     ▼
-       ┌────────────────────────┐
-       │ 3D Swin Encoder        │
-       │ Stage 1 (192-dim, W=4) │ -> Shifted 3D window self-attention
-       │ Stage 2 (384-dim, W=4) │ -> 3D Patch Merging (downsamples x,y)
-       │ Stage 3 (768-dim, W=4) │ -> Deep spatial context extraction
-       └────────────────────────┘
-                    │
-                    ▼
-       ┌────────────────────────┐
-       │ 3D Swin Decoder        │
-       │ Stage 3 (384-dim, W=4) │ -> 3D Patch Expanding
-       │ Stage 2 (192-dim, W=4) │ -> Skip connections from encoder
-       │ Stage 1 (96-dim, W=4)  │
-       └────────────────────────┘
-                    │
-                    ▼
-       ┌────────────────────────┐
-       │ Voxel Regression Head  │
-       │ Linear + Bound Scaling │ -> Outputs: Density Δρ(x,y,z) & Susc χ(x,y,z)
-       └────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Stage-2 Voxel Decoder (32×64×64, ch_vox=24) & Lithology/Occupancy Heads │
+│   up_vox + DepthConditionedSkip(f0, z - terr) + zero-copy 1×1 heads     │
+│   logits = logsumexp_sub(proto_sim) + cls_depth_prior(d_surf, z)        │
+│   occ = σ(occ_sharpness·(lse_fg - l_bg) + occ_bias)                     │
+│   w_active = 0.45·softmax(logits)[1:] + 0.55·(occ · softmax(γ_cls·l[1:]))│
+│   ρ_rock ∈ {[-2.67], [-1.67], [-1.55,-0.85], [-0.8,-0.1], [0.15,0.75], [0.8,1.85]}│
+│   pred = Σ w_active · ρ_rock · 1_{z >= terr}   (+ train-only edt_head)  │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Layer Dimensions & Hyperparameters
-
-* **Input Grid Resolution ($N_x \times N_y$)**: $128 \times 128$ (or variable via sliding window inference).
-* **Target 3D Voxel Grid ($N_x \times N_y \times N_z$)**: $128 \times 128 \times 64$ cells.
-* **Window Size in 3D Swin**: $(S_x, S_y, S_z) = (8, 8, 4)$ cells.
-* **Number of Attention Heads**: $[4, 8, 16, 8]$ across stages.
-* **Latent Feature Dimensions**: $[96, 192, 384, 192]$.
-* **Total Parameters**: $\approx 42\text{M}$ parameters (fits comfortably into $170\text{ MB}$ ONNX model).
+### Static ONNX Opset 17 & C++ Domain-Scaling Contract
+* **ONNX Interface (`export_onnx.py`)**: Input tensor `"observation_field"` with shape `(1, 2, 64, 64)` (`[gz mGal, terr / depth_max]`) -> Output tensor `"density_volume"` with shape `(1, 1, 32, 64, 64)` calibrated for $50\text{ m}$ training cells (`aux["edt"]`, `aux["coarse_pred"]`, and `aux["occ"]` are active only when `return_aux=True` during training).
+* **Arbitrary Grid Cell Scaling (`neural_prior.hpp` & `infer_prior.py`)**: Input channel `0` is rescaled by $50\text{ m} / L_{\text{eff}}$ ($L_{\text{eff}} = (\Delta x \Delta y \Delta z)^{1/3}$) prior to inference so real Mod3D surveys map into the calibrated $50\text{ m}$ gravity dynamic range. Calibrated `v2`/`v3`/`v4` priors preserve bounded $\text{g/cm}^3$ outputs directly without post-hoc linear amplitude rescaling (auto-enabled only for legacy `v1`).
 
 ---
 
-## 5. Physics-Guided Loss Formulation
+## 5. Physics-Guided Compound Loss Formulation (`losses.py`)
 
-Training is guided by a compound objective enforcing both data fidelity and geological focusing:
+`.inv/python/losses.py` implements **`CompoundInversionLoss`** and **`ZhdanovFocusingLoss`** (matching C++ `inv::FocusingEvaluator` up to lattice normalization):
 
-$$\mathcal{L}_{total} = \mathcal{L}_{data} + \lambda_{MS} \mathcal{L}_{MS} + \lambda_{MGS} \mathcal{L}_{MGS} + \lambda_{depth} \mathcal{L}_{depth} + \lambda_{sparse} \mathcal{L}_{sparse}$$
+$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{sup}} + \lambda_{\text{cls}} \mathcal{L}_{\text{cls}} + \mathcal{L}_{\text{edt}} + \lambda_{\text{data}} \mathcal{L}_{\text{data}}$$
+$$\mathcal{L}_{\text{sup}} = 0.23\left(\mathcal{L}_{\text{fg}} + \mathcal{L}_{\text{dist-L1}} + \mathcal{L}_{\text{Tanimoto}} + \mathcal{L}_{\text{grad}}\right) + 0.12\,\mathcal{L}_{\text{band}} + \mathcal{L}_{\text{halo}} + \lambda_{\text{ms}}\,\mathcal{L}_{\text{MGS}}$$
 
-### 1. Data Misfit Loss ($\mathcal{L}_{data}$)
-Evaluates the physical accuracy of the predicted model $\hat{\mathbf{m}}$ by passing it through the exact forward kernel $\mathbf{G}$:
-$$\mathcal{L}_{data} = \frac{1}{N} \|\mathbf{W}_d (\mathbf{G} \hat{\mathbf{m}} - \mathbf{d}_{obs})\|_2^2 + \frac{\mu}{N} \|\mathbf{W}_d (\mathbf{G} \hat{\mathbf{m}} - \mathbf{d}_{obs})\|_1$$
-*(The hybrid $L_2 + L_1$ Huber-like penalty protects against survey outliers and leveling artifacts).*
-
-### 2. Zhdanov Minimum Support Loss ($\mathcal{L}_{MS}$)
-Enforces spatial compactness and suppresses diffuse halos:
-$$\mathcal{L}_{MS} = \frac{1}{M} \sum_{j=1}^M \frac{\hat{m}_j^2}{\hat{m}_j^2 + e^2}$$
-
-### 3. Zhdanov Minimum Gradient Support Loss ($\mathcal{L}_{MGS}$)
-Drives sharp, blocky boundaries along geological contacts:
-$$\mathcal{L}_{MGS} = \frac{1}{M} \sum_{j=1}^M \frac{\|\nabla \hat{m}_j\|^2}{\|\nabla \hat{m}_j\|^2 + e_{grad}^2}$$
-where $\nabla \hat{m}_j$ is computed using 3D central spatial differences:
-$$\|\nabla \hat{m}_{i,j,k}\|^2 = \left(\frac{\hat{m}_{i+1,j,k} - \hat{m}_{i-1,j,k}}{2\Delta x}\right)^2 + \left(\frac{\hat{m}_{i,j+1,k} - \hat{m}_{i,j-1,k}}{2\Delta y}\right)^2 + \left(\frac{\hat{m}_{i,j,k+1} - \hat{m}_{i,j,k-1}}{2\Delta z}\right)^2$$
-
-### 4. Curriculum Annealing Schedule
-To prevent premature convergence to non-physical local minima:
-* **Epochs 1–15**: Focus on data misfit $\mathcal{L}_{data}$ and mild smoothness ($\lambda_{MS} = 0, e = 0.5$).
-* **Epochs 16–35**: Introduce focusing stabilizers ($\lambda_{MS} = 10^{-2}, \lambda_{MGS} = 10^{-2}$), with $e$ decaying exponentially:
-  $$e(t) = e_{min} + (e_0 - e_{min}) \exp(-\kappa t)$$
-* **Epochs 36–50**: Fine-tuning with sharp focusing ($e = 10^{-3}, e_{grad} = 10^{-3}$).
+### Key Loss Components & High-Throughput Implementation
+1. **Scale-Normalized Structural Terms** ($a = \max|m_{\text{true}}|$, depth ramp $w_z(z) = 1.0 + \text{depth\_boost}\cdot z / z_{\max}$):
+   * **$\mathcal{L}_{\text{fg}}$**: Local-contrast normalized foreground error $|p_n - t_n|/\max(|t_n|, 0.05)$ with quadratic and mild overshoot terms.
+   * **$\mathcal{L}_{\text{dist-L1}}$ & $\mathcal{L}_{\text{halo}}$**: Multi-scale Chebyshev distance weighting (`r = 1, 3, 7`) plus directional gap-saddle boost (`+6.0×` inside 1–3 cell inter-body gaps) and opposite-sign halo suppression (`halo_boost = 3.0`).
+   * **Fused Multi-Channel `_dilate3d`**: All 13 binary masks (foreground shells `d1/d3/d7`, positive/negative proximity zones, and 4 contrast bands) are dilated in 3 chained multi-channel separable max-pool passes.
+   * **$\mathcal{L}_{\text{grad}}$**: Fixed-denominator 3D face-jump loss (`0.40` total face jump + `0.35` boundary contact sharpness + `0.25` interior body flatness).
+   * **$\mathcal{L}_{\text{Tanimoto}}$ & $\mathcal{L}_{\text{band}}$**: Signed L1-IoU (unique minimum at $p_n = t_n$) + separate 4-band mass conservation (cavities, weak negative rock, strong ore, weak mafic).
+2. **Zhdanov Minimum Gradient Support Loss ($\mathcal{L}_{\text{MGS}}$)**:
+   $$\mathcal{L}_{\text{MGS}} = \lambda_{\text{ms}} \left| S_{\text{MGS}}(p_n, e_{\text{rel}}) - S_{\text{MGS}}(t_n, e_{\text{rel}}) \right|$$
+   where $S_{\text{MGS}}$ matches C++ area-weighted face-jump definitions.
+3. **Class-Balanced Lithology ($\mathcal{L}_{\text{cls}}$) & Surface-Distance ($\mathcal{L}_{\text{edt}}$)**:
+   * Combines `50%` voxel-averaged + `50%` per-present-class foreground CE, gap-weighted boundary CE, soft Dice (including `d3` shell background), and 3D morphological interior distance supervision (`aux["edt"]`) with `+3×` gap-saddle weighting.
+4. **Strided Residual Data Misfit ($\mathcal{L}_{\text{data}}$)**:
+   $$\mathcal{L}_{\text{data}} = 0.65\,\mathcal{L}_{\text{amp}} + 0.35\,\mathcal{L}_{\nabla d}$$
+   Computes Charbonnier relative RMSE on both $\Delta g$ and its horizontal differences using linear residual evaluation `forward_op(m_pred - m_true, z_obs, level_stride=2)` (exact zero misfit at $m_{\text{pred}} = m_{\text{true}}$ at half FFT cost).
 
 ---
 
-## 6. Procedural Geological Training Pipeline
+## 6. Draped Forward Physics, Procedural Geology & Visualization Pipeline
 
-Supervised pre-training of the Transformer requires a vast, geologically diverse synthetic dataset. The `.inv/python/dataset.py` generator synthesizes realistic 3D subsurface models by stochastically combining structural geological primitives:
+### 6.1 Draped Terrain Forward Modeling (`forward.py`)
+* **`TerrainGravityOperator`** evaluates exact Nagy rectangular-prism gravity across horizontal levels (`step = dz / 8`, anchored at `-0.35 m` ground clearance) and linearly interpolates to per-station elevation $z_{\text{obs}}(x, y)$.
+* Supports batched multi-channel densities `(B, C, nz, nx, ny)` (used by `simulate_batch` to evaluate `[rho, rho_vox]` in a single pass), fuses real/imaginary frequency contractions into a single `torch.bmm`, and supports `level_stride`.
 
-```
-+-----------------------------------------------------------------------------------------+
-|                       PROCEDURAL 3D GEOLOGY GENERATION ENGINE                           |
-+-----------------------------------------------------------------------------------------+
-|                                                                                         |
-|   1. BASE STRATIGRAPHY                                                                  |
-|      - Folded sedimentary layers with sinusoidal undulations                            |
-|      - Density contrasts: -0.4 to +0.2 g/cm³                                            |
-|                                                                                         |
-|   2. TECTONIC FAULTING                                                                  |
-|      - Planar & listric normal, reverse, and strike-slip faults                         |
-|      - 3D displacement field: d(r) = S / (1 + exp(-dist/w))                             |
-|                                                                                         |
-|   3. IGNEOUS INTRUSIONS & PLUTONS                                                       |
-|      - 3D superquadrics & Gaussian perturbed ellipsoids                                 |
-|      - High density (+0.25 to +0.55 g/cm³) & high susceptibility (0.01 to 0.1 SI)       |
-|                                                                                         |
-|   4. MINERALIZED DYKES & SILLS                                                          |
-|      - Dipping sheet-like bodies with arbitrary strike, dip, and thickness              |
-|                                                                                         |
-|   5. SALT DOMES & DIAPIRS                                                               |
-|      - Low density piercement structures (-0.35 g/cm³)                                  |
-|                                                                                         |
-|   6. TOPOGRAPHY & OBSERVATION SURVEY                                                    |
-|      - Synthetic DEM elevation surface                                                  |
-|      - Flight line survey draped at constant sensor clearance (e.g., 80 m)              |
-|      - Random noise (Gaussian σ=0.05 mGal + leveling striping)                          |
-+-----------------------------------------------------------------------------------------+
-```
+### 6.2 Procedural Stratified/Deformed Bodies & Correlated Clutter (`dataset.py`)
+* **Stratified & Hard Composite Archetypes (`hard_prob = 0.50`)**: Combines isolated single/cluster targets (`35%/35%/30%` shallow/mid/deep depth stratification, `-2.67` air & `-1.67` water cavities, 4 continuous rock contrast bands in `[-1.55, +1.85] g/cm³`, analytical SNR guard) with 5 hard composite archetypes (`large_composite`, `nested_halo`, `abutting_contact`, `vertical_stack`, `tight_cluster`).
+* **Geological Shape Modifiers & Bounding-Box Dilation**: Deterministic hash-parameterized strike **wedge tapering** (`taper`), **harmonic folding** (`fold_amp`, `fold_freq`), and **arcuate bending** (`bend`) inside `_rasterize_primitive`, with local padded bounding-box separation via `_dilate_into_blocked`.
+* **Spatially Correlated 3D/2D Noise & $D_4$ Symmetry**: `simulate_batch` applies $0.30\text{–}0.40\text{ m}$ station clearance, `0.72` white + `0.28` $3\times3\times3$ `avg_pool3d` correlated subsurface density clutter, and `0.80` white + `0.20` $3\times3$ `avg_pool2d` correlated surface station noise ($\sigma = 0.5\%\text{–}4\%\cdot\max|g_z|$), followed by on-GPU $D_4$ dihedral augmentation (`augment_d4`).
+
+### 6.3 Decoupled Monitoring & Static WebGL2 Demo (`dashboard.py`, `export_demo.py`, `.inv/demo/`)
+* `train.py` is strictly decoupled from visualization and delegates monitoring to `TrainingMonitor` in `.inv/python/dashboard.py`.
+* Generates live native GUI panels (`--gui`), PNG snapshots, and an interactive HTML5/WebGL2 dashboard using base64 RLE-encoded 3D volumes (`vol3d_io.py`, shared camera `{ yaw: -0.62, pitch: -0.22, dist: 4.0 }`, underside/above contour isolines & flat-surface exit caps).
+* `export_demo.py` extracts a stripped, self-contained best-epoch static viewer bundle into `.inv/demo/` (`2×2` grid starting at scene `#5`, no training metrics or per-epoch history).
 
 ---
 
@@ -332,20 +313,26 @@ In strict accordance with the Mod3D architecture guidelines, the computational c
 ```
 .inv/
 ├── CMakeLists.txt              # Independent CMake build definition
-├── README.md                   # User guide & build instructions
+├── README.md                   # Project overview & build instructions
+├── README-train.md             # Training, data synthesis, loss & ONNX deployment guide
 ├── spec.md                     # This specification
 ├── include/inv/                # Header-only C++20 library
 │   ├── point.hpp               # Templated 3D vector and coordinate math
 │   ├── voxel_grid.hpp          # Contiguous 3D tensor storage and spatial indexing
 │   ├── forward_kernel.hpp      # Analytical Nagy rectangular prism forward solver
-│   ├── focusing_metrics.hpp    # Zhdanov MS & MGS evaluation and IRLS matrix generation
-│   ├── inversion_engine.hpp    # ONNX Runtime C++ wrapper with tiling & zero-copy
+│   ├── gravity_operator.hpp    # PfldInterfaceMeshOperator, Toeplitz & Dense operators
+│   ├── focusing_solver.hpp     # Portniaguine-Zhdanov IRLS solver (Jacobi-PCG)
+│   ├── focusing_metrics.hpp    # Zhdanov MS & MGS evaluation and IRLS weights
+│   ├── inversion_engine.hpp    # Multi-scale coarse-to-fine solver & Mod3D JSON exchange
+│   ├── neural_prior.hpp        # ONNX Runtime C++ inference, (50 m / L_eff) rescaling & terrain masking
 │   └── inv.hpp                 # Umbrella include
 ├── app/
 │   └── inv_app.cpp             # Standalone benchmark and CLI execution runner
-└── tests/
-    ├── CMakeLists.txt          # GoogleTest configuration
-    └── unittest_inv.cpp        # Mathematical verification test suite
+├── tests/
+│   ├── CMakeLists.txt          # GoogleTest configuration
+│   └── unittest_inv.cpp        # Mathematical verification test suite
+├── demo/                       # Static best-result WebGL2 + 2D HTML preview bundle
+└── python/                     # Training, evaluation, ONNX export & dashboard scripts
 ```
 
 ### Core C++ Class Interfaces
@@ -434,7 +421,7 @@ The Mod3D user interface exposes a modern **3D Neural Inversion Panel**:
 
 ## 9. Verification & Quality Standards
 
-1. **Analytical Kernel Parity**: The Nagy prism analytical kernel in `forward_kernel.hpp` is cross-verified against `pfld`'s facet kernel for a 12-facet cuboid, maintaining agreement within $< 10^{-12} \, \text{mGal}$.
-2. **Zhdanov Metric Monotonicity**: Unit tests confirm that $S_{MS}(\mathbf{m})$ and $S_{MGS}(\mathbf{m})$ monotonically decrease as models become more compact and piecewise-constant.
-3. **Memory Safety**: Strict value semantics, zero raw owning pointers, and standard layout structs ensuring cache-optimal vectorized execution.
-4. **Cross-Platform Compatibility**: Clean builds on macOS (Apple Silicon Metal / CoreML execution providers), Linux (CUDA / TensorRT), and Windows (DirectML).
+1. **Analytical Kernel Parity**: The Nagy prism analytical kernel in `forward_kernel.hpp` is cross-verified against `pfld`'s facet kernel for a 12-facet cuboid (agreement within $< 10^{-12} \, \text{mGal}$), and Python `TerrainGravityOperator` matches brute-force draped prisms within $< 1\%$.
+2. **Zhdanov Metric Monotonicity**: Unit tests confirm that $S_{MS}(\mathbf{m})$ and $S_{MGS}(\mathbf{m})$ match C++ `inv::FocusingEvaluator` definitions across resolutions and monotonically decrease as models become compact and blocky.
+3. **Python & ONNX Runtime Parity Suite (`.inv/python/test_inv_python.py`)**: 26 automated tests verifying `v1`–`v4` model bounds and terrain masking, `v4` coarse gravity residual feedback and occupancy gradient flow, static ONNX Opset 17 CPU parity (`rtol=1e-4, atol=1e-4`), multi-channel/`level_stride=2` forward equivalence, geological deformations (taper/fold/bend), correlated noise determinism, and HTML/RLE demo export.
+4. **Memory Safety & Cross-Platform Compatibility**: Strict value semantics and standard-layout C++20 structs (`unittest_inv.cpp`), plus training/inference verified across Apple Silicon MPS, CUDA, and CPU execution providers.
