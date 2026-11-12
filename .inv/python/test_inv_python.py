@@ -474,6 +474,9 @@ def test_showcase_and_16_sample_dashboard():
     html = build_dashboard_html()
     assert 'id="radView1"' in html and 'id="radView8"' in html and 'id="radView16"' in html
     assert 'radViewSingle' not in html and 'radViewAll8' not in html
+    assert 'data-theme="light"' in html and '[data-theme="dark"]' in html
+    assert 'id="btnThemeLight"' in html and 'id="btnThemeDark"' in html
+    assert 'function getThemePalette()' in html
 
     with tempfile.TemporaryDirectory() as tmp:
         mon = TrainingMonitor(tmp, gui=False)

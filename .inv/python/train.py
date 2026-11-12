@@ -80,29 +80,84 @@ def parse_args():
 
 def build_dashboard_html():
     return """<!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mod3D .inv — Interactive Voxel Training Monitor</title>
+<script>
+  try {
+    const savedTheme = localStorage.getItem('mod3d_dashboard_theme');
+    if (savedTheme === 'dark' || savedTheme === 'light') {
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    }
+  } catch (_) {}
+</script>
 <style>
-  :root {
-    --bg-dark: #0b0f19;
+  :root,
+  [data-theme="light"] {
+    color-scheme: light;
+    --bg-page: #f1f5f9;
+    --card-bg: #ffffff;
+    --control-bg: #ffffff;
+    --surface-inset: #f8fafc;
+    --border: #cbd5e1;
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --accent: #0284c7;
+    --accent-soft: rgba(2, 132, 199, 0.10);
+    --accent-border: rgba(2, 132, 199, 0.28);
+    --accent-glow: rgba(2, 132, 199, 0.28);
+    --accent-thumb-hover: #0369a1;
+    --green: #15803d;
+    --amber: #b45309;
+    --red: #dc2626;
+    --purple: #7c3aed;
+    --status-bg: #dcfce7;
+    --status-border: #86efac;
+    --btn-hover-bg: #e2e8f0;
+    --btn-active-bg: #0284c7;
+    --btn-active-fg: #ffffff;
+    --btn-active-border: #0369a1;
+    --slider-track: #cbd5e1;
+    --hover-pill-bg: #e2e8f0;
+    --kbd-bg: #e2e8f0;
+    --shadow-panel: 0 2px 10px rgba(15, 23, 42, 0.06);
+    --shadow-card: 0 2px 8px rgba(15, 23, 42, 0.05);
+  }
+  [data-theme="dark"] {
+    color-scheme: dark;
+    --bg-page: #0b0f19;
     --card-bg: #131c2e;
     --control-bg: #1a2538;
+    --surface-inset: #0f172a;
     --border: #24324d;
     --text-primary: #f8fafc;
     --text-secondary: #94a3b8;
     --accent: #38bdf8;
-    --accent-glow: rgba(56, 189, 248, 0.4);
+    --accent-soft: rgba(56, 189, 248, 0.15);
+    --accent-border: rgba(56, 189, 248, 0.30);
+    --accent-glow: rgba(56, 189, 248, 0.40);
+    --accent-thumb-hover: #7dd3fc;
     --green: #4ade80;
     --amber: #fbbf24;
     --red: #f87171;
     --purple: #c084fc;
+    --status-bg: #022c22;
+    --status-border: #065f46;
+    --btn-hover-bg: #24324d;
+    --btn-active-bg: #0284c7;
+    --btn-active-fg: #ffffff;
+    --btn-active-border: #38bdf8;
+    --slider-track: #24324d;
+    --hover-pill-bg: #1e293b;
+    --kbd-bg: #1e293b;
+    --shadow-panel: 0 4px 12px rgba(0, 0, 0, 0.35);
+    --shadow-card: 0 4px 14px rgba(0, 0, 0, 0.30);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    background-color: var(--bg-dark);
+    background-color: var(--bg-page);
     color: var(--text-primary);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     padding: 8px 14px;
@@ -110,6 +165,16 @@ def build_dashboard_html():
     flex-direction: column;
     align-items: center;
     min-height: 100vh;
+  }
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--btn-active-bg);
+  }
+  button:focus-visible,
+  select:focus-visible,
+  input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
   header {
     width: 100%;
@@ -123,15 +188,47 @@ def build_dashboard_html():
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
   }
-  h1 { font-size: 1.05rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; }
-  h1 span.tag { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.15); color: var(--accent); border: 1px solid rgba(56,189,248,0.3); font-weight: 600; text-transform: uppercase; }
+  h1 { font-size: 1.05rem; font-weight: 700; color: var(--accent); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  h1 span.tag { font-size: 0.65rem; padding: 2px 6px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); border: 1px solid var(--accent-border); font-weight: 600; text-transform: uppercase; }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .theme-switch {
+    display: inline-flex;
+    align-items: center;
+    background: var(--surface-inset);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .theme-opt {
+    background: transparent;
+    color: var(--text-secondary);
+    border: none;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s;
+    line-height: 1.4;
+  }
+  .theme-opt:hover { color: var(--text-primary); }
+  .theme-opt.active {
+    background: var(--btn-active-bg);
+    color: var(--btn-active-fg);
+  }
   .status-badge {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    background: #022c22;
+    background: var(--status-bg);
     color: var(--green);
-    border: 1px solid #065f46;
+    border: 1px solid var(--status-border);
     padding: 2px 8px;
     border-radius: 9999px;
     font-size: 0.72rem;
@@ -160,7 +257,7 @@ def build_dashboard_html():
     flex-wrap: wrap;
     align-items: center;
     gap: 10px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+    box-shadow: var(--shadow-panel);
     position: sticky;
     top: 6px;
     z-index: 100;
@@ -181,9 +278,9 @@ def build_dashboard_html():
     align-items: center;
     justify-content: center;
   }
-  .playback-btn:hover { background: #24324d; border-color: var(--accent); }
+  .playback-btn:hover { background: var(--btn-hover-bg); border-color: var(--accent); }
   .playback-btn:active { transform: translateY(1px); }
-  .playback-btn.active { background: #0284c7; color: #fff; border-color: #38bdf8; }
+  .playback-btn.active { background: var(--btn-active-bg); color: var(--btn-active-fg); border-color: var(--btn-active-border); }
   .slider-group {
     display: flex;
     align-items: center;
@@ -195,7 +292,7 @@ def build_dashboard_html():
     flex: 1;
     -webkit-appearance: none;
     appearance: none;
-    background: #24324d;
+    background: var(--slider-track);
     height: 6px;
     border-radius: 3px;
     outline: none;
@@ -212,7 +309,7 @@ def build_dashboard_html():
     box-shadow: 0 0 6px var(--accent-glow);
     transition: transform 0.1s, background 0.1s;
   }
-  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); background: #7dd3fc; }
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); background: var(--accent-thumb-hover); }
   input[type="range"]::-moz-range-thumb {
     width: 14px;
     height: 14px;
@@ -227,7 +324,7 @@ def build_dashboard_html():
     font-size: 0.8rem;
     font-weight: 700;
     color: var(--accent);
-    background: #0f172a;
+    background: var(--surface-inset);
     border: 1px solid var(--border);
     padding: 2px 8px;
     border-radius: 5px;
@@ -293,13 +390,13 @@ def build_dashboard_html():
     border-radius: 8px;
     padding: 8px 12px;
     margin-bottom: 8px;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    box-shadow: var(--shadow-card);
     display: flex;
     flex-direction: column;
     gap: 6px;
   }
   .profile-bar-card {
-    background: #0f172a;
+    background: var(--surface-inset);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 4px 8px;
@@ -325,7 +422,7 @@ def build_dashboard_html():
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.72rem;
     padding: 2px 8px;
-    background: #1e293b;
+    background: var(--hover-pill-bg);
     border: 1px solid var(--border);
     border-radius: 4px;
     color: var(--accent);
@@ -334,7 +431,7 @@ def build_dashboard_html():
     width: 100%;
     height: 38px;
     display: block;
-    background: #0f172a;
+    background: var(--surface-inset);
     border-radius: 4px;
   }
   .voxel-grid-card {
@@ -357,7 +454,7 @@ def build_dashboard_html():
   .overview-grid.grid-16 .sample-card-header { font-size: 0.68rem; }
   .overview-grid.grid-16 .sample-card-header span.tag-pill { font-size: 0.64rem; }
   .sample-card-item {
-    background: #0f172a;
+    background: var(--surface-inset);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 6px;
@@ -368,7 +465,7 @@ def build_dashboard_html():
     transition: border-color 0.15s, transform 0.1s;
   }
   .sample-card-item:hover { border-color: var(--accent); transform: translateY(-1px); }
-  .sample-card-item.selected { border-color: var(--accent); box-shadow: 0 0 8px rgba(56, 189, 248, 0.4); }
+  .sample-card-item.selected { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
   .sample-card-header {
     display: flex;
     justify-content: space-between;
@@ -404,10 +501,10 @@ def build_dashboard_html():
     aspect-ratio: 2 / 1;
     image-rendering: pixelated;
     border-radius: 3px;
-    background: #000;
+    background: var(--surface-inset);
   }
   .canvas-panel {
-    background: #0f172a;
+    background: var(--surface-inset);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 6px 8px;
@@ -436,7 +533,7 @@ def build_dashboard_html():
     aspect-ratio: 2 / 1;
     image-rendering: pixelated;
     border-radius: 4px;
-    background: #000;
+    background: var(--surface-inset);
     cursor: crosshair;
   }
   .colorbar-row {
@@ -489,7 +586,7 @@ def build_dashboard_html():
     text-align: center;
   }
   kbd {
-    background: #1e293b;
+    background: var(--kbd-bg);
     border: 1px solid var(--border);
     border-radius: 3px;
     padding: 1px 4px;
@@ -502,7 +599,13 @@ def build_dashboard_html():
 
 <header>
   <h1>Mod3D .inv &mdash; Swin 3D Voxel Inversion Monitor <span class="tag">Direct Numerical Voxel Rendering</span></h1>
-  <div class="status-badge"><span class="status-dot"></span> <span id="statusText">LIVE DATA STREAM</span></div>
+  <div class="header-actions">
+    <div class="theme-switch" role="group" aria-label="Color theme">
+      <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
+      <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
+    </div>
+    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">LIVE DATA STREAM</span></div>
+  </div>
 </header>
 
 <div class="controls-panel">
@@ -534,7 +637,7 @@ def build_dashboard_html():
   </select>
 
   <div class="toggle-group">
-    <div style="display:flex;align-items:center;background:#0f172a;border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Number of validation samples displayed">
+    <div style="display:flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Number of validation samples displayed">
       <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblView1" title="Single side-by-side view with Truth, Prediction, and Difference">
         <input type="radio" name="viewMode" value="1" id="radView1" checked style="cursor:pointer;"> 1
       </label>
@@ -608,8 +711,8 @@ def build_dashboard_html():
     <h4>
       <span>Loss &amp; Data Misfit</span>
       <span style="display:flex;align-items:center;gap:6px;">
-        <span style="display:inline-flex;align-items:center;background:#0f172a;border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
-          <label id="lblLossLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:#0284c7;color:#fff;" title="Logarithmic Y axis">
+        <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
+          <label id="lblLossLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Logarithmic Y axis">
             <input type="radio" name="lossScale" value="log" id="radLossLog" checked style="display:none;">Log
           </label>
           <label id="lblLossLin" style="cursor:pointer;padding:1px 5px;border-radius:3px;" title="Linear Y axis">
@@ -698,6 +801,8 @@ def build_dashboard_html():
   const btnPlay = document.getElementById('btnPlay');
   const btnNext = document.getElementById('btnNext');
   const btnLatest = document.getElementById('btnLatest');
+  const btnThemeLight = document.getElementById('btnThemeLight');
+  const btnThemeDark = document.getElementById('btnThemeDark');
   const speedSelect = document.getElementById('speedSelect');
   const chkFollowLive = document.getElementById('chkFollowLive');
   const chkShowDiff = document.getElementById('chkShowDiff');
@@ -717,6 +822,78 @@ def build_dashboard_html():
   const cvsDiff = document.getElementById('cvsDiff');
   const cvsColorbar = document.getElementById('cvsColorbar');
 
+  function isDarkTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'dark';
+  }
+
+  function getThemePalette() {
+    if (isDarkTheme()) {
+      return {
+        surfaceBg: '#0f172a',
+        placeholderBg: '#1e293b',
+        placeholderBorder: 'rgba(255,255,255,0.08)',
+        textMuted: '#94a3b8',
+        axisText: '#64748b',
+        axisLine: '#334155',
+        gridLine: '#1e293b',
+        scrubber: '#f8fafc',
+        voxelBorder: 'rgba(255,255,255,0.10)',
+        zeroLine: 'rgba(255,255,255,0.15)',
+        hoverGuide: 'rgba(255,255,255,0.70)',
+        profileFill: 'rgba(56,189,248,0.15)',
+        accent: '#38bdf8',
+        terrainLine: '#0f172a',
+        airFill: 'rgba(100,116,139,0.85)',
+        lossColor: '#38bdf8',
+        valColor: '#4ade80',
+        misfitColor: '#c084fc',
+        dzColor: '#f87171',
+      };
+    }
+    return {
+      surfaceBg: '#f8fafc',
+      placeholderBg: '#f1f5f9',
+      placeholderBorder: 'rgba(15,23,42,0.14)',
+      textMuted: '#475569',
+      axisText: '#475569',
+      axisLine: '#94a3b8',
+      gridLine: '#e2e8f0',
+      scrubber: '#0f172a',
+      voxelBorder: 'rgba(15,23,42,0.16)',
+      zeroLine: 'rgba(15,23,42,0.20)',
+      hoverGuide: 'rgba(15,23,42,0.65)',
+      profileFill: 'rgba(2,132,199,0.14)',
+      accent: '#0284c7',
+      terrainLine: '#0f172a',
+      airFill: 'rgba(148,163,184,0.72)',
+      lossColor: '#0284c7',
+      valColor: '#15803d',
+      misfitColor: '#7c3aed',
+      dzColor: '#dc2626',
+    };
+  }
+
+  function applyTheme(theme, redraw) {
+    const t = theme === 'dark' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('mod3d_dashboard_theme', t); } catch (_) {}
+    if (btnThemeLight) {
+      btnThemeLight.classList.toggle('active', t === 'light');
+      btnThemeLight.setAttribute('aria-pressed', String(t === 'light'));
+    }
+    if (btnThemeDark) {
+      btnThemeDark.classList.toggle('active', t === 'dark');
+      btnThemeDark.setAttribute('aria-pressed', String(t === 'dark'));
+    }
+    if (redraw) {
+      drawColorbar();
+      renderAllCharts();
+      renderCurrentVoxelData();
+      renderProfileCanvas();
+      if (currentIndex >= 0) updateChartScrubbers(currentIndex);
+    }
+  }
+
   function init() {
     setupControls();
     drawColorbar();
@@ -725,6 +902,10 @@ def build_dashboard_html():
   }
 
   function setupControls() {
+    applyTheme(isDarkTheme() ? 'dark' : 'light', false);
+    if (btnThemeLight) btnThemeLight.addEventListener('click', () => applyTheme('light', true));
+    if (btnThemeDark) btnThemeDark.addEventListener('click', () => applyTheme('dark', true));
+
     slider.addEventListener('input', e => {
       stopPlayback();
       showEpoch(parseInt(e.target.value, 10) - 1);
@@ -1024,14 +1205,15 @@ def build_dashboard_html():
   }
 
   function drawPlaceholder(canvas, msg) {
+    const pal = getThemePalette();
     const ctx = canvas.getContext('2d');
     const cw = canvas.width, ch = canvas.height;
     ctx.clearRect(0, 0, cw, ch);
-    ctx.fillStyle = "#1e293b";
+    ctx.fillStyle = pal.placeholderBg;
     ctx.fillRect(0, 0, cw, ch);
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.strokeStyle = pal.placeholderBorder;
     ctx.strokeRect(0, 0, cw, ch);
-    ctx.fillStyle = "#94a3b8";
+    ctx.fillStyle = pal.textMuted;
     ctx.font = "12px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(msg, cw / 2, ch / 2);
@@ -1172,6 +1354,7 @@ def build_dashboard_html():
   }
 
   function drawVoxelSection(canvas, matrix, terrain, vmax, hCell, isDiff) {
+    const pal = getThemePalette();
     const ctx = canvas.getContext('2d');
     const cw = canvas.width, ch = canvas.height;
     const nz = matrix.length, nx = matrix[0].length;
@@ -1200,7 +1383,7 @@ def build_dashboard_html():
       }
       ctx.lineTo(cw, 0);
       ctx.closePath();
-      ctx.fillStyle = "rgba(100, 116, 139, 0.85)";
+      ctx.fillStyle = pal.airFill;
       ctx.fill();
 
       // Terrain surface line
@@ -1211,20 +1394,20 @@ def build_dashboard_html():
         if (ix === 0) ctx.moveTo(0, ty);
         else ctx.lineTo((ix + 0.5) * cellW, ty);
       }
-      ctx.strokeStyle = "#0f172a";
+      ctx.strokeStyle = pal.terrainLine;
       ctx.lineWidth = 2.0;
       ctx.stroke();
     }
 
     // 3. Grid line indicators & depth marks
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.strokeStyle = pal.voxelBorder;
     ctx.lineWidth = 1.0;
     ctx.strokeRect(0, 0, cw, ch);
 
     // 4. Hover crosshair & cell highlight
     if (hCell) {
       const { ix, iz } = hCell;
-      ctx.strokeStyle = "#38bdf8";
+      ctx.strokeStyle = pal.accent;
       ctx.lineWidth = 1.5;
       ctx.strokeRect(ix * cellW, iz * cellH, cellW, cellH);
 
@@ -1234,21 +1417,26 @@ def build_dashboard_html():
       ctx.lineTo((ix + 0.5) * cellW, ch);
       ctx.moveTo(0, (iz + 0.5) * cellH);
       ctx.lineTo(cw, (iz + 0.5) * cellH);
-      ctx.strokeStyle = "rgba(56, 189, 248, 0.6)";
+      ctx.strokeStyle = pal.accent;
+      ctx.globalAlpha = 0.6;
       ctx.stroke();
+      ctx.globalAlpha = 1.0;
       ctx.setLineDash([]);
     }
   }
 
   function renderProfileCanvas() {
+    const pal = getThemePalette();
     const meta = getMeta();
     const sm = getActiveSampleMeta();
     const ctx = cvsProfile.getContext('2d');
     const w = cvsProfile.width, h = cvsProfile.height;
     const prof = (sm && sm.obs_profile) || (meta && meta.obs_profile) || [];
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = pal.surfaceBg;
+    ctx.fillRect(0, 0, w, h);
     if (!prof.length) {
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = "rgba(100, 116, 139, 0.4)";
+      ctx.fillStyle = pal.textMuted;
       ctx.font = "11px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
       ctx.textAlign = "center";
       ctx.fillText("Gravity traverse profile available on new training runs", w / 2, h / 2 + 4);
@@ -1257,8 +1445,6 @@ def build_dashboard_html():
     const N = prof.length;
     const padL = 40, padR = 20, padT = 8, padB = 18;
     const pw = w - padL - padR, ph = h - padT - padB;
-
-    ctx.clearRect(0, 0, w, h);
 
     let pMin = Math.min(0, Math.min(...prof));
     let pMax = Math.max(0, Math.max(...prof));
@@ -1270,7 +1456,7 @@ def build_dashboard_html():
 
     // Zero line
     const yZero = yCoord(0);
-    ctx.strokeStyle = "rgba(255,255,255,0.15)";
+    ctx.strokeStyle = pal.zeroLine;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(padL, yZero);
@@ -1283,7 +1469,7 @@ def build_dashboard_html():
     for (let i = 0; i < N; ++i) ctx.lineTo(xCoord(i), yCoord(prof[i]));
     ctx.lineTo(xCoord(N - 1), yZero);
     ctx.closePath();
-    ctx.fillStyle = "rgba(56, 189, 248, 0.15)";
+    ctx.fillStyle = pal.profileFill;
     ctx.fill();
 
     // Line curve
@@ -1293,12 +1479,12 @@ def build_dashboard_html():
       if (i === 0) ctx.moveTo(cx, cy);
       else ctx.lineTo(cx, cy);
     }
-    ctx.strokeStyle = "#38bdf8";
+    ctx.strokeStyle = pal.accent;
     ctx.lineWidth = 2.0;
     ctx.stroke();
 
     // Axis labels
-    ctx.fillStyle = "#64748b";
+    ctx.fillStyle = pal.axisText;
     ctx.font = "9px monospace";
     ctx.textAlign = "right";
     ctx.fillText(pMax.toFixed(1) + " mGal", padL - 4, padT + 8);
@@ -1307,7 +1493,7 @@ def build_dashboard_html():
     // Hover indicator line
     if (hoverCell) {
       const hx = xCoord(hoverCell.ix);
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.strokeStyle = pal.hoverGuide;
       ctx.lineWidth = 1;
       ctx.setLineDash([2, 2]);
       ctx.beginPath();
@@ -1380,17 +1566,18 @@ def build_dashboard_html():
 
   // --- SVG Convergence Charts ---
   function renderAllCharts() {
+    const pal = getThemePalette();
     renderSvgChart('svgLoss', [
-      { key: 'train_loss', color: '#38bdf8', label: 'Train Loss' },
-      { key: 'val_loss', color: '#4ade80', label: 'Val Loss' },
-      { key: 'data_rel_misfit', color: '#c084fc', label: 'Data Misfit' }
+      { key: 'train_loss', color: pal.lossColor, label: 'Train Loss' },
+      { key: 'val_loss', color: pal.valColor, label: 'Val Loss' },
+      { key: 'data_rel_misfit', color: pal.misfitColor, label: 'Data Misfit' }
     ], null, null, lossLogScale);
     renderSvgChart('svgIoU', [
-      { key: 'iou', color: '#4ade80', label: '3D IoU' },
-      { key: 'amp_ratio', color: '#38bdf8', label: 'Amp Ratio' }
+      { key: 'iou', color: pal.valColor, label: '3D IoU' },
+      { key: 'amp_ratio', color: pal.lossColor, label: 'Amp Ratio' }
     ], 0.0, 1.0, false);
     renderSvgChart('svgDz', [
-      { key: 'centroid_dz', color: '#f87171', label: '|dz| [m]' }
+      { key: 'centroid_dz', color: pal.dzColor, label: '|dz| [m]' }
     ], null, null, false);
   }
 
@@ -1455,26 +1642,27 @@ def build_dashboard_html():
       return padT + ph - ((lv - lMin) / (lMax - lMin)) * ph;
     };
 
+    const pal = getThemePalette();
     let gridSvg = '';
     if (useLog) {
       const k0 = Math.ceil(lMin + 1e-6), k1 = Math.floor(lMax - 1e-6);
       for (let k = k0; k <= k1; ++k) {
         const tick = Math.pow(10, k);
         const gy = yCoord(tick).toFixed(1);
-        gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="#1e293b" stroke-width="1" stroke-dasharray="2,2"/>`;
+        gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="${pal.gridLine}" stroke-width="1" stroke-dasharray="2,2"/>`;
         if (gy > padT + 14 && gy < padT + ph - 10) {
-          gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="#475569" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, true)}</text>`;
+          gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="${pal.axisText}" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, true)}</text>`;
         }
       }
     }
 
     let content = `
-      <rect width="${w}" height="${h}" fill="#0f172a" rx="4"/>
+      <rect width="${w}" height="${h}" fill="${pal.surfaceBg}" stroke="${pal.gridLine}" stroke-width="1" rx="4"/>
       ${gridSvg}
-      <line x1="${padL}" y1="${padT + ph}" x2="${w - padR}" y2="${padT + ph}" stroke="#334155" stroke-width="1"/>
-      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="#334155" stroke-width="1"/>
-      <text x="${padL - 4}" y="${padT + 9}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${formatChartTick(yMax, useLog)}</text>
-      <text x="${padL - 4}" y="${padT + ph}" fill="#64748b" font-size="9" text-anchor="end" font-family="monospace">${formatChartTick(yMin, useLog)}</text>
+      <line x1="${padL}" y1="${padT + ph}" x2="${w - padR}" y2="${padT + ph}" stroke="${pal.axisLine}" stroke-width="1"/>
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + ph}" stroke="${pal.axisLine}" stroke-width="1"/>
+      <text x="${padL - 4}" y="${padT + 9}" fill="${pal.axisText}" font-size="9" text-anchor="end" font-family="monospace">${formatChartTick(yMax, useLog)}</text>
+      <text x="${padL - 4}" y="${padT + ph}" fill="${pal.axisText}" font-size="9" text-anchor="end" font-family="monospace">${formatChartTick(yMin, useLog)}</text>
     `;
 
     // Polylines
@@ -1491,7 +1679,7 @@ def build_dashboard_html():
 
     // Vertical Scrubber Line
     const curX = xCoord(currentIndex);
-    content += `<line id="${svgId}_scrubber" x1="${curX}" y1="${padT}" x2="${curX}" y2="${padT + ph}" stroke="#f8fafc" stroke-width="1.5" stroke-dasharray="3,3"/>`;
+    content += `<line id="${svgId}_scrubber" x1="${curX}" y1="${padT}" x2="${curX}" y2="${padT + ph}" stroke="${pal.scrubber}" stroke-width="1.5" stroke-dasharray="3,3"/>`;
 
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     svg.innerHTML = content;
