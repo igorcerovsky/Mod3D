@@ -344,7 +344,7 @@ def build_dashboard_html(demo_mode=False):
     top: 6px;
     z-index: 100;
   }
-  .btn-group { display: flex; align-items: center; gap: 3px; }
+  .btn-group { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; flex-shrink: 0; }
   .playback-btn {
     background: var(--card-bg);
     color: var(--text-primary);
@@ -367,11 +367,13 @@ def build_dashboard_html(demo_mode=False):
     display: flex;
     align-items: center;
     gap: 8px;
-    flex: 1;
-    min-width: 180px;
+    flex: 1 1 260px;
+    min-width: min(260px, 100%);
   }
+  .slider-group > span:first-child { white-space: nowrap; flex-shrink: 0; }
   input[type="range"] {
     flex: 1;
+    min-width: 48px;
     -webkit-appearance: none;
     appearance: none;
     background: var(--slider-track);
@@ -411,10 +413,12 @@ def build_dashboard_html(demo_mode=False):
     padding: 2px 8px;
     border-radius: 5px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .toggle-group {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 10px;
     font-size: 0.78rem;
     color: var(--text-secondary);
@@ -430,6 +434,7 @@ def build_dashboard_html(demo_mode=False):
     font-size: 0.76rem;
     cursor: pointer;
     outline: none;
+    flex-shrink: 0;
   }
 
   /* Metrics Grid */
