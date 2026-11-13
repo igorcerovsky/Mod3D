@@ -974,6 +974,45 @@ def test_v5_onnx_export_and_parity():
         assert os.path.exists(onnx_p)
 
 
+def test_v52_unit_and_instance_iou_loss():
+    from losses import _interior_edt_proxy, _internal_unit_contact_mask
+
+    crit = CompoundInversionLoss(lambda_data=0.0, lambda_cls=0.0, lambda_coarse=0.0, lambda_nll=0.0)
+
+    # 1. Two-body scene: large strong air cavity (-2.67, 8x8x6) + small weak sediment body (-0.25, 4x4x4)
+    m_true = torch.zeros(1, 1, 16, 32, 32)
+    m_true[:, :, 2:8, 4:12, 4:12] = -2.67
+    m_true[:, :, 6:10, 20:24, 20:24] = -0.25
+
+    _, mp_exact = crit(m_true, m_true)
+    assert mp_exact["loss_unit_iou"] < 0.05 and mp_exact["loss_sup"] == 0.0
+
+    # Missing the weak sediment body must substantially penalize loss_unit_iou (not drowned by cavity)
+    m_miss_weak = m_true.clone()
+    m_miss_weak[:, :, 6:10, 20:24, 20:24] = 0.0
+    _, mp_miss = crit(m_miss_weak, m_true)
+    assert mp_miss["loss_unit_iou"] - mp_exact["loss_unit_iou"] > 0.20
+
+    # 2. Abutting geological units (+1.50 ore directly touching +0.40 mafic): internal contact splits EDT
+    m_abut = torch.zeros(1, 1, 16, 32, 32)
+    m_abut[:, :, 4:12, 8:16, 8:16] = 1.50
+    m_abut[:, :, 4:12, 16:24, 8:16] = 0.40
+    fg = (m_abut != 0).float()
+    c_mask = _internal_unit_contact_mask(m_abut, fg)
+    assert float(c_mask[:, :, 4:12, 15:17, 8:16].min()) == 1.0
+    edt = _interior_edt_proxy(fg, steps=4, contact_mask=c_mask)
+    core_edt = float(edt[0, 0, 8, 12, 12])
+    iface_edt = float(edt[0, 0, 8, 15, 12])
+    assert iface_edt < core_edt
+
+    _, mp_abut_exact = crit(m_abut, m_abut)
+    assert mp_abut_exact["loss_sup"] == 0.0
+    m_abut_miss_mafic = m_abut.clone()
+    m_abut_miss_mafic[:, :, 4:12, 16:24, 8:16] = 0.0
+    _, mp_abut_miss = crit(m_abut_miss_mafic, m_abut)
+    assert mp_abut_miss["loss_unit_iou"] - mp_abut_exact["loss_unit_iou"] > 0.20
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:
