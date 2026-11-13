@@ -806,6 +806,10 @@ __PLAYBACK_CONTROLS_HTML__
         <input type="radio" name="renderMode" value="3d" id="radRender3D" style="cursor:pointer;"> 3D
       </label>
     </div>
+    <div style="display:flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Palette mode for 2D cross-sections and 3D volumes">
+      <button type="button" class="layout-btn active" id="btnTopColormapPhysics" title="Continuous coolwarm relative density contrast (&plusmn;&Delta;&rho;)">Physics</button>
+      <button type="button" class="layout-btn" id="btnTopColormapLitho" title="Discrete geological rock &amp; cavity classes">Lithology</button>
+    </div>
     <div class="layout-picker" id="layoutPicker" title="Configurable grid layout (Rows &times; Columns) &mdash; presets or custom dimensions">
       <button type="button" class="layout-btn active" data-layout-preset="1x1" title="Single 1&times;1 view (Truth, Prediction, and optional Difference)">1</button>
       <button type="button" class="layout-btn" data-layout-preset="2x2" title="2 rows &times; 2 columns (4 scenes)">2&times;2</button>
@@ -851,6 +855,10 @@ __METRICS_HTML__
       <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
       <button type="button" class="vol3d-btn active" id="btnRayComposite" title="Shaded 3D density compositing">Volume</button>
       <button type="button" class="vol3d-btn" id="btnRayMip" title="Maximum |density| intensity projection (reveals weak halos)">MIP</button>
+      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <span style="font-weight:600;" title="Color palette for 2D cross-sections and 3D volumes">Color:</span>
+      <button type="button" class="vol3d-btn active" id="btnColormapCoolwarm" title="Continuous coolwarm relative density contrast (&plusmn;&Delta;&rho;)">Physics</button>
+      <button type="button" class="vol3d-btn" id="btnColormapLitho" title="Discrete geological rock &amp; cavity classes">Lithology</button>
 __VOL3D_EP_HTML__
     </div>
     <div class="vol3d-group">
@@ -893,11 +901,21 @@ __VOL3D_EP_HTML__
 
   <div class="overview-grid" id="overviewGrid" style="display:none;"></div>
 
-  <div class="colorbar-row">
+  <div class="colorbar-row" id="colorBarRow">
     <span id="cbarMin">-0.50</span>
     <canvas id="cvsColorbar" width="260" height="12"></canvas>
     <span id="cbarMax">+0.50</span>
-    <span style="margin-left:6px;color:var(--text-secondary);">g/cm&sup3; (Blue: Cavity / Negative contrast &bull; White: 0 &bull; Red: Dense rock)</span>
+    <span id="cbarCaption" style="margin-left:6px;color:var(--text-secondary);">g/cm&sup3; (Blue: Cavity / Negative contrast &bull; White: 0 &bull; Red: Dense rock)</span>
+  </div>
+  <div class="colorbar-row" id="lithoLegendRow" style="display:none;flex-wrap:wrap;gap:8px 12px;font-size:11px;align-items:center;">
+    <span style="font-weight:600;color:var(--text-primary);">Lithology:</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#1a237e;border:1px solid rgba(255,255,255,0.2);"></span> Air Cavity (&minus;2.67)</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#0288d1;"></span> Water Void (&minus;1.67)</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#8d6e63;"></span> Coal / Soft Clay</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#e0c29f;"></span> Sediment / Waste</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#455a64;opacity:0.35;border:1px solid var(--border);"></span> Host (0.0)</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#2e7d32;"></span> Mafic / Intrusion</span>
+    <span style="display:inline-flex;align-items:center;gap:4px;"><span style="display:inline-block;width:12px;height:12px;border-radius:2px;background:#d84315;"></span> High-Grade Ore</span>
   </div>
   <div class="colorbar-row" id="bouguerBarRow" style="display:none;">
     <span id="bbarMin">Min</span>
@@ -1036,6 +1054,14 @@ __DATA_SCRIPTS_HTML__
   const cvsPred = document.getElementById('cvsPred');
   const cvsDiff = document.getElementById('cvsDiff');
   const cvsColorbar = document.getElementById('cvsColorbar');
+  const colorBarRow = document.getElementById('colorBarRow');
+  const lithoLegendRow = document.getElementById('lithoLegendRow');
+  const cbarCaption = document.getElementById('cbarCaption');
+  const btnColormapCoolwarm = document.getElementById('btnColormapCoolwarm');
+  const btnColormapLitho = document.getElementById('btnColormapLitho');
+  const btnTopColormapPhysics = document.getElementById('btnTopColormapPhysics');
+  const btnTopColormapLitho = document.getElementById('btnTopColormapLitho');
+  let colormapMode = 'coolwarm'; // 'coolwarm' | 'lithology'
   const bouguerBarRow = document.getElementById('bouguerBarRow');
   const cvsBouguerBar = document.getElementById('cvsBouguerBar');
   const bbarMin = document.getElementById('bbarMin');
@@ -1263,6 +1289,27 @@ __DATA_SCRIPTS_HTML__
         scheduleVol3dRender();
       });
     }
+    function setColormapMode(mode) {
+      colormapMode = mode === 'lithology' ? 'lithology' : 'coolwarm';
+      try { localStorage.setItem('mod3d_dashboard_colormap_mode', colormapMode); } catch (_) {}
+      if (btnColormapCoolwarm) btnColormapCoolwarm.classList.toggle('active', colormapMode === 'coolwarm');
+      if (btnColormapLitho) btnColormapLitho.classList.toggle('active', colormapMode === 'lithology');
+      if (btnTopColormapPhysics) btnTopColormapPhysics.classList.toggle('active', colormapMode === 'coolwarm');
+      if (btnTopColormapLitho) btnTopColormapLitho.classList.toggle('active', colormapMode === 'lithology');
+      if (colorBarRow) colorBarRow.style.display = colormapMode === 'lithology' ? 'none' : 'flex';
+      if (lithoLegendRow) lithoLegendRow.style.display = colormapMode === 'lithology' ? 'flex' : 'none';
+      renderCurrentVoxelData();
+      if (renderMode === '3d') scheduleVol3dRender();
+    }
+    if (btnColormapCoolwarm) btnColormapCoolwarm.addEventListener('click', () => setColormapMode('coolwarm'));
+    if (btnColormapLitho) btnColormapLitho.addEventListener('click', () => setColormapMode('lithology'));
+    if (btnTopColormapPhysics) btnTopColormapPhysics.addEventListener('click', () => setColormapMode('coolwarm'));
+    if (btnTopColormapLitho) btnTopColormapLitho.addEventListener('click', () => setColormapMode('lithology'));
+    try {
+      const savedCm = localStorage.getItem('mod3d_dashboard_colormap_mode');
+      if (savedCm === 'lithology' || savedCm === 'coolwarm') setColormapMode(savedCm);
+    } catch (_) {}
+
     document.querySelectorAll('[data-field-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
         const mode = btn.dataset.fieldMode || 'inv';
@@ -1842,6 +1889,26 @@ __DATA_SCRIPTS_HTML__
     return `rgb(${r},${g},${b})`;
   }
 
+  function getLithologyColor(val) {
+    // 7 Physical Lithology Classes strictly calibrated in Mod3D:
+    // 1: Air Cavity: exact -2.67 -> Deep Navy
+    // 2: Water Cavity: exact -1.67 -> Bright Cyan / Deep Sky
+    // 3: Light Rock / Coal / Porous Clay: [-1.55, -0.85] -> Warm Charcoal / Amber Brown
+    // 4: Sediments / Waste: [-0.80, -0.10] -> Warm Buff / Khaki Sandstone
+    // 0: Host Rock Background: 0.0 -> Light Translucent Slate / Off-white
+    // 5: Mafic / Intrusions / Skarn: [+0.15, +0.75] -> Forest / Olive Green
+    // 6: High-Grade Mineral Ore: [+0.80, +1.85] -> Vivid Crimson / Ore Red
+    if (val <= -2.10) return 'rgb(26,35,126)';     // Air Void (nominal -2.67)
+    if (val <= -1.60) return 'rgb(2,136,209)';     // Water Void (nominal -1.67)
+    if (val <= -0.82) return 'rgb(141,110,99)';    // Coal / Soft Clay
+    if (val <= -0.05) return 'rgb(224,194,159)';   // Sediments / Waste
+    if (val < 0.10) {
+      return isDarkTheme() ? 'rgb(30,41,59)' : 'rgb(241,245,249)'; // Neutral Host Background
+    }
+    if (val < 0.78) return 'rgb(46,125,50)';       // Mafic / Ultramafic
+    return 'rgb(216,67,21)';                       // High-Grade Ore
+  }
+
   function bouguerMod3dColorJs(tNorm) {
     const pegs = [
       [0.0, 0.0, 153.0 / 255.0],
@@ -2183,6 +2250,7 @@ uniform int uIsMip;
 uniform int uShowTerrain;
 uniform int uShowSlice;
 uniform int uSurfaceMode;
+uniform int uColormapMode;
 uniform int uSteps;
 
 vec3 worldToTex(vec3 p) {
@@ -2206,6 +2274,16 @@ vec3 coolwarmColor(float u) {
   }
   vec3 posC = vec3(165.0 / 255.0, 0.0, 38.0 / 255.0);
   return mix(zeroC, posC, clamp(u, 0.0, 1.0));
+}
+
+vec3 lithologyColor(float valPhys) {
+  if (valPhys <= -2.10) return vec3(26.0 / 255.0, 35.0 / 255.0, 126.0 / 255.0);   // Air Void (Navy)
+  if (valPhys <= -1.60) return vec3(2.0 / 255.0, 136.0 / 255.0, 209.0 / 255.0);   // Water Void (Cyan)
+  if (valPhys <= -0.82) return vec3(141.0 / 255.0, 110.0 / 255.0, 99.0 / 255.0);  // Coal / Soft Clay
+  if (valPhys <= -0.05) return vec3(224.0 / 255.0, 194.0 / 255.0, 159.0 / 255.0); // Sediments / Waste
+  if (valPhys < 0.10) return vec3(241.0 / 255.0, 245.0 / 255.0, 249.0 / 255.0);  // Host Background
+  if (valPhys < 0.78) return vec3(46.0 / 255.0, 125.0 / 255.0, 50.0 / 255.0);     // Mafic Intrusion
+  return vec3(216.0 / 255.0, 67.0 / 255.0, 21.0 / 255.0);                          // High-Grade Ore
 }
 
 // Mod3D Bouguer gravity color table (CTBL_FLD / gravPegs):
@@ -2446,7 +2524,9 @@ void main() {
     float baseA = clamp(pow(normS, 1.15) * uOpacity * 0.48, 0.0, 0.96);
     float stepA = 1.0 - pow(1.0 - baseA, dt * 34.0);
 
-    vec3 col = coolwarmColor(val);
+    vec3 col = (uColormapMode == 1 && uIsDiff == 0)
+      ? lithologyColor(val * uVmaxDisplay)
+      : coolwarmColor(val);
     // Gradient shading along |val|
     float gx = abs(readVal(uvw + vec3(uTexelStep.x, 0.0, 0.0))) - abs(readVal(uvw - vec3(uTexelStep.x, 0.0, 0.0)));
     float gy = abs(readVal(uvw + vec3(0.0, uTexelStep.y, 0.0))) - abs(readVal(uvw - vec3(0.0, uTexelStep.y, 0.0)));
@@ -2470,7 +2550,10 @@ void main() {
     float sM = clamp((mipMaxAbs - uThresh) / max(0.05, 1.0 - uThresh), 0.0, 1.0);
     float aM = clamp(pow(sM, 0.85) * min(1.0, uOpacity * 0.85), 0.0, 0.98);
     float wM = aM * (1.0 - accumAlpha);
-    accumCol += coolwarmColor(mipVal) * wM;
+    vec3 cM = (uColormapMode == 1 && uIsDiff == 0)
+      ? lithologyColor(mipVal * uVmaxDisplay)
+      : coolwarmColor(mipVal);
+    accumCol += cM * wM;
     accumAlpha += wM;
   }
 
@@ -2578,7 +2661,7 @@ void main() {
       'uVol', 'uVolRef', 'uTerrain', 'uField', 'uCamPos', 'uCamRight', 'uCamUp', 'uCamFwd',
       'uTanHalfFov', 'uAspect', 'uBgColor', 'uBoxColor', 'uAccentColor', 'uTerrRange',
       'uTexelStep', 'uVmaxA', 'uVmaxB', 'uVmaxDisplay', 'uThresh', 'uOpacity',
-      'uSliceY', 'uIsDiff', 'uIsMip', 'uShowTerrain', 'uShowSlice', 'uSurfaceMode', 'uSteps'
+      'uSliceY', 'uIsDiff', 'uIsMip', 'uShowTerrain', 'uShowSlice', 'uSurfaceMode', 'uColormapMode', 'uSteps'
     ].forEach(name => { locs[name] = gl.getUniformLocation(prog, name); });
 
     gl3d = {
@@ -2727,6 +2810,7 @@ void main() {
     gl.uniform1i(L.uShowTerrain, (vol3dOpts.showTerrain && terrBytes) ? 1 : 0);
     gl.uniform1i(L.uShowSlice, vol3dOpts.showSlice ? 1 : 0);
     gl.uniform1i(L.uSurfaceMode, surfaceMode);
+    gl.uniform1i(L.uColormapMode, colormapMode === 'lithology' ? 1 : 0);
     gl.uniform1i(L.uSteps, steps || 112);
 
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -3171,9 +3255,11 @@ void main() {
     ctx.clearRect(0, 0, cw, ch);
 
     // 1. Draw raw numerical voxel cells
+    const useLitho = (colormapMode === 'lithology' && !isDiff);
     for (let iz = 0; iz < nz; ++iz) {
       for (let ix = 0; ix < nx; ++ix) {
-        ctx.fillStyle = getCoolwarmColor(matrix[iz][ix], vmax);
+        const v = matrix[iz][ix];
+        ctx.fillStyle = useLitho ? getLithologyColor(v) : getCoolwarmColor(v, vmax);
         ctx.fillRect(ix * cellW, iz * cellH, cellW + 0.5, cellH + 0.5);
       }
     }
@@ -3391,12 +3477,25 @@ void main() {
     const terrM = terr ? Math.round(terr[ix]) : 0;
     const isAir = zM < terrM;
 
+    function getLithologyName(val) {
+      if (val <= -2.10) return 'Air Void (-2.67)';
+      if (val <= -1.60) return 'Water Void (-1.67)';
+      if (val <= -0.82) return 'Coal / Soft Clay';
+      if (val <= -0.05) return 'Sediment / Waste';
+      if (val < 0.10) return 'Host Rock (0.0)';
+      if (val < 0.78) return 'Mafic / Intrusion';
+      return 'High-Grade Ore';
+    }
+
     if (isAir) {
       voxelHoverPill.textContent = `X = ${xKm} km | Depth = ${zM} m (AIR above relief: surface at ${terrM} m)`;
     } else if (!pSlice.length) {
-      voxelHoverPill.textContent = `X = ${xKm} km, Depth = ${zM} m | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3`;
+      const lithoTag = (colormapMode === 'lithology') ? ` [${getLithologyName(tVal)}]` : '';
+      voxelHoverPill.textContent = `X = ${xKm} km, Depth = ${zM} m | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3${lithoTag}`;
     } else {
-      voxelHoverPill.textContent = `X = ${xKm} km, Depth = ${zM} m | Pred: ${pVal > 0 ? '+' : ''}${pVal.toFixed(3)} g/cm\u00b3 | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3 | Diff: ${diffVal > 0 ? '+' : ''}${diffVal.toFixed(3)}`;
+      const pLitho = (colormapMode === 'lithology') ? ` [${getLithologyName(pVal)}]` : '';
+      const tLitho = (colormapMode === 'lithology') ? ` [${getLithologyName(tVal)}]` : '';
+      voxelHoverPill.textContent = `X = ${xKm} km, Depth = ${zM} m | Pred: ${pVal > 0 ? '+' : ''}${pVal.toFixed(3)} g/cm\u00b3${pLitho} | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3${tLitho} | Diff: ${diffVal > 0 ? '+' : ''}${diffVal.toFixed(3)}`;
     }
 
     const obsProf = (sm && sm.obs_profile) || meta.obs_profile;
