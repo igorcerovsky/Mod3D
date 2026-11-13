@@ -118,11 +118,16 @@ class CompoundInversionLoss(nn.Module):
     """
 
     def __init__(self, lambda_data=0.25, lambda_ms=0.05, lambda_cls=0.25, body_boost=9.0,
-                 e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None):
+                 e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None,
+                 lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08):
         super().__init__()
         self.lambda_data, self.lambda_ms, self.lambda_cls = lambda_data, lambda_ms, lambda_cls
         self.body_boost, self.e_rel = body_boost, e_rel
         self.depth_boost, self.halo_boost = depth_boost, halo_boost
+        self.lambda_nll = lambda_nll
+        self.beta_nll = beta_nll
+        self.lambda_coarse = lambda_coarse
+        self.lambda_amp = lambda_amp
         self.forward_op = forward_op
         self.zhdanov = ZhdanovFocusingLoss()
 
@@ -288,6 +293,25 @@ class CompoundInversionLoss(nn.Module):
                                              torch.zeros_like(m_true_b)).mean())
         l_band = sum(band_errs) / max(len(band_errs), 1)
 
+        # Foreground amplitude consistency (prevents systematic underestimation in large bodies)
+        l_amp_cons = torch.zeros((), device=m_pred.device, dtype=m_pred.dtype)
+        if self.lambda_amp > 0:
+            t_sgn = torch.where(tn < 0, -torch.ones_like(tn), torch.ones_like(tn))
+            fg_m = fg_mask * w_z
+            fg_sum = fg_m.flatten(1).sum(1).clamp_min(1.0)
+            p_mean = (F.relu(pn * t_sgn) * fg_m).flatten(1).sum(1) / fg_sum
+            t_mean = (tn.abs() * fg_m).flatten(1).sum(1) / fg_sum
+            has_fg = fg_mask.flatten(1).sum(1) > 0
+            w_core = tn.abs() * fg_mask
+            w_core_sum = w_core.flatten(1).sum(1).clamp_min(1e-6)
+            p_core = (F.relu(pn * t_sgn) * w_core).flatten(1).sum(1) / w_core_sum
+            t_core = (tn.abs() * w_core).flatten(1).sum(1) / w_core_sum
+            amp_err = 0.5 * (
+                (p_mean - t_mean).abs() / t_mean.clamp_min(1e-6)
+                + (p_core - t_core).abs() / t_core.clamp_min(1e-6)
+            )
+            l_amp_cons = torch.where(has_fg, amp_err, torch.zeros_like(amp_err)).mean()
+
         # Zhdanov Minimum Gradient Support consistency (wired via lambda_ms)
         l_mgs = torch.zeros((), device=m_pred.device)
         if self.lambda_ms > 0:
@@ -295,7 +319,8 @@ class CompoundInversionLoss(nn.Module):
             mgs_t = self.zhdanov.minimum_gradient_support(tn, self.e_rel)
             l_mgs = self.lambda_ms * (mgs_p - mgs_t).abs()
 
-        l_sup = 0.23 * (l_fg + l_rel_l1 + l_dice + l_grad) + 0.12 * l_band + l_halo + l_mgs
+        l_sup = (0.23 * (l_fg + l_rel_l1 + l_dice + l_grad) + 0.12 * l_band
+                 + l_halo + l_mgs + self.lambda_amp * l_amp_cons)
 
         l_cls = torch.zeros((), device=m_pred.device)
         if aux is not None and "logits" in aux and self.lambda_cls > 0:
@@ -306,6 +331,33 @@ class CompoundInversionLoss(nn.Module):
             edt_mask = d3 * aux.get("mask", torch.ones_like(d3)) * (1.0 + 3.0 * gap_mask)
             edt_err = F.smooth_l1_loss(aux["edt"], edt_tgt, reduction="none", beta=0.15)
             l_edt = 0.25 * ((edt_err * edt_mask).flatten(1).sum(1) / edt_mask.flatten(1).sum(1).clamp_min(1.0)).mean()
+
+        l_coarse = torch.zeros((), device=m_pred.device)
+        if aux is not None and "coarse_pred" in aux and self.lambda_coarse > 0:
+            cpn = aux["coarse_pred"] / a
+            ctn = F.avg_pool3d(m_true, 2) / a
+            csum = cpn.abs().flatten(1).sum(1) + ctn.abs().flatten(1).sum(1) + 1e-6
+            c_l1 = (cpn - ctn).abs().flatten(1).sum(1) / csum
+            c_ali = F.relu(cpn * torch.sign(ctn))
+            c_int = torch.minimum(c_ali, ctn.abs()).flatten(1).sum(1)
+            c_iou = (1.0 - (2.0 * c_int + 1e-6) / csum).clamp_min(0.0)
+            l_coarse = (0.5 * c_l1 + 0.5 * c_iou).mean()
+
+        l_nll = torch.zeros((), device=m_pred.device)
+        if aux is not None and "log_var" in aux and self.lambda_nll > 0:
+            lv = aux["log_var"].clamp(-8.0, 4.0)
+            sub_mask = aux.get("mask", torch.ones_like(fg_mask))
+            err_abs = (m_pred - m_true).abs()
+            sigma_b = torch.exp(0.5 * self.beta_nll * lv).detach()
+            # Shifted (+4.0 inside detached weight) beta-Laplace NLL: >= 0 and unbiased wrt lv minimum.
+            vox_nll = sigma_b * (err_abs * torch.exp(-0.5 * lv) + 0.5 * lv + 4.0)
+            fg_n = fg_mask * sub_mask
+            bd_n = (d3 - fg_mask).clamp_min(0.0) * sub_mask
+            far_n = (1.0 - d3).clamp_min(0.0) * sub_mask
+            nll_fg = ((vox_nll * fg_n).flatten(1).sum(1) / fg_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+            nll_bd = ((vox_nll * bd_n).flatten(1).sum(1) / bd_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+            nll_far = ((vox_nll * far_n).flatten(1).sum(1) / far_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+            l_nll = 0.50 * nll_fg + 0.35 * nll_bd + 0.15 * nll_far
 
         l_data = torch.zeros((), device=m_pred.device)
         if self.forward_op is not None and d_clean is not None:
@@ -323,7 +375,8 @@ class CompoundInversionLoss(nn.Module):
             l_dgrad = _charbonnier_rmse(g_num, g_den)
             l_data = 0.65 * l_amp + 0.35 * l_dgrad
 
-        total = l_sup + self.lambda_cls * l_cls + l_edt + self.lambda_data * l_data
+        total = (l_sup + self.lambda_cls * l_cls + l_edt
+                 + self.lambda_coarse * l_coarse + self.lambda_nll * l_nll + self.lambda_data * l_data)
         return total, {
             "loss_total": total.item(),
             "loss_sup": l_sup.item(),
@@ -333,4 +386,7 @@ class CompoundInversionLoss(nn.Module):
             "loss_halo": l_halo.item(),
             "loss_cls": l_cls.item(),
             "loss_edt": l_edt.item(),
+            "loss_coarse": l_coarse.item(),
+            "loss_nll": l_nll.item(),
+            "loss_amp": l_amp_cons.item(),
         }

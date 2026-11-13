@@ -801,6 +801,176 @@ def test_demo_export_and_html():
         assert "window.VOL3D_BEST_EPOCH = 1;" in vbest_js
 
 
+def test_v5_greens_bias_and_model_heads():
+    from model_swin3d import GreensVerticalBias, PotentialFieldTransformer3DV5, create_model
+
+    gb = GreensVerticalBias(heads=4, dp=6, wh=2, ww=2)
+    b = gb()
+    assert b.shape == (4, 6 * 4, 6 * 4)
+    # Same-layer bias exceeds max-separation vertical decay bias
+    assert float(b[0, 0, 0]) > float(b[0, 0, 5 * 4])
+    b.sum().backward()
+    assert gb.raw_decay.grad is not None and float(gb.raw_decay.grad.abs().sum()) > 0.0
+    assert gb.gain.grad is not None and gb.asym.grad is not None
+
+    m = create_model(16, 16, 8, variant="v5", embed_dim=32, num_heads=4, depth=2,
+                     ch_mid=16, ch_vox=12, n_sub=2, num_classes=7, dropout=0.1)
+    assert isinstance(m, PotentialFieldTransformer3DV5)
+    m.eval()
+    x5 = torch.randn(2, 5, 16, 16)
+    x5[:, 1] = 0.125  # 1/8 depth = 1 layer of air at top
+    x5[:, 2] = 1.0
+    x5[:, 3] = 0.0
+    x5[:, 4] = 0.25
+
+    pred, aux = m(x5, return_aux=True)
+    assert pred.shape == (2, 1, 8, 16, 16)
+    assert aux["log_var"].shape == (2, 1, 8, 16, 16)
+    assert aux["logits"].shape == (2, 7, 8, 16, 16)
+    assert aux["coarse_pred"].shape == (2, 1, 4, 8, 8)
+    assert float(aux["log_var"].min()) >= -8.0 and float(aux["log_var"].max()) <= 4.0
+    # Strict terrain masking on both density and log_var above terrain (iz=0 < 0.125*8=1)
+    assert float(pred[:, :, 0].abs().max()) == 0.0
+    assert float(aux["log_var"][:, :, 0].abs().max()) == 0.0
+
+    # Backward compatibility with 2-channel input + single-output forward
+    pred2 = m(x5[:, :2])
+    assert pred2.shape == (2, 1, 8, 16, 16)
+    pred_u, lv_u = m.forward_uncertainty(x5)
+    assert torch.allclose(pred, pred_u) and torch.allclose(aux["log_var"], lv_u)
+
+    # MC Dropout stochasticity when enabled vs determinism in eval
+    assert torch.allclose(m(x5), m(x5))
+    m.enable_mc_dropout(True)
+    assert not torch.allclose(m(x5), m(x5))
+    m.enable_mc_dropout(False)
+
+
+def test_v5_heteroscedastic_nll_and_coarse_losses():
+    from model_swin3d import create_model
+
+    torch.manual_seed(7)
+    m = create_model(16, 16, 8, variant="v5", embed_dim=32, num_heads=4, depth=2,
+                     ch_mid=16, ch_vox=12, n_sub=2, num_classes=7, dropout=0.05)
+    x5 = torch.randn(2, 5, 16, 16)
+    x5[:, 1] = 0.0
+    x5[:, 2] = 1.0
+    x5[:, 3] = 0.0
+    x5[:, 4] = 0.007
+
+    rho_t = torch.zeros(2, 1, 8, 16, 16)
+    rho_t[:, :, 3:6, 5:10, 5:10] = 0.8
+    pred, aux = m(x5, return_aux=True)
+
+    crit = CompoundInversionLoss()
+    loss, metrics = crit(pred, rho_t, aux=aux)
+    assert torch.isfinite(loss)
+    assert metrics["loss_nll"] >= 0.0
+    assert metrics["loss_coarse"] >= 0.0
+    assert metrics["loss_amp"] >= 0.0
+    loss.backward()
+    assert m.logvar_head.weight.grad is not None and torch.isfinite(m.logvar_head.weight.grad).all()
+
+    # Exact identity gives zero supervised + amp + coarse errors while NLL remains >= 0
+    aux_perfect = {
+        "log_var": torch.full_like(rho_t, -8.0),
+        "coarse_pred": torch.nn.functional.avg_pool3d(rho_t, 2),
+        "mask": torch.ones_like(rho_t),
+    }
+    _, mp = crit(rho_t, rho_t, aux=aux_perfect)
+    assert mp["loss_sup"] == 0.0 and mp["loss_coarse"] < 1e-6 and mp["loss_amp"] < 1e-6
+    assert abs(mp["loss_nll"]) < 1e-6
+
+
+def test_v5_realistic_augmentations_infill_and_clearance():
+    from dataset import (
+        ASPECT_MULTI,
+        CLEARANCE_MULTI,
+        RHO_AIR,
+        RHO_LIGHT_MIN,
+        RHO_ORE_MAX,
+        RHO_WATER,
+        apply_planar_fault,
+        build_v5_input,
+        infill_missing_obs,
+        random_bodies,
+        random_terrain,
+    )
+
+    rng = np.random.default_rng(123)
+    t = random_terrain(rng, 24, 24, 12 * 50.0)
+    rho = random_bodies(rng, t, 12, 50.0, 50.0, hard_prob=1.0, fault_prob=1.0)
+    t_cells = t / 50.0
+    rho_f = apply_planar_fault(rng, rho, t_cells)
+    # No density allowed above terrain
+    above = (np.arange(12)[:, None, None] * 50.0) < t[None]
+    assert np.all(rho[above] == 0.0) and np.all(rho_f[above] == 0.0)
+    # Lithology range preserved across fault cuts
+    nz_vals = rho_f[rho_f != 0.0]
+    assert nz_vals.size > 0
+    for v in nz_vals:
+        assert (
+            abs(v - RHO_AIR) < 1e-4
+            or abs(v - RHO_WATER) < 1e-4
+            or (RHO_LIGHT_MIN - 1e-4 <= v <= RHO_ORE_MAX + 1e-4)
+        ), f"Unexpected lithology density after fault: {v}"
+
+    # Wide clearance operator (h_min=-85 m) + overburden + regional trend + dropout/infill
+    op_hi = TerrainGravityOperator(24, 24, 12, 50.0, 50.0, 50.0, h_min=-85.0)
+    assert op_hi.h0 <= -85.0
+    ds = BodyTerrainDataset(4, 24, 24, 12, 50.0, 50.0, 50.0, seed=99,
+                            fault_prob=0.5, clearance_range=CLEARANCE_MULTI,
+                            aspect_ratios=ASPECT_MULTI)
+    items = [ds[i] for i in range(4)]
+    assert len(items[0]) == 6  # appends aspect_idx
+    clear_max = float(max(float(it[2]) for it in items))
+    assert clear_max >= 0.30
+
+    rho_b, t_b, _, nf_b, ns_b = (torch.stack([it[k] for it in items]) for k in range(5))
+    c_air = torch.full((4,), 55.0)
+    obs_v5, clean_v5, z_obs_v5, vm_v5 = simulate_batch(
+        op_hi, rho_b, t_b, c_air, nf_b, ns_b,
+        overburden_prob=1.0, trend_prob=1.0, dropout_prob=1.0, return_mask=True,
+    )
+    assert torch.isfinite(obs_v5).all() and vm_v5.shape == obs_v5.shape
+    assert torch.allclose(z_obs_v5, t_b - 55.0)
+    # Valid mask is non-trivial on at least one sample and missing stations were harmonically filled
+    assert float(vm_v5.min()) == 0.0 and not torch.isnan(obs_v5).any()
+    x5 = build_v5_input(obs_v5, t_b, 12 * 50.0, valid_mask=vm_v5, aspect=1.0, clearance=c_air)
+    assert x5.shape == (4, 5, 24, 24)
+    assert abs(float(x5[0, 4, 0, 0]) - 55.0 / 50.0) < 1e-4
+
+    # Pure harmonic infill preserves exact observed stations
+    raw = torch.ones((1, 1, 8, 8)) * 5.0
+    raw[0, 0, 3:5, 3:5] = -999.0
+    vm_test = torch.ones((1, 1, 8, 8))
+    vm_test[0, 0, 3:5, 3:5] = 0.0
+    filled = infill_missing_obs(raw, vm_test, iters=24)
+    assert torch.allclose(filled[0, 0, 3:5, 3:5], torch.full((2, 2), 5.0), atol=1e-4)
+
+
+def test_v5_onnx_export_and_parity():
+    import os
+    import tempfile
+    from export_onnx import export_checkpoint_to_onnx
+    from model_swin3d import create_model
+
+    m = create_model(16, 16, 8, variant="v5", embed_dim=32, num_heads=4, depth=2,
+                     ch_mid=16, ch_vox=12, n_sub=2, num_classes=7, dropout=0.05)
+    ck = {
+        "grid": {"nx": 16, "ny": 16, "nz": 8, "cell": 50.0},
+        "arch": {"variant": "v5", "embed_dim": 32, "num_heads": 4, "depth": 2,
+                 "ch_mid": 16, "ch_vox": 12, "n_sub": 2, "num_classes": 7, "dropout": 0.05},
+        "model_state_dict": m.state_dict(),
+    }
+    with tempfile.TemporaryDirectory() as tmp:
+        ckpt_p = os.path.join(tmp, "v5_test.pt")
+        onnx_p = os.path.join(tmp, "v5_test.onnx")
+        torch.save(ck, ckpt_p)
+        export_checkpoint_to_onnx(ckpt_p, onnx_p, opset=17, verify=True)
+        assert os.path.exists(onnx_p)
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

@@ -48,9 +48,13 @@ from forward import TerrainGravityOperator
 NX, NY, NZ, CELL = 64, 64, 32, 50.0
 MAX_RELIEF_FRAC = 0.25          # max terrain relief / domain depth
 CLEARANCE = (0.30, 0.40)        # ground gravimeter sensor height above terrain [m] (30-40 cm)
+CLEARANCE_MULTI = (0.30, 80.0)  # mixed ground + drone/airborne clearance range for v5 [m]
+ASPECT_MULTI = (0.55, 0.75, 1.0, 1.20, 1.40)  # vertical-to-horizontal cell aspect ratio dz/dx range for v5
 NOISE_FRAC = (0.005, 0.04)      # station noise sigma / max|field|
 BODY_VOX_NOISE = 0.08           # 3D internal body voxel heterogeneity (std fraction of |rho|)
 BG_VOX_NOISE_SCALE = 0.15       # 3D host-rock voxel clutter scale relative to noise_frac * max|rho|
+WEATHER_LEN_CELLS = (0.8, 3.0)  # regolith weathering decay length in vertical cell units
+WEATHER_AMP_MAX = 0.35          # peak regolith contrast magnitude [g/cm^3]
 
 # Calibrated physical density contrast bounds [g/cm^3 relative to 2.67 g/cm^3 host rock]
 RHO_AIR = -2.67
@@ -604,13 +608,67 @@ def _build_vertical_stack(rng, t_cells, nz, hs, vs):
     return rho
 
 
-def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None):
+def apply_planar_fault(rng, rho, t_cells, border_margin=3, max_throw_cells=4):
+    """Cut ``rho`` with a dipping 3D planar fault and shift one half-space by 1-``max_throw_cells``."""
+    nz, nx, ny = rho.shape
+    kz, kx, ky = np.nonzero(rho)
+    if kz.size < 8:
+        return rho
+
+    # Pivot inside/near the active body centroid so the fault visibly bisects the structure
+    pz = float(np.clip(np.median(kz) + rng.uniform(-1.5, 1.5), 1.0, nz - 2.0))
+    px = float(np.clip(np.median(kx) + rng.uniform(-3.0, 3.0), border_margin + 1.0, nx - border_margin - 1.0))
+    py = float(np.clip(np.median(ky) + rng.uniform(-3.0, 3.0), border_margin + 1.0, ny - border_margin - 1.0))
+
+    phi = float(rng.uniform(0.0, 2.0 * math.pi))
+    dip = float(rng.uniform(math.radians(35.0), math.radians(82.0)))
+    nz_n = math.cos(dip)
+    nx_n = math.sin(dip) * math.cos(phi)
+    ny_n = math.sin(dip) * math.sin(phi)
+
+    zz, xx, yy = np.meshgrid(np.arange(nz), np.arange(nx), np.arange(ny), indexing="ij")
+    signed_dist = (zz - pz) * nz_n + (xx - px) * nx_n + (yy - py) * ny_n
+    half = signed_dist > 0.0
+    nz_pos = (rho != 0) & half
+    nz_neg = (rho != 0) & (~half)
+    if nz_pos.sum() < 4 or nz_neg.sum() < 4:
+        return rho
+
+    throw_z = int(rng.choice([-1, 1]) * rng.integers(1, max(2, int(max_throw_cells) + 1)))
+    # Dip-slip horizontal heave along the horizontal component of fault normal (normal/reverse fault)
+    heave_scale = rng.uniform(0.25, 0.85) * throw_z
+    dx_i = int(round(heave_scale * math.cos(phi)))
+    dy_i = int(round(heave_scale * math.sin(phi)))
+    if throw_z == 0 and dx_i == 0 and dy_i == 0:
+        return rho
+
+    out = np.where(half, 0.0, rho).astype(np.float32)
+    sz, sx, sy = np.nonzero(nz_pos)
+    tz, tx, ty = sz + throw_z, sx + dx_i, sy + dy_i
+    ok = (
+        (tz >= 0) & (tz < nz)
+        & (tx >= border_margin) & (tx < nx - border_margin)
+        & (ty >= border_margin) & (ty < ny - border_margin)
+    )
+    if ok.any():
+        tz, tx, ty, vals = tz[ok], tx[ok], ty[ok], rho[sz[ok], sx[ok], sy[ok]]
+        below = tz >= t_cells[tx, ty]
+        if below.any():
+            out[tz[below], tx[below], ty[below]] = vals[below]
+
+    if (out != 0).sum() < max(6, int(0.35 * (rho != 0).sum())):
+        return rho
+    return out
+
+
+def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None, fault_prob=0.0):
     """Density model (nz, nx, ny) strictly below terrain depth ``t`` (nx, ny).
 
     Draws either standard isolated bodies (``dilate_iters=2``, ``1-4`` bodies) or, with
     probability ``hard_prob``, one of 5 physically well-posed harder geological archetypes
     (``large_composite``, ``nested_halo``, ``abutting_contact``, ``vertical_stack``,
     ``tight_cluster``). Never places full-domain DC slabs or sub-noise masked ghosts.
+    When ``fault_prob > 0``, optionally cuts the scene with a true 3D dipping planar fault.
     """
     nx, ny = t.shape
     t_cells = t / dz                                         # terrain depth in layer units
@@ -652,30 +710,51 @@ def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None):
             rho_g, *_ = _pick_rock_lithology(rng, nz, 2.0)
             rho[m_g] = rho_g
 
+    if fault_prob > 0.0 and rng.random() < fault_prob:
+        rho = apply_planar_fault(rng, rho, t_cells)
+
     # safety: no density in cells whose top is above the terrain
     above = (np.arange(nz)[:, None, None] * dz) < t[None]
     rho[above] = 0.0
     return rho
 
 
-def sample_geometry(rng, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL, hard_prob=0.50):
+def _sample_clearance(rng, clearance_range):
+    lo, hi = float(clearance_range[0]), float(clearance_range[1])
+    if hi <= 1.0:
+        return np.float32(rng.uniform(lo, hi))
+    # Mix ground surveys (~50%) and log-uniform drone/airborne drape heights (~50%)
+    if rng.random() < 0.50:
+        return np.float32(rng.uniform(lo, min(1.5, hi)))
+    log_lo = math.log(max(lo, 1.5))
+    log_hi = math.log(max(hi, 1.51))
+    return np.float32(math.exp(rng.uniform(log_lo, log_hi)))
+
+
+def sample_geometry(rng, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL,
+                    hard_prob=0.50, fault_prob=0.0, clearance_range=CLEARANCE):
     t = random_terrain(rng, nx, ny, nz * dz)
-    rho = random_bodies(rng, t, nz, dz, dx, hard_prob=hard_prob)
-    clearance = np.float32(rng.uniform(*CLEARANCE))
+    rho = random_bodies(rng, t, nz, dz, dx, hard_prob=hard_prob, fault_prob=fault_prob)
+    clearance = _sample_clearance(rng, clearance_range)
     noise_frac = np.float32(rng.uniform(*NOISE_FRAC))
     return rho, t, clearance, noise_frac
 
 
 class BodyTerrainDataset(Dataset):
-    """Yields geometry only: ``(rho (1,nz,nx,ny), t (nx,ny), clearance, noise_frac)``.
+    """Yields geometry only: ``(rho (1,nz,nx,ny), t (nx,ny), clearance, noise_frac, noise_seed)``
+    (or appends ``aspect_idx`` when ``aspect_ratios`` is provided).
 
     ``seed=None`` -> fresh random sample on every access (infinite training data);
     ``seed=int``  -> sample ``idx`` is deterministic (validation).
     """
 
     def __init__(self, n_samples=2000, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL,
-                 seed=None, hard_prob=0.50):
+                 seed=None, hard_prob=0.50, fault_prob=0.0, clearance_range=CLEARANCE,
+                 aspect_ratios=None):
         self.n, self.seed, self.hard_prob = n_samples, seed, float(hard_prob)
+        self.fault_prob = float(fault_prob)
+        self.clearance_range = tuple(clearance_range)
+        self.aspect_ratios = tuple(float(a) for a in aspect_ratios) if aspect_ratios else None
         self.g = (nx, ny, nz, dx, dy, dz)
 
     def __len__(self):
@@ -683,24 +762,84 @@ class BodyTerrainDataset(Dataset):
 
     def __getitem__(self, idx):
         rng = np.random.default_rng() if self.seed is None else np.random.default_rng([self.seed, idx])
-        rho, t, c, nf = sample_geometry(rng, *self.g, hard_prob=self.hard_prob)
+        nx, ny, nz, dx, dy, dz = self.g
+        aspect_idx = 0
+        dz_cur = dz
+        if self.aspect_ratios is not None:
+            aspect_idx = int(rng.integers(0, len(self.aspect_ratios)))
+            dz_cur = dx * self.aspect_ratios[aspect_idx]
+        rho, t, c, nf = sample_geometry(
+            rng, nx, ny, nz, dx, dy, dz_cur,
+            hard_prob=self.hard_prob, fault_prob=self.fault_prob,
+            clearance_range=self.clearance_range,
+        )
         noise_seed = int(rng.integers(0, 2**31 - 1))
-        return (torch.from_numpy(rho)[None], torch.from_numpy(t), torch.tensor(c), torch.tensor(nf),
-                torch.tensor(noise_seed))
+        items = (torch.from_numpy(rho)[None], torch.from_numpy(t), torch.tensor(c), torch.tensor(nf),
+                 torch.tensor(noise_seed))
+        if self.aspect_ratios is not None:
+            return items + (torch.tensor(aspect_idx, dtype=torch.long),)
+        return items
+
+
+@torch.no_grad()
+def infill_missing_obs(obs: torch.Tensor, valid_mask: torch.Tensor, iters: int = 24) -> torch.Tensor:
+    """Fill missing stations (``valid_mask == 0``) via neighbor pull + Neumann harmonic relaxation.
+
+    Eliminates sharp jumps to 0.0 that poison spatial Laplacian/gradient stems in 3D neural priors.
+    """
+    if bool((valid_mask > 0.5).all()):
+        return obs
+    b, _, nx, ny = obs.shape
+    known = (valid_mask > 0.5).to(obs.dtype)
+    k_mean = torch.ones((1, 1, 3, 3), device=obs.device, dtype=obs.dtype)
+    k_lap = torch.tensor(
+        [[[[0.0, 0.25, 0.0], [0.25, 0.0, 0.25], [0.0, 0.25, 0.0]]]],
+        device=obs.device, dtype=obs.dtype,
+    )
+    u = obs * known
+    cur_known = known
+    max_steps = max(nx, ny) + 2
+    for _ in range(max_steps):
+        if bool((cur_known > 0.5).all()):
+            break
+        k_pad = torch.nn.functional.pad(cur_known, (1, 1, 1, 1), mode="replicate")
+        u_pad = torch.nn.functional.pad(u, (1, 1, 1, 1), mode="replicate")
+        w_sum = torch.nn.functional.conv2d(k_pad, k_mean)
+        v_sum = torch.nn.functional.conv2d(u_pad, k_mean)
+        can = (cur_known < 0.5) & (w_sum > 0.5)
+        u = torch.where(can, v_sum / w_sum.clamp_min(1.0), u)
+        cur_known = torch.where(can, torch.ones_like(cur_known), cur_known)
+
+    missing = known < 0.5
+    for _ in range(iters):
+        u_pad = torch.nn.functional.pad(u, (1, 1, 1, 1), mode="replicate")
+        u_avg = torch.nn.functional.conv2d(u_pad, k_lap)
+        u = torch.where(missing, u_avg, u)
+    return u
+
+
+def _rand_uniform(rng, low, high, shape, device, dtype):
+    if rng is None:
+        return torch.empty(shape, device=device, dtype=dtype).uniform_(low, high)
+    vals = rng.uniform(low, high, size=shape).astype(np.float32)
+    return torch.from_numpy(vals).to(device=device, dtype=dtype)
 
 
 @torch.no_grad()
 def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, noise_seed=None,
-                   body_vox_noise=BODY_VOX_NOISE, bg_vox_scale=BG_VOX_NOISE_SCALE):
-    """Batched forward on ``op``'s device. Returns ``(obs_noisy, obs_clean, z_obs)``.
+                   body_vox_noise=BODY_VOX_NOISE, bg_vox_scale=BG_VOX_NOISE_SCALE,
+                   overburden_prob: float = 0.0, trend_prob: float = 0.0, dropout_prob: float = 0.0,
+                   return_mask: bool = False):
+    """Batched forward on ``op``'s device. Returns ``(obs_noisy, obs_clean, z_obs[, valid_mask])``.
 
     ``obs_clean`` is the exact gravity field of the clean target ``rho``; ``obs_noisy`` is computed
-    from ``rho + delta_rho`` (3D petrophysical voxel noise inside bodies and in the host rock below
-    terrain) plus 2D station instrument noise, so the network learns to suppress both 3D subsurface
-    density clutter and surface measurement noise while predicting the clean target ``rho``.
+    from ``rho + delta_rho`` (3D petrophysical voxel noise + optional weathered regolith overburden
+    below terrain) plus optional residual 2D polynomial regional trend, spatially correlated sensor
+    noise, and optional missing-station dropout + harmonic infill.
     """
-    b, _, _, nx, ny = rho.shape
+    b, _, nz, nx, ny = rho.shape
     z_obs = t - clearance.view(-1, 1, 1)
+    rng_np = None if noise_seed is None else np.random.default_rng(int(noise_seed.flatten()[0].item()) + 17)
     if noise_seed is None:
         noise = torch.randn((b, 1, nx, ny), device=rho.device, dtype=rho.dtype)
         vox_n = torch.randn_like(rho)
@@ -709,7 +848,8 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
                              for s in noise_seed.cpu()]).to(rho.device)
         vox_n = torch.stack([torch.randn(rho.shape[1:], generator=torch.Generator().manual_seed(int(s) + 1))
                              for s in noise_seed.cpu()]).to(rho.device)
-    if body_vox_noise > 0.0 or bg_vox_scale > 0.0:
+
+    if body_vox_noise > 0.0 or bg_vox_scale > 0.0 or overburden_prob > 0.0:
         z_top = torch.arange(op.nz, device=rho.device, dtype=rho.dtype).view(1, 1, op.nz, 1, 1) * op.dz
         below = (z_top >= t.unsqueeze(1).unsqueeze(2)).to(rho.dtype)
         amp = rho.abs().amax(dim=(1, 2, 3, 4), keepdim=True).clamp_min(0.1)
@@ -718,6 +858,21 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
         vox_corr = torch.nn.functional.avg_pool3d(vox_n, kernel_size=3, stride=1, padding=1) * 3.0
         vox_mix = 0.72 * vox_n + 0.28 * vox_corr
         rho_vox = rho + sigma_vox * vox_mix * below
+
+        if overburden_prob > 0.0:
+            ob_on = (_rand_uniform(rng_np, 0.0, 1.0, (b, 1, 1, 1, 1), rho.device, rho.dtype) < overburden_prob).to(rho.dtype)
+            l_weather = _rand_uniform(rng_np, WEATHER_LEN_CELLS[0] * op.dz, WEATHER_LEN_CELLS[1] * op.dz,
+                                      (b, 1, 1, 1, 1), rho.device, rho.dtype)
+            z_depth = (z_top - t.unsqueeze(1).unsqueeze(2)).clamp_min(0.0)
+            # Laterally modulated weathered regolith directly beneath topography surface
+            reg_lat = torch.nn.functional.avg_pool2d(noise, kernel_size=7, stride=1, padding=3) * 2.2
+            reg_lat = torch.sigmoid(reg_lat).unsqueeze(2)  # [0, 1] smooth lateral variation
+            ob_amp = _rand_uniform(rng_np, 0.35, 1.0, (b, 1, 1, 1, 1), rho.device, rho.dtype) * WEATHER_AMP_MAX
+            rho_reg = -ob_amp * (0.4 + 0.6 * reg_lat) * torch.exp(-z_depth / l_weather) * below * ob_on
+            # Preserve exact cavity/ore interior values while weathering surrounding shallow host rock
+            host_only = (rho == 0).to(rho.dtype)
+            rho_vox = rho_vox + rho_reg * host_only
+
         try:
             both = op(torch.cat([rho, rho_vox], dim=1), z_obs)
             clean, obs_vox = both[:, 0:1], both[:, 1:2]
@@ -727,10 +882,55 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
     else:
         clean = op(rho, z_obs)
         obs_vox = clean
-    peak = clean.abs().amax(dim=(1, 2, 3), keepdim=True)
-    noise_corr = torch.nn.functional.avg_pool2d(noise, kernel_size=3, stride=1, padding=1) * 2.1
-    noise_mix = 0.80 * noise + 0.20 * noise_corr
+
+    peak = clean.abs().amax(dim=(1, 2, 3), keepdim=True).clamp_min(1e-6)
+    noise_corr = torch.nn.functional.avg_pool2d(noise, kernel_size=5 if trend_prob > 0 else 3,
+                                                stride=1, padding=2 if trend_prob > 0 else 1)
+    noise_corr = noise_corr * (3.2 if trend_prob > 0 else 2.1)
+    noise_mix = 0.75 * noise + 0.25 * noise_corr
     noisy = obs_vox + noise_mix * noise_frac.view(-1, 1, 1, 1) * peak
+
+    if trend_prob > 0.0:
+        tr_on = (_rand_uniform(rng_np, 0.0, 1.0, (b, 1, 1, 1), rho.device, rho.dtype) < trend_prob).to(rho.dtype)
+        xg = torch.linspace(-1.0, 1.0, nx, device=rho.device, dtype=rho.dtype).view(1, 1, nx, 1)
+        yg = torch.linspace(-1.0, 1.0, ny, device=rho.device, dtype=rho.dtype).view(1, 1, 1, ny)
+        c0 = _rand_uniform(rng_np, -0.06, 0.06, (b, 1, 1, 1), rho.device, rho.dtype)
+        ca = _rand_uniform(rng_np, -0.18, 0.18, (b, 1, 1, 1), rho.device, rho.dtype)
+        cb = _rand_uniform(rng_np, -0.18, 0.18, (b, 1, 1, 1), rho.device, rho.dtype)
+        cc = _rand_uniform(rng_np, -0.10, 0.10, (b, 1, 1, 1), rho.device, rho.dtype)
+        noisy = noisy + tr_on * peak * (c0 + ca * xg + cb * yg + cc * xg * yg)
+
+    valid_mask = torch.ones((b, 1, nx, ny), device=rho.device, dtype=rho.dtype)
+    if dropout_prob > 0.0:
+        for i in range(b):
+            u_d = float(_rand_uniform(rng_np, 0.0, 1.0, (1,), rho.device, rho.dtype).item())
+            if u_d >= dropout_prob:
+                continue
+            vm = valid_mask[i, 0]
+            mode = int(math.floor(u_d / max(dropout_prob, 1e-6) * 3.0)) % 3
+            if mode == 0:  # irregular cutout / survey corner/border missing patch
+                x0 = int(_rand_uniform(rng_np, 0, max(1, nx // 2), (1,), rho.device, rho.dtype).item())
+                y0 = int(_rand_uniform(rng_np, 0, max(1, ny // 2), (1,), rho.device, rho.dtype).item())
+                w_x = int(_rand_uniform(rng_np, max(2, nx // 8), max(3, nx // 3), (1,), rho.device, rho.dtype).item())
+                w_y = int(_rand_uniform(rng_np, max(2, ny // 8), max(3, ny // 3), (1,), rho.device, rho.dtype).item())
+                vm[x0:min(nx, x0 + w_x), y0:min(ny, y0 + w_y)] = 0.0
+            elif mode == 1:  # missing flight/survey traverse lines
+                step = max(2, int(_rand_uniform(rng_np, 3, 6, (1,), rho.device, rho.dtype).item()))
+                phase = int(_rand_uniform(rng_np, 0, step, (1,), rho.device, rho.dtype).item())
+                if phase % 2 == 0:
+                    vm[phase::step, :] = 0.0
+                else:
+                    vm[:, phase::step] = 0.0
+            else:  # random sparse dummy holes
+                keep = _rand_uniform(rng_np, 0.0, 1.0, (nx, ny), rho.device, rho.dtype) > 0.22
+                vm.mul_(keep.to(rho.dtype))
+            # Safety floor: keep >= 45% valid stations so infill remains physical
+            if float(vm.mean().item()) < 0.45:
+                vm.fill_(1.0)
+        noisy = infill_missing_obs(noisy, valid_mask)
+
+    if return_mask:
+        return noisy, clean, z_obs, valid_mask
     return noisy, clean, z_obs
 
 
@@ -739,7 +939,28 @@ def terrain_channel(t, depth_total):
     return (t / depth_total).unsqueeze(1)
 
 
-def augment_d4(rho, t, obs, clean, z_obs, k=None, flip=None):
+def build_v5_input(obs, t, depth_total, valid_mask=None, aspect=1.0, clearance=0.35, dxy_canon=CELL):
+    """Build 5-channel v5 input ``(B, 5, H, W)``:
+    ``[gz_50m_eq, terr/depth, valid_mask, log(dz/dxy), clearance/dxy_canon]``.
+    """
+    b, _, nx, ny = obs.shape
+    terr = terrain_channel(t, depth_total)
+    if valid_mask is None:
+        valid_mask = torch.ones_like(obs)
+    if isinstance(aspect, torch.Tensor):
+        asp_t = aspect.to(device=obs.device, dtype=obs.dtype).view(b, 1, 1, 1).expand(b, 1, nx, ny)
+    else:
+        asp_t = torch.full((b, 1, nx, ny), float(aspect), device=obs.device, dtype=obs.dtype)
+    if isinstance(clearance, torch.Tensor):
+        clr_t = clearance.to(device=obs.device, dtype=obs.dtype).view(b, 1, 1, 1).expand(b, 1, nx, ny)
+    else:
+        clr_t = torch.full((b, 1, nx, ny), float(clearance), device=obs.device, dtype=obs.dtype)
+    log_asp = torch.log(asp_t.clamp(0.1, 10.0))
+    clr_norm = (clr_t / float(dxy_canon)).clamp(0.0, 4.0)
+    return torch.cat([obs, terr, valid_mask, log_asp, clr_norm], dim=1)
+
+
+def augment_d4(rho, t, obs, clean, z_obs, valid_mask=None, k=None, flip=None):
     """Exact horizontal dihedral D4 symmetry augmentation (rotations + reflection) for gz inversion."""
     nx, ny = t.shape[-2], t.shape[-1]
     if k is None:
@@ -752,12 +973,18 @@ def augment_d4(rho, t, obs, clean, z_obs, k=None, flip=None):
         obs = torch.rot90(obs, k, dims=(-2, -1))
         clean = torch.rot90(clean, k, dims=(-2, -1))
         z_obs = torch.rot90(z_obs, k, dims=(-2, -1))
+        if valid_mask is not None:
+            valid_mask = torch.rot90(valid_mask, k, dims=(-2, -1))
     if flip:
         rho = torch.flip(rho, dims=(-1,))
         t = torch.flip(t, dims=(-1,))
         obs = torch.flip(obs, dims=(-1,))
         clean = torch.flip(clean, dims=(-1,))
         z_obs = torch.flip(z_obs, dims=(-1,))
+        if valid_mask is not None:
+            valid_mask = torch.flip(valid_mask, dims=(-1,))
+    if valid_mask is not None:
+        return rho, t, obs, clean, z_obs, valid_mask
     return rho, t, obs, clean, z_obs
 
 

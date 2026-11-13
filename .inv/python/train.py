@@ -19,7 +19,20 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader
 
-from dataset import CELL, NX, NY, NZ, BodyTerrainDataset, augment_d4, simulate_batch, terrain_channel
+from dataset import (
+    ASPECT_MULTI,
+    CELL,
+    CLEARANCE,
+    CLEARANCE_MULTI,
+    NX,
+    NY,
+    NZ,
+    BodyTerrainDataset,
+    augment_d4,
+    build_v5_input,
+    simulate_batch,
+    terrain_channel,
+)
 from evaluate import compute_metrics, make_category_showcase, make_fixed_set
 from forward import TerrainGravityOperator
 from losses import CompoundInversionLoss
@@ -27,12 +40,48 @@ from model_swin3d import (
     PotentialFieldTransformer3D,
     PotentialFieldTransformer3DV3,
     PotentialFieldTransformer3DV4,
+    PotentialFieldTransformer3DV5,
     create_model,
 )
 from dashboard import TrainingMonitor
 
-ARCH = {"variant": "v4", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
-        "n_sub": 3, "num_classes": 7}
+ARCH_BY_VARIANT = {
+    "v5": {"variant": "v5", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
+           "n_sub": 3, "num_classes": 7, "dropout": 0.05},
+    "v4": {"variant": "v4", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
+           "n_sub": 3, "num_classes": 7},
+    "v3": {"variant": "v3", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
+           "n_sub": 3, "num_classes": 7},
+    "v2": {"variant": "v2", "embed_dim": 128, "num_heads": 4, "depth": 6},
+    "v1": {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4},
+}
+ARCH = ARCH_BY_VARIANT["v5"]
+
+
+class BatchAspectOperator:
+    """Dispatches forward modeling across per-sample cell aspect ratios inside a batch."""
+
+    def __init__(self, op_bank, canonical_op):
+        self.op_bank = list(op_bank)
+        self.canonical_op = canonical_op
+        self.aspect_indices = None
+
+    def __call__(self, rho, z_obs, level_stride=1):
+        idx = self.aspect_indices
+        if idx is None:
+            return self.canonical_op(rho, z_obs, level_stride=level_stride)
+        if (idx == idx[0]).all():
+            return self.op_bank[int(idx[0].item())](rho, z_obs, level_stride=level_stride)
+        out = torch.empty(
+            (rho.shape[0], 1, rho.shape[3], rho.shape[4]),
+            device=rho.device,
+            dtype=rho.dtype,
+        )
+        for ai, op_i in enumerate(self.op_bank):
+            m = idx == ai
+            if m.any():
+                out[m] = op_i(rho[m], z_obs[m], level_stride=level_stride)
+        return out
 
 
 class ModelEMA:
@@ -78,6 +127,14 @@ def parse_args():
     p.add_argument("--save-dir", type=str, default="./checkpoints")
     p.add_argument("--vol3d-stride", type=int, default=10,
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
+    p.add_argument("--variant", type=str, default="v5", choices=["v5", "v4", "v3", "v2", "v1"],
+                   help="model architecture variant (default: v5)")
+    p.add_argument("--dropout", type=float, default=0.05, help="Dropout3d/MLP rate for v5")
+    p.add_argument("--fault-prob", type=float, default=0.40, help="v5 dipping fault cut probability")
+    p.add_argument("--overburden-prob", type=float, default=0.45, help="v5 weathered regolith probability")
+    p.add_argument("--trend-prob", type=float, default=0.40, help="v5 regional trend + correlated noise prob")
+    p.add_argument("--dropout-prob", type=float, default=0.35, help="v5 missing-station infill prob")
+    p.add_argument("--no-amp", action="store_true", help="disable bfloat16 autocast on MPS/CUDA")
     p.add_argument("--resume", type=str, default="", help="continue from a checkpoint")
     p.add_argument("--gui", action="store_true", help="open a live native GUI window with training graphs")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -92,28 +149,10 @@ def main():
     hard_prob = min(1.0, max(0.0, float(args.hard_prob)))
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
-    print(f"Device {dev} | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
-          f"grid {NX}x{NY}x{NZ} @ {CELL} m | hard-prob {hard_prob:.2f} | ground clearance 0.30-0.40 m")
-    print(f"Monitor: {os.path.join(args.save_dir, 'training_monitor.png')} "
-          f"| HTML: {os.path.join(args.save_dir, 'dashboard.html')} | GUI window: {'ON' if args.gui else 'OFF (pass --gui)'}")
 
-    op = TerrainGravityOperator(*grid).to(dev)
-    monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride, forward_op=op)
-    train_ds = BodyTerrainDataset(args.steps * args.batch_size, *grid, hard_prob=hard_prob)
-    loader = DataLoader(train_ds, batch_size=args.batch_size, num_workers=args.num_workers,
-                        persistent_workers=args.num_workers > 0, drop_last=True)
-    vx, vtrue, vclean, vz = make_fixed_set(args.n_val, 2024, op, dev, grid, hard_prob=0.0)
-    hard_val = None
-    if hard_prob > 0.0:
-        n_hard = max(8, args.n_val // 2)
-        hard_val = make_fixed_set(n_hard, 3024, op, dev, grid, hard_prob=1.0)
-    show_x, show_true, show_clean, show_z, show_labels = make_category_showcase(op, dev, grid, seed=4024)
-    if hard_val is not None:
-        mon_labels = ("Std",) * min(4, len(vx)) + ("Hard",) * min(4, len(hard_val[0])) + show_labels
-    else:
-        mon_labels = ("Std",) * min(8, len(vx)) + show_labels
-
-    arch = ARCH
+    arch = dict(ARCH_BY_VARIANT[args.variant])
+    if args.variant == "v5":
+        arch["dropout"] = float(args.dropout)
     start_epoch, best, ck_resumed = 1, float("inf"), None
     if args.resume:
         ck_resumed = torch.load(args.resume, map_location="cpu")
@@ -124,6 +163,62 @@ def main():
             best = ck_resumed["val_loss"]
         print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
 
+    variant = arch.get("variant", "v1")
+    is_v5 = variant == "v5"
+    amp_dev = "cuda" if dev.startswith("cuda") else ("mps" if dev.startswith("mps") else "")
+    use_amp = (not args.no_amp) and bool(amp_dev)
+    fault_prob = float(args.fault_prob) if is_v5 else 0.0
+    ob_prob = float(args.overburden_prob) if is_v5 else 0.0
+    tr_prob = float(args.trend_prob) if is_v5 else 0.0
+    do_prob = float(args.dropout_prob) if is_v5 else 0.0
+    clear_rng = CLEARANCE_MULTI if is_v5 else CLEARANCE
+    asp_list = ASPECT_MULTI if is_v5 else None
+
+    print(f"Device {dev} (AMP bfloat16={'ON' if use_amp else 'OFF'}) | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
+          f"grid {NX}x{NY}x{NZ} @ {CELL} m | hard-prob {hard_prob:.2f} | "
+          f"{'clearance 0.30-80m, multi-aspect' if is_v5 else 'ground clearance 0.30-0.40 m'}")
+    print(f"Monitor: {os.path.join(args.save_dir, 'training_monitor.png')} "
+          f"| HTML: {os.path.join(args.save_dir, 'dashboard.html')} | GUI window: {'ON' if args.gui else 'OFF (pass --gui)'}")
+
+    if is_v5:
+        op_bank = [TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL * a, h_min=-85.0).to(dev) for a in asp_list]
+        op = op_bank[asp_list.index(1.0)] if 1.0 in asp_list else TerrainGravityOperator(*grid, h_min=-85.0).to(dev)
+        batch_op = BatchAspectOperator(op_bank, op)
+    else:
+        op_bank = None
+        op = TerrainGravityOperator(*grid).to(dev)
+        batch_op = op
+
+    monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride, forward_op=op)
+    train_ds = BodyTerrainDataset(
+        args.steps * args.batch_size, *grid, hard_prob=hard_prob,
+        fault_prob=fault_prob, clearance_range=clear_rng, aspect_ratios=asp_list,
+    )
+    loader = DataLoader(train_ds, batch_size=args.batch_size, num_workers=args.num_workers,
+                        persistent_workers=args.num_workers > 0, drop_last=True)
+
+    val_ch = 5 if is_v5 else 2
+    vx, vtrue, vclean, vz = make_fixed_set(
+        args.n_val, 2024, op, dev, grid, hard_prob=0.0, in_channels=val_ch,
+        fault_prob=fault_prob * 0.75, clearance_range=clear_rng,
+        overburden_prob=ob_prob * 0.75, trend_prob=tr_prob * 0.75, dropout_prob=do_prob * 0.75,
+    )
+    hard_val = None
+    if hard_prob > 0.0:
+        n_hard = max(8, args.n_val // 2)
+        hard_val = make_fixed_set(
+            n_hard, 3024, op, dev, grid, hard_prob=1.0, in_channels=val_ch,
+            fault_prob=fault_prob, clearance_range=clear_rng,
+            overburden_prob=ob_prob, trend_prob=tr_prob, dropout_prob=do_prob,
+        )
+    show_x, show_true, show_clean, show_z, show_labels = make_category_showcase(
+        op, dev, grid, seed=4024, in_channels=val_ch,
+    )
+    if hard_val is not None:
+        mon_labels = ("Std",) * min(4, len(vx)) + ("Hard",) * min(4, len(hard_val[0])) + show_labels
+    else:
+        mon_labels = ("Std",) * min(8, len(vx)) + show_labels
+
     model = create_model(NX, NY, NZ, **arch).to(dev)
     if ck_resumed is not None:
         model.load_state_dict(ck_resumed.get("raw_model_state_dict", ck_resumed["model_state_dict"]))
@@ -132,12 +227,13 @@ def main():
     if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
         ema.ema.load_state_dict(ck_resumed["ema_state_dict"])
     eval_model = ema.ema if ema.ema is not None else model
-    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if arch.get("variant", "v1") in ("v2", "v3", "v4")
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5")
                         else (lambda m, inp: (m(inp), None)))
 
-    print(f"Architecture: {arch.get('variant', 'v1')} | Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
+    print(f"Architecture: {variant} | Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
     crit = CompoundInversionLoss(lambda_data=args.lambda_data, lambda_ms=args.lambda_ms,
-                                 lambda_cls=args.lambda_cls, depth_boost=args.depth_boost, forward_op=op)
+                                 lambda_cls=args.lambda_cls, depth_boost=args.depth_boost,
+                                 forward_op=batch_op)
 
     end_epoch = start_epoch + args.epochs - 1
     total_steps = max(1, (end_epoch - start_epoch + 1) * args.steps)
@@ -150,6 +246,8 @@ def main():
                                                     pct_start=pct_start, div_factor=10.0, final_div_factor=50.0)
 
     def _eval_split(xs, ys, cs, zs):
+        if is_v5:
+            batch_op.aspect_indices = None
         preds, aux_chunks = [], []
         with torch.no_grad():
             for i in range(0, len(xs), 8):
@@ -173,7 +271,7 @@ def main():
         std_loss, std_m, std_pred = _eval_split(vx, vtrue, vclean, vz)
         with torch.no_grad():
             show_pred, _ = forward_with_aux(eval_model, show_x)
-        show_part = (show_x, show_true, show_pred, show_clean, show_z)
+        show_part = (show_x[:, :2], show_true, show_pred, show_clean, show_z)
         if hard_val is not None:
             vhx, vhtrue, vhclean, vhz = hard_val
             hard_loss, hard_m, hard_pred = _eval_split(vhx, vhtrue, vhclean, vhz)
@@ -194,8 +292,8 @@ def main():
             n_s = min(4, len(vx), len(std_pred))
             n_h = min(4, len(vhx), len(hard_pred))
             mon_tensors = _pack_monitor([
-                (vx[:n_s], vtrue[:n_s], std_pred[:n_s], vclean[:n_s], vz[:n_s]),
-                (vhx[:n_h], vhtrue[:n_h], hard_pred[:n_h], vhclean[:n_h], vhz[:n_h]),
+                (vx[:n_s, :2], vtrue[:n_s], std_pred[:n_s], vclean[:n_s], vz[:n_s]),
+                (vhx[:n_h, :2], vhtrue[:n_h], hard_pred[:n_h], vhclean[:n_h], vhz[:n_h]),
                 show_part,
             ])
             return comb_loss, comb_m, std_loss, std_m, hard_loss, hard_m, mon_tensors
@@ -203,7 +301,7 @@ def main():
             model.train()
         n_s = min(8, len(vx), len(std_pred))
         mon_tensors = _pack_monitor([
-            (vx[:n_s], vtrue[:n_s], std_pred[:n_s], vclean[:n_s], vz[:n_s]),
+            (vx[:n_s, :2], vtrue[:n_s], std_pred[:n_s], vclean[:n_s], vz[:n_s]),
             show_part,
         ])
         return std_loss, std_m, std_loss, std_m, None, None, mon_tensors
@@ -220,12 +318,43 @@ def main():
 
     for epoch in range(start_epoch, end_epoch + 1):
         t0, acc, n = time.time(), {}, 0
-        for rho, t, c, nf, _ in loader:
-            rho, t, c, nf = rho.to(dev), t.to(dev), c.to(dev), nf.to(dev)
-            obs, clean, z_obs = simulate_batch(op, rho, t, c, nf)
-            rho, t, obs, clean, z_obs = augment_d4(rho, t, obs, clean, z_obs)
-            x = torch.cat([obs, terrain_channel(t, depth_total)], dim=1)
-            pred, aux = forward_with_aux(model, x)
+        for batch in loader:
+            if is_v5:
+                rho, t, c, nf, _, asp_idx = batch
+                rho, t, c, nf = rho.to(dev), t.to(dev), c.to(dev), nf.to(dev)
+                asp_idx = asp_idx.to(dev)
+                b = rho.shape[0]
+                obs = torch.empty((b, 1, NX, NY), device=dev, dtype=rho.dtype)
+                clean = torch.empty((b, 1, NX, NY), device=dev, dtype=rho.dtype)
+                z_obs = torch.empty((b, NX, NY), device=dev, dtype=rho.dtype)
+                vm = torch.ones((b, 1, NX, NY), device=dev, dtype=rho.dtype)
+                for ai, op_i in enumerate(op_bank):
+                    m_a = asp_idx == ai
+                    if m_a.any():
+                        o_a, c_a, z_a, v_a = simulate_batch(
+                            op_i, rho[m_a], t[m_a], c[m_a], nf[m_a],
+                            overburden_prob=ob_prob, trend_prob=tr_prob,
+                            dropout_prob=do_prob, return_mask=True,
+                        )
+                        obs[m_a], clean[m_a], z_obs[m_a], vm[m_a] = o_a, c_a, z_a, v_a
+                rho, t, obs, clean, z_obs, vm = augment_d4(rho, t, obs, clean, z_obs, valid_mask=vm)
+                asp_vals = torch.tensor([asp_list[int(i)] for i in asp_idx.tolist()], device=dev, dtype=rho.dtype)
+                depth_totals = (NZ * CELL) * asp_vals.view(b, 1, 1)
+                x = build_v5_input(obs, t, depth_totals, valid_mask=vm, aspect=asp_vals, clearance=c)
+                batch_op.aspect_indices = asp_idx
+            else:
+                rho, t, c, nf, _ = batch
+                rho, t, c, nf = rho.to(dev), t.to(dev), c.to(dev), nf.to(dev)
+                obs, clean, z_obs = simulate_batch(op, rho, t, c, nf)
+                rho, t, obs, clean, z_obs = augment_d4(rho, t, obs, clean, z_obs)
+                x = torch.cat([obs, terrain_channel(t, depth_total)], dim=1)
+
+            with torch.amp.autocast(device_type=amp_dev or "cpu", dtype=torch.bfloat16, enabled=use_amp):
+                pred, aux = forward_with_aux(model, x)
+            if use_amp:
+                pred = pred.float()
+                if aux is not None:
+                    aux = {k: (v.float() if isinstance(v, torch.Tensor) else v) for k, v in aux.items()}
             loss, m = crit(pred, rho, clean, z_obs, aux=aux)
             opt.zero_grad(set_to_none=True)
             loss.backward()

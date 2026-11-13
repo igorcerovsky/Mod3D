@@ -1,5 +1,7 @@
 #include "mod3d_gui/dialogs/Inversion3DDialog.h"
+#include "inv/focusing_solver.hpp"
 #include "inv/neural_prior.hpp"
+#include "inv/observation.hpp"
 #include "mod3d/Units.h"
 
 #include <QCloseEvent>
@@ -12,9 +14,85 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <cmath>
 
 namespace mod3d_gui {
+namespace {
+
+/** Collects column observations, marks non-dummy finite stations, and harmonically infills gaps. */
+void collect_and_infill_obs(const mod3d::Grid *obsGrid, size_t nx, size_t ny,
+                            std::vector<double> &d_fine,
+                            std::vector<char> &obs_valid) {
+  d_fine.assign(nx * ny, 0.0);
+  obs_valid.assign(nx * ny, 0);
+  for (size_t ix = 0; ix < nx; ++ix) {
+    for (size_t iy = 0; iy < ny; ++iy) {
+      const double v = (*obsGrid)(iy, ix);
+      const size_t c = ix * ny + iy;
+      if (v != mod3d::GRID_DUMMY && std::isfinite(v)) {
+        d_fine[c] = v;
+        obs_valid[c] = 1;
+      }
+    }
+  }
+  inv::observation::infill_missing_columns(nx, ny, obs_valid, d_fine);
+}
+
+/** Strips perimeter planar regional trend before neural inference when observation tab trend mode is None (0). */
+std::vector<double> prepare_nn_obs(const std::vector<double> &d_fine,
+                                   const inv::GridGeometry &gf,
+                                   int obs_bg_trend_mode) {
+  std::vector<double> nn_obs = d_fine;
+  if (obs_bg_trend_mode == 0 && !nn_obs.empty()) {
+    inv::BackgroundBasis bg(gf, inv::BackgroundTrendMode::BorderPlanar);
+    bg.project_out(nn_obs);
+  }
+  return nn_obs;
+}
+
+/** Computes effective median sensor clearance [m] above terrain for v5 channel 4. */
+double effective_nn_clearance(double config_obs_height,
+                              const std::vector<double> &obs_z_cols,
+                              const std::vector<double> &surf_cols) {
+  if (!obs_z_cols.empty() && obs_z_cols.size() == surf_cols.size()) {
+    std::vector<double> clearances;
+    clearances.reserve(obs_z_cols.size());
+    for (std::size_t i = 0; i < obs_z_cols.size(); ++i) {
+      clearances.push_back(std::max(0.0, surf_cols[i] - obs_z_cols[i]));
+    }
+    std::nth_element(clearances.begin(),
+                     clearances.begin() + clearances.size() / 2,
+                     clearances.end());
+    return clearances[clearances.size() / 2];
+  }
+  return std::max(0.0, config_obs_height);
+}
+
+/** Computes mean subsurface prior sigma [g/cm^3] for status logging. */
+double mean_subsurface_sigma(const inv::VoxelGrid<double> &sigma_grid,
+                             const std::vector<double> &surf_cols) {
+  if (sigma_grid.data().empty())
+    return 0.0;
+  double sum = 0.0;
+  std::size_t cnt = 0;
+  for (std::size_t ix = 0; ix < sigma_grid.nx(); ++ix) {
+    for (std::size_t iy = 0; iy < sigma_grid.ny(); ++iy) {
+      const double surf = (surf_cols.size() == sigma_grid.nx() * sigma_grid.ny())
+                              ? surf_cols[ix * sigma_grid.ny() + iy]
+                              : 0.0;
+      for (std::size_t iz = 0; iz < sigma_grid.nz(); ++iz) {
+        if ((static_cast<double>(iz) + 0.5) * sigma_grid.dz() < surf)
+          continue;
+        sum += sigma_grid(ix, iy, iz);
+        ++cnt;
+      }
+    }
+  }
+  return cnt > 0 ? (sum / static_cast<double>(cnt)) : 0.0;
+}
+
+} // namespace
 
 Inversion3DDialog::Inversion3DDialog(ModelDocument *doc, QWidget *parent)
     : QDialog(parent), m_doc(doc) {
@@ -875,15 +953,10 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     }
   }
 
-  // Collect observation raster: index ix * ny + iy
-  std::vector<double> d_fine(nx * ny, 0.0);
-  for (size_t ix = 0; ix < nx; ++ix) {
-    for (size_t iy = 0; iy < ny; ++iy) {
-      const double v = (*obsGrid)(iy, ix);
-      d_fine[ix * ny + iy] =
-          (v == mod3d::GRID_DUMMY || std::isnan(v)) ? 0.0 : v;
-    }
-  }
+  // Collect observation raster (ix * ny + iy) and harmonically infill missing columns
+  std::vector<double> d_fine;
+  std::vector<char> obs_valid;
+  collect_and_infill_obs(obsGrid, nx, ny, d_fine, obs_valid);
 
   // Topography surface nodes at cell corners: size (nx + 1) * (ny + 1)
   // In Mod3D, zMax is domain top elevation. Depth z_depth = zDomainTop -
@@ -1028,18 +1101,25 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
   }
   m_stopRequested.store(false, std::memory_order_relaxed);
 
+  const int obsBgTrendMode =
+      m_doc ? m_doc->observation().background_trend_mode() : 0;
+
   // Launch background worker using inv::jthread
   m_workerThread = inv::jthread([this, setup = std::move(setup),
                                  d_fine = std::move(d_fine),
+                                 obs_valid = std::move(obs_valid),
                                  obs_z_cols = std::move(obs_z_cols),
                                  prior_values = std::move(prior_values),
+                                 obsBgTrendMode,
                                  isRefining, useNeural]() mutable {
+    std::vector<double> prior_sigma;
     if (!isRefining && useNeural) {
       std::string modelPath = setup.config.onnx_model_path;
       if (modelPath.empty()) {
         modelPath = inv::NeuralPriorInference::default_model_path();
       }
       inv::VoxelGrid<double> prior_grid;
+      inv::VoxelGrid<double> sigma_grid;
       std::string err;
       // Terrain depth below the grid top per column (network terrain channel)
       std::vector<double> surf_cols(setup.config.nx * setup.config.ny, 0.0);
@@ -1051,16 +1131,30 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
               setup.config.z0;
         }
       }
+      const inv::GridGeometry gf_nn{setup.config.nx, setup.config.ny, setup.config.nz,
+                                    setup.config.x0, setup.config.y0, setup.config.z0,
+                                    setup.config.dx, setup.config.dy, setup.config.dz};
+      const std::vector<double> nn_obs = prepare_nn_obs(d_fine, gf_nn, obsBgTrendMode);
+      const double nn_clr = effective_nn_clearance(setup.config.obs_height, obs_z_cols, surf_cols);
       if (inv::NeuralPriorInference::predict(
-              d_fine, setup.config.nx, setup.config.ny, setup.config.nz,
+              nn_obs, setup.config.nx, setup.config.ny, setup.config.nz,
               setup.config.x0, setup.config.y0, setup.config.z0,
               setup.config.dx, setup.config.dy, setup.config.dz, prior_grid,
-              err, modelPath, surf_cols)) {
+              err, modelPath, surf_cols, &sigma_grid, nn_clr, obs_valid)) {
         prior_values = std::move(prior_grid.data());
+        const double mean_sig = mean_subsurface_sigma(sigma_grid, surf_cols);
+        prior_sigma = std::move(sigma_grid.data());
         QMetaObject::invokeMethod(
             this,
-            [this, n = prior_values.size()]() {
-              appendLog(tr("  [AI Prior] Swin 3D Transformer prior evaluated "
+            [this, n = prior_values.size(), has_sig = !prior_sigma.empty(), mean_sig]() {
+              appendLog(
+                  has_sig
+                      ? tr("  [AI Prior] Swin 3D Transformer prior evaluated "
+                           "(%1 cells, mean sigma=%2 g/cm^3) and loaded as "
+                           "uncertainty-weighted reference.")
+                            .arg(n)
+                            .arg(mean_sig, 0, 'f', 3)
+                      : tr("  [AI Prior] Swin 3D Transformer prior evaluated "
                            "(%1 cells) and loaded as reference.")
                             .arg(n));
             },
@@ -1174,7 +1268,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
     const bool ok = engine.invert_columns(
         d_fine, result.density_grid, result.stats, setup.topo_elevations,
         obs_z_cols, prior_values.empty() ? nullptr : &prior_values,
-        &result.modeled_gz);
+        &result.modeled_gz, prior_sigma.empty() ? nullptr : &prior_sigma);
 
     const bool st_req = m_stopRequested.load(std::memory_order_relaxed);
     QMetaObject::invokeMethod(
@@ -1432,18 +1526,18 @@ void Inversion3DDialog::onInstantAiClicked() {
   const double y0_geom = obsGrid->y0().value() - 0.5 * dy;
   const double z0_geom = 0.0;
 
-  std::vector<double> d_fine(nx * ny, 0.0);
-  double dmax = 0.0, dsum2 = 0.0;
-  for (size_t ix = 0; ix < nx; ++ix) {
-    for (size_t iy = 0; iy < ny; ++iy) {
-      const double v = (*obsGrid)(iy, ix);
-      double val = (v == mod3d::GRID_DUMMY || std::isnan(v)) ? 0.0 : v;
-      d_fine[ix * ny + iy] = val;
-      dsum2 += val * val;
-      dmax = std::max(dmax, std::abs(val));
+  std::vector<double> d_fine;
+  std::vector<char> obs_valid;
+  collect_and_infill_obs(obsGrid, nx, ny, d_fine, obs_valid);
+  double dsum2 = 0.0;
+  std::size_t n_valid = 0;
+  for (size_t i = 0; i < d_fine.size(); ++i) {
+    if (obs_valid[i]) {
+      dsum2 += d_fine[i] * d_fine[i];
+      ++n_valid;
     }
   }
-  const double init_rms = std::sqrt(dsum2 / (nx * ny));
+  const double init_rms = std::sqrt(dsum2 / std::max<std::size_t>(1, n_valid));
 
   // Switch to execution tab & reset
   m_tabWidget->setCurrentIndex(3);
@@ -1486,8 +1580,23 @@ void Inversion3DDialog::onInstantAiClicked() {
       surf_cols[ix * ny + iy] =
           inv::column_surface_z(topo_nodes, nx, ny, ix, iy, z0_geom) - z0_geom;
 
+  const double rawObsH = m_doc ? m_doc->observation().gravity_height().value()
+                               : m_spinObsHeight->value();
+  const double effectiveObsH =
+      (m_doc &&
+       m_doc->observation().gravity_mode() ==
+           mod3d::ObservationMode::SensorHeight &&
+       rawObsH <= 0.0)
+          ? 0.1
+          : rawObsH;
+  const int obsBgTrendMode =
+      m_doc ? m_doc->observation().background_trend_mode() : 0;
+  const inv::GridGeometry gf_nn{nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
+  const std::vector<double> nn_obs = prepare_nn_obs(d_fine, gf_nn, obsBgTrendMode);
+
   const auto t_start = std::chrono::high_resolution_clock::now();
   inv::VoxelGrid<double> pred_grid;
+  inv::VoxelGrid<double> sigma_grid;
   std::string err;
   std::string modelPath = m_txtPriorPath->text().toStdString();
   if (modelPath.empty()) {
@@ -1495,8 +1604,8 @@ void Inversion3DDialog::onInstantAiClicked() {
   }
 
   bool ok = inv::NeuralPriorInference::predict(
-      d_fine, nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz, pred_grid, err,
-      modelPath, surf_cols);
+      nn_obs, nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz, pred_grid, err,
+      modelPath, surf_cols, &sigma_grid, effectiveObsH, obs_valid);
 
   const auto t_end = std::chrono::high_resolution_clock::now();
   const double elapsed_ms =
@@ -1512,6 +1621,12 @@ void Inversion3DDialog::onInstantAiClicked() {
     return;
   }
 
+  const double mean_sig = mean_subsurface_sigma(sigma_grid, surf_cols);
+  if (!sigma_grid.data().empty()) {
+    appendLog(tr("  [AI Uncertainty] Mean voxel prior sigma = %1 g/cm^3")
+                  .arg(mean_sig, 0, 'f', 3));
+  }
+
   inv::InversionConfig cfg;
   cfg.nx = nx;
   cfg.ny = ny;
@@ -1522,13 +1637,7 @@ void Inversion3DDialog::onInstantAiClicked() {
   cfg.x0 = x0_geom;
   cfg.y0 = y0_geom;
   cfg.z0 = z0_geom;
-  const double rawObsH = m_doc ? m_doc->observation().gravity_height().value()
-                               : m_spinObsHeight->value();
-  cfg.obs_height = (m_doc->observation().gravity_mode() ==
-                        mod3d::ObservationMode::SensorHeight &&
-                    rawObsH <= 0.0)
-                       ? 0.1
-                       : rawObsH;
+  cfg.obs_height = effectiveObsH;
   cfg.use_fft_solver_benchmark = (m_comboOperator->currentIndex() == 1);
 
   inv::InversionResult result;

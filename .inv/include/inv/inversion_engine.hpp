@@ -151,6 +151,8 @@ struct InversionSetup {
 
     // Optional prior density model (e.g. neural network prediction), VoxelGrid order, size nx*ny*nz.
     std::vector<double> prior{};
+    // Optional voxel-wise uncertainty std-dev sigma [g/cm^3] matching `prior`, size nx*ny*nz.
+    std::vector<double> prior_sigma{};
 
     // Serialization
     [[nodiscard]] nlohmann::json to_json() const {
@@ -201,7 +203,10 @@ struct InversionSetup {
             {"z", obs_z},
             {"gz", obs_gz}
         };
-        if (!prior.empty()) j["prior"] = {{"values", prior}};
+        if (!prior.empty()) {
+            j["prior"] = {{"values", prior}};
+            if (!prior_sigma.empty()) j["prior"]["sigma"] = prior_sigma;
+        }
         return j;
     }
 
@@ -272,6 +277,9 @@ struct InversionSetup {
 
         if (j.contains("prior") && j["prior"].contains("values") && j["prior"]["values"].is_array()) {
             s.prior = j["prior"]["values"].get<std::vector<double>>();
+            if (j["prior"].contains("sigma") && j["prior"]["sigma"].is_array()) {
+                s.prior_sigma = j["prior"]["sigma"].get<std::vector<double>>();
+            }
         }
         return s;
     }
@@ -476,7 +484,8 @@ public:
                         const std::vector<double>& topo_nodes = {},
                         const std::vector<double>& obs_z_cols = {},
                         const std::vector<double>* prior = nullptr,
-                        std::vector<double>* out_modeled_gz = nullptr)
+                        std::vector<double>* out_modeled_gz = nullptr,
+                        const std::vector<double>* prior_sigma = nullptr)
     {
         const auto t_start = std::chrono::high_resolution_clock::now();
         if (config_.nx < 2 || config_.ny < 2 || config_.nz < 1 || d_fine.size() != config_.nx * config_.ny) {
@@ -488,6 +497,7 @@ public:
         bool did_auto_tune = false;
         int tuning_trials = 0;
         std::vector<double> resampled_prior_buf;
+        std::vector<double> resampled_sigma_buf;
         if (config_.auto_tune_params && !config_.refine_previous) {
             if (!run_auto_tune(d_fine, topo_nodes, obs_z_cols, tuning_trials)) {
                 stats.message = "Inversion cancelled by user";
@@ -507,12 +517,29 @@ public:
                                                        config_.dx, config_.dy, config_.dz);
                     resampled_prior_buf = std::move(rg.data());
                     prior = &resampled_prior_buf;
+                    if (prior_sigma && prior_sigma->size() == orig_nz * config_.nx * config_.ny) {
+                        VoxelGrid<double> sg(config_.nx, config_.ny, orig_nz,
+                                             config_.x0, config_.y0, config_.z0,
+                                             config_.dx, config_.dy, H / static_cast<double>(orig_nz), 0.0);
+                        for (std::size_t k = 0; k < sg.data().size(); ++k) {
+                            sg.data()[k] = (*prior_sigma)[k] * (*prior_sigma)[k];
+                        }
+                        VoxelGrid<double> rsg = sg.resample(config_.nx, config_.ny, config_.nz,
+                                                            config_.x0, config_.y0, config_.z0,
+                                                            config_.dx, config_.dy, config_.dz);
+                        resampled_sigma_buf.resize(rsg.data().size());
+                        for (std::size_t k = 0; k < rsg.data().size(); ++k) {
+                            resampled_sigma_buf[k] = std::sqrt(std::max(1e-8, rsg.data()[k]));
+                        }
+                        prior_sigma = &resampled_sigma_buf;
+                    }
                 }
             }
         }
 
         const InversionConfig& c = config_;
         const bool has_prior = prior && prior->size() == c.nx * c.ny * c.nz;
+        const bool has_sigma = has_prior && prior_sigma && prior_sigma->size() == c.nx * c.ny * c.nz;
 
         GridGeometry gf{c.nx, c.ny, c.nz, c.x0, c.y0, c.z0, c.dx, c.dy, c.dz};
         const int n_levels = (c.refine_previous && has_prior) ? 1 : std::clamp(c.coarse_to_fine_levels, 1, 3);
@@ -562,6 +589,13 @@ public:
         const bool has_topo = topo_nodes.size() == (c.nx + 1) * (c.ny + 1);
         std::vector<double> prior_fine;
         if (has_prior) prior_fine = *prior;
+        std::vector<double> prior_var_fine;
+        if (has_sigma) {
+            prior_var_fine.resize(prior_sigma->size());
+            for (std::size_t k = 0; k < prior_sigma->size(); ++k) {
+                prior_var_fine[k] = (*prior_sigma)[k] * (*prior_sigma)[k];
+            }
+        }
 
         std::vector<double> m_prev;
         GridGeometry g_prev{};
@@ -657,9 +691,16 @@ public:
 
             // ---- prior (restricted to this level) -----------------------------------------------
             std::vector<double> prior_level;
+            std::vector<double> sigma_level;
             if (has_prior) {
                 observation::block_average_cells(prior_fine, gf, fx, fy, fz, prior_level);
                 for (std::size_t j = 0; j < prior_level.size(); ++j) if (!active[j]) prior_level[j] = 0.0;
+                if (has_sigma) {
+                    observation::block_average_cells(prior_var_fine, gf, fx, fy, fz, sigma_level);
+                    for (std::size_t j = 0; j < sigma_level.size(); ++j) {
+                        sigma_level[j] = active[j] ? std::sqrt(std::max(1e-8, sigma_level[j])) : 0.0;
+                    }
+                }
                 if (l == 0 && c.scale_prior) {
                     // 1-D least-squares amplitude of the prior against the data (in trend-free subspace).
                     op->set_active(active);
@@ -722,7 +763,8 @@ public:
             ls.level = l;
             ls.nx = g.nx; ls.ny = g.ny; ls.nz = g.nz;
             const std::vector<double>* ref = (has_prior && c.prior_as_reference) ? &prior_level : nullptr;
-            if (!FocusingSolver::solve(g, *op, d_level, m_level, active, ref, sp, ls)) {
+            const std::vector<double>* ref_sig = (ref && has_sigma) ? &sigma_level : nullptr;
+            if (!FocusingSolver::solve(g, *op, d_level, m_level, active, ref, sp, ls, ref_sig)) {
                 stats.message = "Inversion cancelled by user";
                 return false;
             }
@@ -817,7 +859,9 @@ public:
             observation::scattered_to_columns(setup.obs_x, setup.obs_y, setup.obs_z, gf, oz);
         }
         const std::vector<double>* prior = setup.prior.empty() ? nullptr : &setup.prior;
-        return invert_columns(cols, result.density_grid, result.stats, setup.topo_elevations, oz, prior, &result.modeled_gz);
+        const std::vector<double>* prior_sig = setup.prior_sigma.empty() ? nullptr : &setup.prior_sigma;
+        return invert_columns(cols, result.density_grid, result.stats, setup.topo_elevations, oz,
+                              prior, &result.modeled_gz, prior_sig);
     }
 
     // JSON file helpers for Mod3D export/import

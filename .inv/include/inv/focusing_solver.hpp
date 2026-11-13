@@ -263,7 +263,8 @@ class FocusingSolver {
 public:
     static bool solve(const GridGeometry& g, LinearOperator& op, const std::vector<double>& d,
                       std::vector<double>& m, const std::vector<char>& active,
-                      const std::vector<double>* m_ref, const SolverParams& p, LevelStats& st)
+                      const std::vector<double>* m_ref, const SolverParams& p, LevelStats& st,
+                      const std::vector<double>* m_ref_sigma = nullptr)
     {
         const auto t0 = std::chrono::high_resolution_clock::now();
         const std::size_t n = g.cells();
@@ -320,6 +321,30 @@ public:
         std::vector<double> ce(n), cf[3] = {std::vector<double>(n), std::vector<double>(n), std::vector<double>(n)};
         std::vector<double> prec_inv(n), rhs(n), x(n);
 
+        // ---- prior uncertainty weighting around m_ref (normalized inverse sigma) -----------------
+        std::vector<double> u_w(n, 1.0);
+        if (m_ref && m_ref_sigma && m_ref_sigma->size() == n) {
+            std::vector<double> act_sig;
+            act_sig.reserve(n_active);
+            for (std::size_t j = 0; j < n; ++j) {
+                const double sj = (*m_ref_sigma)[j];
+                if (active[j] && std::isfinite(sj) && sj > 0.0) {
+                    act_sig.push_back(sj);
+                }
+            }
+            if (!act_sig.empty()) {
+                std::nth_element(act_sig.begin(), act_sig.begin() + act_sig.size() / 2, act_sig.end());
+                const double sig_ref = std::max(act_sig[act_sig.size() / 2], 1e-4);
+                for (std::size_t j = 0; j < n; ++j) {
+                    if (!active[j]) continue;
+                    const double sj = (*m_ref_sigma)[j];
+                    const double ratio = (std::isfinite(sj) && sj > 0.0) ? (sig_ref / std::max(sj, 1e-4)) : 1.0;
+                    u_w[j] = std::clamp(ratio, 0.35, 2.5);
+                }
+            }
+        }
+
+        // ---- IRLS loop ---------------------------------------------------------------------------
         double rho = p.rho_start;
         int total_cg = 0;
         int iters_done = 0;
@@ -370,7 +395,7 @@ public:
             for (std::size_t j = 0; j < n; ++j) {
                 if (!active[j]) { ce[j] = 0.0; continue; }
                 const double den = p.focusing ? 1.0 / (w2[j] * delta[j] * delta[j] + e2) : uni;
-                ce[j] = alpha * p.ms_weight * w2[j] * den;
+                ce[j] = alpha * p.ms_weight * u_w[j] * w2[j] * den;
             }
             for (int a = 0; a < 3; ++a) std::fill(cf[a].begin(), cf[a].end(), 0.0);
             std::fill(prec_inv.begin(), prec_inv.end(), 1.0);

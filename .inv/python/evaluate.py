@@ -141,20 +141,35 @@ def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0):
     }
 
 
-def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0):
-    """Deterministic validation tensors on ``device``: obs (B,2,H,W), truth, clean, z_obs."""
-    from dataset import BodyTerrainDataset, simulate_batch, terrain_channel
+def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
+                   fault_prob=0.0, clearance_range=None, overburden_prob=0.0,
+                   trend_prob=0.0, dropout_prob=0.0):
+    """Deterministic validation tensors on ``device``: obs (B,C,H,W), truth, clean, z_obs."""
+    from dataset import CLEARANCE, BodyTerrainDataset, build_v5_input, simulate_batch, terrain_channel
     nx, ny, nz, dx, dy, dz = grid
-    ds = BodyTerrainDataset(n, nx, ny, nz, dx, dy, dz, seed=seed, hard_prob=hard_prob)
+    cr = CLEARANCE if clearance_range is None else clearance_range
+    ds = BodyTerrainDataset(n, nx, ny, nz, dx, dy, dz, seed=seed, hard_prob=hard_prob,
+                            fault_prob=fault_prob, clearance_range=cr)
     items = [ds[i] for i in range(n)]
     rho, t, c, nf, ns = (torch.stack([it[k] for it in items]) for k in range(5))
     rho, t, c, nf = rho.to(device), t.to(device), c.to(device), nf.to(device)
-    obs, clean, z_obs = simulate_batch(op, rho, t, c, nf, ns)
-    x = torch.cat([obs, terrain_channel(t, nz * dz)], dim=1)
+    if in_channels >= 5 or overburden_prob > 0.0 or trend_prob > 0.0 or dropout_prob > 0.0:
+        obs, clean, z_obs, vm = simulate_batch(
+            op, rho, t, c, nf, ns,
+            overburden_prob=overburden_prob, trend_prob=trend_prob,
+            dropout_prob=dropout_prob, return_mask=True,
+        )
+        if in_channels >= 5:
+            x = build_v5_input(obs, t, nz * dz, valid_mask=vm, aspect=dz / dx, clearance=c)
+        else:
+            x = torch.cat([obs, terrain_channel(t, nz * dz)], dim=1)
+    else:
+        obs, clean, z_obs = simulate_batch(op, rho, t, c, nf, ns)
+        x = torch.cat([obs, terrain_channel(t, nz * dz)], dim=1)
     return x, rho, clean, z_obs
 
 
-def make_category_showcase(op, device, grid, seed=4024, max_tries=120):
+def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channels=2):
     """Curate 8 deterministic showcase samples spanning all lithology & hard-scene categories.
 
     Returns ``(obs_x, truth, clean, z_obs, labels)`` with 8 samples whose peak slice ``iy``
@@ -162,7 +177,7 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120):
     """
     from dataset import (
         CLEARANCE, NOISE_FRAC, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN,
-        RHO_MAFIC_MIN, RHO_WATER, random_bodies, random_terrain,
+        RHO_MAFIC_MIN, RHO_WATER, build_v5_input, random_bodies, random_terrain,
         simulate_batch, terrain_channel,
     )
 
@@ -219,7 +234,10 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120):
     nf_t = torch.stack(noise_fracs).to(device)
     ns_t = torch.stack(noise_seeds)
     obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t)
-    x = torch.cat([obs, terrain_channel(terr_t, nz * dz)], dim=1)
+    if in_channels >= 5:
+        x = build_v5_input(obs, terr_t, nz * dz, aspect=dz / dx, clearance=clear_t)
+    else:
+        x = torch.cat([obs, terrain_channel(terr_t, nz * dz)], dim=1)
     return x, rho_t, clean, z_obs, tuple(name for name, _, _ in specs)
 
 
@@ -238,10 +256,11 @@ def export_examples_figure(model, op, device, grid, out_path, epoch=None):
     nx, ny, nz, dx, _, dz = grid
     x_km = np.arange(nx) * dx / 1000.0
     z_m = np.arange(nz) * dz
+    in_ch = 5 if hasattr(model, "logvar_head") else 2
 
-    sx, st, _, _ = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0)
-    hx, ht, _, _ = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0)
-    cx, ct, _, _, show_labels = make_category_showcase(op, device, grid, seed=4024)
+    sx, st, _, _ = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0, in_channels=in_ch)
+    hx, ht, _, _ = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0, in_channels=in_ch)
+    cx, ct, _, _, show_labels = make_category_showcase(op, device, grid, seed=4024, in_channels=in_ch)
 
     all_x = torch.cat([sx, hx, cx], dim=0)
     all_t = torch.cat([st, ht, ct], dim=0)
@@ -318,9 +337,10 @@ def export_vol3d_snapshot(model, op, device, grid, out_dir, epoch=None, is_best=
     """Evaluate the 16 dashboard validation/showcase samples and write 3D volume sidecars."""
     nx, ny, nz, _, _, dz = grid
     y_km = np.arange(ny) * dz / 1000.0
-    sx, st, _, sz = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0)
-    hx, ht, _, hz = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0)
-    cx, ct, _, cz, show_labels = make_category_showcase(op, device, grid, seed=4024)
+    in_ch = 5 if hasattr(model, "logvar_head") else 2
+    sx, st, _, sz = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0, in_channels=in_ch)
+    hx, ht, _, hz = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0, in_channels=in_ch)
+    cx, ct, _, cz, show_labels = make_category_showcase(op, device, grid, seed=4024, in_channels=in_ch)
 
     all_x = torch.cat([sx, hx, cx], dim=0)
     all_t = torch.cat([st, ht, ct], dim=0)
@@ -390,7 +410,11 @@ def main():
             out_d = export_vol3d_snapshot(model, op, args.device, grid, args.export_vol3d, epoch=ck.get("epoch"), is_best=True)
             print(f"Exported 3D volume sidecars to {out_d}")
         return
-    x, truth, clean, z_obs = make_fixed_set(args.samples, args.seed, op, args.device, grid, hard_prob=args.hard_prob)
+    in_ch = 5 if ck.get("arch", {}).get("variant") == "v5" else 2
+    x, truth, clean, z_obs = make_fixed_set(
+        args.samples, args.seed, op, args.device, grid,
+        hard_prob=args.hard_prob, in_channels=in_ch,
+    )
     preds = []
     with torch.no_grad():
         for i in range(0, args.samples, 8):

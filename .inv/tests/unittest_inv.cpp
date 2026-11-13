@@ -859,3 +859,80 @@ TEST(FocusingInversionTest, AutoTuneHyperparametersOptimizesLayersBoundsAndGamma
     EXPECT_GT(callback_eval_count, 8);
     EXPECT_EQ(callback_eval_count, callback_done_count);
 }
+
+TEST(ObservationTest, HarmonicInfillSmoothlyFillsMissingHole) {
+    const std::size_t nx = 8, ny = 8;
+    std::vector<double> vals(nx * ny, 4.0);
+    std::vector<char> valid(nx * ny, 1);
+    for (std::size_t ix = 2; ix <= 4; ++ix) {
+        for (std::size_t iy = 3; iy <= 5; ++iy) {
+            vals[ix * ny + iy] = 0.0;
+            valid[ix * ny + iy] = 0;
+        }
+    }
+    ASSERT_TRUE(inv::observation::infill_missing_columns(nx, ny, valid, vals, 32));
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) {
+            EXPECT_NEAR(vals[ix * ny + iy], 4.0, 1e-4);
+        }
+    }
+}
+
+TEST(FocusingInversionTest, PriorUncertaintyModulatesReferenceFocusing) {
+    inv::GridGeometry g{8, 8, 4, 0, 0, 0, 50, 50, 50};
+    inv::ToeplitzGravityOperator op(g, -10.0);
+    std::vector<char> active(g.cells(), 1);
+
+    std::vector<double> truth(g.cells(), 0.0);
+    for (std::size_t ix = 3; ix < 5; ++ix)
+        for (std::size_t iy = 3; iy < 5; ++iy)
+            for (std::size_t iz = 1; iz < 3; ++iz)
+                truth[g.cell_index(ix, iy, iz)] = 0.8;
+
+    std::vector<double> d;
+    op.apply(truth, d);
+
+    // Wrong reference anomaly offset to one side: low sigma should keep it closer to m_ref than high sigma
+    std::vector<double> m_ref(g.cells(), 0.0);
+    const std::size_t probe_confident = g.cell_index(1, 1, 1);
+    const std::size_t probe_uncertain = g.cell_index(6, 6, 1);
+    m_ref[probe_confident] = 0.35;
+    m_ref[probe_uncertain] = 0.35;
+
+    std::vector<double> sigma_const(g.cells(), 0.25);
+    std::vector<double> sigma_hetero(g.cells(), 0.25);
+    sigma_hetero[probe_confident] = 0.02; // confident -> stronger pull to m_ref
+    sigma_hetero[probe_uncertain] = 2.00; // uncertain -> weaker pull to m_ref
+
+    inv::SolverParams sp;
+    sp.irls_iterations = 6;
+    sp.cg_max_iterations = 40;
+    sp.rho_start = 1.0;
+    sp.sigma = 0.05;
+    sp.min_density = -1.0;
+    sp.max_density = 1.0;
+    sp.density_scale = 0.8;
+
+    std::vector<double> m_none = m_ref, m_const = m_ref, m_hetero = m_ref;
+    inv::LevelStats st1, st2, st3;
+    ASSERT_TRUE(inv::FocusingSolver::solve(g, op, d, m_none, active, &m_ref, sp, st1));
+    ASSERT_TRUE(inv::FocusingSolver::solve(g, op, d, m_const, active, &m_ref, sp, st2, &sigma_const));
+    ASSERT_TRUE(inv::FocusingSolver::solve(g, op, d, m_hetero, active, &m_ref, sp, st3, &sigma_hetero));
+
+    for (std::size_t i = 0; i < g.cells(); ++i) {
+        EXPECT_NEAR(m_none[i], m_const[i], 1e-9);
+    }
+    const double dev_conf = std::abs(m_hetero[probe_confident] - m_ref[probe_confident]);
+    const double dev_uncer = std::abs(m_hetero[probe_uncertain] - m_ref[probe_uncertain]);
+    EXPECT_LT(dev_conf, dev_uncer);
+
+    // InversionSetup JSON round-trip with prior_sigma
+    inv::InversionSetup s;
+    s.config.nx = 2; s.config.ny = 2; s.config.nz = 2;
+    s.prior = {0.1, 0.2, 0.3, 0.4, 0.0, 0.0, 0.0, 0.0};
+    s.prior_sigma = {0.05, 0.08, 0.12, 0.15, 0.02, 0.02, 0.02, 0.02};
+    auto j = s.to_json();
+    auto s2 = inv::InversionSetup::from_json(j);
+    ASSERT_EQ(s2.prior_sigma.size(), s.prior_sigma.size());
+    EXPECT_NEAR(s2.prior_sigma[2], 0.12, 1e-12);
+}

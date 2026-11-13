@@ -110,9 +110,10 @@ class TerrainGravityOperator:
         self.dx, self.dy, self.dz = dx, dy, dz
         self.step = float(step if step is not None else dz / 8.0)
         h_max = float(h_max if h_max is not None else 0.25 * nz * dz + 1.0)
-        # Anchor level grid at -0.35 m (35 cm ground gravimeter clearance) so flat/layer-aligned
-        # ground stations sit directly on a level and no level coincides with a layer boundary (w=0).
-        self.h0 = -0.35 - 2.0 * self.step
+        # Anchor level grid so -0.35 m (ground gravimeter clearance) sits cleanly on an integer
+        # level while covering elevated stations down to h_min (airborne / drone heights).
+        n_above = max(2, int(np.ceil(max(0.0, -0.35 - float(h_min)) / self.step)))
+        self.h0 = -0.35 - n_above * self.step
         self.n_levels = int(np.ceil((h_max - self.h0) / self.step)) + 2
         self.px, self.py = 2 * nx, 2 * ny
         pyh = self.py // 2 + 1

@@ -119,6 +119,78 @@ inline std::size_t scattered_to_columns(const std::vector<double>& x, const std:
     return filled;
 }
 
+/// Harmonically infills missing columns (`valid_mask[c] == 0`) via 4-neighbour BFS seed +
+/// discrete Laplace relaxation with Neumann boundaries (matching Python `infill_missing_obs`).
+/// Returns `true` if at least one valid column existed (and missing cells were infilled).
+inline bool infill_missing_columns(std::size_t nx, std::size_t ny,
+                                   const std::vector<char>& valid_mask,
+                                   std::vector<double>& values,
+                                   int laplace_iters = 24) {
+    const std::size_t total = nx * ny;
+    if (nx == 0 || ny == 0 || valid_mask.size() != total || values.size() != total) {
+        return false;
+    }
+    std::vector<char> known(total, 0);
+    std::size_t filled = 0;
+    for (std::size_t c = 0; c < total; ++c) {
+        if (valid_mask[c] && std::isfinite(values[c])) {
+            known[c] = 1;
+            ++filled;
+        } else {
+            values[c] = 0.0;
+        }
+    }
+    if (filled == 0) return false;
+    if (filled == total) return true;
+
+    std::size_t remaining = total - filled;
+    while (remaining > 0) {
+        std::vector<std::size_t> newly;
+        std::vector<double> newv;
+        for (std::size_t ix = 0; ix < nx; ++ix) {
+            for (std::size_t iy = 0; iy < ny; ++iy) {
+                const std::size_t c = ix * ny + iy;
+                if (known[c]) continue;
+                double s = 0.0;
+                int k = 0;
+                if (ix > 0 && known[c - ny]) { s += values[c - ny]; ++k; }
+                if (ix + 1 < nx && known[c + ny]) { s += values[c + ny]; ++k; }
+                if (iy > 0 && known[c - 1]) { s += values[c - 1]; ++k; }
+                if (iy + 1 < ny && known[c + 1]) { s += values[c + 1]; ++k; }
+                if (k) { newly.push_back(c); newv.push_back(s / k); }
+            }
+        }
+        if (newly.empty()) break;
+        for (std::size_t i = 0; i < newly.size(); ++i) {
+            values[newly[i]] = newv[i];
+            known[newly[i]] = 1;
+        }
+        remaining -= newly.size();
+    }
+
+    std::vector<double> next_vals = values;
+    for (int it = 0; it < std::max(0, laplace_iters); ++it) {
+        for (std::size_t ix = 0; ix < nx; ++ix) {
+            for (std::size_t iy = 0; iy < ny; ++iy) {
+                const std::size_t c = ix * ny + iy;
+                if (valid_mask[c]) {
+                    next_vals[c] = values[c];
+                    continue;
+                }
+                double s = 0.0;
+                int k = 0;
+                if (ix > 0) { s += values[c - ny]; ++k; }
+                if (ix + 1 < nx) { s += values[c + ny]; ++k; }
+                if (iy > 0) { s += values[c - 1]; ++k; }
+                if (iy + 1 < ny) { s += values[c + 1]; ++k; }
+                next_vals[c] = (k > 0) ? (s / k) : values[c];
+            }
+        }
+        values.swap(next_vals);
+    }
+    return true;
+}
+
 /// Block-average of column data (fine nx x ny) by integer factors -> (nx/fx x ny/fy).
 inline void block_average_columns(const std::vector<double>& fine, std::size_t nx, std::size_t ny,
                                   std::size_t fx, std::size_t fy, std::vector<double>& out) {
