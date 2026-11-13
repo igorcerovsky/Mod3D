@@ -942,10 +942,11 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
       2. Complete 2D structure-tensor stem (``strike_cos2`` + ``strike_sin2`` + ``valid_mask``),
          expanded 8D scale/survey vector, and clearance/aspect-conditioned depth modulation.
       3. Learnable Green's function vertical distance decay bias (``GreensVerticalBias``) in
-         both Stage-0 and new Stage-1 (``16x32x32``) 3D attention blocks, plus optional ``Dropout3d``.
-      4. Physically calibrated ``17x17`` Nagy-prism coarse forward residual loop at Stage 1.
-      5. Sharper foreground occupancy gating (``0.25/0.75``) and bounded voxel-wise aleatoric
-         ``log_var`` head (``[-8.0, 4.0]``, masked by terrain).
+         Stage-0 3D attention blocks, plus optional ``Dropout3d``.
+      4. Physically calibrated frozen ``17x17`` Nagy-prism coarse forward residual loop at Stage 1
+         (with zero-density bias init on ``coarse_rho_head``).
+      5. Sharper foreground occupancy gating (``0.25/0.75``) and bounded mid-stage aleatoric
+         ``log_var`` head (``[-8.0, 4.0]``, trilinearly upsampled & masked by terrain).
     """
 
     def __init__(self, nx=64, ny=64, nz=32, patch=4, embed_dim=128, num_heads=4, depth=6,
@@ -980,6 +981,9 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
         ])
 
         nz_mid = nz // 2
+        with torch.no_grad():
+            self.coarse_rho_head.weight.mul_(0.05)
+            self.coarse_rho_head.bias.fill_(math.log(-RHO_AIR / RHO_ORE_MAX))
         self.coarse_fwd_conv = nn.Conv2d(nz_mid, 1, 17, padding=8, bias=False)
         with torch.no_grad():
             cell_mid = 2.0 * REF_CELL
@@ -993,7 +997,8 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
             w2 = w1 + cell_mid
             k_np = prism_gz(u1, u2, v1, v2, w1, w2).astype(np.float32)
             self.coarse_fwd_conv.weight.copy_(torch.from_numpy(k_np).unsqueeze(0))
-        self.coarse_fwd_log_scale = nn.Parameter(torch.zeros(1))
+        self.coarse_fwd_conv.weight.requires_grad_(False)
+        self.coarse_fwd_log_scale = nn.Parameter(torch.full((1,), math.log(1.35)))
 
         self.res_feedback_2d = nn.Sequential(
             nn.Conv2d(4, ch_mid, 3, padding=1), nn.GELU(),
@@ -1003,15 +1008,11 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
             nn.Conv2d(3, ch_mid, 1),
             nn.Sigmoid(),
         )
-        mid_heads = num_heads if ch_mid % num_heads == 0 else (2 if ch_mid % 2 == 0 else 1)
-        self.mid_swin = SwinBlock3D(
-            ch_mid, mid_heads, wh=4, ww=4, shift=2,
-            use_greens_bias=True, dp=nz_mid, dropout=dropout,
-        )
 
         self.vox_drop = nn.Dropout3d(p=dropout) if dropout > 0 else nn.Identity()
-        self.logvar_refine = SepConv25DBlock(ch_vox)
-        self.logvar_head = nn.Conv2d(ch_vox, 1, 1)
+        lv_ch = max(8, ch_mid // 2)
+        self.logvar_proj = nn.Sequential(nn.Conv2d(ch_mid, lv_ch, 1), nn.GELU())
+        self.logvar_head = nn.Conv2d(lv_ch, 1, 1)
         with torch.no_grad():
             self.logvar_head.bias.fill_(-2.5)
 
@@ -1155,32 +1156,32 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
         u = self.dec_mid1(u)
 
         nz_mid, nx_mid, ny_mid = self.nz // 2, self.nx // 2, self.ny // 2
-        mask_mid = (self.z_top_mid >= terr_mid.unsqueeze(2)).to(u.dtype)
+        mask_mid = (self.z_top_mid >= terr_mid.unsqueeze(2)).float()
         coarse_raw = self.coarse_rho_head(u.reshape(b, self.ch_mid, nz_mid * nx_mid, ny_mid)).reshape(
             b, 1, nz_mid, nx_mid, ny_mid
-        )
+        ).float()
         coarse_pred = (RHO_AIR + (RHO_ORE_MAX - RHO_AIR) * torch.sigmoid(coarse_raw)) * mask_mid
 
-        aspect_b = log_aspect.mean(dim=(2, 3), keepdim=True).exp().clamp(0.25, 4.0)
-        clear_b = clearance.mean(dim=(2, 3), keepdim=True).clamp(0.0, 4.0)
-        atten = 1.0 / (1.0 + 0.35 * clear_b)
+        aspect_b = (0.25 * log_aspect.float().mean(dim=(2, 3), keepdim=True)).exp().clamp(0.5, 2.0)
+        clear_b = clearance.float().mean(dim=(2, 3), keepdim=True).clamp(0.0, 4.0)
+        atten = 1.0 / (1.0 + 0.12 * clear_b)
         g_coarse_mgal = self.coarse_fwd_conv(coarse_pred.squeeze(1))
-        g_hat_mid = (g_coarse_mgal * aspect_b * atten / s) * self.coarse_fwd_log_scale.exp().clamp(0.25, 4.0)
-        gn_mid = F.avg_pool2d(gn, 2)
-        valid_mid = F.avg_pool2d(valid_mask, 2)
+        g_hat_mid = (g_coarse_mgal * aspect_b * atten / s.float()) * self.coarse_fwd_log_scale.float().exp().clamp(0.25, 4.0)
+        gn_mid = F.avg_pool2d(gn.float(), 2)
+        valid_mid = F.avg_pool2d(valid_mask.float(), 2)
         g_res_mid = gn_mid - g_hat_mid
-        res_2d = self.res_feedback_2d(torch.cat([gn_mid, g_hat_mid, g_res_mid, valid_mid], dim=1)).unsqueeze(2)
+        res_in = torch.cat([gn_mid, g_hat_mid, g_res_mid, valid_mid], dim=1).to(u.dtype)
+        res_2d = self.res_feedback_2d(res_in).unsqueeze(2)
         z_m = self.z_top_mid.expand(b, 1, nz_mid, nx_mid, ny_mid)
         clear_m = F.avg_pool2d(clearance, 2).unsqueeze(2).expand(b, 1, nz_mid, nx_mid, ny_mid)
         d_gate = self.res_depth_gate(
             torch.cat([d_surf_mid, z_m, clear_m], dim=1).reshape(b, 3, nz_mid * nx_mid, ny_mid)
         ).reshape(b, self.ch_mid, nz_mid, nx_mid, ny_mid)
-        u = u + self.res_gate.tanh() * (res_2d * d_gate * mask_mid)
-        u = self.mid_swin(u.permute(0, 2, 3, 4, 1)).permute(0, 4, 1, 2, 3)
-        u = self.dec_mid2(u)
+        u = u + self.res_gate.tanh() * (res_2d * d_gate * mask_mid.to(u.dtype))
+        u_mid = self.dec_mid2(u)
 
         # Stage 2 -> (nz, nx, ny)
-        u = self.up_vox(u)
+        u = self.up_vox(u_mid)
         d_surf = (self.z_top - terr.unsqueeze(2)).clamp_min(0.0)
         hv = u + self.skip_vox(f0, d_surf, self.z_top) + self.scale_vox(se).view(b, self.ch_vox, 1, 1, 1)
         hv = self.vox_drop(self.dec_vox2(self.dec_vox1(hv)))
@@ -1223,8 +1224,11 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
         pred = y * mask
         if return_aux:
             edt = F.softplus(self.edt_head(hv_1x1)).reshape(b, 1, self.nz, self.nx, self.ny) * mask
-            lv_feat = self.logvar_refine(hv).reshape(b, self.ch_vox, self.nz * self.nx, self.ny)
-            log_var = self.logvar_head(lv_feat).reshape(b, 1, self.nz, self.nx, self.ny).clamp(-8.0, 4.0) * mask
+            lv_in = u_mid.reshape(b, self.ch_mid, nz_mid * nx_mid, ny_mid)
+            lv_mid = self.logvar_head(self.logvar_proj(lv_in)).reshape(b, 1, nz_mid, nx_mid, ny_mid)
+            log_var = F.interpolate(
+                lv_mid.float(), size=(self.nz, self.nx, self.ny), mode="trilinear", align_corners=False,
+            ).clamp(-8.0, 4.0) * mask.float()
             return pred, {
                 "logits": logits,
                 "probs": probs,

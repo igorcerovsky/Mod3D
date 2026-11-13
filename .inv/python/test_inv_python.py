@@ -832,6 +832,9 @@ def test_v5_greens_bias_and_model_heads():
     # Strict terrain masking on both density and log_var above terrain (iz=0 < 0.125*8=1)
     assert float(pred[:, :, 0].abs().max()) == 0.0
     assert float(aux["log_var"][:, :, 0].abs().max()) == 0.0
+    assert not m.coarse_fwd_conv.weight.requires_grad
+    assert float(m.coarse_fwd_conv.weight.min()) >= 0.0
+    assert abs(float(aux["coarse_pred"].mean())) < 0.10
 
     # Backward compatibility with 2-channel input + single-output forward
     pred2 = m(x5[:, :2])
@@ -915,7 +918,7 @@ def test_v5_realistic_augmentations_infill_and_clearance():
             or (RHO_LIGHT_MIN - 1e-4 <= v <= RHO_ORE_MAX + 1e-4)
         ), f"Unexpected lithology density after fault: {v}"
 
-    # Wide clearance operator (h_min=-85 m) + overburden + regional trend + dropout/infill
+    # Wide clearance operator (h_min=-85 m) + dropout/infill (no regolith/trend)
     op_hi = TerrainGravityOperator(24, 24, 12, 50.0, 50.0, 50.0, h_min=-85.0)
     assert op_hi.h0 <= -85.0
     ds = BodyTerrainDataset(4, 24, 24, 12, 50.0, 50.0, 50.0, seed=99,
@@ -930,7 +933,7 @@ def test_v5_realistic_augmentations_infill_and_clearance():
     c_air = torch.full((4,), 55.0)
     obs_v5, clean_v5, z_obs_v5, vm_v5 = simulate_batch(
         op_hi, rho_b, t_b, c_air, nf_b, ns_b,
-        overburden_prob=1.0, trend_prob=1.0, dropout_prob=1.0, return_mask=True,
+        dropout_prob=1.0, return_mask=True,
     )
     assert torch.isfinite(obs_v5).all() and vm_v5.shape == obs_v5.shape
     assert torch.allclose(z_obs_v5, t_b - 55.0)

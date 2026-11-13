@@ -142,8 +142,7 @@ def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0):
 
 
 def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
-                   fault_prob=0.0, clearance_range=None, overburden_prob=0.0,
-                   trend_prob=0.0, dropout_prob=0.0):
+                   fault_prob=0.0, clearance_range=None, dropout_prob=0.0):
     """Deterministic validation tensors on ``device``: obs (B,C,H,W), truth, clean, z_obs."""
     from dataset import CLEARANCE, BodyTerrainDataset, build_v5_input, simulate_batch, terrain_channel
     nx, ny, nz, dx, dy, dz = grid
@@ -153,11 +152,9 @@ def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
     items = [ds[i] for i in range(n)]
     rho, t, c, nf, ns = (torch.stack([it[k] for it in items]) for k in range(5))
     rho, t, c, nf = rho.to(device), t.to(device), c.to(device), nf.to(device)
-    if in_channels >= 5 or overburden_prob > 0.0 or trend_prob > 0.0 or dropout_prob > 0.0:
+    if in_channels >= 5 or dropout_prob > 0.0:
         obs, clean, z_obs, vm = simulate_batch(
-            op, rho, t, c, nf, ns,
-            overburden_prob=overburden_prob, trend_prob=trend_prob,
-            dropout_prob=dropout_prob, return_mask=True,
+            op, rho, t, c, nf, ns, dropout_prob=dropout_prob, return_mask=True,
         )
         if in_channels >= 5:
             x = build_v5_input(obs, t, nz * dz, valid_mask=vm, aspect=dz / dx, clearance=c)

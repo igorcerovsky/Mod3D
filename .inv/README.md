@@ -23,7 +23,7 @@
 
 The **`.inv`** sub-project provides an automated, physics-guided 3D potential field inversion framework integrated within **Mod3D**. It bridges classic potential field inverse theory—specifically **Portniaguine & Zhdanov's Reweighted Focusing Inversion**—with state-of-the-art **Transformer architectures** inspired by 3D weather and earth system modeling (**Pangu-Weather**, **GraphCast**, **ClimaX**).
 
-The system divides the subsurface modeling space into 3D voxel cells, predicts physical parameter distributions (density contrast $\Delta \rho$ and magnetic susceptibility $\chi$) along with aleatoric uncertainty ($\sigma_\rho = \exp(0.5 \cdot \text{log\_var})$) directly from surface potential field observations and terrain relief, and refines them using analytical forward operators. Using 7-class learnable lithology prototype embeddings (`v2`–`v5`), the neural prior classifies background ($0.0\text{ g/cm}^3$), strict **air cavities** ($-2.67\text{ g/cm}^3$), strict **water-filled cavities** ($-1.67\text{ g/cm}^3$), **light rock / coal / soft clay** ($[-1.55, -0.85]\text{ g/cm}^3$), **sediments / waste** ($[-0.80, -0.10]\text{ g/cm}^3$), **mafic / ultramafic intrusions** ($[+0.15, +0.75]\text{ g/cm}^3$), and **high-grade mineral ore** ($[+0.80, +1.85]\text{ g/cm}^3$) strictly below topography relief. In `v5`, a learnable Green's function vertical distance decay bias $B_z(|\Delta z|)$ informs depth attention, while Apple CoreML Execution Provider acceleration delivers native Apple Neural Engine / GPU inference.
+The system divides the subsurface modeling space into 3D voxel cells, predicts physical parameter distributions (density contrast $\Delta \rho$ and magnetic susceptibility $\chi$) along with aleatoric uncertainty ($\sigma_\rho = \exp(0.5 \cdot \text{log\_var})$) directly from surface potential field observations and terrain relief, and refines them using analytical forward operators. Using 7-class learnable lithology prototype embeddings (`v2`–`v5.1`), the neural prior classifies background ($0.0\text{ g/cm}^3$), strict **air cavities** ($-2.67\text{ g/cm}^3$), strict **water-filled cavities** ($-1.67\text{ g/cm}^3$), **light rock / coal / soft clay** ($[-1.55, -0.85]\text{ g/cm}^3$), **sediments / waste** ($[-0.80, -0.10]\text{ g/cm}^3$), **mafic / ultramafic intrusions** ($[+0.15, +0.75]\text{ g/cm}^3$), and **high-grade mineral ore** ($[+0.80, +1.85]\text{ g/cm}^3$) strictly below topography relief. In `v5.1`, a learnable Green's function vertical distance decay bias $B_z(|\Delta z|)$ informs depth attention, a mid-stage trilinear aleatoric uncertainty head predicts voxel confidence ($\sigma_\rho$), and calibrated frozen Nagy-prism coarse forward feedback stabilizes multi-scale convergence, while Apple CoreML Execution Provider acceleration delivers native Apple Neural Engine / GPU inference.
 
 ### Key Architectural Invariant: Complete Core Independence
 
@@ -55,9 +55,9 @@ Like **`pfld`** (Mod3D's standalone facet physics engine), the computational cor
 |                                                                                         |
 |   +---------------------------------------------------------------------------------+   |
 |   |                           .inv/python (Training Sub-Project)                    |   |
-|   |  - Stratified Bodies, Cavities, Faults & Regolith   - Fused Dilations & Delta G |   |
-|   |  - Regional Trend, Correlated Noise & Infill        - Beta-Laplace NLL & Coarse |   |
-|   |  - v5 5-ch Green's Bias Swin3D + Log-Var Uncertainty - CoreML / MPS bfloat16     |   |
+|   |  - Stratified Bodies, Cavities & Fault Cuts         - Fused Dilations & Delta G |   |
+|   |  - Multi-Aspect Ratios, Clutter & Station Infill    - Beta-Laplace NLL & Coarse |   |
+|   |  - v5.1 5-ch Green's Bias Swin3D + Uncertainty      - CoreML / Pure FP32        |   |
 |   +---------------------------------------------------------------------------------+   |
 +-----------------------------------------------------------------------------------------+
 ```
@@ -148,18 +148,18 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │
 └── python/                     # Python training & research sub-project
     ├── requirements.txt        # PyTorch, ONNX, and scientific dependencies
-    ├── dataset.py              # Stratified/deformed bodies, cavities, planar faults, weathered regolith, regional trends & harmonic infill
+    ├── dataset.py              # Stratified/deformed bodies, cavities, planar dipping faults, multi-aspect grids & harmonic infill (pure residual gravity)
     ├── forward.py              # Multi-channel draped Nagy-prism (level_stride, fused bmm, h_min elevated drape) & flat FFT operators
-    ├── model_swin3d.py         # v5 5-ch Green's vertical decay bias Axial+Swin3D + aleatoric log_var uncertainty head (v1-v4 compat)
-    ├── losses.py               # CompoundInversionLoss with zone-balanced shifted beta-Laplace NLL, coarse loss & foreground amp consistency
-    ├── train.py                # Dedicated on-the-fly training loop (v5 default, multi-aspect op bank, bfloat16 AMP, ModelEMA)
+    ├── model_swin3d.py         # v5.1 5-ch Green's vertical decay bias Axial+Swin3D (2.73M params) + mid-stage aleatoric log_var uncertainty head (v1-v4 compat)
+    ├── losses.py               # CompoundInversionLoss with zone-balanced shifted beta-Laplace NLL, smooth-L1 coarse loss & foreground amp consistency
+    ├── train.py                # Dedicated on-the-fly training loop (v5.1 default, multi-aspect op bank, pure FP32 precision, ModelEMA)
     ├── dashboard.py            # Decoupled GUI/matplotlib TrainingMonitor & HTML5/WebGL2 dashboard generator
     ├── export_demo.py          # Exports best-epoch 2D/3D static viewer bundle to .inv/demo/
     ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, local contrast IoU, amp & halo metrics
     ├── infer_prior.py          # Input-scaled neural prior & uncertainty (density + sigma) writer into Mod3D JSON
     ├── export_onnx.py          # PyTorch to ONNX (opset 17) static export with dual density + log_var heads & CoreML verification
     ├── vol3d_io.py             # Compact base64 RLE 3D volume & int16 2D field codecs for HTML/demo serialization
-    └── test_inv_python.py      # Automated 30-test Python, v5 Green's bias, NLL, realistic geology & CoreML parity suite
+    └── test_inv_python.py      # Automated 30-test Python, v5.1 Green's bias, NLL, realistic geology & CoreML parity suite
 ```
 
 ---
@@ -206,10 +206,10 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run automated Python test suite (30 tests verifying physics, v5 architecture, Green's bias, NLL, realistic geology & ONNX CoreML parity)
+# Run automated Python test suite (30 tests verifying physics, v5.1 architecture, Green's bias, NLL, realistic geology & ONNX CoreML parity)
 python test_inv_python.py
 
-# Train 3D Swin Transformer (v5 default) with live macOS GUI window
+# Train 3D Swin Transformer (v5.1 default, pure FP32) with live macOS GUI window
 python train.py --epochs 20 --steps 200 --batch-size 8 --gui
 
 # Smoke test (quick 1-minute verification)

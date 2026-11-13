@@ -53,8 +53,6 @@ ASPECT_MULTI = (0.55, 0.75, 1.0, 1.20, 1.40)  # vertical-to-horizontal cell aspe
 NOISE_FRAC = (0.005, 0.04)      # station noise sigma / max|field|
 BODY_VOX_NOISE = 0.08           # 3D internal body voxel heterogeneity (std fraction of |rho|)
 BG_VOX_NOISE_SCALE = 0.15       # 3D host-rock voxel clutter scale relative to noise_frac * max|rho|
-WEATHER_LEN_CELLS = (0.8, 3.0)  # regolith weathering decay length in vertical cell units
-WEATHER_AMP_MAX = 0.35          # peak regolith contrast magnitude [g/cm^3]
 
 # Calibrated physical density contrast bounds [g/cm^3 relative to 2.67 g/cm^3 host rock]
 RHO_AIR = -2.67
@@ -828,14 +826,13 @@ def _rand_uniform(rng, low, high, shape, device, dtype):
 @torch.no_grad()
 def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, noise_seed=None,
                    body_vox_noise=BODY_VOX_NOISE, bg_vox_scale=BG_VOX_NOISE_SCALE,
-                   overburden_prob: float = 0.0, trend_prob: float = 0.0, dropout_prob: float = 0.0,
-                   return_mask: bool = False):
+                   dropout_prob: float = 0.0, return_mask: bool = False):
     """Batched forward on ``op``'s device. Returns ``(obs_noisy, obs_clean, z_obs[, valid_mask])``.
 
     ``obs_clean`` is the exact gravity field of the clean target ``rho``; ``obs_noisy`` is computed
-    from ``rho + delta_rho`` (3D petrophysical voxel noise + optional weathered regolith overburden
-    below terrain) plus optional residual 2D polynomial regional trend, spatially correlated sensor
-    noise, and optional missing-station dropout + harmonic infill.
+    from ``rho + delta_rho`` (3D petrophysical voxel noise below terrain) plus spatially correlated
+    sensor noise and optional missing-station dropout + harmonic infill. Regional trends and
+    regolith overburden are excluded (detrended prior to inversion).
     """
     b, _, nz, nx, ny = rho.shape
     z_obs = t - clearance.view(-1, 1, 1)
@@ -849,7 +846,7 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
         vox_n = torch.stack([torch.randn(rho.shape[1:], generator=torch.Generator().manual_seed(int(s) + 1))
                              for s in noise_seed.cpu()]).to(rho.device)
 
-    if body_vox_noise > 0.0 or bg_vox_scale > 0.0 or overburden_prob > 0.0:
+    if body_vox_noise > 0.0 or bg_vox_scale > 0.0:
         z_top = torch.arange(op.nz, device=rho.device, dtype=rho.dtype).view(1, 1, op.nz, 1, 1) * op.dz
         below = (z_top >= t.unsqueeze(1).unsqueeze(2)).to(rho.dtype)
         amp = rho.abs().amax(dim=(1, 2, 3, 4), keepdim=True).clamp_min(0.1)
@@ -858,20 +855,6 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
         vox_corr = torch.nn.functional.avg_pool3d(vox_n, kernel_size=3, stride=1, padding=1) * 3.0
         vox_mix = 0.72 * vox_n + 0.28 * vox_corr
         rho_vox = rho + sigma_vox * vox_mix * below
-
-        if overburden_prob > 0.0:
-            ob_on = (_rand_uniform(rng_np, 0.0, 1.0, (b, 1, 1, 1, 1), rho.device, rho.dtype) < overburden_prob).to(rho.dtype)
-            l_weather = _rand_uniform(rng_np, WEATHER_LEN_CELLS[0] * op.dz, WEATHER_LEN_CELLS[1] * op.dz,
-                                      (b, 1, 1, 1, 1), rho.device, rho.dtype)
-            z_depth = (z_top - t.unsqueeze(1).unsqueeze(2)).clamp_min(0.0)
-            # Laterally modulated weathered regolith directly beneath topography surface
-            reg_lat = torch.nn.functional.avg_pool2d(noise, kernel_size=7, stride=1, padding=3) * 2.2
-            reg_lat = torch.sigmoid(reg_lat).unsqueeze(2)  # [0, 1] smooth lateral variation
-            ob_amp = _rand_uniform(rng_np, 0.35, 1.0, (b, 1, 1, 1, 1), rho.device, rho.dtype) * WEATHER_AMP_MAX
-            rho_reg = -ob_amp * (0.4 + 0.6 * reg_lat) * torch.exp(-z_depth / l_weather) * below * ob_on
-            # Preserve exact cavity/ore interior values while weathering surrounding shallow host rock
-            host_only = (rho == 0).to(rho.dtype)
-            rho_vox = rho_vox + rho_reg * host_only
 
         try:
             both = op(torch.cat([rho, rho_vox], dim=1), z_obs)
@@ -884,21 +867,9 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
         obs_vox = clean
 
     peak = clean.abs().amax(dim=(1, 2, 3), keepdim=True).clamp_min(1e-6)
-    noise_corr = torch.nn.functional.avg_pool2d(noise, kernel_size=5 if trend_prob > 0 else 3,
-                                                stride=1, padding=2 if trend_prob > 0 else 1)
-    noise_corr = noise_corr * (3.2 if trend_prob > 0 else 2.1)
+    noise_corr = torch.nn.functional.avg_pool2d(noise, kernel_size=3, stride=1, padding=1) * 2.1
     noise_mix = 0.75 * noise + 0.25 * noise_corr
     noisy = obs_vox + noise_mix * noise_frac.view(-1, 1, 1, 1) * peak
-
-    if trend_prob > 0.0:
-        tr_on = (_rand_uniform(rng_np, 0.0, 1.0, (b, 1, 1, 1), rho.device, rho.dtype) < trend_prob).to(rho.dtype)
-        xg = torch.linspace(-1.0, 1.0, nx, device=rho.device, dtype=rho.dtype).view(1, 1, nx, 1)
-        yg = torch.linspace(-1.0, 1.0, ny, device=rho.device, dtype=rho.dtype).view(1, 1, 1, ny)
-        c0 = _rand_uniform(rng_np, -0.06, 0.06, (b, 1, 1, 1), rho.device, rho.dtype)
-        ca = _rand_uniform(rng_np, -0.18, 0.18, (b, 1, 1, 1), rho.device, rho.dtype)
-        cb = _rand_uniform(rng_np, -0.18, 0.18, (b, 1, 1, 1), rho.device, rho.dtype)
-        cc = _rand_uniform(rng_np, -0.10, 0.10, (b, 1, 1, 1), rho.device, rho.dtype)
-        noisy = noisy + tr_on * peak * (c0 + ca * xg + cb * yg + cc * xg * yg)
 
     valid_mask = torch.ones((b, 1, nx, ny), device=rho.device, dtype=rho.dtype)
     if dropout_prob > 0.0:

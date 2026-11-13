@@ -131,10 +131,8 @@ def parse_args():
                    help="model architecture variant (default: v5)")
     p.add_argument("--dropout", type=float, default=0.05, help="Dropout3d/MLP rate for v5")
     p.add_argument("--fault-prob", type=float, default=0.40, help="v5 dipping fault cut probability")
-    p.add_argument("--overburden-prob", type=float, default=0.45, help="v5 weathered regolith probability")
-    p.add_argument("--trend-prob", type=float, default=0.40, help="v5 regional trend + correlated noise prob")
     p.add_argument("--dropout-prob", type=float, default=0.35, help="v5 missing-station infill prob")
-    p.add_argument("--no-amp", action="store_true", help="disable bfloat16 autocast on MPS/CUDA")
+    p.add_argument("--no-amp", action="store_true", help="(deprecated no-op; training runs strictly in FP32)")
     p.add_argument("--resume", type=str, default="", help="continue from a checkpoint")
     p.add_argument("--gui", action="store_true", help="open a live native GUI window with training graphs")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
@@ -165,16 +163,12 @@ def main():
 
     variant = arch.get("variant", "v1")
     is_v5 = variant == "v5"
-    amp_dev = "cuda" if dev.startswith("cuda") else ("mps" if dev.startswith("mps") else "")
-    use_amp = (not args.no_amp) and bool(amp_dev)
     fault_prob = float(args.fault_prob) if is_v5 else 0.0
-    ob_prob = float(args.overburden_prob) if is_v5 else 0.0
-    tr_prob = float(args.trend_prob) if is_v5 else 0.0
     do_prob = float(args.dropout_prob) if is_v5 else 0.0
     clear_rng = CLEARANCE_MULTI if is_v5 else CLEARANCE
     asp_list = ASPECT_MULTI if is_v5 else None
 
-    print(f"Device {dev} (AMP bfloat16={'ON' if use_amp else 'OFF'}) | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
+    print(f"Device {dev} (FP32) | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
           f"grid {NX}x{NY}x{NZ} @ {CELL} m | hard-prob {hard_prob:.2f} | "
           f"{'clearance 0.30-80m, multi-aspect' if is_v5 else 'ground clearance 0.30-0.40 m'}")
     print(f"Monitor: {os.path.join(args.save_dir, 'training_monitor.png')} "
@@ -200,16 +194,14 @@ def main():
     val_ch = 5 if is_v5 else 2
     vx, vtrue, vclean, vz = make_fixed_set(
         args.n_val, 2024, op, dev, grid, hard_prob=0.0, in_channels=val_ch,
-        fault_prob=fault_prob * 0.75, clearance_range=clear_rng,
-        overburden_prob=ob_prob * 0.75, trend_prob=tr_prob * 0.75, dropout_prob=do_prob * 0.75,
+        fault_prob=fault_prob * 0.75, clearance_range=clear_rng, dropout_prob=do_prob * 0.75,
     )
     hard_val = None
     if hard_prob > 0.0:
         n_hard = max(8, args.n_val // 2)
         hard_val = make_fixed_set(
             n_hard, 3024, op, dev, grid, hard_prob=1.0, in_channels=val_ch,
-            fault_prob=fault_prob, clearance_range=clear_rng,
-            overburden_prob=ob_prob, trend_prob=tr_prob, dropout_prob=do_prob,
+            fault_prob=fault_prob, clearance_range=clear_rng, dropout_prob=do_prob,
         )
     show_x, show_true, show_clean, show_z, show_labels = make_category_showcase(
         op, dev, grid, seed=4024, in_channels=val_ch,
@@ -333,7 +325,6 @@ def main():
                     if m_a.any():
                         o_a, c_a, z_a, v_a = simulate_batch(
                             op_i, rho[m_a], t[m_a], c[m_a], nf[m_a],
-                            overburden_prob=ob_prob, trend_prob=tr_prob,
                             dropout_prob=do_prob, return_mask=True,
                         )
                         obs[m_a], clean[m_a], z_obs[m_a], vm[m_a] = o_a, c_a, z_a, v_a
@@ -349,12 +340,7 @@ def main():
                 rho, t, obs, clean, z_obs = augment_d4(rho, t, obs, clean, z_obs)
                 x = torch.cat([obs, terrain_channel(t, depth_total)], dim=1)
 
-            with torch.amp.autocast(device_type=amp_dev or "cpu", dtype=torch.bfloat16, enabled=use_amp):
-                pred, aux = forward_with_aux(model, x)
-            if use_amp:
-                pred = pred.float()
-                if aux is not None:
-                    aux = {k: (v.float() if isinstance(v, torch.Tensor) else v) for k, v in aux.items()}
+            pred, aux = forward_with_aux(model, x)
             loss, m = crit(pred, rho, clean, z_obs, aux=aux)
             opt.zero_grad(set_to_none=True)
             loss.backward()

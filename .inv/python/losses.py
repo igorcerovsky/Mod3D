@@ -132,8 +132,8 @@ class CompoundInversionLoss(nn.Module):
         self.zhdanov = ZhdanovFocusingLoss()
 
     def _lithology_loss(self, aux, m_true, fg_mask, d3, w_z, gap_mask):
-        logits = aux["logits"]                                      # (B, K, D, H, W)
-        probs = aux["probs"]                                        # (B, K, D, H, W)
+        logits = aux["logits"].float()                              # (B, K, D, H, W)
+        probs = aux["probs"].float()                                # (B, K, D, H, W)
         num_classes = logits.shape[1]
         sub_mask = aux.get("mask")
         if sub_mask is None:
@@ -198,6 +198,12 @@ class CompoundInversionLoss(nn.Module):
         return 0.5 * l_ce + 0.5 * l_dice_cls + 0.25 * absent_leak.mean()
 
     def forward(self, m_pred, m_true, d_clean=None, z_obs=None, aux=None):
+        m_pred = m_pred.float()
+        m_true = m_true.float()
+        if d_clean is not None:
+            d_clean = d_clean.float()
+        if z_obs is not None:
+            z_obs = z_obs.float()
         D = m_true.shape[2]
         a = m_true.abs().amax(dim=(1, 2, 3, 4), keepdim=True).clamp_min(0.05)
         pn, tn = m_pred / a, m_true / a
@@ -334,10 +340,10 @@ class CompoundInversionLoss(nn.Module):
 
         l_coarse = torch.zeros((), device=m_pred.device)
         if aux is not None and "coarse_pred" in aux and self.lambda_coarse > 0:
-            cpn = aux["coarse_pred"] / a
+            cpn = aux["coarse_pred"].float() / a
             ctn = F.avg_pool3d(m_true, 2) / a
             csum = cpn.abs().flatten(1).sum(1) + ctn.abs().flatten(1).sum(1) + 1e-6
-            c_l1 = (cpn - ctn).abs().flatten(1).sum(1) / csum
+            c_l1 = F.smooth_l1_loss(cpn, ctn, reduction="none", beta=0.01).flatten(1).sum(1) / csum
             c_ali = F.relu(cpn * torch.sign(ctn))
             c_int = torch.minimum(c_ali, ctn.abs()).flatten(1).sum(1)
             c_iou = (1.0 - (2.0 * c_int + 1e-6) / csum).clamp_min(0.0)
@@ -345,7 +351,7 @@ class CompoundInversionLoss(nn.Module):
 
         l_nll = torch.zeros((), device=m_pred.device)
         if aux is not None and "log_var" in aux and self.lambda_nll > 0:
-            lv = aux["log_var"].clamp(-8.0, 4.0)
+            lv = aux["log_var"].float().clamp(-8.0, 4.0)
             sub_mask = aux.get("mask", torch.ones_like(fg_mask))
             err_abs = (m_pred - m_true).abs()
             sigma_b = torch.exp(0.5 * self.beta_nll * lv).detach()

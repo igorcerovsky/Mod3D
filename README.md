@@ -70,7 +70,7 @@ Powered by Dr. Vladimír Pohánka's exact analytical polyhedral integration engi
     - **Regularized Levenberg-Marquardt Solver**: Solves $(J^T J + \alpha L + \lambda \mathbf{D})\Delta \mathbf{z} = -(J^T \mathbf{r} + \alpha L \Delta \mathbf{z}_0)$ with a scale-invariant surface graph Laplacian curvature penalty $\alpha L$, ensuring smooth geological contacts and preventing unphysical oscillations.
     - **Context Menu & Dedicated Dialog**: Direct right-click `"Fit Neighborhood"` action in Profile View, and dedicated `FitNeighborhoodDialog` for tuning footprint parameters, regularization, and live execution.
   - **3D Focusing Inversion & AI Deep-Learning Prior (Tier 5)**:
-    - **Physics-Constrained 3D Swin Transformer**: Instant inference ($\le 100\text{ ms}$) generating 3D density contrast volumes directly from 2D surface gravity observations via embedded ONNX Runtime.
+    - **Physics-Constrained 3D Swin Transformer (v5.1)**: Instant inference ($\le 100\text{ ms}$) generating 3D density contrast volumes and aleatoric uncertainty directly from 2D surface gravity observations via embedded ONNX Runtime or Apple CoreML.
     - **3-Level Coarse-to-Fine Multiscale Hierarchy**: Progressive grid refinement with adaptive active-set pruning, reducing computational work while sharpening deep geological boundaries.
     - **Zhdanov Focusing Regularizers**: Minimum Support ($\phi_{MS}$) and Minimum Gradient Support ($\phi_{MGS}$) recovering sharp, compact density anomalies with physical boundaries.
     - **Topography-Aware Operators & Trend Decoupling**: Direct support for irregular DEM topography and simultaneous background trend estimation (Constant Shift, Planar Ramp, Border Planar).
