@@ -1013,6 +1013,77 @@ def test_v52_unit_and_instance_iou_loss():
     assert mp_abut_miss["loss_unit_iou"] - mp_abut_exact["loss_unit_iou"] > 0.20
 
 
+def test_v52_wavelength_clearance_and_curriculum():
+    from dataset import (
+        CLEARANCE_MULTI, RHO_AIR, RHO_WATER, BodyTerrainDataset,
+        compute_max_resolvable_clearance,
+    )
+
+    t_cells = np.zeros((64, 64), dtype=np.float32)
+
+    # 1. Cavity scenes (air / water) must cap clearance at <= 2.0 m
+    for cav in (RHO_AIR, RHO_WATER):
+        rho_cav = np.zeros((32, 64, 64), dtype=np.float32)
+        rho_cav[2:8, 20:32, 20:32] = cav
+        eff = compute_max_resolvable_clearance(rho_cav, t_cells, 50.0, 50.0,
+                                               scene_type="isolated", fault_applied=False,
+                                               clearance_range=CLEARANCE_MULTI)
+        assert eff[1] <= 2.0, f"cavity clearance not capped: {eff}"
+
+    # 2. High-frequency scene archetypes and faulted scenes must cap clearance at <= 2.0 m
+    rho_broad = np.zeros((32, 64, 64), dtype=np.float32)
+    rho_broad[2:10, 20:32, 20:32] = 1.10
+    for st in ("tight_cluster", "nested_halo", "abutting_contact", "vertical_stack"):
+        eff = compute_max_resolvable_clearance(rho_broad, t_cells, 50.0, 50.0,
+                                               scene_type=st, fault_applied=False,
+                                               clearance_range=CLEARANCE_MULTI)
+        assert eff[1] <= 2.0, f"high-freq scene {st} not capped: {eff}"
+    eff_fault = compute_max_resolvable_clearance(rho_broad, t_cells, 50.0, 50.0,
+                                                 scene_type="isolated", fault_applied=True,
+                                                 clearance_range=CLEARANCE_MULTI)
+    assert eff_fault[1] <= 2.0, f"faulted scene not capped: {eff_fault}"
+
+    # 3. Small/narrow isolated body (< 3.5 cells) must cap clearance at <= 2.0 m
+    rho_small = np.zeros((32, 64, 64), dtype=np.float32)
+    rho_small[2:6, 30:33, 30:33] = 1.10
+    eff_small = compute_max_resolvable_clearance(rho_small, t_cells, 50.0, 50.0,
+                                                 scene_type="isolated", fault_applied=False,
+                                                 clearance_range=CLEARANCE_MULTI)
+    assert eff_small[1] <= 2.0, f"small body not capped: {eff_small}"
+
+    # 4. Broad, shallow, fault-free rock body permits elevated airborne clearance (> 15.0 m)
+    eff_broad = compute_max_resolvable_clearance(rho_broad, t_cells, 50.0, 50.0,
+                                                 scene_type="isolated", fault_applied=False,
+                                                 clearance_range=CLEARANCE_MULTI)
+    assert eff_broad[1] > 15.0 and eff_broad[1] <= CLEARANCE_MULTI[1], f"broad body capped wrongly: {eff_broad}"
+
+    # 5. Dataset curriculum setter updates sampling bounds
+    ds = BodyTerrainDataset(16, hard_prob=0.15, fault_prob=0.05, clearance_range=(0.30, 2.0))
+    ds.set_curriculum(hard_prob=0.50, fault_prob=0.40, clearance_max=80.0)
+    assert ds.hard_prob == 0.50 and ds.fault_prob == 0.40 and ds.clearance_range == (0.30, 80.0)
+
+
+def test_v52_slim_base_heavy_architectures():
+    from model_swin3d import V5_SIZE_PRESETS, PotentialFieldTransformer3DV5, create_model
+
+    x = torch.randn(2, 5, 16, 16)
+    counts = {}
+    for sz in ("slim", "base", "heavy"):
+        m = create_model(16, 16, 8, **V5_SIZE_PRESETS[sz]).eval()
+        counts[sz] = sum(p.numel() for p in m.parameters() if p.requires_grad)
+        with torch.no_grad():
+            pred, aux = m(x, return_aux=True)
+        assert pred.shape == (2, 1, 8, 16, 16), f"{sz} pred shape mismatch: {pred.shape}"
+        assert aux["log_var"].shape == (2, 1, 8, 16, 16)
+
+    assert counts["slim"] < counts["base"] < counts["heavy"], f"unexpected param counts: {counts}"
+
+    # Base preset keys must match default PotentialFieldTransformer3DV5 identically
+    m_base = create_model(16, 16, 8, **V5_SIZE_PRESETS["base"])
+    m_def = PotentialFieldTransformer3DV5(16, 16, 8)
+    assert list(m_base.state_dict().keys()) == list(m_def.state_dict().keys())
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

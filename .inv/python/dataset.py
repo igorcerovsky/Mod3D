@@ -39,7 +39,7 @@ import math
 
 import numpy as np
 import torch
-from scipy.ndimage import binary_dilation, gaussian_filter
+from scipy.ndimage import binary_dilation, gaussian_filter, label
 from torch.utils.data import Dataset
 
 from forward import TerrainGravityOperator
@@ -659,7 +659,7 @@ def apply_planar_fault(rng, rho, t_cells, border_margin=3, max_throw_cells=4):
     return out
 
 
-def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None, fault_prob=0.0):
+def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None, fault_prob=0.0, return_meta=False):
     """Density model (nz, nx, ny) strictly below terrain depth ``t`` (nx, ny).
 
     Draws either standard isolated bodies (``dilate_iters=2``, ``1-4`` bodies) or, with
@@ -677,6 +677,7 @@ def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None, fault_pro
     can_hard = min(nx, ny) >= 24 and nz >= 12
     if scene_type is None and can_hard and rng.random() < hard_prob:
         scene_type = str(rng.choice(HARD_SCENE_TYPES, p=_HARD_SCENE_PROBS))
+    chosen_scene_type = scene_type or "isolated"
 
     if scene_type == "large_composite":
         rho = _build_large_composite(rng, t_cells, nz, hs, vs)
@@ -696,10 +697,12 @@ def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None, fault_pro
         _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, n_b, dilate_iters=2)
 
     if not (rho != 0).any():
+        chosen_scene_type = "isolated"
         _place_isolated_cluster(rng, rho, t_cells, nz, hs, vs, 1 if rng.random() < 0.4 else int(rng.integers(2, 5)),
                                 dilate_iters=2)
     if not (rho != 0).any():
         # Guaranteed center rock body on degenerate small/steep test grids
+        chosen_scene_type = "isolated"
         rx_g, ry_g, rz_g = max(1.2, 3.0 * hs), max(1.2, 3.0 * hs), max(1.0, 2.0 * vs)
         top_c = float(t_cells[max(0, nx // 2 - 2):min(nx, nx // 2 + 3), max(0, ny // 2 - 2):min(ny, ny // 2 + 3)].max())
         cz_g = min(nz - rz_g - 0.5, top_c + 1.0 + rz_g)
@@ -708,13 +711,68 @@ def random_bodies(rng, t, nz, dz, dx, hard_prob=0.50, scene_type=None, fault_pro
             rho_g, *_ = _pick_rock_lithology(rng, nz, 2.0)
             rho[m_g] = rho_g
 
+    fault_applied = False
     if fault_prob > 0.0 and rng.random() < fault_prob:
+        rho_before_fault = rho.copy()
         rho = apply_planar_fault(rng, rho, t_cells)
+        fault_applied = not np.array_equal(rho, rho_before_fault)
 
     # safety: no density in cells whose top is above the terrain
     above = (np.arange(nz)[:, None, None] * dz) < t[None]
     rho[above] = 0.0
+    if return_meta:
+        return rho, {"scene_type": chosen_scene_type, "fault_applied": bool(fault_applied)}
     return rho
+
+
+def compute_max_resolvable_clearance(rho, t_cells, dx, dz, scene_type="isolated",
+                                     fault_applied=False, clearance_range=CLEARANCE):
+    """Cap sensor clearance when high-frequency targets cannot be resolved through upward continuation."""
+    lo, hi = float(clearance_range[0]), float(clearance_range[1])
+    high_freq_max = 2.0
+    if hi <= high_freq_max:
+        return (lo, hi)
+    cap = (lo, min(hi, high_freq_max))
+    if fault_applied or scene_type in ("tight_cluster", "nested_halo", "abutting_contact", "vertical_stack"):
+        return cap
+    if not (rho != 0).any() or (rho <= -1.60).any():
+        return cap
+
+    nz, nx, ny = rho.shape
+    hs, vs = nx / 64.0, nz / 32.0
+    w_min_m = float("inf")
+    z_top_m = float("inf")
+    boxes = []
+    for v in np.unique(rho[rho != 0]):
+        lbl, n_c = label(rho == v)
+        for cid in range(1, n_c + 1):
+            kz, kx, ky = np.nonzero(lbl == cid)
+            if kz.size < 4:
+                continue
+            span_x = int(kx.max() - kx.min() + 1)
+            span_y = int(ky.max() - ky.min() + 1)
+            span_z = int(kz.max() - kz.min() + 1)
+            w_min_cells = min(span_x, span_y)
+            if w_min_cells < 3.5 * hs or span_z < 1.5 * vs:
+                return cap
+            w_min_m = min(w_min_m, w_min_cells * float(dx))
+            z_top_cells = max(0.0, float((kz - t_cells[kx, ky]).min()))
+            z_top_m = min(z_top_m, z_top_cells * float(dz))
+            boxes.append((int(kx.min()), int(kx.max()), int(ky.min()), int(ky.max())))
+
+    if not boxes:
+        return cap
+    for idx_a in range(len(boxes)):
+        x0, x1, y0, y1 = boxes[idx_a]
+        for idx_b in range(idx_a + 1, len(boxes)):
+            a0, a1, b0, b1 = boxes[idx_b]
+            gap_x = max(0, a0 - x1 - 1, x0 - a1 - 1)
+            gap_y = max(0, b0 - y1 - 1, y0 - b1 - 1)
+            if math.hypot(gap_x, gap_y) < 3.0 * hs:
+                return cap
+
+    h_phys = float(np.clip(0.32 * w_min_m - 0.25 * z_top_m, high_freq_max, hi))
+    return (lo, min(hi, h_phys))
 
 
 def _sample_clearance(rng, clearance_range):
@@ -732,8 +790,15 @@ def _sample_clearance(rng, clearance_range):
 def sample_geometry(rng, nx=NX, ny=NY, nz=NZ, dx=CELL, dy=CELL, dz=CELL,
                     hard_prob=0.50, fault_prob=0.0, clearance_range=CLEARANCE):
     t = random_terrain(rng, nx, ny, nz * dz)
-    rho = random_bodies(rng, t, nz, dz, dx, hard_prob=hard_prob, fault_prob=fault_prob)
-    clearance = _sample_clearance(rng, clearance_range)
+    rho, meta = random_bodies(rng, t, nz, dz, dx, hard_prob=hard_prob,
+                              fault_prob=fault_prob, return_meta=True)
+    eff_range = compute_max_resolvable_clearance(
+        rho, t / dz, dx, dz,
+        scene_type=meta["scene_type"],
+        fault_applied=meta["fault_applied"],
+        clearance_range=clearance_range,
+    )
+    clearance = _sample_clearance(rng, eff_range)
     noise_frac = np.float32(rng.uniform(*NOISE_FRAC))
     return rho, t, clearance, noise_frac
 
@@ -754,6 +819,16 @@ class BodyTerrainDataset(Dataset):
         self.clearance_range = tuple(clearance_range)
         self.aspect_ratios = tuple(float(a) for a in aspect_ratios) if aspect_ratios else None
         self.g = (nx, ny, nz, dx, dy, dz)
+
+    def set_curriculum(self, hard_prob=None, fault_prob=None, clearance_max=None):
+        """Update sampling difficulty bounds across curriculum epochs."""
+        if hard_prob is not None:
+            self.hard_prob = float(hard_prob)
+        if fault_prob is not None:
+            self.fault_prob = float(fault_prob)
+        if clearance_max is not None:
+            lo = float(self.clearance_range[0])
+            self.clearance_range = (lo, max(lo, float(clearance_max)))
 
     def __len__(self):
         return self.n

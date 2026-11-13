@@ -37,6 +37,7 @@ from evaluate import compute_metrics, make_category_showcase, make_fixed_set
 from forward import TerrainGravityOperator
 from losses import CompoundInversionLoss
 from model_swin3d import (
+    V5_SIZE_PRESETS,
     PotentialFieldTransformer3D,
     PotentialFieldTransformer3DV3,
     PotentialFieldTransformer3DV4,
@@ -46,8 +47,7 @@ from model_swin3d import (
 from dashboard import TrainingMonitor
 
 ARCH_BY_VARIANT = {
-    "v5": {"variant": "v5", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
-           "n_sub": 3, "num_classes": 7, "dropout": 0.05},
+    "v5": dict(V5_SIZE_PRESETS["base"]),
     "v4": {"variant": "v4", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
            "n_sub": 3, "num_classes": 7},
     "v3": {"variant": "v3", "embed_dim": 128, "num_heads": 4, "depth": 6, "ch_mid": 40, "ch_vox": 24,
@@ -129,6 +129,10 @@ def parse_args():
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
     p.add_argument("--variant", type=str, default="v5", choices=["v5", "v4", "v3", "v2", "v1"],
                    help="model architecture variant (default: v5)")
+    p.add_argument("--model-size", type=str, default="base", choices=["slim", "base", "heavy"],
+                   help="v5 capacity tier: slim (~1.3M), base (2.7M), heavy (~7.1M)")
+    p.add_argument("--curriculum-epochs", type=int, default=25,
+                   help="number of initial epochs to ramp hard_prob, fault_prob, dropout_prob, and max clearance (0 disables)")
     p.add_argument("--dropout", type=float, default=0.05, help="Dropout3d/MLP rate for v5")
     p.add_argument("--fault-prob", type=float, default=0.40, help="v5 dipping fault cut probability")
     p.add_argument("--dropout-prob", type=float, default=0.35, help="v5 missing-station infill prob")
@@ -148,9 +152,11 @@ def main():
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
 
-    arch = dict(ARCH_BY_VARIANT[args.variant])
     if args.variant == "v5":
+        arch = dict(V5_SIZE_PRESETS[args.model_size])
         arch["dropout"] = float(args.dropout)
+    else:
+        arch = dict(ARCH_BY_VARIANT[args.variant])
     start_epoch, best, ck_resumed = 1, float("inf"), None
     if args.resume:
         ck_resumed = torch.load(args.resume, map_location="cpu")
@@ -222,7 +228,10 @@ def main():
     forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5")
                         else (lambda m, inp: (m(inp), None)))
 
-    print(f"Architecture: {variant} | Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M")
+    size_tag = f" ({arch.get('model_size', 'custom')})" if is_v5 else ""
+    curr_tag = f" | Curriculum epochs: {args.curriculum_epochs}" if is_v5 and args.curriculum_epochs > 0 else ""
+    print(f"Architecture: {variant}{size_tag} | "
+          f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M{curr_tag}")
     crit = CompoundInversionLoss(lambda_data=args.lambda_data, lambda_ms=args.lambda_ms,
                                  lambda_cls=args.lambda_cls, depth_boost=args.depth_boost,
                                  forward_op=batch_op)
@@ -309,6 +318,15 @@ def main():
         print("Zero predictor (hard): " + " ".join(f"{k} {v:.3f}" for k, v in zero_h.items()))
 
     for epoch in range(start_epoch, end_epoch + 1):
+        if is_v5 and args.curriculum_epochs > 0:
+            tau = min(1.0, max(0.0, (epoch - 1) / max(1, args.curriculum_epochs - 1)))
+            cur_hard = min(hard_prob, 0.15 + tau * max(0.0, hard_prob - 0.15)) if hard_prob > 0 else 0.0
+            cur_fault = min(fault_prob, 0.05 + tau * max(0.0, fault_prob - 0.05)) if fault_prob > 0 else 0.0
+            cur_do = min(do_prob, 0.05 + tau * max(0.0, do_prob - 0.05)) if do_prob > 0 else 0.0
+            cur_clr_max = 2.0 + tau * (CLEARANCE_MULTI[1] - 2.0)
+            train_ds.set_curriculum(hard_prob=cur_hard, fault_prob=cur_fault, clearance_max=cur_clr_max)
+        else:
+            cur_do = do_prob
         t0, acc, n = time.time(), {}, 0
         for batch in loader:
             if is_v5:
@@ -325,7 +343,7 @@ def main():
                     if m_a.any():
                         o_a, c_a, z_a, v_a = simulate_batch(
                             op_i, rho[m_a], t[m_a], c[m_a], nf[m_a],
-                            dropout_prob=do_prob, return_mask=True,
+                            dropout_prob=cur_do, return_mask=True,
                         )
                         obs[m_a], clean[m_a], z_obs[m_a], vm[m_a] = o_a, c_a, z_a, v_a
                 rho, t, obs, clean, z_obs, vm = augment_d4(rho, t, obs, clean, z_obs, valid_mask=vm)

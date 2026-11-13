@@ -484,7 +484,7 @@ class PotentialFieldTransformer3DV3(nn.Module):
         self.num_classes = num_classes
         self.hp, self.wp, self.dp = nx // patch, ny // patch, nz // 4
         c = embed_dim
-        c0, c1 = max(32, c // 4), max(64, c // 2)
+        c0, c1 = max(24, c // 4), max(48, c // 2)
         self.ch_mid, self.ch_vox = ch_mid, ch_vox
 
         self.scale_mlp = nn.Sequential(nn.Linear(4, c), nn.GELU(), nn.Linear(c, c))
@@ -696,7 +696,7 @@ class PotentialFieldTransformer3DV4(PotentialFieldTransformer3DV3):
             depth=depth, ch_mid=ch_mid, ch_vox=ch_vox, n_sub=n_sub, num_classes=num_classes,
         )
         c = embed_dim
-        c0 = max(32, c // 4)
+        c0 = max(24, c // 4)
         self.scale_mlp = nn.Sequential(nn.Linear(6, c), nn.GELU(), nn.Linear(c, c))
         self.enc0 = nn.Sequential(
             nn.Conv2d(16, c0, 3, padding=1), nn.GELU(),
@@ -950,14 +950,15 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
     """
 
     def __init__(self, nx=64, ny=64, nz=32, patch=4, embed_dim=128, num_heads=4, depth=6,
-                 ch_mid=40, ch_vox=24, n_sub=3, num_classes=7, dropout=0.05):
+                 ch_mid=40, ch_vox=24, n_sub=3, num_classes=7, dropout=0.05, dec_depth=2, **_unused):
         super().__init__(
             nx=nx, ny=ny, nz=nz, patch=patch, embed_dim=embed_dim, num_heads=num_heads,
             depth=depth, ch_mid=ch_mid, ch_vox=ch_vox, n_sub=n_sub, num_classes=num_classes,
         )
         self.dropout_rate = float(dropout)
+        self.dec_depth = max(2, int(dec_depth))
         c = embed_dim
-        c0 = max(32, c // 4)
+        c0 = max(24, c // 4)
         self.scale_mlp = nn.Sequential(nn.Linear(8, c), nn.GELU(), nn.Linear(c, c))
         self.enc0 = nn.Sequential(
             nn.Conv2d(18, c0, 3, padding=1), nn.GELU(),
@@ -1010,6 +1011,9 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
         )
 
         self.vox_drop = nn.Dropout3d(p=dropout) if dropout > 0 else nn.Identity()
+        if self.dec_depth > 2:
+            self.extra_dec_mid = nn.ModuleList([SepConv25DBlock(ch_mid) for _ in range(self.dec_depth - 2)])
+            self.extra_dec_vox = nn.ModuleList([SepConv25DBlock(ch_vox) for _ in range(self.dec_depth - 2)])
         lv_ch = max(8, ch_mid // 2)
         self.logvar_proj = nn.Sequential(nn.Conv2d(ch_mid, lv_ch, 1), nn.GELU())
         self.logvar_head = nn.Conv2d(lv_ch, 1, 1)
@@ -1179,12 +1183,19 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
         ).reshape(b, self.ch_mid, nz_mid, nx_mid, ny_mid)
         u = u + self.res_gate.tanh() * (res_2d * d_gate * mask_mid.to(u.dtype))
         u_mid = self.dec_mid2(u)
+        if getattr(self, "dec_depth", 2) > 2:
+            for blk in self.extra_dec_mid:
+                u_mid = blk(u_mid)
 
         # Stage 2 -> (nz, nx, ny)
         u = self.up_vox(u_mid)
         d_surf = (self.z_top - terr.unsqueeze(2)).clamp_min(0.0)
         hv = u + self.skip_vox(f0, d_surf, self.z_top) + self.scale_vox(se).view(b, self.ch_vox, 1, 1, 1)
-        hv = self.vox_drop(self.dec_vox2(self.dec_vox1(hv)))
+        hv = self.dec_vox2(self.dec_vox1(hv))
+        if getattr(self, "dec_depth", 2) > 2:
+            for blk in self.extra_dec_vox:
+                hv = blk(hv)
+        hv = self.vox_drop(hv)
 
         p_head = self.proto_head(p_ctx)
         hv_flat = hv.reshape(b, self.ch_vox, self.nz * self.nx * self.ny)
@@ -1247,11 +1258,61 @@ class PotentialFieldTransformer3DV5(PotentialFieldTransformer3DV4):
         return pred
 
 
+V5_SIZE_PRESETS = {
+    "slim": {
+        "variant": "v5",
+        "model_size": "slim",
+        "embed_dim": 96,
+        "num_heads": 4,
+        "depth": 4,
+        "ch_mid": 28,
+        "ch_vox": 16,
+        "n_sub": 2,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+    },
+    "base": {
+        "variant": "v5",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+    },
+    "heavy": {
+        "variant": "v5",
+        "model_size": "heavy",
+        "embed_dim": 192,
+        "num_heads": 6,
+        "depth": 8,
+        "ch_mid": 64,
+        "ch_vox": 36,
+        "n_sub": 4,
+        "dec_depth": 3,
+        "num_classes": 7,
+        "dropout": 0.05,
+    },
+}
+
+
 def create_model(nx=64, ny=64, nz=32, **arch):
     """Instantiate v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
     cfg = dict(arch)
     variant = cfg.pop("variant", "v1")
     if variant == "v5":
+        model_size = cfg.pop("model_size", None)
+        if model_size in V5_SIZE_PRESETS:
+            merged = dict(V5_SIZE_PRESETS[model_size])
+            merged.pop("variant", None)
+            merged.pop("model_size", None)
+            merged.update(cfg)
+            cfg = merged
         return PotentialFieldTransformer3DV5(nx, ny, nz, **cfg)
     if variant == "v4":
         return PotentialFieldTransformer3DV4(nx, ny, nz, **cfg)
