@@ -51,22 +51,29 @@ std::vector<double> prepare_nn_obs(const std::vector<double> &d_fine,
   return nn_obs;
 }
 
-/** Computes effective median sensor clearance [m] above terrain for v5 channel 4. */
-double effective_nn_clearance(double config_obs_height,
-                              const std::vector<double> &obs_z_cols,
-                              const std::vector<double> &surf_cols) {
-  if (!obs_z_cols.empty() && obs_z_cols.size() == surf_cols.size()) {
-    std::vector<double> clearances;
-    clearances.reserve(obs_z_cols.size());
-    for (std::size_t i = 0; i < obs_z_cols.size(); ++i) {
-      clearances.push_back(std::max(0.0, surf_cols[i] - obs_z_cols[i]));
+/** Builds per-column station depths [m, z down] for FlightElevation or ElevationGrid modes. */
+std::vector<double> build_obs_z_cols(const mod3d::ObservationSpace &obs,
+                                     size_t nx, size_t ny, double zDomainTop,
+                                     double fallbackElev) {
+  std::vector<double> obs_z_cols;
+  const auto grvMode = obs.gravity_mode();
+  if (grvMode == mod3d::ObservationMode::FlightElevation) {
+    obs_z_cols.assign(nx * ny, zDomainTop - fallbackElev);
+  } else if (grvMode == mod3d::ObservationMode::ElevationGrid &&
+             !obs.gravity_elevation_grid().empty()) {
+    const auto &eg = obs.gravity_elevation_grid();
+    obs_z_cols.resize(nx * ny, 0.0);
+    for (size_t ix = 0; ix < nx; ++ix) {
+      for (size_t iy = 0; iy < ny; ++iy) {
+        double ez =
+            (iy < eg.rows() && ix < eg.cols()) ? eg(iy, ix) : fallbackElev;
+        if (ez == mod3d::GRID_DUMMY || std::isnan(ez))
+          ez = fallbackElev;
+        obs_z_cols[ix * ny + iy] = zDomainTop - ez;
+      }
     }
-    std::nth_element(clearances.begin(),
-                     clearances.begin() + clearances.size() / 2,
-                     clearances.end());
-    return clearances[clearances.size() / 2];
   }
-  return std::max(0.0, config_obs_height);
+  return obs_z_cols;
 }
 
 /** Computes mean subsurface prior sigma [g/cm^3] for status logging. */
@@ -983,25 +990,8 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
 
   // Optional per-column station depths for FlightElevation or ElevationGrid
   // modes
-  std::vector<double> obs_z_cols;
-  const auto grvMode = m_doc->observation().gravity_mode();
-  if (grvMode == mod3d::ObservationMode::FlightElevation) {
-    obs_z_cols.assign(nx * ny, zDomainTop - setup.config.obs_height);
-  } else if (grvMode == mod3d::ObservationMode::ElevationGrid &&
-             !m_doc->observation().gravity_elevation_grid().empty()) {
-    const auto &eg = m_doc->observation().gravity_elevation_grid();
-    obs_z_cols.resize(nx * ny, 0.0);
-    for (size_t ix = 0; ix < nx; ++ix) {
-      for (size_t iy = 0; iy < ny; ++iy) {
-        double ez = (iy < eg.rows() && ix < eg.cols())
-                        ? eg(iy, ix)
-                        : setup.config.obs_height;
-        if (ez == mod3d::GRID_DUMMY || std::isnan(ez))
-          ez = setup.config.obs_height;
-        obs_z_cols[ix * ny + iy] = zDomainTop - ez;
-      }
-    }
-  }
+  std::vector<double> obs_z_cols = build_obs_z_cols(
+      m_doc->observation(), nx, ny, zDomainTop, setup.config.obs_height);
 
   // Switch to execution tab & clear previous stats
   m_tabWidget->setCurrentIndex(3);
@@ -1135,12 +1125,16 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                                     setup.config.x0, setup.config.y0, setup.config.z0,
                                     setup.config.dx, setup.config.dy, setup.config.dz};
       const std::vector<double> nn_obs = prepare_nn_obs(d_fine, gf_nn, obsBgTrendMode);
-      const double nn_clr = effective_nn_clearance(setup.config.obs_height, obs_z_cols, surf_cols);
+      const double scalar_clr_fallback = std::max(0.0, setup.config.obs_height);
+      const std::vector<double> nn_clr_cols =
+          inv::NeuralPriorInference::compute_clearance_cols(
+              obs_z_cols, surf_cols, scalar_clr_fallback);
       if (inv::NeuralPriorInference::predict(
               nn_obs, setup.config.nx, setup.config.ny, setup.config.nz,
               setup.config.x0, setup.config.y0, setup.config.z0,
               setup.config.dx, setup.config.dy, setup.config.dz, prior_grid,
-              err, modelPath, surf_cols, &sigma_grid, nn_clr, obs_valid)) {
+              err, modelPath, surf_cols, &sigma_grid, scalar_clr_fallback,
+              obs_valid, nn_clr_cols)) {
         prior_values = std::move(prior_grid.data());
         const double mean_sig = mean_subsurface_sigma(sigma_grid, surf_cols);
         prior_sigma = std::move(sigma_grid.data());
@@ -1593,6 +1587,13 @@ void Inversion3DDialog::onInstantAiClicked() {
       m_doc ? m_doc->observation().background_trend_mode() : 0;
   const inv::GridGeometry gf_nn{nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
   const std::vector<double> nn_obs = prepare_nn_obs(d_fine, gf_nn, obsBgTrendMode);
+  const std::vector<double> obs_z_cols =
+      m_doc ? build_obs_z_cols(m_doc->observation(), nx, ny, zDomainTop, effectiveObsH)
+            : std::vector<double>{};
+  const double scalarClrFallback = std::max(0.0, effectiveObsH);
+  const std::vector<double> nn_clr_cols =
+      inv::NeuralPriorInference::compute_clearance_cols(
+          obs_z_cols, surf_cols, scalarClrFallback);
 
   const auto t_start = std::chrono::high_resolution_clock::now();
   inv::VoxelGrid<double> pred_grid;
@@ -1605,7 +1606,8 @@ void Inversion3DDialog::onInstantAiClicked() {
 
   bool ok = inv::NeuralPriorInference::predict(
       nn_obs, nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz, pred_grid, err,
-      modelPath, surf_cols, &sigma_grid, effectiveObsH, obs_valid);
+      modelPath, surf_cols, &sigma_grid, scalarClrFallback, obs_valid,
+      nn_clr_cols);
 
   const auto t_end = std::chrono::high_resolution_clock::now();
   const double elapsed_ms =
@@ -1674,15 +1676,24 @@ void Inversion3DDialog::onInstantAiClicked() {
 
   std::unique_ptr<inv::LinearOperator> op;
   if (cfg.use_fft_solver_benchmark && flat) {
-    op = std::make_unique<inv::ToeplitzGravityOperator>(g,
-                                                        zmin - cfg.obs_height);
+    double z_obs = zmin - cfg.obs_height;
+    if (!obs_z_cols.empty()) {
+      double s = 0.0;
+      for (double v : obs_z_cols)
+        s += v;
+      z_obs = s / static_cast<double>(obs_z_cols.size());
+    }
+    op = std::make_unique<inv::ToeplitzGravityOperator>(g, z_obs);
   } else {
     std::vector<inv::Point3D<double>> obs;
     obs.reserve(g.columns());
     for (std::size_t ix = 0; ix < g.nx; ++ix) {
       for (std::size_t iy = 0; iy < g.ny; ++iy) {
-        obs.emplace_back(g.xc(ix), g.yc(iy),
-                         col_surface[ix * g.ny + iy] - cfg.obs_height);
+        const std::size_t col = ix * g.ny + iy;
+        const double z = obs_z_cols.empty()
+                             ? col_surface[col] - cfg.obs_height
+                             : obs_z_cols[col];
+        obs.emplace_back(g.xc(ix), g.yc(iy), z);
       }
     }
     op = std::make_unique<inv::PfldInterfaceMeshOperator>(

@@ -1,6 +1,11 @@
 #include <gtest/gtest.h>
 #include "inv/inv.hpp"
 #include <cmath>
+#include <cstdint>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <limits>
 
 TEST(Point3DTest, BasicVectorOperations) {
     inv::Point3D<double> p1(1.0, 2.0, 3.0);
@@ -669,6 +674,426 @@ TEST(NeuralPriorTest, Swin3DOnnxInferenceEvaluatesObservationField) {
     inv::VoxelGrid<double> cav_prior;
     ASSERT_TRUE(inv::NeuralPriorInference::predict(cav_obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0, cav_prior, err, model_path, surf_depth));
     EXPECT_LT(cav_prior.min_value(), 0.0);
+}
+
+TEST(NeuralPriorTest, ComputeClearanceColsSemanticsAndFallback) {
+    // Empty obs_z_cols signals scalar fallback (returns empty)
+    EXPECT_TRUE(inv::NeuralPriorInference::compute_clearance_cols({}, {10.0, 20.0}, 0.35).empty());
+
+    // FlightElevation / ElevationGrid semantics: clearance = max(0.0, surf - obs_z)
+    const double qnan = std::numeric_limits<double>::quiet_NaN();
+    const std::vector<double> obs_z = {-100.0, 50.0, 120.0, qnan};
+    const std::vector<double> surf  = {  50.0, 80.0,  90.0, 40.0};
+    const auto clr = inv::NeuralPriorInference::compute_clearance_cols(obs_z, surf, 2.5);
+    ASSERT_EQ(clr.size(), 4u);
+    EXPECT_DOUBLE_EQ(clr[0], 150.0); // 50 - (-100)
+    EXPECT_DOUBLE_EQ(clr[1],  30.0); // 80 - 50
+    EXPECT_DOUBLE_EQ(clr[2],   0.0); // underground obs_z > surf clamped to 0.0
+    EXPECT_DOUBLE_EQ(clr[3],   2.5); // non-finite obs_z uses fallback
+
+    // Empty surface_depth_cols assumes flat surface at z = 0
+    const auto clr_flat = inv::NeuralPriorInference::compute_clearance_cols({-45.0, 10.0}, {});
+    ASSERT_EQ(clr_flat.size(), 2u);
+    EXPECT_DOUBLE_EQ(clr_flat[0], 45.0);
+    EXPECT_DOUBLE_EQ(clr_flat[1],  0.0);
+}
+
+TEST(NeuralPriorTest, BuildInputTensor2DClearanceAndCeiling8) {
+    const std::size_t nx = 16, ny = 16, nz = 32;
+    const std::size_t kC = 5, kNx = 64, kNy = 64, kNz = 32;
+    const std::size_t plane_n = kNx * kNy;
+    const std::vector<double> obs(nx * ny, 1.0);
+    std::string err;
+
+    // 1. Scalar fallback preserves canonical ceiling 8.0 (400 m at dxy_canon = 50 m)
+    std::vector<float> buf;
+    ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+        obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err, {}, 250.0));
+    ASSERT_EQ(buf.size(), kC * plane_n);
+    EXPECT_NEAR(buf[4 * plane_n], 5.0f, 1e-6f); // 250 / 50 = 5.0 (> old 4.0 clamp)
+
+    ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+        obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err, {}, 500.0));
+    EXPECT_NEAR(buf[4 * plane_n], 8.0f, 1e-6f); // clamped at 8.0
+
+    ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+        obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err, {}, -5.0));
+    EXPECT_NEAR(buf[4 * plane_n], 0.0f, 1e-6f); // negative clamped to 0.0
+
+    // 2. 2D spatial clearance resampling onto (64, 64) with ceiling 8.0 and [0, 8] bounds
+    std::vector<double> clr_2d(nx * ny, 0.0);
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) {
+            clr_2d[ix * ny + iy] = 40.0 * static_cast<double>(ix) + 10.0 * static_cast<double>(iy) - 20.0;
+        }
+    }
+    ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+        obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err, {}, 0.35, {}, clr_2d));
+    const float* ch4 = buf.data() + 4 * plane_n;
+    EXPECT_NEAR(ch4[0 * kNy + 0], 0.0f, 1e-6f);               // -20 m -> 0.0
+    EXPECT_NEAR(ch4[63 * kNy + 0], 8.0f, 1e-6f);              // 580 m -> 11.6 -> clamped 8.0
+    EXPECT_NEAR(ch4[21 * kNy + 21], 4.6f, 1e-5f);             // exact (5,5): 230 / 50 = 4.6
+    EXPECT_NEAR(ch4[14 * kNy + 21], 3.2666667f, 1e-5f);       // bilinear interp between (3,5)=3.0 and (4,5)=3.8
+    for (std::size_t i = 0; i < plane_n; ++i) {
+        EXPECT_GE(ch4[i], 0.0f);
+        EXPECT_LE(ch4[i], 8.0f);
+    }
+
+    // 3. Non-50m grid spacing (64x64 at 100 m -> dxy_canon = 100 m) scales channel 4 by dxy_canon
+    const std::vector<double> obs64(64 * 64, 1.0);
+    const std::vector<double> clr64(64 * 64, 300.0);
+    ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+        obs64, 64, 64, nz, 100.0, 100.0, 50.0, kC, kNx, kNy, kNz, buf, err, {}, 0.35, {}, clr64));
+    EXPECT_NEAR(buf[4 * plane_n], 3.0f, 1e-6f);
+
+    // 4. Mismatched non-empty obs_clearance_cols size is rejected cleanly
+    EXPECT_FALSE(inv::NeuralPriorInference::build_input_tensor(
+        obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err, {}, 0.35, {}, {1.0, 2.0}));
+    EXPECT_FALSE(err.empty());
+}
+
+TEST(NeuralPriorTest, DecodeLogVarMatchesCalibratedGaussianSigma) {
+    const std::size_t kNx = 4, kNy = 4, kNz = 4;
+    const std::vector<float> rho_raw(kNz * kNx * kNy, 0.25f);
+    std::vector<float> lv_raw(kNz * kNx * kNy, 0.0f);
+
+    // Populate distinct log_var values including clamping bounds [-8, 4] and NaN guard
+    const float qnan = std::numeric_limits<float>::quiet_NaN();
+    const float test_lvs[] = {-12.0f, -8.0f, -2.0f, 0.0f, 2.0f, 4.0f, 8.0f, qnan};
+    for (std::size_t i = 0; i < lv_raw.size(); ++i) {
+        lv_raw[i] = test_lvs[i % 8];
+    }
+
+    // 1. Exact grid match: sigma = exp(0.5 * clamp(log_var, -8, 4)) below surface, 0 above surface
+    std::vector<double> surf_exact(kNx * kNy, 60.0); // iz=0 centre 25 m < 60 m -> air
+    inv::VoxelGrid<double> out_rho, out_sigma;
+    inv::NeuralPriorInference::decode_output_volumes(
+        rho_raw.data(), lv_raw.data(), kNx, kNy, kNz,
+        kNx, kNy, kNz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        surf_exact, out_rho, &out_sigma);
+
+    for (std::size_t ix = 0; ix < kNx; ++ix) {
+        for (std::size_t iy = 0; iy < kNy; ++iy) {
+            EXPECT_DOUBLE_EQ(out_rho(ix, iy, 0), 0.0);
+            EXPECT_DOUBLE_EQ(out_sigma(ix, iy, 0), 0.0);
+            for (std::size_t iz = 1; iz < kNz; ++iz) {
+                EXPECT_NEAR(out_rho(ix, iy, iz), 0.25, 1e-6);
+                const float raw_lv = lv_raw[(iz * kNx + ix) * kNy + iy];
+                const double expected_sig = std::isfinite(raw_lv)
+                                                ? std::exp(0.5 * std::clamp(static_cast<double>(raw_lv), -8.0, 4.0))
+                                                : 1.0;
+                EXPECT_NEAR(out_sigma(ix, iy, iz), expected_sig, 1e-6);
+            }
+        }
+    }
+
+    // 2. Upsampled target grid: variance-domain trilinear interpolation remains finite & bounded
+    std::vector<double> surf_up(8 * 8, 60.0);
+    inv::VoxelGrid<double> up_rho, up_sigma;
+    inv::NeuralPriorInference::decode_output_volumes(
+        rho_raw.data(), lv_raw.data(), kNx, kNy, kNz,
+        8, 8, 8, 0.0, 0.0, 0.0, 25.0, 25.0, 25.0,
+        surf_up, up_rho, &up_sigma);
+    const double sig_min = std::exp(-4.0) - 1e-6;
+    const double sig_max = std::exp(2.0) + 1e-6;
+    for (std::size_t ix = 0; ix < 8; ++ix) {
+        for (std::size_t iy = 0; iy < 8; ++iy) {
+            for (std::size_t iz = 0; iz < 8; ++iz) {
+                if ((static_cast<double>(iz) + 0.5) * 25.0 < 60.0) {
+                    EXPECT_DOUBLE_EQ(up_sigma(ix, iy, iz), 0.0);
+                } else {
+                    EXPECT_TRUE(std::isfinite(up_sigma(ix, iy, iz)));
+                    EXPECT_GE(up_sigma(ix, iy, iz), sig_min);
+                    EXPECT_LE(up_sigma(ix, iy, iz), sig_max);
+                }
+            }
+        }
+    }
+
+    // 3. Missing log_var output leaves out_sigma_grid empty
+    inv::NeuralPriorInference::decode_output_volumes(
+        rho_raw.data(), nullptr, kNx, kNy, kNz,
+        kNx, kNy, kNz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        surf_exact, out_rho, &out_sigma);
+    EXPECT_TRUE(out_sigma.data().empty());
+}
+
+TEST(NeuralPriorTest, Swin3DOnnx2DClearanceAndUncertainty) {
+    if (!inv::NeuralPriorInference::is_available()) {
+        GTEST_SKIP() << "ONNX Runtime support is not compiled into Mod3D (MOD3D_HAS_ONNX not enabled), skipping test.";
+    }
+    std::string model_path = inv::NeuralPriorInference::default_model_path();
+    if (model_path.empty()) {
+        GTEST_SKIP() << "Swin3D ONNX model files (.onnx / .onnx.data) not found in search paths, skipping test.";
+    }
+
+    const std::size_t nx = 16, ny = 16, nz = 8;
+    std::vector<double> obs(nx * ny, 0.0);
+    std::vector<double> surf_depth(nx * ny, 60.0);
+    std::vector<char> valid(nx * ny, 1);
+    std::vector<double> clr_uniform(nx * ny, 0.35);
+    std::vector<double> clr_2d(nx * ny, 0.35);
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) {
+            const double dx = static_cast<double>(ix) - 8.0;
+            const double dy = static_cast<double>(iy) - 8.0;
+            obs[ix * ny + iy] = 3.0 * std::exp(-(dx * dx + dy * dy) / 8.0);
+            surf_depth[ix * ny + iy] = 60.0 + 15.0 * std::sin(0.3 * static_cast<double>(ix));
+            // Simulate FlightElevation / ElevationGrid clearance profile (10 m over ridge -> 120 m over valley)
+            clr_2d[ix * ny + iy] = 10.0 + 110.0 * static_cast<double>(iy) / static_cast<double>(ny - 1);
+        }
+    }
+
+    inv::VoxelGrid<double> p_scalar, p_uniform, p_2d;
+    inv::VoxelGrid<double> s_scalar, s_uniform, s_2d;
+    std::string err;
+
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(
+        obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        p_scalar, err, model_path, surf_depth, &s_scalar, 0.35, valid)) << err;
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(
+        obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        p_uniform, err, model_path, surf_depth, &s_uniform, 0.35, valid, clr_uniform)) << err;
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(
+        obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        p_2d, err, model_path, surf_depth, &s_2d, 0.35, valid, clr_2d)) << err;
+
+    // Uniform 2D clearance matches scalar obs_height_m
+    ASSERT_EQ(p_scalar.total_cells(), p_uniform.total_cells());
+    for (std::size_t i = 0; i < p_scalar.total_cells(); ++i) {
+        EXPECT_NEAR(p_uniform[i], p_scalar[i], 1e-5);
+    }
+
+    // Legacy 2-channel ONNX checkpoints ignore channel 4 and omit log_var_volume; when a v5/v6
+    // 5-channel checkpoint with calibrated uncertainty is loaded, verify 2D modulation + sigma bounds.
+    if (!s_2d.data().empty()) {
+        double max_diff_2d = 0.0;
+        for (std::size_t i = 0; i < p_scalar.total_cells(); ++i) {
+            max_diff_2d = std::max(max_diff_2d, std::abs(p_2d[i] - p_scalar[i]));
+        }
+        EXPECT_GT(max_diff_2d, 1e-4);
+
+        ASSERT_EQ(s_2d.total_cells(), p_2d.total_cells());
+        const double sig_min = std::exp(-4.0) - 1e-6;
+        const double sig_max = std::exp(2.0) + 1e-6;
+        for (std::size_t ix = 0; ix < nx; ++ix) {
+            for (std::size_t iy = 0; iy < ny; ++iy) {
+                const double surf = surf_depth[ix * ny + iy];
+                for (std::size_t iz = 0; iz < nz; ++iz) {
+                    if ((static_cast<double>(iz) + 0.5) * 50.0 < surf) {
+                        EXPECT_DOUBLE_EQ(p_2d(ix, iy, iz), 0.0);
+                        EXPECT_DOUBLE_EQ(s_2d(ix, iy, iz), 0.0);
+                    } else {
+                        EXPECT_TRUE(std::isfinite(s_2d(ix, iy, iz)));
+                        EXPECT_GE(s_2d(ix, iy, iz), sig_min);
+                        EXPECT_LE(s_2d(ix, iy, iz), sig_max);
+                    }
+                }
+            }
+        }
+    }
+}
+
+namespace {
+
+void pb_varint(std::vector<std::uint8_t>& out, std::uint64_t v) {
+    do {
+        std::uint8_t b = static_cast<std::uint8_t>(v & 0x7fu);
+        v >>= 7;
+        if (v != 0) b = static_cast<std::uint8_t>(b | 0x80u);
+        out.push_back(b);
+    } while (v != 0);
+}
+
+void pb_u64(std::vector<std::uint8_t>& out, std::uint32_t field, std::uint64_t v) {
+    pb_varint(out, static_cast<std::uint64_t>(field) << 3);
+    pb_varint(out, v);
+}
+
+void pb_bytes(std::vector<std::uint8_t>& out, std::uint32_t field, const void* p, std::size_t n) {
+    pb_varint(out, (static_cast<std::uint64_t>(field) << 3) | 2u);
+    pb_varint(out, n);
+    const auto* b = static_cast<const std::uint8_t*>(p);
+    out.insert(out.end(), b, b + n);
+}
+
+void pb_str(std::vector<std::uint8_t>& out, std::uint32_t field, const std::string& s) {
+    pb_bytes(out, field, s.data(), s.size());
+}
+
+void pb_msg(std::vector<std::uint8_t>& out, std::uint32_t field, const std::vector<std::uint8_t>& msg) {
+    pb_bytes(out, field, msg.data(), msg.size());
+}
+
+std::vector<std::uint8_t> make_value_info_f32(const std::string& name, const std::vector<int64_t>& dims) {
+    std::vector<std::uint8_t> shape;
+    for (int64_t d : dims) {
+        std::vector<std::uint8_t> dim;
+        pb_u64(dim, 1, static_cast<std::uint64_t>(d));
+        pb_msg(shape, 1, dim);
+    }
+    std::vector<std::uint8_t> tensor_t;
+    pb_u64(tensor_t, 1, 1); // FLOAT = 1
+    pb_msg(tensor_t, 2, shape);
+    std::vector<std::uint8_t> tp;
+    pb_msg(tp, 1, tensor_t);
+    std::vector<std::uint8_t> vi;
+    pb_str(vi, 1, name);
+    pb_msg(vi, 2, tp);
+    return vi;
+}
+
+std::vector<std::uint8_t> make_tensor_f32(const std::string& name,
+                                          const std::vector<int64_t>& dims,
+                                          const std::vector<float>& vals) {
+    std::vector<std::uint8_t> t;
+    for (int64_t d : dims) pb_u64(t, 1, static_cast<std::uint64_t>(d));
+    pb_u64(t, 2, 1); // FLOAT
+    pb_str(t, 8, name);
+    std::vector<std::uint8_t> raw(vals.size() * sizeof(float));
+    std::memcpy(raw.data(), vals.data(), raw.size());
+    pb_bytes(t, 9, raw.data(), raw.size());
+    return t;
+}
+
+std::vector<std::uint8_t> make_tensor_i64(const std::string& name,
+                                          const std::vector<int64_t>& dims,
+                                          const std::vector<int64_t>& vals) {
+    std::vector<std::uint8_t> t;
+    for (int64_t d : dims) pb_u64(t, 1, static_cast<std::uint64_t>(d));
+    pb_u64(t, 2, 7); // INT64
+    pb_str(t, 8, name);
+    std::vector<std::uint8_t> raw(vals.size() * sizeof(int64_t));
+    for (std::size_t i = 0; i < vals.size(); ++i) {
+        std::uint64_t u = static_cast<std::uint64_t>(vals[i]);
+        for (int b = 0; b < 8; ++b) {
+            raw[i * 8 + b] = static_cast<std::uint8_t>((u >> (8 * b)) & 0xffu);
+        }
+    }
+    pb_bytes(t, 9, raw.data(), raw.size());
+    return t;
+}
+
+std::vector<std::uint8_t> make_node(const std::vector<std::string>& inputs,
+                                    const std::vector<std::string>& outputs,
+                                    const std::string& op_type) {
+    std::vector<std::uint8_t> n;
+    for (const auto& s : inputs) pb_str(n, 1, s);
+    for (const auto& s : outputs) pb_str(n, 2, s);
+    pb_str(n, 4, op_type);
+    return n;
+}
+
+bool write_synthetic_v6_onnx(const std::filesystem::path& path) {
+    // 5-channel (1,5,4,4) -> Conv+Reshape -> density_volume (1,1,2,4,4) & log_var_volume (1,1,2,4,4)
+    std::vector<std::uint8_t> graph;
+    pb_msg(graph, 1, make_node({"observation_field", "w_rho", "b_rho"}, {"conv_rho"}, "Conv"));
+    pb_msg(graph, 1, make_node({"conv_rho", "out_shape"}, {"density_volume"}, "Reshape"));
+    pb_msg(graph, 1, make_node({"observation_field", "w_lv", "b_lv"}, {"conv_lv"}, "Conv"));
+    pb_msg(graph, 1, make_node({"conv_lv", "out_shape"}, {"log_var_volume"}, "Reshape"));
+    pb_str(graph, 2, "v6_synthetic_5ch");
+
+    const std::vector<float> w_rho = {
+        0.1f, 0.0f, 0.0f, 0.0f, 1.0f,
+        0.2f, 0.0f, 0.0f, 0.0f, 2.0f,
+    };
+    const std::vector<float> b_rho = {0.0f, 0.0f};
+    const std::vector<float> w_lv(10, 0.0f);
+    const std::vector<float> b_lv = {-2.0f, 1.0f};
+    const std::vector<int64_t> out_shape = {1, 1, 2, 4, 4};
+
+    pb_msg(graph, 5, make_tensor_f32("w_rho", {2, 5, 1, 1}, w_rho));
+    pb_msg(graph, 5, make_tensor_f32("b_rho", {2}, b_rho));
+    pb_msg(graph, 5, make_tensor_f32("w_lv", {2, 5, 1, 1}, w_lv));
+    pb_msg(graph, 5, make_tensor_f32("b_lv", {2}, b_lv));
+    pb_msg(graph, 5, make_tensor_i64("out_shape", {5}, out_shape));
+
+    pb_msg(graph, 11, make_value_info_f32("observation_field", {1, 5, 4, 4}));
+    pb_msg(graph, 12, make_value_info_f32("density_volume", {1, 1, 2, 4, 4}));
+    pb_msg(graph, 12, make_value_info_f32("log_var_volume", {1, 1, 2, 4, 4}));
+
+    std::vector<std::uint8_t> opset;
+    pb_u64(opset, 2, 13);
+
+    std::vector<std::uint8_t> model;
+    pb_u64(model, 1, 7); // ir_version = 7
+    pb_msg(model, 7, graph);
+    pb_msg(model, 8, opset);
+
+    std::ofstream ofs(path, std::ios::binary | std::ios::trunc);
+    if (!ofs) return false;
+    ofs.write(reinterpret_cast<const char*>(model.data()), static_cast<std::streamsize>(model.size()));
+    return static_cast<bool>(ofs);
+}
+
+} // namespace
+
+TEST(NeuralPriorTest, Swin3DOnnx5ChannelClearanceAndLogVarEndToEnd) {
+    if (!inv::NeuralPriorInference::is_available()) {
+        GTEST_SKIP() << "ONNX Runtime support is not compiled into Mod3D (MOD3D_HAS_ONNX not enabled), skipping test.";
+    }
+    const std::filesystem::path onnx_path =
+        std::filesystem::temp_directory_path() / "mod3d_test_v6_5ch_logvar.onnx";
+    ASSERT_TRUE(write_synthetic_v6_onnx(onnx_path));
+    struct Cleanup {
+        std::filesystem::path p;
+        ~Cleanup() {
+            std::error_code ec;
+            std::filesystem::remove(p, ec);
+        }
+    } cleanup{onnx_path};
+
+    const std::size_t nx = 4, ny = 4, nz = 2;
+    const std::vector<double> obs(nx * ny, 1.0);
+    std::vector<double> surf_depth(nx * ny, 10.0);
+    // Top half (ix < 2): surface depth = 30 m -> layer iz=0 (centre 25 m) is above terrain -> masked 0
+    for (std::size_t ix = 0; ix < 2; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) surf_depth[ix * ny + iy] = 30.0;
+    }
+    // Varying 2D clearance along iy: [0, 200, 350, 500] m; with dxy_canon=50 m, ch4=[0.0, 4.0, 7.0, 8.0]
+    std::vector<double> clr_2d(nx * ny, 0.0);
+    const double clr_by_y[4] = {0.0, 200.0, 350.0, 500.0};
+    for (std::size_t ix = 0; ix < nx; ++ix) {
+        for (std::size_t iy = 0; iy < ny; ++iy) clr_2d[ix * ny + iy] = clr_by_y[iy];
+    }
+
+    inv::VoxelGrid<double> rho_scalar, rho_uniform, rho_2d;
+    inv::VoxelGrid<double> sig_scalar, sig_uniform, sig_2d;
+    std::string err;
+
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(
+        obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        rho_scalar, err, onnx_path.string(), surf_depth, &sig_scalar, 0.35)) << err;
+    const std::vector<double> clr_uniform(nx * ny, 0.35);
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(
+        obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        rho_uniform, err, onnx_path.string(), surf_depth, &sig_uniform, 0.35, {}, clr_uniform)) << err;
+    ASSERT_TRUE(inv::NeuralPriorInference::predict(
+        obs, nx, ny, nz, 0.0, 0.0, 0.0, 50.0, 50.0, 50.0,
+        rho_2d, err, onnx_path.string(), surf_depth, &sig_2d, 0.35, {}, clr_2d)) << err;
+
+    // 1. Scalar obs_height_m == uniform 2D clearance
+    ASSERT_EQ(rho_scalar.total_cells(), rho_uniform.total_cells());
+    for (std::size_t i = 0; i < rho_scalar.total_cells(); ++i) {
+        EXPECT_NEAR(rho_uniform[i], rho_scalar[i], 1e-5);
+        EXPECT_NEAR(sig_uniform[i], sig_scalar[i], 1e-5);
+    }
+
+    // 2. End-to-end 2D clearance channel 4 modulation & v6 ceiling 8.0 (350 m vs 200 m vs 500 m capped)
+    ASSERT_FALSE(sig_2d.data().empty());
+    for (std::size_t iy = 0; iy < ny; ++iy) {
+        const double expected_ch4 = std::min(clr_by_y[iy] / 50.0, 8.0);
+        EXPECT_DOUBLE_EQ(rho_2d(0, iy, 0), 0.0);
+        EXPECT_DOUBLE_EQ(sig_2d(0, iy, 0), 0.0);
+        EXPECT_NEAR(rho_2d(2, iy, 0), 0.1 + 1.0 * expected_ch4, 1e-4);
+        EXPECT_NEAR(rho_2d(2, iy, 1), 0.2 + 2.0 * expected_ch4, 1e-4);
+        EXPECT_NEAR(sig_2d(2, iy, 0), std::exp(-1.0), 1e-4);
+        EXPECT_NEAR(sig_2d(2, iy, 1), std::exp(0.5), 1e-4);
+        EXPECT_NEAR(sig_2d(0, iy, 1), std::exp(0.5), 1e-4);
+    }
+    // 350 m (ch4=7.0) strictly separates from old 200 m (4.0) cap and from 500 m (capped at 8.0)
+    EXPECT_NEAR(rho_2d(2, 2, 1) - rho_2d(2, 1, 1), 6.0, 1e-4);
+    EXPECT_NEAR(rho_2d(2, 3, 1) - rho_2d(2, 2, 1), 2.0, 1e-4);
 }
 
 TEST(SensitivityKernelTest, PfldInterfaceMeshWithDeepReliefTopographyMatchesSubsurface) {
