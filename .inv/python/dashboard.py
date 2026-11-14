@@ -3915,8 +3915,11 @@ class TrainingMonitor:
             iy_s = self.meta["samples"][s_idx]["iy"]
             pred_slices.append(np.round(p_vol_s[:, :, iy_s], 3).tolist())
 
-        # Store numerical voxel slices for the current epoch (no image files)
-        rec_entry = dict(rec)
+        # Store numerical voxel slices for the current epoch (no image files); convert NaN/Inf to null for JS safety
+        rec_entry = {
+            k: (None if isinstance(v, (float, np.floating)) and not bool(np.isfinite(v)) else v)
+            for k, v in rec.items()
+        }
         rec_entry["pred_slice"] = pred_slices[0]
         rec_entry["pred_slices"] = pred_slices
         rec_entry["vmax_pred"] = round(float(np.abs(p_vol[:, :, iy_pk]).max()), 3)
@@ -3949,11 +3952,15 @@ class TrainingMonitor:
         self.fig.clf()
         ax = self.fig.subplots(2, 3)
 
+        def _num(r, key, default=np.nan):
+            val = r.get(key)
+            return float(val) if val is not None else default
+
         # 1. Losses (log y-axis so late fine-tuning drops remain clearly visible)
-        ax[0, 0].plot(ep, [max(1e-4, r["train_loss"]) for r in self.hist], "o-", label="Train Total")
-        ax[0, 0].plot(ep, [max(1e-4, r["val_loss"]) for r in self.hist], "s-", label="Val Total")
-        ax[0, 0].plot(ep, [max(1e-4, r["data_rel_misfit"]) for r in self.hist], "^--", label="Val Data Misfit ||Gm-d||/||d||")
-        ax[0, 0].plot(ep, [max(1e-4, r.get("halo_opp", 0.0)) for r in self.hist], "d:", label="Val Opposite-Sign Halo")
+        ax[0, 0].plot(ep, [max(1e-4, _num(r, "train_loss", 1e-4)) for r in self.hist], "o-", label="Train Total")
+        ax[0, 0].plot(ep, [max(1e-4, _num(r, "val_loss", 1e-4)) for r in self.hist], "s-", label="Val Total")
+        ax[0, 0].plot(ep, [max(1e-4, _num(r, "data_rel_misfit", 1e-4)) for r in self.hist], "^--", label="Val Data Misfit ||Gm-d||/||d||")
+        ax[0, 0].plot(ep, [max(1e-4, _num(r, "halo_opp", 0.0)) for r in self.hist], "d:", label="Val Opposite-Sign Halo")
         ax[0, 0].set_yscale("log")
         ax[0, 0].set_title("Loss, Data Misfit & Opposite Halo (Log)")
         ax[0, 0].set_xlabel("Epoch")
@@ -3961,9 +3968,16 @@ class TrainingMonitor:
         ax[0, 0].legend(fontsize=8)
 
         # 2. 3D IoU & Amplitude Recovery
-        ax[0, 1].plot(ep, [r["iou"] for r in self.hist], "o-", color="#10b981", label="3D Volumetric IoU")
-        ax[0, 1].plot(ep, [r["amp_ratio"] for r in self.hist], "s-", color="#3b82f6", label="Amplitude Ratio")
-        ax[0, 1].plot(ep, [1.0 - r["body_l1_rel"] for r in self.hist], "^--", color="#f59e0b", label="1 - Body Rel L1")
+        ax[0, 1].plot(ep, [_num(r, "iou") for r in self.hist], "o-", color="#10b981", label="3D Volumetric IoU")
+        for bkey, bcol, blbl in (
+            ("val_gc_iou", "#059669", "Ground-Clean IoU"),
+            ("val_hl_iou", "#8b5cf6", "Hard/Large IoU"),
+            ("val_air_iou", "#06b6d4", "Airborne Drape IoU"),
+        ):
+            if any(r.get(bkey) is not None for r in self.hist):
+                ax[0, 1].plot(ep, [_num(r, bkey) for r in self.hist], ":", color=bcol, label=blbl)
+        ax[0, 1].plot(ep, [_num(r, "amp_ratio") for r in self.hist], "s-", color="#3b82f6", label="Amplitude Ratio")
+        ax[0, 1].plot(ep, [1.0 - _num(r, "body_l1_rel") for r in self.hist], "^--", color="#f59e0b", label="1 - Body Rel L1")
         ax[0, 1].set_ylim(0.0, 1.05)
         ax[0, 1].set_title("3D Body IoU & Amplitude Recovery")
         ax[0, 1].set_xlabel("Epoch")
@@ -3971,7 +3985,7 @@ class TrainingMonitor:
         ax[0, 1].legend(fontsize=8)
 
         # 3. Depth Centroid Error
-        ax[0, 2].plot(ep, [r["centroid_dz"] for r in self.hist], "o-", color="#ef4444", label="|dz centroid| [m]")
+        ax[0, 2].plot(ep, [_num(r, "centroid_dz") for r in self.hist], "o-", color="#ef4444", label="|dz centroid| [m]")
         ax[0, 2].axhline(CELL, color="#6b7280", linestyle=":", label=f"1 cell ({CELL:.0f} m)")
         ax[0, 2].set_title("3D Depth Centroid Error [m]")
         ax[0, 2].set_xlabel("Epoch")

@@ -190,3 +190,99 @@ class TerrainGravityOperator:
             r = torch.from_numpy(np.ascontiguousarray(rho, dtype=np.float32))[None, None].to(dev)
             z = torch.from_numpy(np.ascontiguousarray(z_obs, dtype=np.float32))[None].to(dev)
             return self(r, z)[0, 0].cpu().numpy()
+
+
+class SubvoxelCapOperator:
+    """Thickness-binned thin-slab Nagy prism operator for continuous sub-voxel terrain caps.
+
+    Computes the gravity anomaly of shallow surface slivers ``[t, ceil(t/dz)*dz)`` of thickness
+    ``th in [0, dz]`` observed at station clearance ``clearance >= 0.25 m`` above the sliver top,
+    without multiplying full-cell prisms by fractional volume (which mis-estimates near-surface
+    thin-slab decay by ~33%).
+    """
+
+    def __init__(
+        self,
+        nx,
+        ny,
+        dx=50.0,
+        dy=50.0,
+        dz=50.0,
+        n_th_bins: int = 6,
+        clearance_levels=(0.35, 1.5, 4.5, 12.0, 28.0, 58.0, 105.0, 165.0, 215.0),
+    ):
+        self.nx, self.ny = int(nx), int(ny)
+        self.dx, self.dy, self.dz = float(dx), float(dy), float(dz)
+        self.n_th_bins = max(2, int(n_th_bins))
+        self.px, self.py = 2 * self.nx, 2 * self.ny
+        pyh = self.py // 2 + 1
+
+        self.clr_levels = np.asarray(clearance_levels, dtype=np.float64)
+        self.n_clr = len(self.clr_levels)
+        self.th_step = self.dz / self.n_th_bins
+        # Store non-zero thickness knots k=1..n_th_bins; knot 0 is exact 0 mGal
+        th_knots = self.th_step * np.arange(1, self.n_th_bins + 1, dtype=np.float64)
+
+        di = np.arange(-(self.nx - 1), self.nx)
+        dj = np.arange(-(self.ny - 1), self.ny)
+        x1 = (di * self.dx - 0.5 * self.dx)[:, None]
+        y1 = (dj * self.dy - 0.5 * self.dy)[None, :]
+        ix = (di % self.px)[:, None]
+        iy = (dj % self.py)[None, :]
+
+        khat = np.zeros((self.n_clr, self.n_th_bins, self.px, pyh), dtype=np.complex128)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            for ci, clr_v in enumerate(self.clr_levels):
+                for ti, th_v in enumerate(th_knots):
+                    k = prism_gz(x1, x1 + self.dx, y1, y1 + self.dy, float(clr_v), float(clr_v + th_v))
+                    kpad = np.zeros((self.px, self.py), dtype=np.float64)
+                    kpad[ix, iy] = np.nan_to_num(k)
+                    khat[ci, ti] = np.fft.rfft2(kpad)
+
+        # Reshape to (F, n_th_bins, n_clr) real/imag blocks matching TerrainGravityOperator bmm layout
+        kf = khat.reshape(self.n_clr, self.n_th_bins, self.px * pyh).transpose(2, 1, 0)
+        self.k_re = torch.from_numpy(np.ascontiguousarray(kf.real, dtype=np.float32))
+        self.k_im = torch.from_numpy(np.ascontiguousarray(kf.imag, dtype=np.float32))
+        self.clr_t = torch.from_numpy(self.clr_levels.astype(np.float32))
+
+    def to(self, device):
+        self.k_re = self.k_re.to(device)
+        self.k_im = self.k_im.to(device)
+        self.clr_t = self.clr_t.to(device)
+        return self
+
+    @torch.no_grad()
+    def __call__(self, rho_top: torch.Tensor, thickness: torch.Tensor, clearance: torch.Tensor) -> torch.Tensor:
+        """rho_top: (B,1,nx,ny) g/cm^3, thickness: (B,nx,ny) [m], clearance: (B,nx,ny) [m] -> (B,1,nx,ny) mGal."""
+        b = rho_top.shape[0]
+        pyh = self.py // 2 + 1
+        th_c = thickness.clamp(0.0, self.dz)
+        pos_th = th_c / self.th_step  # in [0, n_th_bins]
+        # Compute piecewise-linear spline weights on non-zero thickness knots 1..n_th_bins
+        knots = torch.arange(1, self.n_th_bins + 1, device=rho_top.device, dtype=rho_top.dtype).view(1, -1, 1, 1)
+        w_th = (1.0 - (pos_th.unsqueeze(1) - knots).abs()).clamp(0.0, 1.0)
+        src_bins = rho_top * w_th  # (B, n_th_bins, nx, ny)
+
+        x_pad = torch.nn.functional.pad(src_bins, (0, self.py - self.ny, 0, self.px - self.nx))
+        xf = torch.fft.rfft2(x_pad).reshape(b, self.n_th_bins, -1).permute(2, 0, 1)  # (F, B, n_th_bins)
+        x_cat = torch.cat([xf.real, xf.imag], dim=1)                                 # (F, 2*B, n_th_bins)
+        m_re = torch.bmm(x_cat, self.k_re)                                           # (F, 2*B, n_clr)
+        m_im = torch.bmm(x_cat, self.k_im)                                           # (F, 2*B, n_clr)
+        dr = m_re[:, :b] - m_im[:, b:]
+        di = m_im[:, :b] + m_re[:, b:]
+        df = torch.complex(dr, di).permute(1, 2, 0).reshape(b, self.n_clr, self.px, pyh)
+        d_clr = torch.fft.irfft2(df, s=(self.px, self.py))[:, :, : self.nx, : self.ny]  # (B, n_clr, nx, ny)
+
+        # Smooth upward-continuation interpolation in log(clearance + 0.4 * dz) coordinates
+        clr_clamped = clearance.clamp(float(self.clr_levels[0]), float(self.clr_levels[-1]) - 1e-4)
+        idx = torch.bucketize(clr_clamped, self.clr_t, right=True).clamp(1, self.n_clr - 1) - 1
+        h_off = 0.4 * self.dz
+        c0 = torch.log(self.clr_t[idx] + h_off)
+        c1 = torch.log(self.clr_t[idx + 1] + h_off)
+        cc = torch.log(clr_clamped + h_off)
+        frac = ((cc - c0) / (c1 - c0).clamp_min(1e-6)).unsqueeze(1)
+        j0 = idx.unsqueeze(1)
+        lo = torch.gather(d_clr, 1, j0)
+        hi = torch.gather(d_clr, 1, j0 + 1)
+        return lo * (1.0 - frac) + hi * frac
+

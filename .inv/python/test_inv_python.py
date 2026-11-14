@@ -1093,6 +1093,297 @@ def test_v52_slim_base_heavy_architectures():
     assert list(m_base.state_dict().keys()) == list(m_def.state_dict().keys())
 
 
+def test_v6_subvoxel_cap_operator_matches_brute_force():
+    from forward import SubvoxelCapOperator, TerrainGravityOperator, prism_gz
+
+    nx, ny, dx, dy, dz = 16, 16, 50.0, 50.0, 50.0
+    cap_op = SubvoxelCapOperator(nx, ny, dx, dy, dz)
+    rho_top = torch.zeros((1, 1, nx, ny), dtype=torch.float32)
+    rho_top[0, 0, 5:10, 5:10] = 1.25
+
+    xs = (np.arange(nx) + 0.5) * dx
+    ys = (np.arange(ny) + 0.5) * dy
+    kx, ky = np.nonzero(rho_top[0, 0].numpy())
+
+    for th_val, clr_val in ((8.0, 0.35), (22.0, 6.0), (41.0, 85.0)):
+        th = torch.full((1, nx, ny), th_val, dtype=torch.float32)
+        clr = torch.full((1, nx, ny), clr_val, dtype=torch.float32)
+        g_op = cap_op(rho_top, th, clr)[0, 0].numpy()
+
+        gz_bf = np.zeros((nx, ny), dtype=np.float64)
+        for ix, iy in zip(kx, ky):
+            x1 = (ix * dx - xs)[:, None]
+            y1 = (iy * dy - ys)[None, :]
+            gz_bf += float(rho_top[0, 0, ix, iy]) * prism_gz(x1, x1 + dx, y1, y1 + dy, clr_val, clr_val + th_val)
+        rel_err = float(np.linalg.norm(g_op - gz_bf) / max(np.linalg.norm(gz_bf), 1e-12))
+        assert rel_err < 0.015, f"SubvoxelCapOperator rel_err={rel_err:.4f} at th={th_val}, clr={clr_val}"
+
+    # Verify TerrainGravityOperator(h_min=-220.0) accuracy at z_obs=-205.0 m
+    op_hi = TerrainGravityOperator(nx, ny, 8, dx, dy, dz, h_min=-220.0)
+    rho3 = torch.zeros((1, 1, 8, nx, ny), dtype=torch.float32)
+    rho3[0, 0, 1:4, 5:10, 5:10] = 0.85
+    z_obs = torch.full((1, nx, ny), -205.0, dtype=torch.float32)
+    g_hi = op_hi(rho3, z_obs)
+    assert torch.isfinite(g_hi).all() and float(g_hi.abs().max()) > 0.1
+
+
+def test_v6_dataset_large_bodies_structural_units_and_speed():
+    import time
+    from torch.utils.data import DataLoader
+    from dataset import (
+        BodyTerrainDataset, _border_occupancy_2d, apply_continuous_fault_v6,
+        random_bodies_v6, random_terrain,
+    )
+
+    rng = np.random.default_rng(77)
+    # 1. All v6 structural archetypes emit valid int32 unit_id synced with rho and <=16 units
+    archetypes = (
+        "landfill_plume", "broad_basin_pluton", "folded_horizons",
+        "listric_graben", "intrusive_plumbing", "basement_cover", "graded_halo",
+    )
+    for st in archetypes:
+        t = random_terrain(rng, 64, 64, 1600.0)
+        rho, uid, _ = random_bodies_v6(rng, t, 32, 50.0, 50.0, scene_type=st, return_meta=True)
+        assert uid.dtype == np.int32 and uid.shape == rho.shape
+        assert np.array_equal(rho != 0, uid > 0), f"unit_id out of sync on {st}"
+        assert 1 <= int(uid.max()) <= 16, f"unit count out of range on {st}: {uid.max()}"
+        border_occ = float(_border_occupancy_2d((rho != 0).any(axis=0)))
+        assert border_occ <= 0.72, f"border guard exceeded on {st}: {border_occ:.3f}"
+        fg_lat = float((rho != 0).any(axis=0).mean())
+        below = (np.arange(32)[:, None, None] * 50.0) >= t[None, :, :]
+        sub_vol = float(np.count_nonzero(rho)) / max(1, int(below.sum()))
+        if st in ("landfill_plume", "broad_basin_pluton"):
+            assert 0.20 <= fg_lat <= 0.85, f"unexpected lateral coverage on {st}: {fg_lat:.3f}"
+            assert 0.12 <= sub_vol <= 0.55, f"unexpected sub volume on {st}: {sub_vol:.3f}"
+        if st == "landfill_plume":
+            assert float(rho.min()) >= -0.851 and float(rho.min()) < -0.04
+
+    # 2. Continuous zero-tear fault shift preserves geological continuity (no empty air column slots)
+    t_cells = np.full((64, 64), 2.0, dtype=np.float32)
+    rho_layer = np.zeros((32, 64, 64), dtype=np.float32)
+    uid_layer = np.zeros((32, 64, 64), dtype=np.int32)
+    rho_layer[3:8, 12:52, 12:52] = -0.45
+    uid_layer[3:8, 12:52, 12:52] = 1
+    rho_f, uid_f, applied = apply_continuous_fault_v6(rng, rho_layer, uid_layer, t_cells, mode="listric")
+    assert applied and np.array_equal(rho_f != 0, uid_f > 0) and int((rho_f != 0).sum()) > 100
+
+    # 3. CPU DataLoader batch=8 speed check (< 120 ms/batch budget)
+    ds = BodyTerrainDataset(32, 64, 64, 32, 50.0, 50.0, 50.0, seed=11, v6_mode=True)
+    dl = DataLoader(ds, batch_size=8, num_workers=0)
+    t0 = time.perf_counter()
+    batches = list(dl)
+    ms_per_batch = (time.perf_counter() - t0) * 1000.0 / len(batches)
+    assert len(batches) == 4 and ms_per_batch < 120.0, f"CPU v6 batch8 too slow: {ms_per_batch:.1f} ms"
+
+
+def test_v6_degated_relief_clearance_2d_and_d4_sync():
+    from dataset import (
+        CLEARANCE_CLAMP_V6, augment_d4, build_v6_input, sample_geometry_v6,
+    )
+
+    rng = np.random.default_rng(2025)
+    clr_stds_air, ground_cnt, air_fault_cnt = [], 0, 0
+    for _ in range(90):
+        rho, uid, t, clr_map, nf = sample_geometry_v6(rng, 64, 64, 32, 50.0, 50.0, 50.0, fault_prob=0.8)
+        assert clr_map.shape == (64, 64) and float(clr_map.min()) >= 0.30 and float(clr_map.max()) <= 215.0
+        med_c = float(np.median(clr_map))
+        if med_c <= 2.05:
+            ground_cnt += 1
+        else:
+            air_fault_cnt += 1
+            clr_stds_air.append(float(clr_map.std()))
+    # Primary ground weighting ~67% (tolerance wide for N=90) and airborne NOT crushed to zero
+    assert 45 <= ground_cnt <= 75, f"unexpected ground count out of 90: {ground_cnt}"
+    assert air_fault_cnt >= 15 and any(s > 0.5 for s in clr_stds_air), "airborne relief drape failed"
+
+    # Canonical ch-4 ceiling = 8.0 (400 m at 50 m cell) + 2D map normalization
+    obs = torch.zeros((2, 1, 64, 64))
+    t_t = torch.zeros((2, 64, 64))
+    clr2d = torch.zeros((2, 64, 64))
+    clr2d[0, :, :32] = 0.35
+    clr2d[0, :, 32:] = 300.0
+    clr2d[1] = 600.0
+    x6 = build_v6_input(obs, t_t, 1600.0, clearance=clr2d)
+    assert abs(float(x6[0, 4, 0, 40]) - 6.0) < 1e-4
+    assert abs(float(x6[1, 4].max()) - CLEARANCE_CLAMP_V6) < 1e-4
+
+    # augment_d4 syncs 2D clearance and int32 unit_id while preserving backward-compatible arity
+    rho_t = torch.arange(1 * 1 * 4 * 8 * 8, dtype=torch.float32).reshape(1, 1, 4, 8, 8)
+    uid_t = torch.arange(1 * 1 * 4 * 8 * 8, dtype=torch.int32).reshape(1, 1, 4, 8, 8)
+    t2 = torch.arange(64, dtype=torch.float32).reshape(1, 8, 8)
+    obs2 = t2.unsqueeze(1).clone()
+    clean2 = obs2.clone()
+    z2 = t2.clone()
+    vm2 = torch.ones_like(obs2)
+    clr_asym = torch.arange(64, dtype=torch.float32).reshape(1, 8, 8)
+    rho_a, t_a, obs_a, clean_a, z_a, vm_a, clr_a, uid_a = augment_d4(
+        rho_t, t2, obs2, clean2, z2, valid_mask=vm2, k=1, flip=True, clearance=clr_asym, unit_id=uid_t,
+    )
+    assert uid_a.dtype == torch.int32
+    assert torch.equal(clr_a, torch.flip(torch.rot90(clr_asym, 1, dims=(-2, -1)), dims=(-1,)))
+    assert torch.equal(uid_a, torch.flip(torch.rot90(uid_t, 1, dims=(-2, -1)), dims=(-1,)))
+    # Legacy 5-tuple call untouched
+    legacy = augment_d4(rho_t, t2, obs2, clean2, z2, k=1, flip=False)
+    assert len(legacy) == 5
+
+
+def test_v6_physics_detrend_exterior_mass_blur_and_masks():
+    from dataset import apply_mod3d_detrend, simulate_batch
+    from forward import SubvoxelCapOperator, TerrainGravityOperator
+
+    # 1. Mod3D detrending recovers pure anomaly from linear background planes across modes
+    xs = torch.linspace(-1.0, 1.0, 32)[None, None, :, None]
+    ys = torch.linspace(-1.0, 1.0, 32)[None, None, None, :]
+    quad = torch.exp(-(xs ** 2 + ys ** 2) * 8.0) - torch.exp(-torch.tensor(8.0))  # ~0 on border
+    plane = 1.7 + 0.9 * xs - 1.3 * ys
+    batch_d = torch.cat([quad + plane] * 4, dim=0)
+    out = apply_mod3d_detrend(batch_d, ["border_planar", "planar", "constant", "raw"])
+    assert float((out[0, 0] - quad[0, 0]).abs().max()) < 2e-3, "BorderPlanar failed"
+    assert float(out[1, 0].mean().abs()) < 1e-5 and float(out[2, 0].mean().abs()) < 1e-5
+    assert torch.allclose(out[3], batch_d[3])
+
+    # 2. simulate_batch v6_physics: obs_clean remains un-detrended and exterior-free
+    op = TerrainGravityOperator(32, 32, 16, 50.0, 50.0, 50.0, h_min=-220.0)
+    cap_op = SubvoxelCapOperator(32, 32, 50.0, 50.0, 50.0)
+    rho = torch.zeros((4, 1, 16, 32, 32), dtype=torch.float32)
+    rho[:, 0, 2:6, 10:20, 10:20] = -0.65
+    t = torch.full((4, 32, 32), 62.0, dtype=torch.float32)
+    clr = torch.full((4, 32, 32), 0.35, dtype=torch.float32)
+    nf = torch.full((4,), 0.02, dtype=torch.float32)
+    ns = torch.tensor([11, 22, 33, 44])
+    noisy, clean, z_obs, vm, dmodes = simulate_batch(
+        op, rho, t, clr, nf, ns, dropout_prob=0.6, return_mask=True, v6_physics=True,
+        subvox_cap_op=cap_op, subvox_cap_prob=1.0, detrend_probs=(1.0, 0.0, 0.0, 0.0),
+        exterior_mass_prob=1.0, pregrid_blur_prob=1.0, line_drift_prob=1.0,
+        bouguer_err_prob=1.0, return_detrend_modes=True,
+    )
+    assert dmodes == ["border_planar"] * 4
+    exact_clean = op(rho, t - clr)
+    assert torch.allclose(clean, exact_clean, atol=1e-6), "obs_clean mutated by v6 detrend/exterior mass!"
+    assert torch.isfinite(noisy).all() and not torch.allclose(noisy, clean)
+
+
+def test_v6_evaluate_vectorized_metrics_calibration_and_4buckets():
+    from dataset import ASPECT_MULTI
+    from evaluate import (
+        compute_calibration_metrics, compute_metrics, make_v6_val_buckets,
+    )
+    from forward import SubvoxelCapOperator, TerrainGravityOperator
+
+    grid = (32, 32, 16, 50.0, 50.0, 50.0)
+    op = TerrainGravityOperator(*grid, h_min=-220.0)
+    # Piecewise parity: unit_id compute_metrics matches unit_id=None identically
+    truth = torch.zeros((1, 1, 16, 32, 32), dtype=torch.float32)
+    uid = torch.zeros((1, 1, 16, 32, 32), dtype=torch.int32)
+    truth[0, 0, 2:5, 6:12, 6:12] = -0.45
+    uid[0, 0, 2:5, 6:12, 6:12] = 1
+    truth[0, 0, 5:9, 18:24, 18:24] = 0.55
+    uid[0, 0, 5:9, 18:24, 18:24] = 2
+    z = torch.full((1, 32, 32), -0.35, dtype=torch.float32)
+    d_clean = op(truth, z)
+    pred = truth * 0.78
+    m_leg = compute_metrics(pred, truth, d_clean, z, op, dz=50.0)
+    m_uid = compute_metrics(pred, truth, d_clean, z, op, dz=50.0, unit_id=uid)
+    for k in ("l1_rel", "body_l1_rel", "iou", "centroid_dz", "amp_ratio", "sediment_recall", "mafic_recall"):
+        assert abs(m_leg[k] - m_uid[k]) < 1e-5, f"mismatch on {k}: {m_leg[k]} vs {m_uid[k]}"
+    assert m_uid["sediment_recall"] > 0.99 and m_uid["mafic_recall"] > 0.99
+
+    # Calibration metrics: informative sigma yields positive Spearman & calibrated coverage
+    err_field = torch.linspace(0.05, 0.50, truth.numel()).reshape(truth.shape)
+    pred_cal = truth + err_field
+    lv_good = 2.0 * torch.log(err_field * 1.05)
+    cal = compute_calibration_metrics(pred_cal, truth, lv_good, terrain=torch.zeros((1, 32, 32)), dz=50.0)
+    assert cal["unc_spearman"] > 0.95 and 0.95 <= cal["bd_sig_err_ratio"] <= 1.10 and cal["fg_1sig_cov"] > 0.95
+    assert cal["aurc"] < float(err_field.mean())
+
+    # 4-bucket stratified val set
+    op_bank = {i: TerrainGravityOperator(32, 32, 16, 50.0, 50.0, 50.0 * a, h_min=-220.0) for i, a in enumerate(ASPECT_MULTI)}
+    cap_bank = {i: SubvoxelCapOperator(32, 32, 50.0, 50.0, 50.0 * a) for i, a in enumerate(ASPECT_MULTI)}
+    buckets = make_v6_val_buckets(8, 321, op, op_bank, "cpu", grid, subvox_cap_bank=cap_bank, chunk_size=4)
+    assert set(buckets.keys()) == {"ground_clean", "ground_hard_large_detrend", "airborne_relief_drape", "multi_aspect"}
+    ma_aspects = {round(ch["aspect"], 2) for ch in buckets["multi_aspect"]}
+    assert len(ma_aspects) >= 3 and 1.0 in {round(ch["aspect"], 2) for ch in buckets["ground_clean"]}
+
+
+def test_v6_training_pipeline_wiring_and_dashboard_safety():
+    """Lightweight train.py + dashboard.py v6 wiring check using mock V6 model/loss on 64x64x32."""
+    import json
+    import os
+    import tempfile
+    from dataset import ASPECT_MULTI, CELL, NX, NY, NZ, BodyTerrainDataset
+    from evaluate import make_v6_val_buckets
+    from forward import SubvoxelCapOperator, TerrainGravityOperator
+    from dashboard import TrainingMonitor
+    from train import (
+        BatchAspectOperator, build_v6_scheduler, compute_v6_curriculum,
+        prepare_v6_batch, validate_v6_buckets,
+    )
+
+    opt = torch.optim.AdamW([torch.nn.Parameter(torch.ones(2))], lr=5e-4)
+    sched = build_v6_scheduler(opt, total_steps=50, warmup_steps=10)
+    lrs = []
+    for _ in range(50):
+        lrs.append(opt.param_groups[0]["lr"])
+        opt.step()
+        sched.step()
+    assert lrs[0] < lrs[9] and abs(lrs[9] - 5e-4) < 1e-6 and lrs[-1] < 2e-5
+
+    cfg1 = compute_v6_curriculum(1, 25, 0.50, 0.40, 0.35, 0.22, 0.67)
+    cfg25 = compute_v6_curriculum(25, 25, 0.50, 0.40, 0.35, 0.22, 0.67)
+    assert cfg1["max_airborne"] < cfg25["max_airborne"] and abs(cfg25["ground_prob"] - 0.67) < 1e-6
+
+    op = TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL, h_min=-220.0)
+    op_bank = [op] * len(ASPECT_MULTI)
+    cap = SubvoxelCapOperator(NX, NY, CELL, CELL, CELL)
+    cap_bank = [cap] * len(ASPECT_MULTI)
+    bop = BatchAspectOperator(op_bank, op)
+
+    ds = BodyTerrainDataset(4, NX, NY, NZ, CELL, CELL, CELL, seed=9, v6_mode=True, aspect_ratios=ASPECT_MULTI)
+    batch = [ds[i] for i in range(4)]
+    batch_t = tuple(torch.stack([it[k] for it in batch]) for k in range(len(batch[0])))
+    x, rho, uid, clean, z_obs = prepare_v6_batch(batch_t, op_bank, cap_bank, ASPECT_MULTI, "cpu", bop, 0.25)
+    assert x.shape == (4, 5, NX, NY) and uid.dtype == torch.int32
+
+    class _MockV6Model(torch.nn.Module):
+        def forward(self, inp, return_aux=False):
+            b, _, h, w = inp.shape
+            pred = torch.zeros((b, 1, NZ, h, w), device=inp.device)
+            return (pred, {"log_var": torch.full_like(pred, -3.0)}) if return_aux else pred
+
+    class _MockV6Loss(torch.nn.Module):
+        def forward(self, pred, true, clean, z_obs, aux=None, unit_id=None):
+            assert unit_id is not None and unit_id.dtype == torch.int32
+            loss = (pred - true).abs().mean()
+            return loss, {"loss_total": float(loss)}
+
+    buckets = make_v6_val_buckets(
+        4, 888, op, {i: o for i, o in enumerate(op_bank)}, "cpu", (NX, NY, NZ, CELL, CELL, CELL),
+        subvox_cap_bank={i: c for i, c in enumerate(cap_bank)}, chunk_size=4,
+    )
+    mock_m = _MockV6Model()
+    vloss, vm, bl, bm, mt = validate_v6_buckets(
+        mock_m, mock_m, lambda m, inp: m(inp, return_aux=True), buckets, _MockV6Loss(), bop, op,
+    )
+    assert len(bl) == 4 and np.isfinite(vloss) and mt is not None
+    with tempfile.TemporaryDirectory() as td:
+        mon = TrainingMonitor(td, gui=False, forward_op=op)
+        rec = {"epoch": 1, "train_loss": 0.5, "val_loss": vloss, **vm, "val_gc_iou": 0.4, "val_hl_iou": float("nan")}
+        mon.update(rec, *mt, is_best=True)
+        with open(os.path.join(td, "training_history.json")) as f:
+            hist = json.load(f)
+        assert hist["epochs"][0]["val_hl_iou"] is None
+        assert os.path.exists(os.path.join(td, "training_monitor.png"))
+
+    # Verify persistent DataLoader worker spawn picks up live curriculum updates via share_memory_
+    from train import _build_train_loader
+    ds_w = BodyTerrainDataset(8, 32, 32, 16, 50.0, 50.0, 50.0, v6_mode=True, ground_prob=1.0, max_airborne=2.0)
+    dl_w = _build_train_loader(ds_w, batch_size=4, num_workers=2)
+    ep1_clr = max(float(b[3].max()) for b in dl_w)
+    ds_w.set_curriculum(ground_prob=0.0, max_airborne=120.0)
+    ep2_clr = max(float(b[3].max()) for b in dl_w)
+    assert ep1_clr <= 2.01 and (dl_w.num_workers == 0 or ep2_clr > 10.0)
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:
