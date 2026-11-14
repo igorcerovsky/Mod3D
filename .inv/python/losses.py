@@ -81,21 +81,28 @@ def _gap_saddle_mask(fg_mask, max_gap: int = 3):
 
 
 @torch.no_grad()
-def _internal_unit_contact_mask(m_ref, fg_mask, tol: float = 1e-4):
+def _internal_unit_contact_mask(m_ref, fg_mask, tol: float = 1e-4, unit_id=None):
     """Detect foreground voxels touching an internal contact between distinct geological units."""
     contact = torch.zeros_like(fg_mask)
     fg_b = fg_mask > 0.5
-    cz = fg_b[:, :, 1:, :, :] & fg_b[:, :, :-1, :, :] & ((m_ref[:, :, 1:, :, :] - m_ref[:, :, :-1, :, :]).abs() > tol)
+    if unit_id is not None:
+        uid = unit_id.long()
+        cz = (uid[:, :, 1:, :, :] > 0) & (uid[:, :, :-1, :, :] > 0) & (uid[:, :, 1:, :, :] != uid[:, :, :-1, :, :])
+        cx = (uid[:, :, :, 1:, :] > 0) & (uid[:, :, :, :-1, :] > 0) & (uid[:, :, :, 1:, :] != uid[:, :, :, :-1, :])
+        cy = (uid[:, :, :, :, 1:] > 0) & (uid[:, :, :, :, :-1] > 0) & (uid[:, :, :, :, 1:] != uid[:, :, :, :, :-1])
+    else:
+        cz = fg_b[:, :, 1:, :, :] & fg_b[:, :, :-1, :, :] & ((m_ref[:, :, 1:, :, :] - m_ref[:, :, :-1, :, :]).abs() > tol)
+        cx = fg_b[:, :, :, 1:, :] & fg_b[:, :, :, :-1, :] & ((m_ref[:, :, :, 1:, :] - m_ref[:, :, :, :-1, :]).abs() > tol)
+        cy = fg_b[:, :, :, :, 1:] & fg_b[:, :, :, :, :-1] & ((m_ref[:, :, :, :, 1:] - m_ref[:, :, :, :, :-1]).abs() > tol)
+
     cf_z = cz.to(fg_mask.dtype)
     contact[:, :, 1:, :, :] = torch.maximum(contact[:, :, 1:, :, :], cf_z)
     contact[:, :, :-1, :, :] = torch.maximum(contact[:, :, :-1, :, :], cf_z)
 
-    cx = fg_b[:, :, :, 1:, :] & fg_b[:, :, :, :-1, :] & ((m_ref[:, :, :, 1:, :] - m_ref[:, :, :, :-1, :]).abs() > tol)
     cf_x = cx.to(fg_mask.dtype)
     contact[:, :, :, 1:, :] = torch.maximum(contact[:, :, :, 1:, :], cf_x)
     contact[:, :, :, :-1, :] = torch.maximum(contact[:, :, :, :-1, :], cf_x)
 
-    cy = fg_b[:, :, :, :, 1:] & fg_b[:, :, :, :, :-1] & ((m_ref[:, :, :, :, 1:] - m_ref[:, :, :, :, :-1]).abs() > tol)
     cf_y = cy.to(fg_mask.dtype)
     contact[:, :, :, :, 1:] = torch.maximum(contact[:, :, :, :, 1:], cf_y)
     contact[:, :, :, :, :-1] = torch.maximum(contact[:, :, :, :, :-1], cf_y)
@@ -146,7 +153,8 @@ class CompoundInversionLoss(nn.Module):
 
     def __init__(self, lambda_data=0.25, lambda_ms=0.05, lambda_cls=0.25, body_boost=9.0,
                  e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None,
-                 lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08):
+                 lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08,
+                 use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.25):
         super().__init__()
         self.lambda_data, self.lambda_ms, self.lambda_cls = lambda_data, lambda_ms, lambda_cls
         self.body_boost, self.e_rel = body_boost, e_rel
@@ -155,10 +163,14 @@ class CompoundInversionLoss(nn.Module):
         self.beta_nll = beta_nll
         self.lambda_coarse = lambda_coarse
         self.lambda_amp = lambda_amp
+        self.use_v6_losses = bool(use_v6_losses)
+        self.tversky_alpha = float(tversky_alpha)
+        self.tversky_beta = float(tversky_beta)
+        self.lambda_rho_init = float(lambda_rho_init)
         self.forward_op = forward_op
         self.zhdanov = ZhdanovFocusingLoss()
 
-    def _lithology_loss(self, aux, m_true, fg_mask, d3, w_z, gap_mask, contact_vox=None):
+    def _lithology_loss(self, aux, m_true, fg_mask, d3, w_z, gap_mask, contact_vox=None, is_v6: bool = False):
         logits = aux["logits"].float()                              # (B, K, D, H, W)
         probs = aux["probs"].float()                                # (B, K, D, H, W)
         num_classes = logits.shape[1]
@@ -171,11 +183,16 @@ class CompoundInversionLoss(nn.Module):
             cls_tgt = torch.zeros_like(t0, dtype=torch.long)
             cls_tgt[t0 <= -2.17] = 1                                # air cavity (-2.67)
             if num_classes >= 7:
-                cls_tgt[(t0 > -2.17) & (t0 <= -1.61)] = 2           # water cavity (-1.67)
-                cls_tgt[(t0 > -1.61) & (t0 <= -0.825)] = 3          # light rock / coal [-1.55, -0.85]
-                cls_tgt[(t0 > -0.825) & (t0 < -1e-5)] = 4           # sediment / waste [-0.80, -0.10]
-                cls_tgt[(t0 > 1e-5) & (t0 <= 0.775)] = 5            # mafic / ultramafic [+0.15, +0.75]
-                cls_tgt[t0 > 0.775] = 6                             # high-grade ore [+0.80, +1.85]
+                if is_v6:
+                    cls_tgt[(t0 > -2.17) & (t0 <= -1.635)] = 2      # water cavity (-1.67)
+                    cls_tgt[(t0 > -1.635) & (t0 <= -0.855)] = 3     # light rock / coal [-1.60, -0.80]
+                    cls_tgt[(t0 > -0.855) & (t0 < -1e-5)] = 4       # sediment / waste [-0.85, 0.00)
+                else:
+                    cls_tgt[(t0 > -2.17) & (t0 <= -1.61)] = 2       # water cavity (-1.67)
+                    cls_tgt[(t0 > -1.61) & (t0 <= -0.825)] = 3      # light rock / coal [-1.55, -0.85]
+                    cls_tgt[(t0 > -0.825) & (t0 < -1e-5)] = 4       # sediment / waste [-0.80, -0.10]
+                cls_tgt[(t0 > 1e-5) & (t0 <= 0.775)] = 5            # mafic / ultramafic [+0.15, +0.75] / [0, +0.80]
+                cls_tgt[t0 > 0.775] = 6                             # high-grade ore [+0.80, +1.85] / [+0.75, +1.95]
             else:
                 cls_tgt[(t0 > -2.17) & (t0 <= -1.235)] = 2
                 cls_tgt[(t0 > -1.235) & (t0 < -1e-5)] = 3
@@ -276,7 +293,80 @@ class CompoundInversionLoss(nn.Module):
         l_unit_iou = (u_comb.sum(1) / present_u.sum(1).clamp_min(1.0)).mean()
         return 0.50 * l_inst_iou + 0.50 * l_unit_iou
 
-    def forward(self, m_pred, m_true, d_clean=None, z_obs=None, aux=None):
+    def _unit_and_instance_iou_loss_v6(self, pn, tn, fg_mask, d3, w_z, sub_mask,
+                                       u_masks, u_d3, t_dil3, unit_id=None):
+        """V6 unit_id-aware asymmetric Tversky + per-unit 50%-contrast IoU (recall-weighted)."""
+        _, _, D, H, W = tn.shape
+        kd = 9 if D >= 9 else (D if D % 2 == 1 else max(1, D - 1))
+        kh = 9 if H >= 9 else (H if H % 2 == 1 else max(1, H - 1))
+        kw = 9 if W >= 9 else (W if W % 2 == 1 else max(1, W - 1))
+        alpha, beta = self.tversky_alpha, self.tversky_beta
+        with torch.no_grad():
+            t_ref = torch.where(fg_mask > 0.5, tn.abs(), t_dil3).clamp_min(0.05)
+            v_loc = F.avg_pool3d(
+                fg_mask, kernel_size=(kd, kh, kw), stride=1, padding=(kd // 2, kh // 2, kw // 2)
+            ).clamp_min(1e-3)
+            w_vol = (1.0 / v_loc.sqrt()) * d3 * sub_mask * w_z
+            t_loc = (tn / t_ref) * fg_mask
+            t_abs_loc = t_loc.abs()
+            t0_sig = torch.sigmoid(pn.new_tensor(-5.0))
+            t1_sig = torch.sigmoid(pn.new_tensor(5.0))
+            inv_span = 1.0 / (t1_sig - t0_sig)
+            a_true_1ch = ((torch.sigmoid(10.0 * (t_abs_loc - 0.5)) - t0_sig) * inv_span).clamp(0.0, 1.0) * fg_mask
+
+            if unit_id is not None and int(unit_id.amax().item()) > 0:
+                uid_3d = unit_id[:, 0].long()
+                max_u = min(16, int(uid_3d.amax().item()))
+                grp_masks = (
+                    F.one_hot(uid_3d.clamp(0, max_u), num_classes=max_u + 1)[..., 1:]
+                    .permute(0, 4, 1, 2, 3)
+                    .to(pn.dtype)
+                )
+                grp_d3 = _dilate3d(grp_masks, 3)
+            else:
+                grp_masks = u_masks
+                grp_d3 = u_d3
+            grp_zone = grp_d3 * (1.0 - (fg_mask - grp_masks)).clamp_min(0.0) * sub_mask
+            present_u = (grp_masks.flatten(2).sum(2) > 0).to(pn.dtype)
+
+        p_loc = (pn / t_ref) * d3 * sub_mask
+        p_abs_loc = p_loc.abs()
+        p_ali_fg = F.relu(p_loc * torch.sign(t_loc))
+        tp_vox = torch.minimum(p_ali_fg, t_abs_loc)
+        fp_vox = F.relu(p_abs_loc - t_abs_loc)
+        fn_vox = F.relu(t_abs_loc - p_ali_fg)
+
+        tp_loc = (tp_vox * w_vol).flatten(1).sum(1)
+        fp_loc = (fp_vox * w_vol).flatten(1).sum(1)
+        fn_loc = (fn_vox * w_vol).flatten(1).sum(1)
+        l_inst_tversky = (1.0 - (tp_loc + 1e-6) / (tp_loc + alpha * fp_loc + beta * fn_loc + 1e-6)).clamp_min(0.0).mean()
+
+        p_eff = torch.where(fg_mask > 0.5, p_ali_fg, p_abs_loc)
+        a_pred_1ch = ((torch.sigmoid(10.0 * (p_eff - 0.5)) - t0_sig) * inv_span).clamp(0.0, 1.0) * d3 * sub_mask
+        iso_tp_vox = torch.minimum(a_pred_1ch, a_true_1ch)
+        iso_fp_vox = F.relu(a_pred_1ch - a_true_1ch)
+        iso_fn_vox = F.relu(a_true_1ch - a_pred_1ch)
+
+        u_tp = (tp_vox * grp_masks).flatten(2).sum(2)
+        u_fp = (fp_vox * grp_zone).flatten(2).sum(2)
+        u_fn = (fn_vox * grp_masks).flatten(2).sum(2)
+        u_tver = (1.0 - (u_tp + 1e-6) / (u_tp + alpha * u_fp + beta * u_fn + 1e-6)).clamp_min(0.0)
+
+        iso_tp = (iso_tp_vox * grp_masks).flatten(2).sum(2)
+        iso_fp = (iso_fp_vox * grp_zone).flatten(2).sum(2)
+        iso_fn = (iso_fn_vox * grp_masks).flatten(2).sum(2)
+        u_iso = (1.0 - (iso_tp + 1e-6) / (iso_tp + alpha * iso_fp + beta * iso_fn + 1e-6)).clamp_min(0.0)
+
+        u_comb = (0.5 * u_tver + 0.5 * u_iso) * present_u
+        l_unit_iou = (u_comb.sum(1) / present_u.sum(1).clamp_min(1.0)).mean()
+        return 0.45 * l_inst_tversky + 0.55 * l_unit_iou
+
+    def forward(self, m_pred, m_true, d_clean=None, z_obs=None, aux=None, unit_id=None):
+        is_v6 = bool(
+            self.use_v6_losses
+            or unit_id is not None
+            or (aux is not None and (aux.get("is_v6", False) or "rho_init" in aux))
+        )
         m_pred = m_pred.float()
         m_true = m_true.float()
         if d_clean is not None:
@@ -291,9 +381,28 @@ class CompoundInversionLoss(nn.Module):
         if sub_mask is None:
             sub_mask = torch.ones_like(fg_mask)
 
-        # Depth weighting w_z in [1.0, 1.0 + depth_boost] to sharpen bottom contacts & deep bodies
-        z_rel = torch.linspace(0.0, 1.0, D, device=m_true.device, dtype=m_true.dtype).view(1, 1, D, 1, 1)
-        w_z = 1.0 + self.depth_boost * z_rel
+        # Depth weighting w_z: V6 uses geometric terrain+clearance depth <= 3.0; V1..V5 preserves exact baseline
+        if is_v6:
+            z_top = torch.arange(D, device=m_true.device, dtype=m_true.dtype).view(1, 1, D, 1, 1) / float(D)
+            if aux is not None and "terr" in aux:
+                terr_n = aux["terr"].float().to(m_true.device)
+                if terr_n.dim() == 4:
+                    terr_n = terr_n.unsqueeze(2)
+                clr_n = aux["clr"].float().to(m_true.device) if "clr" in aux else torch.zeros_like(terr_n)
+                if clr_n.dim() == 4:
+                    clr_n = clr_n.unsqueeze(2)
+            elif aux is not None and "mask" in aux:
+                terr_n = (1.0 - sub_mask).sum(dim=2, keepdim=True) / float(D)
+                clr_n = torch.zeros_like(terr_n)
+            else:
+                terr_n = (z_obs[:, None, None].clamp_min(0.0) / float(D * 50.0)).clamp(0.0, 0.5) if z_obs is not None else torch.zeros_like(z_top)
+                clr_n = torch.zeros_like(terr_n)
+            d_sub = (z_top - terr_n).clamp_min(0.0) / (1.0 - terr_n).clamp_min(0.25)
+            clr_fac = 1.0 + 0.35 * (clr_n / (clr_n + 1.0))
+            w_z = (1.0 + max(self.depth_boost, 1.0) * d_sub * clr_fac).clamp(1.0, 3.0)
+        else:
+            z_rel = torch.linspace(0.0, 1.0, D, device=m_true.device, dtype=m_true.dtype).view(1, 1, D, 1, 1)
+            w_z = 1.0 + self.depth_boost * z_rel
 
         # Per-voxel local contrast normalisation (symmetric core accuracy + mild spiky-overshoot guard)
         t_loc = tn.abs().clamp_min(0.05)
@@ -327,7 +436,7 @@ class CompoundInversionLoss(nn.Module):
             t_dil3 = d3_all[:, 7:8]
 
             gap_mask = _gap_saddle_mask(fg_mask, max_gap=3)
-            contact_vox = _internal_unit_contact_mask(tn, fg_mask)
+            contact_vox = _internal_unit_contact_mask(tn, fg_mask, unit_id=unit_id)
             edt_tgt = (_interior_edt_proxy(fg_mask, steps=4, contact_mask=contact_vox)
                        if (aux is not None and "edt" in aux) else None)
             w_dist = (1.0 + 1.5 * (1.0 - fg_mask) + 1.5 * (1.0 - d1)
@@ -351,14 +460,23 @@ class CompoundInversionLoss(nn.Module):
         p_aligned = F.relu(pn * torch.sign(tn))
         inter = torch.minimum(p_aligned, tn.abs()).flatten(1).sum(1)
         l_dice = (1.0 - (2.0 * inter + 1e-6) / sum_l1).clamp_min(0.0).mean()
-        l_unit_inst_iou = self._unit_and_instance_iou_loss(
-            pn, tn, fg_mask, d3, w_z, sub_mask, u_masks, band_d3, t_dil3
-        )
+        if is_v6:
+            l_unit_inst_iou = self._unit_and_instance_iou_loss_v6(
+                pn, tn, fg_mask, d3, w_z, sub_mask, u_masks, band_d3, t_dil3, unit_id=unit_id
+            )
+        else:
+            l_unit_inst_iou = self._unit_and_instance_iou_loss(
+                pn, tn, fg_mask, d3, w_z, sub_mask, u_masks, band_d3, t_dil3
+            )
         l_iou_comb = 0.45 * l_dice + 0.55 * l_unit_inst_iou
 
         # Fixed-denominator 3D face-jump loss + local-contrast contact sharpness + interior body flatness
         dp, dt = _grad3d(pn), _grad3d(tn)
-        wz_faces = (0.5 * (w_z[:, :, 1:] + w_z[:, :, :-1]), w_z, w_z)
+        wz_faces = (
+            0.5 * (w_z[:, :, 1:, :, :] + w_z[:, :, :-1, :, :]),
+            0.5 * (w_z[:, :, :, 1:, :] + w_z[:, :, :, :-1, :]) if w_z.shape[3] > 1 else w_z,
+            0.5 * (w_z[:, :, :, :, 1:] + w_z[:, :, :, :, :-1]) if w_z.shape[4] > 1 else w_z,
+        )
         fg_pairs = (
             (fg_mask[:, :, 1:, :, :] > 0) & (fg_mask[:, :, :-1, :, :] > 0),
             (fg_mask[:, :, :, 1:, :] > 0) & (fg_mask[:, :, :, :-1, :] > 0),
@@ -366,15 +484,39 @@ class CompoundInversionLoss(nn.Module):
         )
         g_diff = sum(((p - t).abs() * wz).flatten(1).sum(1) for p, t, wz in zip(dp, dt, wz_faces))
         g_true = sum((t.abs() * wz).flatten(1).sum(1) for t, wz in zip(dt, wz_faces)) + 1e-4
-        c_err = sum(((p - t).abs() * (t != 0).float() * wz).flatten(1).sum(1) for p, t, wz in zip(dp, dt, wz_faces))
-        c_err_loc = sum((((p - t).abs() / t.abs().clamp_min(0.05)) * (t != 0).float() * wz).flatten(1).sum(1)
-                        for p, t, wz in zip(dp, dt, wz_faces))
-        c_cnt = sum(((t != 0).float() * wz).flatten(1).sum(1) for t, wz in zip(dt, wz_faces)).clamp_min(1.0)
-        c_term = 0.5 * (c_err / c_cnt) + 0.5 * (c_err_loc / c_cnt)
-        int_err = sum((p.abs() * ((t == 0) & fg_p).float() * wz).flatten(1).sum(1)
-                      for p, t, fg_p, wz in zip(dp, dt, fg_pairs, wz_faces))
-        int_cnt = sum((((t == 0) & fg_p).float() * wz).flatten(1).sum(1)
-                      for t, fg_p, wz in zip(dt, fg_pairs, wz_faces)).clamp_min(1.0)
+        if is_v6:
+            if unit_id is not None:
+                uid = unit_id.long()
+                uid_pairs = (
+                    (uid[:, :, 1:, :, :], uid[:, :, :-1, :, :]),
+                    (uid[:, :, :, 1:, :], uid[:, :, :, :-1, :]),
+                    (uid[:, :, :, :, 1:], uid[:, :, :, :, :-1]),
+                )
+                contact_faces = tuple((ua != ub) & ((ua > 0) | (ub > 0)) for ua, ub in uid_pairs)
+                same_faces = tuple((ua > 0) & (ua == ub) for ua, ub in uid_pairs)
+            else:
+                contact_faces = tuple(t.abs() > 0.02 for t in dt)
+                same_faces = tuple((t.abs() <= 0.02) & fg_p for t, fg_p in zip(dt, fg_pairs))
+            c_err = sum(((p - t).abs() * cf.float() * wz).flatten(1).sum(1)
+                        for p, t, cf, wz in zip(dp, dt, contact_faces, wz_faces))
+            c_err_loc = sum((((p - t).abs() / t.abs().clamp_min(0.05)) * cf.float() * wz).flatten(1).sum(1)
+                            for p, t, cf, wz in zip(dp, dt, contact_faces, wz_faces))
+            c_cnt = sum((cf.float() * wz).flatten(1).sum(1) for cf, wz in zip(contact_faces, wz_faces)).clamp_min(1.0)
+            c_term = 0.5 * (c_err / c_cnt) + 0.5 * (c_err_loc / c_cnt)
+            # Continuous interior residual: handles both piecewise-constant units and smooth graded halos
+            int_err = sum(((p - t).abs() * sf.float() * wz).flatten(1).sum(1)
+                          for p, t, sf, wz in zip(dp, dt, same_faces, wz_faces))
+            int_cnt = sum((sf.float() * wz).flatten(1).sum(1) for sf, wz in zip(same_faces, wz_faces)).clamp_min(1.0)
+        else:
+            c_err = sum(((p - t).abs() * (t != 0).float() * wz).flatten(1).sum(1) for p, t, wz in zip(dp, dt, wz_faces))
+            c_err_loc = sum((((p - t).abs() / t.abs().clamp_min(0.05)) * (t != 0).float() * wz).flatten(1).sum(1)
+                            for p, t, wz in zip(dp, dt, wz_faces))
+            c_cnt = sum(((t != 0).float() * wz).flatten(1).sum(1) for t, wz in zip(dt, wz_faces)).clamp_min(1.0)
+            c_term = 0.5 * (c_err / c_cnt) + 0.5 * (c_err_loc / c_cnt)
+            int_err = sum((p.abs() * ((t == 0) & fg_p).float() * wz).flatten(1).sum(1)
+                          for p, t, fg_p, wz in zip(dp, dt, fg_pairs, wz_faces))
+            int_cnt = sum((((t == 0) & fg_p).float() * wz).flatten(1).sum(1)
+                          for t, fg_p, wz in zip(dt, fg_pairs, wz_faces)).clamp_min(1.0)
         l_grad = 0.40 * (g_diff / g_true).mean() + 0.35 * c_term.mean() + 0.25 * (int_err / int_cnt).mean()
 
         # Multi-band mass conservation (exact core mass + 1-cell zone prevents skirt amplitude bleed)
@@ -424,7 +566,9 @@ class CompoundInversionLoss(nn.Module):
 
         l_cls = torch.zeros((), device=m_pred.device)
         if aux is not None and "logits" in aux and self.lambda_cls > 0:
-            l_cls = self._lithology_loss(aux, m_true, fg_mask, d3, w_z, gap_mask, contact_vox=contact_vox)
+            l_cls = self._lithology_loss(
+                aux, m_true, fg_mask, d3, w_z, gap_mask, contact_vox=contact_vox, is_v6=is_v6
+            )
 
         l_edt = torch.zeros((), device=m_pred.device)
         if edt_tgt is not None:
@@ -443,20 +587,49 @@ class CompoundInversionLoss(nn.Module):
             c_iou = (1.0 - (2.0 * c_int + 1e-6) / csum).clamp_min(0.0)
             l_coarse = (0.5 * c_l1 + 0.5 * c_iou).mean()
 
+        l_rho_init = torch.zeros((), device=m_pred.device)
+        if is_v6 and aux is not None and "rho_init" in aux and self.lambda_rho_init > 0:
+            ri_n = aux["rho_init"].float() / a
+            ri_l1 = (((ri_n - tn).abs() * w_tot).flatten(1).sum(1) / (ri_n.abs().flatten(1).sum(1) + tn.abs().flatten(1).sum(1) + 1e-6)).mean()
+            ri_ali = F.relu(ri_n * torch.sign(tn))
+            ri_tp = torch.minimum(ri_ali, tn.abs())
+            ri_fp = F.relu(ri_n.abs() - tn.abs())
+            ri_fn = F.relu(tn.abs() - ri_ali)
+            tp_i = (ri_tp * d3 * sub_mask * w_z).flatten(1).sum(1)
+            fp_i = (ri_fp * d3 * sub_mask * w_z).flatten(1).sum(1)
+            fn_i = (ri_fn * d3 * sub_mask * w_z).flatten(1).sum(1)
+            ri_tver = (1.0 - (tp_i + 1e-6) / (tp_i + self.tversky_alpha * fp_i + self.tversky_beta * fn_i + 1e-6)).clamp_min(0.0).mean()
+            l_rho_init = 0.5 * ri_l1 + 0.5 * ri_tver
+
         l_nll = torch.zeros((), device=m_pred.device)
         if aux is not None and "log_var" in aux and self.lambda_nll > 0:
             lv = aux["log_var"].float().clamp(-8.0, 4.0)
-            err_abs = (m_pred - m_true).abs()
             sigma_b = torch.exp(0.5 * self.beta_nll * lv).detach()
-            # Shifted (+4.0 inside detached weight) beta-Laplace NLL: >= 0 and unbiased wrt lv minimum.
-            vox_nll = sigma_b * (err_abs * torch.exp(-0.5 * lv) + 0.5 * lv + 4.0)
-            fg_n = fg_mask * sub_mask
-            bd_n = (d3 - fg_mask).clamp_min(0.0) * sub_mask
-            far_n = (1.0 - d3).clamp_min(0.0) * sub_mask
-            nll_fg = ((vox_nll * fg_n).flatten(1).sum(1) / fg_n.flatten(1).sum(1).clamp_min(1.0)).mean()
-            nll_bd = ((vox_nll * bd_n).flatten(1).sum(1) / bd_n.flatten(1).sum(1).clamp_min(1.0)).mean()
-            nll_far = ((vox_nll * far_n).flatten(1).sum(1) / far_n.flatten(1).sum(1).clamp_min(1.0)).mean()
-            l_nll = 0.50 * nll_fg + 0.35 * nll_bd + 0.15 * nll_far
+            if is_v6:
+                # Stratified Huber-Gaussian NLL aligned with Gaussian sigma = exp(0.5 * log_var)
+                delta = (m_pred - m_true).abs()
+                c_h = 1.0
+                huber_sq = torch.where(delta <= c_h, delta * delta, 2.0 * c_h * delta - c_h * c_h)
+                vox_nll = sigma_b * (0.5 * huber_sq * torch.exp(-lv) + 0.5 * lv + 4.0)
+                fg_n = fg_mask * sub_mask
+                d1_n = (d1 - fg_mask).clamp_min(0.0) * sub_mask
+                d3_d1_n = (d3 - d1).clamp_min(0.0) * sub_mask
+                far_n = (1.0 - d3).clamp_min(0.0) * sub_mask
+                nll_fg = ((vox_nll * fg_n).flatten(1).sum(1) / fg_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                nll_d1 = ((vox_nll * d1_n).flatten(1).sum(1) / d1_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                nll_d3 = ((vox_nll * d3_d1_n).flatten(1).sum(1) / d3_d1_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                nll_far = ((vox_nll * far_n).flatten(1).sum(1) / far_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                l_nll = 0.50 * nll_fg + 0.20 * nll_d1 + 0.15 * nll_d3 + 0.15 * nll_far
+            else:
+                err_abs = (m_pred - m_true).abs()
+                vox_nll = sigma_b * (err_abs * torch.exp(-0.5 * lv) + 0.5 * lv + 4.0)
+                fg_n = fg_mask * sub_mask
+                bd_n = (d3 - fg_mask).clamp_min(0.0) * sub_mask
+                far_n = (1.0 - d3).clamp_min(0.0) * sub_mask
+                nll_fg = ((vox_nll * fg_n).flatten(1).sum(1) / fg_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                nll_bd = ((vox_nll * bd_n).flatten(1).sum(1) / bd_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                nll_far = ((vox_nll * far_n).flatten(1).sum(1) / far_n.flatten(1).sum(1).clamp_min(1.0)).mean()
+                l_nll = 0.50 * nll_fg + 0.35 * nll_bd + 0.15 * nll_far
 
         l_data = torch.zeros((), device=m_pred.device)
         if self.forward_op is not None and d_clean is not None:
@@ -475,7 +648,8 @@ class CompoundInversionLoss(nn.Module):
             l_data = 0.65 * l_amp + 0.35 * l_dgrad
 
         total = (l_sup + self.lambda_cls * l_cls + l_edt
-                 + self.lambda_coarse * l_coarse + self.lambda_nll * l_nll + self.lambda_data * l_data)
+                 + self.lambda_coarse * l_coarse + self.lambda_rho_init * l_rho_init
+                 + self.lambda_nll * l_nll + self.lambda_data * l_data)
         return total, {
             "loss_total": total.item(),
             "loss_sup": l_sup.item(),
@@ -486,6 +660,7 @@ class CompoundInversionLoss(nn.Module):
             "loss_cls": l_cls.item(),
             "loss_edt": l_edt.item(),
             "loss_coarse": l_coarse.item(),
+            "loss_rho_init": l_rho_init.item(),
             "loss_nll": l_nll.item(),
             "loss_amp": l_amp_cons.item(),
             "loss_unit_iou": l_unit_inst_iou.item(),

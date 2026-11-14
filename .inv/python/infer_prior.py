@@ -21,10 +21,38 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from dataset import build_v5_input, infill_missing_obs
+try:
+    from dataset import build_v5_input, build_v6_input, infill_missing_obs
+except ImportError:
+    from dataset import build_v5_input, infill_missing_obs
+    build_v6_input = None
 from evaluate import project_amplitude
 from forward import TerrainGravityOperator
 from model_swin3d import create_model
+
+
+def _build_v6_input_compat(obs, t, depth_total, valid_mask=None, aspect=1.0, clearance=0.35, dxy_canon=50.0):
+    """Build 5-channel v6 input ``[gz, terr, valid_mask, log(aspect), clr/dxy_canon clamped <= 8.0]``."""
+    if build_v6_input is not None:
+        return build_v6_input(
+            obs, t, depth_total, valid_mask=valid_mask, aspect=aspect, clearance=clearance, dxy_canon=dxy_canon
+        )
+    b, _, nx, ny = obs.shape
+    terr = (t.unsqueeze(1) / float(depth_total)).clamp(0.0, 0.25)
+    if valid_mask is None:
+        valid_mask = torch.ones_like(obs)
+    log_asp = torch.full((b, 1, nx, ny), math.log(min(max(float(aspect), 0.1), 10.0)),
+                         device=obs.device, dtype=obs.dtype)
+    if isinstance(clearance, torch.Tensor):
+        clr_t = clearance.to(device=obs.device, dtype=obs.dtype)
+        while clr_t.dim() < 4:
+            clr_t = clr_t.unsqueeze(0)
+        if clr_t.shape[0] == 1 and b > 1:
+            clr_t = clr_t.expand(b, 1, nx, ny)
+    else:
+        clr_t = torch.full((b, 1, nx, ny), float(clearance), device=obs.device, dtype=obs.dtype)
+    clr_norm = (clr_t / float(dxy_canon)).clamp(0.0, 8.0)
+    return torch.cat([obs, terr, valid_mask, log_asp, clr_norm], dim=1)
 
 
 def scattered_to_columns_with_mask(x, y, v, nx, ny, x0, y0, dx, dy):
@@ -83,15 +111,20 @@ def amplitude_scale(nx, ny, nz, dx, dy, dz, g):
     return 1.0 / (eff ** (1.0 / 3.0) / g["cell"])
 
 
-def predict_prior_and_uncertainty(setup, checkpoint, device="cpu", project=None, mc_samples=1):
+def predict_prior_and_uncertainty(setup, checkpoint, device="cpu", project=None, mc_samples=1,
+                                  variant: str | None = None):
     """Predict ``(prior_flat, sigma_flat_or_None)`` for setup in VoxelGrid order."""
     ck = torch.load(checkpoint, map_location=device)
     g = ck.get("grid", {"nx": 64, "ny": 64, "nz": 32, "cell": 50.0})
-    arch = ck.get("arch", {})
+    arch = dict(ck.get("arch", {}))
+    if variant is not None:
+        arch["variant"] = variant
     variant = arch.get("variant", "v1")
     is_v5 = variant == "v5"
+    is_v6 = variant == "v6"
+    is_v5_or_v6 = is_v5 or is_v6
     if project is None:
-        project = variant not in ("v2", "v3", "v4", "v5")
+        project = variant not in ("v2", "v3", "v4", "v5", "v6")
     vd = setup["voxel_domain"]
     nx, ny, nz = vd["nx"], vd["ny"], vd["nz"]
     obs = setup["observations"]
@@ -109,36 +142,51 @@ def predict_prior_and_uncertainty(setup, checkpoint, device="cpu", project=None,
     model.to(device).eval()
 
     with torch.no_grad():
-        if is_v5:
+        if is_v5_or_v6:
             dxy_canon = math.sqrt((nx * vd["dx"] / g["nx"]) * (ny * vd["dy"] / g["ny"]))
             dz_canon = (nz * vd["dz"]) / g["nz"]
             scale_in = g["cell"] / max(dxy_canon, 1e-6)
             aspect = dz_canon / max(dxy_canon, 1e-6)
-            clearance_m = 0.35
+            cols_t = torch.from_numpy(cols.astype(np.float32))[None, None].to(device)
+            vm_t = torch.from_numpy(valid_mask.astype(np.float32))[None, None].to(device)
+            if not bool((vm_t > 0.5).all()):
+                cols_t = infill_missing_obs(cols_t, vm_t, iters=24)
+            t_t = torch.from_numpy(t.astype(np.float32))[None].to(device)
+            clearance_in = 0.35
             if "z" in obs and len(obs["z"]) == len(obs["x"]):
                 clr_list = []
                 for xi, yi, zi in zip(obs["x"], obs["y"], obs["z"]):
                     ix = min(nx - 1, max(0, int(np.floor((xi - vd["x0"]) / vd["dx"]))))
                     iy = min(ny - 1, max(0, int(np.floor((yi - vd["y0"]) / vd["dy"]))))
                     clr_list.append(max(0.0, float(t_orig[ix, iy] - zi)))
-                if clr_list:
-                    clearance_m = float(np.median(clr_list))
-            cols_t = torch.from_numpy(cols.astype(np.float32))[None, None].to(device)
-            vm_t = torch.from_numpy(valid_mask.astype(np.float32))[None, None].to(device)
-            if not bool((vm_t > 0.5).all()):
-                cols_t = infill_missing_obs(cols_t, vm_t, iters=24)
-            t_t = torch.from_numpy(t.astype(np.float32))[None].to(device)
-            x = build_v5_input(
-                cols_t * scale_in, t_t, float(nz * vd["dz"]),
-                valid_mask=vm_t, aspect=aspect, clearance=clearance_m, dxy_canon=dxy_canon,
-            )
+                if is_v6 and clr_list:
+                    clr_cols, clr_vm = scattered_to_columns_with_mask(
+                        obs["x"], obs["y"], clr_list, g["nx"], g["ny"], vd["x0"], vd["y0"], fdx, fdy,
+                    )
+                    clr_t = torch.from_numpy(clr_cols.astype(np.float32))[None, None].to(device)
+                    clr_vm_t = torch.from_numpy(clr_vm.astype(np.float32))[None, None].to(device)
+                    if not bool((clr_vm_t > 0.5).all()):
+                        clr_t = infill_missing_obs(clr_t, clr_vm_t, iters=24)
+                    clearance_in = clr_t[0]  # (1, g["nx"], g["ny"]) in metres
+                elif clr_list:
+                    clearance_in = float(np.median(clr_list))
+            if is_v6:
+                x = _build_v6_input_compat(
+                    cols_t * scale_in, t_t, float(nz * vd["dz"]),
+                    valid_mask=vm_t, aspect=aspect, clearance=clearance_in, dxy_canon=dxy_canon,
+                )
+            else:
+                x = build_v5_input(
+                    cols_t * scale_in, t_t, float(nz * vd["dz"]),
+                    valid_mask=vm_t, aspect=aspect, clearance=clearance_in, dxy_canon=dxy_canon,
+                )
         else:
             scale_in = amplitude_scale(nx, ny, nz, vd["dx"], vd["dy"], vd["dz"], g)
             cols_scaled = cols * scale_in
             x = torch.from_numpy(np.stack([cols_scaled, t_norm]).astype(np.float32))[None].to(device)
 
         sigma = None
-        if mc_samples > 1 and is_v5 and hasattr(model, "enable_mc_dropout"):
+        if mc_samples > 1 and is_v5_or_v6 and hasattr(model, "enable_mc_dropout"):
             model.enable_mc_dropout(True)
             preds, vars_ = [], []
             for _ in range(mc_samples):
@@ -150,7 +198,7 @@ def predict_prior_and_uncertainty(setup, checkpoint, device="cpu", project=None,
             pred = pred_stack.mean(dim=0)
             tot_var = torch.stack(vars_, dim=0).mean(dim=0) + pred_stack.var(dim=0, unbiased=False)
             sigma = torch.sqrt(tot_var.clamp_min(1e-8))
-        elif is_v5:
+        elif is_v5_or_v6:
             pred, aux = model(x, return_aux=True)
             sigma = torch.exp(0.5 * aux["log_var"])
         else:
@@ -173,8 +221,10 @@ def predict_prior_and_uncertainty(setup, checkpoint, device="cpu", project=None,
     return prior_flat, sigma_flat
 
 
-def predict_prior(setup, checkpoint, device="cpu", project=None):
-    prior_flat, _ = predict_prior_and_uncertainty(setup, checkpoint, device=device, project=project)
+def predict_prior(setup, checkpoint, device="cpu", project=None, variant: str | None = None):
+    prior_flat, _ = predict_prior_and_uncertainty(
+        setup, checkpoint, device=device, project=project, variant=variant
+    )
     return prior_flat
 
 
@@ -186,11 +236,12 @@ def main():
     ap.add_argument("--device", default="cpu")
     ap.add_argument("--with-sigma", action="store_true")
     ap.add_argument("--mc-samples", type=int, default=1)
+    ap.add_argument("--variant", default=None, choices=["v1", "v2", "v3", "v4", "v5", "v6"])
     args = ap.parse_args()
     with open(args.setup) as f:
         setup = json.load(f)
     prior, sigma = predict_prior_and_uncertainty(
-        setup, args.checkpoint, args.device, mc_samples=args.mc_samples,
+        setup, args.checkpoint, args.device, mc_samples=args.mc_samples, variant=args.variant,
     )
     setup["prior"] = {"values": prior.astype(float).tolist()}
     if args.with_sigma and sigma is not None:
