@@ -760,7 +760,16 @@ def test_demo_export_and_html():
     assert 'id="svgLoss"' not in demo_html
     assert 'id="epochSlider"' not in demo_html
     assert 'data-vol3d-ep="latest"' not in demo_html
+    assert 'id="refreshIntervalSelect"' not in demo_html
     assert not re.findall(r"__[A-Z][A-Z0-9_]+__", demo_html)
+
+    live_html = build_dashboard_html(demo_mode=False, refresh_sec=120)
+    assert 'id="refreshIntervalSelect"' in live_html
+    assert 'id="btnRefreshNow"' in live_html
+    assert 'id="statusBadge"' in live_html
+    assert '.status-badge.inactive' in live_html
+    assert "const DEFAULT_REFRESH_SEC = 120;" in live_html
+    assert not re.findall(r"__[A-Z][A-Z0-9_]+__", live_html)
 
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     op = TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL)

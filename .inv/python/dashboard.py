@@ -15,7 +15,8 @@ from dataset import CELL, NX, NY, NZ
 from vol3d_io import write_vol3d_sidecars
 
 
-def build_dashboard_html(demo_mode=False):
+def build_dashboard_html(demo_mode=False, refresh_sec=60):
+    default_refresh = max(0, int(refresh_sec))
     page_title = (
         "Mod3D .inv \u2014 Swin-3D Virtual Inversion Preview"
         if demo_mode else
@@ -29,7 +30,7 @@ def build_dashboard_html(demo_mode=False):
       <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
       <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
     </div>
-    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">BEST RESULT PREVIEW</span></div>
+    <div class="status-badge" style="cursor:default;"><span class="status-dot"></span> <span id="statusText">BEST RESULT PREVIEW</span></div>
   </div>
 </header>"""
         if demo_mode else
@@ -40,7 +41,7 @@ def build_dashboard_html(demo_mode=False):
       <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
       <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
     </div>
-    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">LIVE DATA STREAM</span></div>
+    <button type="button" class="status-badge" id="statusBadge" title="Live data stream &bull; Click to toggle auto-refresh"><span class="status-dot"></span> <span id="statusText">LIVE DATA STREAM</span></button>
   </div>
 </header>"""
     )
@@ -88,7 +89,16 @@ def build_dashboard_html(demo_mode=False):
         "" if demo_mode else
         """    <label title="Automatically advance to new epochs during training">
       <input type="checkbox" id="chkFollowLive" checked> Follow Live
-    </label>"""
+    </label>
+    <select id="refreshIntervalSelect" title="Auto-refresh interval for live training data">
+      <option value="0">Refresh: Off</option>
+      <option value="15">Refresh: 15s</option>
+      <option value="30">Refresh: 30s</option>
+      <option value="60">Refresh: 1m</option>
+      <option value="120">Refresh: 2m</option>
+      <option value="300">Refresh: 5m</option>
+    </select>
+    <button id="btnRefreshNow" type="button" class="playback-btn" title="Poll latest training data now" style="padding:2px 7px;">&#8635;</button>"""
     )
     metrics_html = (
         "" if demo_mode else
@@ -315,6 +325,18 @@ def build_dashboard_html(demo_mode=False):
     border-radius: 9999px;
     font-size: 0.72rem;
     font-weight: 600;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .status-badge:hover {
+    filter: brightness(0.95);
+  }
+  .status-badge.inactive {
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    border-color: var(--border);
   }
   .status-dot {
     width: 6px;
@@ -323,6 +345,11 @@ def build_dashboard_html(demo_mode=False):
     border-radius: 50%;
     box-shadow: 0 0 6px var(--green);
     animation: pulse 1.8s infinite;
+  }
+  .status-badge.inactive .status-dot {
+    background: var(--text-secondary);
+    box-shadow: none;
+    animation: none;
   }
   @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
 
@@ -933,6 +960,7 @@ __DATA_SCRIPTS_HTML__
 <script>
 (function() {
   const IS_DEMO_MODE = __IS_DEMO_MODE__;
+  const DEFAULT_REFRESH_SEC = __DEFAULT_REFRESH_SEC__;
   function normalizeTrainingData(raw) {
     if (!raw) return { meta: null, epochs: [] };
     if (!Array.isArray(raw)) {
@@ -984,6 +1012,7 @@ __DATA_SCRIPTS_HTML__
   let lossLogScale = true;
   let isPlaying = false;
   let playTimer = null;
+  let pollTimer = null;
   let hoverCell = null;
 
   // Shared 3D camera & transfer-function state (guarantees identical transforms for Truth, Pred, Diff)
@@ -1036,8 +1065,12 @@ __DATA_SCRIPTS_HTML__
   const btnLatest = document.getElementById('btnLatest');
   const btnThemeLight = document.getElementById('btnThemeLight');
   const btnThemeDark = document.getElementById('btnThemeDark');
+  const statusBadge = document.getElementById('statusBadge');
+  const statusText = document.getElementById('statusText');
   const speedSelect = document.getElementById('speedSelect');
   const chkFollowLive = document.getElementById('chkFollowLive');
+  const refreshIntervalSelect = document.getElementById('refreshIntervalSelect');
+  const btnRefreshNow = document.getElementById('btnRefreshNow');
   const chkShowDiff = document.getElementById('chkShowDiff');
   const diffPanel = document.getElementById('diffPanel');
   const predEpochBadge = document.getElementById('predEpochBadge');
@@ -1139,17 +1172,109 @@ __DATA_SCRIPTS_HTML__
     }
   }
 
+  let currentRefreshSec = DEFAULT_REFRESH_SEC;
+
+  function updateLiveStatusBadge() {
+    if (IS_DEMO_MODE || !statusBadge) return;
+    const isRefreshOn = currentRefreshSec > 0;
+    const isFollowLive = chkFollowLive ? chkFollowLive.checked : true;
+    const isLive = isRefreshOn && isFollowLive;
+
+    statusBadge.classList.toggle('inactive', !isLive);
+    if (!isRefreshOn) {
+      if (statusText) statusText.textContent = 'LIVE DATA STREAM (OFF)';
+      statusBadge.title = 'Live auto-refresh is OFF \u2022 Click to enable';
+    } else if (!isFollowLive) {
+      if (statusText) statusText.textContent = 'LIVE DATA STREAM (PAUSED)';
+      statusBadge.title = 'Follow Live is unchecked \u2022 Click to follow live';
+    } else {
+      if (statusText) statusText.textContent = 'LIVE DATA STREAM';
+      const intervalDesc = currentRefreshSec >= 60 ? (currentRefreshSec / 60) + 'm' : currentRefreshSec + 's';
+      statusBadge.title = `Live auto-refresh is ON (${intervalDesc}) \u2022 Click to turn off`;
+    }
+  }
+
+  function getInitialRefreshSec() {
+    if (IS_DEMO_MODE) return 0;
+    try {
+      const saved = localStorage.getItem('mod3d_dashboard_refresh_sec');
+      if (saved !== null) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_REFRESH_SEC;
+  }
+
+  function setRefreshInterval(sec, persist) {
+    const parsed = parseInt(sec, 10);
+    const s = Math.max(0, isNaN(parsed) ? 0 : parsed);
+    currentRefreshSec = s;
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (refreshIntervalSelect) {
+      const valStr = String(s);
+      if (!Array.from(refreshIntervalSelect.options).some(o => o.value === valStr)) {
+        const opt = document.createElement('option');
+        opt.value = valStr;
+        opt.textContent = s >= 60 && s % 60 === 0 ? `Refresh: ${s / 60}m` : `Refresh: ${s}s`;
+        refreshIntervalSelect.appendChild(opt);
+      }
+      refreshIntervalSelect.value = valStr;
+    }
+    if (persist) {
+      try { localStorage.setItem('mod3d_dashboard_refresh_sec', String(s)); } catch (_) {}
+    }
+    if (!IS_DEMO_MODE && s > 0) {
+      pollTimer = setInterval(pollData, s * 1000);
+    }
+    updateLiveStatusBadge();
+  }
+
   function init() {
     setupControls();
     drawColorbar();
     syncData(trainingData);
-    if (!IS_DEMO_MODE) setInterval(pollData, 3000);
+    if (!IS_DEMO_MODE) setRefreshInterval(getInitialRefreshSec(), false);
   }
 
   function setupControls() {
     applyTheme(isDarkTheme() ? 'dark' : 'light', false);
     if (btnThemeLight) btnThemeLight.addEventListener('click', () => applyTheme('light', true));
     if (btnThemeDark) btnThemeDark.addEventListener('click', () => applyTheme('dark', true));
+    if (!IS_DEMO_MODE) {
+      if (refreshIntervalSelect) {
+        refreshIntervalSelect.addEventListener('change', e => setRefreshInterval(e.target.value, true));
+      }
+      if (btnRefreshNow) {
+        btnRefreshNow.addEventListener('click', () => pollData());
+      }
+      if (chkFollowLive) {
+        chkFollowLive.addEventListener('change', () => {
+          updateLiveStatusBadge();
+          if (chkFollowLive.checked) {
+            const epList = getEpochs();
+            if (epList.length > 0) showEpoch(epList.length - 1);
+          }
+        });
+      }
+      if (statusBadge) {
+        statusBadge.addEventListener('click', () => {
+          const isRefreshOn = currentRefreshSec > 0;
+          const isFollowLive = chkFollowLive ? chkFollowLive.checked : true;
+          if (isRefreshOn && isFollowLive) {
+            setRefreshInterval(0, true);
+          } else {
+            if (chkFollowLive) chkFollowLive.checked = true;
+            const targetSec = currentRefreshSec > 0 ? currentRefreshSec : (DEFAULT_REFRESH_SEC || 60);
+            setRefreshInterval(targetSec, true);
+            pollData();
+          }
+        });
+      }
+    }
 
     if (slider) {
       slider.addEventListener('input', e => {
@@ -3671,6 +3796,7 @@ void main() {
         ("__SHORTCUT_HTML__", shortcut_html),
         ("__DATA_SCRIPTS_HTML__", data_scripts_html),
         ("__IS_DEMO_MODE__", "true" if demo_mode else "false"),
+        ("__DEFAULT_REFRESH_SEC__", str(default_refresh)),
     ):
         html = html.replace(token, val)
     return html
@@ -3681,7 +3807,7 @@ class TrainingMonitor:
     gravity + vertical cross-section under terrain) to a native GUI window and an interactive
     HTML/JS web dashboard that directly paints the actual numerical voxel data on HTML5 canvas."""
 
-    def __init__(self, save_dir, gui=False, vol3d_stride=10, forward_op=None):
+    def __init__(self, save_dir, gui=False, vol3d_stride=10, forward_op=None, refresh_sec=60):
         import matplotlib
         if not gui:
             matplotlib.use("Agg")
@@ -3691,6 +3817,7 @@ class TrainingMonitor:
         self.gui = gui
         self.vol3d_stride = int(vol3d_stride)
         self.forward_op = forward_op
+        self.refresh_sec = max(0, int(refresh_sec))
         self.meta = None
         hist_path = os.path.join(self.save_dir, "training_history.json")
         if os.path.exists(hist_path):
@@ -3724,7 +3851,7 @@ class TrainingMonitor:
         html_path = os.path.join(self.save_dir, "dashboard.html")
         tmp_path = html_path + ".tmp"
         with open(tmp_path, "w") as f:
-            f.write(build_dashboard_html())
+            f.write(build_dashboard_html(refresh_sec=self.refresh_sec))
         os.replace(tmp_path, html_path)
 
     def update(self, rec, vx, vtrue, vpred, vclean, vz, sample_labels=None, is_best=False):

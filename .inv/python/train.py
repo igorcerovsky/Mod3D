@@ -127,6 +127,8 @@ def parse_args():
     p.add_argument("--save-dir", type=str, default="./checkpoints")
     p.add_argument("--vol3d-stride", type=int, default=10,
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
+    p.add_argument("--refresh-sec", type=int, default=60,
+                   help="web dashboard auto-refresh interval in seconds (0 disables auto-refresh, default: 60)")
     p.add_argument("--variant", type=str, default="v5", choices=["v5", "v4", "v3", "v2", "v1"],
                    help="model architecture variant (default: v5)")
     p.add_argument("--model-size", type=str, default="base", choices=["slim", "base", "heavy"],
@@ -189,7 +191,8 @@ def main():
         op = TerrainGravityOperator(*grid).to(dev)
         batch_op = op
 
-    monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride, forward_op=op)
+    monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride,
+                              forward_op=op, refresh_sec=args.refresh_sec)
     train_ds = BodyTerrainDataset(
         args.steps * args.batch_size, *grid, hard_prob=hard_prob,
         fault_prob=fault_prob, clearance_range=clear_rng, aspect_ratios=asp_list,
