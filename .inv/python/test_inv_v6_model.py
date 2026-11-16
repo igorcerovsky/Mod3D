@@ -338,6 +338,90 @@ def test_v6_infer_prior_2d_clearance(tmp_path=None):
         assert sigma is not None and sigma.shape == (nx * ny * nz,) and np.isfinite(sigma).all() and (sigma > 0).all()
 
 
+def test_v61_fixes_and_checkpoint_compat():
+    from dataset import apply_mod3d_detrend
+    from forward import TerrainGravityOperator
+    from train import build_resume_v6_scheduler
+
+    # 1. OddPyramidGravity covers intermediate aspects (0.75, 1.20) <= 2.2% and sensitivity_norm > 0
+    op2 = OddPyramidGravity(64, 64, 32, cell_xy=50.0, dz_ref=50.0).eval()
+    yy, xx = torch.meshgrid(torch.linspace(-1, 1, 64), torch.linspace(-1, 1, 64), indexing="ij")
+    topo_m = (160.0 * torch.sin(3.0 * xx) * torch.cos(2.4 * yy) + 230.0).unsqueeze(0).unsqueeze(0)
+    for asp in (0.75, 1.20):
+        dz = 50.0 * asp
+        ref = TerrainGravityOperator(64, 64, 32, dx=50.0, dy=50.0, dz=dz, h_min=-450.0, h_max=500.0, step=25.0)
+        z_g = torch.arange(32, dtype=torch.float32).view(1, 32, 1, 1) * dz
+        rho = 0.9 * (((xx - 0.15) ** 2 + (yy + 0.1) ** 2 < 0.08) & (z_g >= topo_m + 50.0) & (z_g <= topo_m + 350.0)).float()
+        z_obs = topo_m - 0.35
+        g_ref = ref(rho.unsqueeze(1), z_obs[:, 0])
+        g_hat = op2(rho, z_obs, torch.tensor([[[[asp]]]]))
+        rel_l2 = float((g_hat - g_ref).pow(2).sum().sqrt() / g_ref.pow(2).sum().sqrt())
+        assert rel_l2 <= 0.022, f"Mid-aspect error {rel_l2:.4f} > 2.2% at asp={asp}"
+    vm = torch.ones((1, 1, 64, 64))
+    sn = op2.sensitivity_norm(vm, topo_m - 0.35, torch.tensor([[[[1.0]]]]))
+    adj_ref = op2.adjoint(vm, topo_m - 0.35, torch.tensor([[[[1.0]]]]))
+    sub_sn = (torch.arange(32, dtype=torch.float32).view(1, 32, 1, 1) * 50.0) >= topo_m
+    rel_sn = float((sn[sub_sn] - adj_ref[sub_sn]).pow(2).sum().sqrt() / adj_ref[sub_sn].pow(2).sum().sqrt())
+    assert sn.shape == (1, 32, 64, 64) and float(sn[sub_sn].min()) > 0.0 and torch.isfinite(sn).all() and rel_sn < 0.16
+
+    # 2. v6.0 checkpoint state_dict auto-migrates on strict=True load (and loads real checkpoints_v6 if present)
+    m61 = create_model(64, 64, 32, **V6_SIZE_PRESETS["slim"]).eval()
+    v60_sd = {
+        k: v.clone()
+        for k, v in m61.state_dict().items()
+        if not any(tag in k for tag in ("_head_init.", "cls_depth_prior.", "bp_z_beta", "greens_bias."))
+    }
+    m61.load_state_dict(v60_sd, strict=True)
+    assert torch.equal(m61.proto_head_init.weight, m61.proto_head.weight)
+    assert float(m61.cls_depth_prior.weight.detach().abs().max()) == 0.0
+
+    best_v6 = Path(__file__).resolve().parent / "checkpoints_v6" / "best_swin3d.pt"
+    if best_v6.is_file():
+        ck = torch.load(best_v6, map_location="cpu")
+        m_base = create_model(64, 64, 32, **ck["arch"]).eval()
+        m_base.load_state_dict(ck["model_state_dict"], strict=True)
+        with torch.no_grad():
+            x_probe = torch.zeros(1, 5, 64, 64)
+            x_probe[:, 4] = 0.007
+            p_p, a_p = m_base(x_probe, return_aux=True)
+            assert torch.isfinite(p_p).all() and torch.isfinite(a_p["log_var"]).all()
+
+    # 3. C++ BackgroundBasis parity detrending strips linear perimeter plane + zero global mean
+    xs = torch.linspace(-1.0, 1.0, 32)[None, None, :, None]
+    ys = torch.linspace(-1.0, 1.0, 32)[None, None, None, :]
+    loc = torch.exp(-(xs ** 2 + ys ** 2) * 10.0) - torch.exp(torch.tensor(-10.0))
+    plane = 2.0 + 1.1 * xs - 0.7 * ys
+    out_c = apply_mod3d_detrend(torch.cat([loc + plane, loc + plane], dim=0), ["cpp_border_proj", "cpp_border_eval"])
+    assert float((out_c[0, 0] - loc[0, 0]).abs().max()) < 2e-3
+    assert float(out_c[1, 0].mean().abs()) < 1e-5
+
+    # 4. Resume scheduler avoids clamping at min_lr on continuation and warm-restart
+    from train import build_v6_scheduler
+    p = torch.nn.Parameter(torch.ones(2))
+    opt = torch.optim.AdamW([p], lr=5e-4)
+    s_exh = build_v6_scheduler(opt, 59000, 2500).state_dict()
+    s_exh["last_epoch"] = 59000
+    sched_wr = build_resume_v6_scheduler(
+        opt, {"sched_state_dict": s_exh}, start_epoch=237, end_epoch=296, steps_per_epoch=250,
+        warmup_epochs=10, warm_restart=True,
+    )
+    assert opt.param_groups[0]["lr"] > 2e-5  # starts at 0.05 * lr (2.5e-5) and ramps up instead of clamped 1e-5
+    for _ in range(1250):
+        opt.step()
+        sched_wr.step()
+    assert abs(opt.param_groups[0]["lr"] - 5e-4) < 1e-5
+
+    opt2 = torch.optim.AdamW([p], lr=5e-4)
+    s_mid = build_v6_scheduler(opt2, 25000, 2500).state_dict()
+    s_mid["last_epoch"] = 25000
+    s_mid["_last_lr"] = [1e-5]
+    sched_cont = build_resume_v6_scheduler(
+        opt2, {"sched_state_dict": s_mid},
+        start_epoch=101, end_epoch=200, steps_per_epoch=250, warmup_epochs=10, total_epochs=200,
+    )
+    assert opt2.param_groups[0]["lr"] > 1e-4
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

@@ -15,7 +15,7 @@ from dataset import CELL, NX, NY, NZ
 from vol3d_io import write_vol3d_sidecars
 
 
-def build_dashboard_html(demo_mode=False, refresh_sec=60):
+def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     default_refresh = max(0, int(refresh_sec))
     page_title = (
         "Mod3D .inv \u2014 Swin-3D Virtual Inversion Preview"
@@ -159,10 +159,12 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60):
   Keyboard shortcuts: <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> step epochs &bull; <kbd>Space</kbd> play/pause &bull; <kbd>Home</kbd> / <kbd>End</kbd> first/latest &bull; 2D: hover voxels &bull; 3D: drag to orbit, scroll to zoom, double-click to reset
 </div>"""
     )
+    meta_name = f"vol3d_{version_tag}_meta.js" if (demo_mode and version_tag) else "vol3d_meta.js"
+    best_name = f"vol3d_{version_tag}_best.js" if (demo_mode and version_tag) else "vol3d_best.js"
     data_scripts_html = (
-        """<script src="preview_2d.js"></script>
-<script src="vol3d_meta.js"></script>
-<script src="vol3d_best.js"></script>"""
+        f"""<script src="preview_2d.js"></script>
+<script src="{meta_name}"></script>
+<script src="{best_name}"></script>"""
         if demo_mode else
         """<script src="training_history.js"></script>
 <script src="vol3d_meta.js"></script>
@@ -902,11 +904,14 @@ __VOL3D_EP_HTML__
         <input type="checkbox" id="chkVol3dSlice" checked> Y-Slice
       </label>
       <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
-      <span style="font-weight:600;" title="Surface Bouguer gravity anomaly gz [mGal] draped onto Predicted terrain relief">Pred g<sub>z</sub>:</span>
-      <button type="button" class="vol3d-btn" data-field-mode="obs" title="Drape Observed Truth Bouguer anomaly on Predicted relief">Truth</button>
-      <button type="button" class="vol3d-btn active" data-field-mode="inv" title="Drape Forward Inversion Bouguer anomaly on Predicted relief">Inversion</button>
-      <button type="button" class="vol3d-btn" data-field-mode="diff" title="Drape Gravity Residual (Inversion minus Truth) on Predicted relief">Diff</button>
-      <span class="vol3d-val" id="vol3dFieldScale" style="min-width:68px;" title="Symmetric Bouguer anomaly color scale on Predicted relief"></span>
+      <span style="font-weight:600;" title="Ground Truth relief surface: show topography elevation or draped observed gravity field">Truth Relief:</span>
+      <button type="button" class="vol3d-btn active" data-truth-relief-mode="topo" title="Show hypsometric topography elevation on Truth relief">Topography</button>
+      <button type="button" class="vol3d-btn" data-truth-relief-mode="field" title="Drape observed Bouguer gravity anomaly gz on Truth relief">Field</button>
+      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <span style="font-weight:600;" title="Predicted relief surface: show predicted forward gravity field or difference (residual error)">Pred Relief:</span>
+      <button type="button" class="vol3d-btn active" data-pred-relief-mode="inv" data-field-mode="inv" title="Drape Forward Inversion Bouguer anomaly on Predicted relief">Predicted</button>
+      <button type="button" class="vol3d-btn" data-pred-relief-mode="diff" data-field-mode="diff" title="Drape Gravity Residual (Inversion minus Truth) on Predicted relief">Difference</button>
+      <span class="vol3d-val" id="vol3dFieldScale" style="min-width:68px;" title="Active surface relief color scale"></span>
       <span id="vol3dStatusPill" class="hover-pill" style="display:none;cursor:pointer;" title="Click to jump to nearest available 3D snapshot"></span>
     </div>
   </div>
@@ -1017,7 +1022,7 @@ __DATA_SCRIPTS_HTML__
 
   // Shared 3D camera & transfer-function state (guarantees identical transforms for Truth, Pred, Diff)
   const cam3d = { yaw: -0.62, pitch: -0.22, dist: 4.0 };
-  const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, fieldMode: 'inv', epMode: 'best' };
+  const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, truthReliefMode: 'topo', predReliefMode: 'inv', fieldMode: 'inv', epMode: 'best' };
   const vol3dCache = new Map();
   const terr3dCache = new Map();
   const terr3dRanges = new WeakMap();
@@ -1435,14 +1440,66 @@ __DATA_SCRIPTS_HTML__
       if (savedCm === 'lithology' || savedCm === 'coolwarm') setColormapMode(savedCm);
     } catch (_) {}
 
+    document.querySelectorAll('[data-truth-relief-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.truthReliefMode === 'field' ? 'field' : 'topo';
+        vol3dOpts.truthReliefMode = mode;
+        try { localStorage.setItem('mod3d_dashboard_truth_relief_mode', mode); } catch (_) {}
+        document.querySelectorAll('[data-truth-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.truthReliefMode === mode);
+        });
+        scheduleVol3dRender();
+      });
+    });
+
+    document.querySelectorAll('[data-pred-relief-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.predReliefMode === 'diff' ? 'diff' : 'inv';
+        vol3dOpts.predReliefMode = mode;
+        vol3dOpts.fieldMode = mode;
+        try { localStorage.setItem('mod3d_dashboard_pred_relief_mode', mode); } catch (_) {}
+        document.querySelectorAll('[data-pred-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.predReliefMode === mode);
+        });
+        scheduleVol3dRender();
+      });
+    });
+
+    try {
+      const savedTruthMode = localStorage.getItem('mod3d_dashboard_truth_relief_mode');
+      if (savedTruthMode === 'field' || savedTruthMode === 'topo') {
+        vol3dOpts.truthReliefMode = savedTruthMode;
+        document.querySelectorAll('[data-truth-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.truthReliefMode === savedTruthMode);
+        });
+      }
+      const savedPredMode = localStorage.getItem('mod3d_dashboard_pred_relief_mode');
+      if (savedPredMode === 'inv' || savedPredMode === 'diff') {
+        vol3dOpts.predReliefMode = savedPredMode;
+        vol3dOpts.fieldMode = savedPredMode;
+        document.querySelectorAll('[data-pred-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.predReliefMode === savedPredMode);
+        });
+      }
+    } catch (_) {}
+
     document.querySelectorAll('[data-field-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
         const mode = btn.dataset.fieldMode || 'inv';
-        vol3dOpts.fieldMode = mode;
-        document.querySelectorAll('[data-field-mode]').forEach(b => {
-          b.classList.toggle('active', b.dataset.fieldMode === mode);
-        });
-        scheduleVol3dRender();
+        if (mode === 'diff' || mode === 'inv') {
+          vol3dOpts.predReliefMode = mode;
+          vol3dOpts.fieldMode = mode;
+          document.querySelectorAll('[data-pred-relief-mode]').forEach(b => {
+            b.classList.toggle('active', b.dataset.predReliefMode === mode);
+          });
+          scheduleVol3dRender();
+        } else if (mode === 'obs') {
+          vol3dOpts.truthReliefMode = 'field';
+          document.querySelectorAll('[data-truth-relief-mode]').forEach(b => {
+            b.classList.toggle('active', b.dataset.truthReliefMode === 'field');
+          });
+          scheduleVol3dRender();
+        }
       });
     });
 
@@ -3162,15 +3219,18 @@ void main() {
       const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[currentSampleIndex] : null;
       const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[currentSampleIndex]) || vmaxT;
       const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep3dKey}:${currentSampleIndex}`, pB64, nx, ny, nz) : null;
-      const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, vol3dOpts.fieldMode);
+      const truthSurf = (vol3dOpts.truthReliefMode === 'field')
+        ? getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, 'obs')
+        : null;
+      const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, vol3dOpts.predReliefMode || 'inv');
       const diffSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, 'diff');
 
       updatePredEpochBadge(ep, ep3dKey, Boolean(pBytes));
       updateVol3dStatusPill(ep, ep3dKey, Boolean(pBytes));
-      updateFieldScaleBadge(predSurf);
+      updateFieldScaleBadge(predSurf || truthSurf);
 
       if (tBytes) {
-        drawVolume3D(cvsTruth, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, 112, true, null);
+        drawVolume3D(cvsTruth, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, 112, true, truthSurf);
       } else {
         drawPlaceholder(cvsTruth, "No 3D truth volume loaded (vol3d_meta.js)");
       }
@@ -3316,12 +3376,15 @@ void main() {
         const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[i] : null;
         const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[i]) || vmaxT;
         const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep3dKey}:${i}`, pB64, nx, ny, nz) : null;
-        const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, vol3dOpts.fieldMode);
-        if (i === currentSampleIndex) updateFieldScaleBadge(predSurf);
+        const truthSurf = (vol3dOpts.truthReliefMode === 'field')
+          ? getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, 'obs')
+          : null;
+        const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, vol3dOpts.predReliefMode || 'inv');
+        if (i === currentSampleIndex) updateFieldScaleBadge(predSurf || truthSurf);
         if (pBytes) anyPred = true;
 
         if (cvsT) {
-          if (tBytes) drawVolume3D(cvsT, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, stepsMini, false, null);
+          if (tBytes) drawVolume3D(cvsT, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, stepsMini, false, truthSurf);
           else drawPlaceholder(cvsT, "No 3D");
         }
         if (cvsP) {

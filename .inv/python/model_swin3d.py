@@ -51,8 +51,8 @@ _ROCK_BOUNDS = (
 RHO_MAX_V6 = 1.95
 _ROCK_BOUNDS_V6 = (
     (-1.60, -0.80),   # light (covers negative felsic / deep lows)
-    (-0.85, 0.00),    # sediment (covers landfill [-0.85, -0.05] & soft sediments)
-    (0.00, 0.80),     # mafic
+    (-0.85, -0.03),   # sediment (covers landfill [-0.85, -0.05] & soft sediments without 0.0 collapse)
+    (0.03, 0.80),     # mafic (covers weak mafic [+0.05, +0.80] without 0.0 collapse)
     (0.75, 1.95),     # ore / dense ultramafic
 )
 
@@ -1439,10 +1439,10 @@ class BorderProjectorConv(nn.Module):
 class OddPyramidGravity(nn.Module):
     """Multi-aspect, variable-clearance pyramid gravity operator + exact transpose adjoint.
 
-    Uses exact 3-aspect near-field ``9x9`` convolutions, analytical self-column weights,
-    border-complete ``3x3`` mid-field and ``9x9`` stride-3 tent-upsampled far-field convolutions,
-    achieving ``<= 2%`` error on steep relief (0.35 m ground through 215 m airborne) and exporting
-    as 1 CoreML MLProgram partition with 0 CPU fallbacks.
+    Uses exact 5-aspect near-field ``9x9`` convolutions across all ``ASPECT_MULTI`` knots,
+    32-knot rational self-column weights ``u = w / (w + 120)``, border-complete ``3x3`` mid-field
+    and ``9x9`` stride-3 tent-upsampled far-field convolutions, exporting as 1 CoreML MLProgram
+    partition with 0 CPU fallbacks.
     """
 
     def __init__(self, nx: int, ny: int, nz: int, cell_xy: float = 50.0, dz_ref: float = 50.0):
@@ -1451,23 +1451,28 @@ class OddPyramidGravity(nn.Module):
         self.cell_xy = float(cell_xy)
         self.dz_ref = float(dz_ref)
 
-        aspect_knots = torch.tensor([0.55, 1.00, 1.40], dtype=torch.float32)
-        self_knots = torch.tensor(
-            [0.05, 0.25, 0.70, 1.50, 3.00, 6.00, 12.0, 22.0, 40.0, 75.0, 140.0, 280.0, 580.0, 1400.0, 2800.0],
-            dtype=torch.float32,
-        )
+        aspect_knots = torch.tensor([0.55, 0.75, 1.00, 1.20, 1.40], dtype=torch.float32)
+        self.n_a = int(aspect_knots.numel())
+        self.self_c = 180.0
+        near_w = torch.tensor([0.05, 0.25, 0.70, 1.50, 3.0, 6.0, 12.0, 22.0, 40.0], dtype=torch.float32)
+        u_near = near_w / (near_w + self.self_c)
+        u_rest = torch.linspace(40.0 / (40.0 + self.self_c), 2800.0 / (2800.0 + self.self_c), 24, dtype=torch.float32)[1:]
+        u_self_knots = torch.cat([u_near, u_rest])
+        self_knots = self.self_c * u_self_knots / (1.0 - u_self_knots)
         # Receiver elevation knots clipped strictly to [-500, +500] m with dense near-relief coverage
         h_knots = torch.tensor(
-            [-500.0, -350.0, -220.0, -120.0, -45.0, 0.0, 40.0, 80.0, 120.0, 160.0, 200.0, 245.0, 295.0, 355.0, 425.0, 500.0],
+            [-500.0, -350.0, -220.0, -120.0, -50.0, 0.0, 25.0, 50.0, 75.0, 100.0,
+             130.0, 160.0, 195.0, 230.0, 270.0, 310.0, 355.0, 400.0, 450.0, 500.0],
             dtype=torch.float32,
         )
         self.register_buffer("aspect_knots", aspect_knots, persistent=False)
+        self.register_buffer("u_self_knots", u_self_knots, persistent=False)
         self.register_buffer("self_knots", self_knots, persistent=False)
         self.register_buffer("h_knots", h_knots, persistent=False)
         L = len(h_knots)
         self.L = L
 
-        k_self = torch.zeros(3, len(self_knots), dtype=torch.float32)
+        k_self = torch.zeros(self.n_a, len(self_knots), dtype=torch.float32)
         u1s = torch.full_like(self_knots, -0.5 * self.cell_xy)
         u2s = torch.full_like(self_knots, 0.5 * self.cell_xy)
         for ia, a in enumerate(aspect_knots):
@@ -1481,7 +1486,7 @@ class OddPyramidGravity(nn.Module):
         u1n, u2n = (du - 0.5) * self.cell_xy, (du + 0.5) * self.cell_xy
         v1n, v2n = (dv - 0.5) * self.cell_xy, (dv + 0.5) * self.cell_xy
 
-        k_near = torch.zeros(3, L, nz, 9, 9, dtype=torch.float32)
+        k_near = torch.zeros(self.n_a, L, nz, 9, 9, dtype=torch.float32)
         for ia, a in enumerate(aspect_knots):
             dz_a = float(a) * self.dz_ref
             for il, hl in enumerate(h_knots):
@@ -1498,10 +1503,10 @@ class OddPyramidGravity(nn.Module):
                         _prism_gz_exact_t(u1n, u2n, v1n, v2n, torch.full_like(u1n, w1), torch.full_like(u1n, w2)),
                         0.0,
                     ).flip(-2, -1)
-        self.register_buffer("k_near", k_near.reshape(3 * L, nz, 9, 9), persistent=False)
-        self.register_buffer(
-            "k_near_t", k_near.reshape(3 * L, nz, 9, 9).flip(-2, -1).transpose(0, 1).contiguous(), persistent=False
-        )
+        k_near_flat = k_near.reshape(self.n_a * L, nz, 9, 9)
+        self.register_buffer("k_near", k_near_flat, persistent=False)
+        self.register_buffer("k_near_t", k_near_flat.flip(-2, -1).transpose(0, 1).contiguous(), persistent=False)
+        self.register_buffer("k_near_col_sum", k_near_flat.sum(dim=(-2, -1)).transpose(0, 1).contiguous(), persistent=False)
 
         z_max = nz * self.dz_ref * 1.45
         edges_shallow = torch.arange(nz + 1, dtype=torch.float32) * self.dz_ref
@@ -1569,19 +1574,40 @@ class OddPyramidGravity(nn.Module):
         self.register_buffer("k_far", k_far, persistent=False)
         self.register_buffer("k_mid_t", k_mid.flip(-2, -1).transpose(0, 1).contiguous(), persistent=False)
         self.register_buffer("k_far_t", k_far.flip(-2, -1).transpose(0, 1).contiguous(), persistent=False)
+        k_mf_col_sum = (k_mid.sum(dim=(-2, -1)) + k_far.sum(dim=(-2, -1))).transpose(0, 1).contiguous()
+        self.register_buffer("k_mf_col_sum", k_mf_col_sum, persistent=False)
+        il0 = int(torch.argmin(h_knots.abs()))
+        eye_y = torch.zeros((1, L, nx, ny), dtype=torch.float32)
+        eye_y[0, il0] = 1.0
+        am0 = F.pad(F.conv2d(eye_y, self.k_mid_t, padding=13, dilation=3), (2, 2, 2, 2), mode="constant", value=0.0)
+        adj_mid_0 = F.avg_pool2d(am0, 3, stride=1, padding=0)[:, :, 2:-2, 2:-2]
+        if self.use_far_stride3:
+            yf0 = F.pad(eye_y, (0, self.far_crop_w, 0, self.far_crop_h), mode="constant", value=0.0)
+            yc0 = F.conv2d(yf0, self.tent_up_w, stride=3, padding=2, groups=L)
+            afc0 = F.conv2d(yc0, self.k_far_t, padding=self.far_dil * self.r_far + 2, dilation=self.far_dil)
+            adj_far_0 = F.conv_transpose2d(
+                afc0, self.box_far_k, stride=3, padding=0, groups=D_ref
+            )[:, :, 10:10 + nx, 10:10 + ny]
+        else:
+            af0 = F.pad(
+                F.conv2d(eye_y, self.k_far_t, padding=9 * self.r_far, dilation=9),
+                (4, 4, 4, 4), mode="constant", value=0.0,
+            )
+            adj_far_0 = F.avg_pool2d(af0, 9, stride=1, padding=0)[:, :, 4:-4, 4:-4]
+        mf_taper = ((adj_mid_0 + adj_far_0)[0] / k_mf_col_sum[:, il0].view(-1, 1, 1).clamp_min(1e-6)).clamp(0.0, 1.0)
+        self.register_buffer("mf_taper", mf_taper.unsqueeze(0), persistent=False)
 
     def _aspect_and_h_weights(self, z_obs_clip: torch.Tensor, aspect: torch.Tensor):
-        ua = ((aspect - 0.55) / 0.45).clamp(0.0, 1.0)
-        ub = ((aspect - 1.00) / 0.40).clamp(0.0, 1.0)
-        wa = torch.cat([1.0 - ua, ua - ub, ub], dim=1)  # (B, 3, 1, 1)
+        wa = _build_knot_weights_v6(aspect.reshape(-1).clamp(0.55, 1.40), self.aspect_knots).view(-1, self.n_a, 1, 1)
         wh = _build_knot_weights_v6(z_obs_clip.squeeze(1), self.h_knots).permute(0, 3, 1, 2).contiguous()
         return wa, wh
 
     def _self_kernel_voxel(self, z_obs_clip: torch.Tensor, aspect: torch.Tensor, wa: torch.Tensor) -> torch.Tensor:
         dz_b = aspect * self.dz_ref
-        w_top = self.z_idx * dz_b - z_obs_clip
-        ws_self = _build_knot_weights_v6(w_top.clamp(0.05, 2800.0), self.self_knots)
-        k_self_b = (wa.reshape(-1, 3, 1) * self.k_self.unsqueeze(0)).sum(dim=1)
+        w_top = (self.z_idx * dz_b - z_obs_clip).clamp(0.05, 2800.0)
+        u_top = w_top / (w_top + self.self_c)
+        ws_self = _build_knot_weights_v6(u_top, self.u_self_knots)
+        k_self_b = (wa.reshape(-1, self.n_a, 1) * self.k_self.unsqueeze(0)).sum(dim=1)
         return (ws_self * k_self_b.view(wa.shape[0], 1, 1, 1, -1)).sum(dim=-1)
 
     def forward(self, rho: torch.Tensor, z_obs_m: torch.Tensor, aspect: torch.Tensor) -> torch.Tensor:
@@ -1590,7 +1616,7 @@ class OddPyramidGravity(nn.Module):
         B, D, H, W = rho.shape
         z_obs_clip = z_obs_m.clamp(-500.0, 500.0)
         wa, wh = self._aspect_and_h_weights(z_obs_clip, aspect)
-        wah = (wa.unsqueeze(2) * wh.unsqueeze(1)).reshape(B, 3 * self.L, H, W)
+        wah = (wa.unsqueeze(2) * wh.unsqueeze(1)).reshape(B, self.n_a * self.L, H, W)
 
         g_self = (rho * self._self_kernel_voxel(z_obs_clip, aspect, wa)).sum(dim=1, keepdim=True)
         g_near = (F.conv2d(rho, self.k_near, padding=4) * wah).sum(dim=1, keepdim=True)
@@ -1613,12 +1639,32 @@ class OddPyramidGravity(nn.Module):
 
         return g_self + g_near + ((g_mid_pl + g_far_pl) * wh).sum(dim=1, keepdim=True)
 
+    def sensitivity_norm(self, valid_mask: torch.Tensor, z_obs_m: torch.Tensor, aspect: torch.Tensor) -> torch.Tensor:
+        """Fast CoreML-safe analytical column sensitivity ``~ G^T(valid_mask)`` without 2nd conv adjoint."""
+        B, _, H, W = valid_mask.shape
+        D = self.nz
+        z_obs_clip = z_obs_m.clamp(-500.0, 500.0)
+        wa, wh = self._aspect_and_h_weights(z_obs_clip, aspect)
+        wah = (wa.unsqueeze(2) * wh.unsqueeze(1)).reshape(B, self.n_a * self.L, H, W)
+        s_self = self._self_kernel_voxel(z_obs_clip, aspect, wa) * valid_mask
+        vm_near = F.avg_pool2d(valid_mask, 5, stride=1, padding=2)
+        s_near = torch.matmul(self.k_near_col_sum, wah.reshape(B, self.n_a * self.L, H * W)).reshape(B, D, H, W) * vm_near
+        vm_mf = F.avg_pool2d(valid_mask, 9, stride=1, padding=4)
+        s_mf_ref = (
+            torch.matmul(self.k_mf_col_sum, wh.reshape(B, self.L, H * W)).reshape(B, self.D_ref, H, W)
+            * self.mf_taper
+            * vm_mf
+        )
+        Wz = _rebin_matrix_relu(self.z_k_idx, aspect, self.dz_ref, self.z_ref_lo, self.z_ref_hi, self.z_ref_dz)
+        s_mf = torch.bmm(Wz.transpose(1, 2), s_mf_ref.reshape(B, self.D_ref, H * W)).reshape(B, D, H, W)
+        return s_self + s_near + s_mf
+
     def adjoint(self, y: torch.Tensor, z_obs_m: torch.Tensor, aspect: torch.Tensor) -> torch.Tensor:
         B, _, H, W = y.shape
         D = self.nz
         z_obs_clip = z_obs_m.clamp(-500.0, 500.0)
         wa, wh = self._aspect_and_h_weights(z_obs_clip, aspect)
-        wah = (wa.unsqueeze(2) * wh.unsqueeze(1)).reshape(B, 3 * self.L, H, W)
+        wah = (wa.unsqueeze(2) * wh.unsqueeze(1)).reshape(B, self.n_a * self.L, H, W)
 
         adj_self = y * self._self_kernel_voxel(z_obs_clip, aspect, wa)
         adj_near = F.conv2d(y * wah, self.k_near_t, padding=4)
@@ -1715,9 +1761,10 @@ class CoreMLSwinBlock3D(nn.Module):
 
 
 class CoreMLAxialGlobalBlock3D(nn.Module):
-    """Global row -> column -> vertical attention using fast unmasked SDPA (CoreML & MPS friendly)."""
+    """Global row -> column -> vertical attention with optional Green's vertical distance bias."""
 
-    def __init__(self, dim: int = 128, heads: int = 4, dropout: float = 0.0):
+    def __init__(self, dim: int = 128, heads: int = 4, dropout: float = 0.0,
+                 dp: int = 8, use_greens_bias: bool = True):
         super().__init__()
         self.n_row = nn.LayerNorm(dim)
         self.attn_row = Attention(dim, heads, dropout=dropout)
@@ -1725,6 +1772,7 @@ class CoreMLAxialGlobalBlock3D(nn.Module):
         self.attn_col = Attention(dim, heads, dropout=dropout)
         self.n_z = nn.LayerNorm(dim)
         self.attn_z = Attention(dim, heads, dropout=dropout)
+        self.greens_bias = GreensVerticalBias(heads, dp, 1, 1) if use_greens_bias else None
         self.n_mlp = nn.LayerNorm(dim)
         self.mlp = nn.Sequential(
             nn.Linear(dim, 3 * dim),
@@ -1742,7 +1790,8 @@ class CoreMLAxialGlobalBlock3D(nn.Module):
         v = v + self.attn_col(xc, xc).reshape(b, d, w, h, c).permute(0, 1, 3, 2, 4)
 
         xz = self.n_z(v).permute(0, 2, 3, 1, 4).reshape(b * h * w, d, c)
-        v = v + self.attn_z(xz, xz).reshape(b, h, w, d, c).permute(0, 3, 1, 2, 4)
+        z_bias = self.greens_bias() if self.greens_bias is not None else None
+        v = v + self.attn_z(xz, xz, attn_bias=z_bias).reshape(b, h, w, d, c).permute(0, 3, 1, 2, 4)
 
         return v + self.mlp(self.n_mlp(v))
 
@@ -1860,7 +1909,7 @@ class PotentialFieldTransformer3DV6(nn.Module):
         # 3D CoreML-safe Transformer backbone (alternating Swin + AxialGlobal)
         self.blocks = nn.ModuleList([
             (
-                CoreMLAxialGlobalBlock3D(c, num_heads, dropout=dropout)
+                CoreMLAxialGlobalBlock3D(c, num_heads, dropout=dropout, dp=self.dp)
                 if i % 2
                 else CoreMLSwinBlock3D(c, num_heads, wh=4, ww=4, shift=(2 if (i // 2) % 2 else 0), dropout=dropout)
             )
@@ -1929,23 +1978,32 @@ class PotentialFieldTransformer3DV6(nn.Module):
             nn.Conv2d(4, ch_vox, 3, padding=1), nn.GELU(),
             nn.Conv2d(ch_vox, ch_vox, 1),
         )
-        self.res_vox_3d = nn.Conv2d(2, ch_vox, 1)  # [bp_64_norm, rho_init]
+        self.res_vox_3d = nn.Conv2d(2, ch_vox, 1)  # [bp_64_norm_z, rho_init]
         self.res_vox_gate = nn.Parameter(torch.zeros(1))
+        self.bp_z_beta = nn.Parameter(torch.tensor(0.85))
 
         self.dec_vox2 = CoreMLSepConv25DBlock(ch_vox)
         if self.dec_depth > 2:
             self.extra_dec_vox = nn.ModuleList([CoreMLSepConv25DBlock(ch_vox) for _ in range(self.dec_depth - 2)])
         self.vox_drop = nn.Dropout3d(p=dropout) if dropout > 0 else nn.Identity()
 
-        # Shared prototype & rock density/residual heads (used for both rho_init and final rho)
+        # Decoupled Stage-1 (rho_init) and Stage-2 final prototype/rock/residual heads
+        self.proto_head_init = nn.Linear(c, ch_vox)
+        self.rock_head_init = nn.Conv2d(ch_vox, len(_ROCK_BOUNDS_V6), 1)
+        self.res_head_init = nn.Conv2d(ch_vox, 1, 1)
         self.proto_head = nn.Linear(c, ch_vox)
         self.logit_log_scale = nn.Parameter(torch.zeros(1))
         self.cls_log_sharp = nn.Parameter(torch.zeros(1))
         self.rock_head = nn.Conv2d(ch_vox, len(_ROCK_BOUNDS_V6), 1)
         self.res_head = nn.Conv2d(ch_vox, 1, 1)
+        self.cls_depth_prior = nn.Conv2d(1, num_classes, 1)
         with torch.no_grad():
-            self.res_head.weight.mul_(0.1)
+            self.res_head_init.weight.mul_(0.25)
+            self.res_head_init.bias.zero_()
+            self.res_head.weight.mul_(0.25)
             self.res_head.bias.zero_()
+            self.cls_depth_prior.weight.zero_()
+            self.cls_depth_prior.bias.zero_()
         self.edt_head = nn.Conv2d(ch_vox, 1, 1)
 
         # Stage-2 full-resolution 7-cue Gaussian log_var head
@@ -1955,7 +2013,7 @@ class PotentialFieldTransformer3DV6(nn.Module):
         self.logvar_2d = nn.Conv2d(3, lv_ch, 1, bias=False)  # [clr_smooth, 1-valid_mask, r_bp_64_energy]
         self.logvar_out = nn.Conv2d(lv_ch, 1, 1)
         with torch.no_grad():
-            self.logvar_out.bias.fill_(-2.5)
+            self.logvar_out.bias.fill_(-4.0)
 
         # Geometry and class density buffers
         self.register_buffer("z_top_coarse", (torch.arange(nz // 4, dtype=torch.float32) / (nz // 4)).view(1, 1, nz // 4, 1, 1), persistent=False)
@@ -2040,8 +2098,44 @@ class PotentialFieldTransformer3DV6(nn.Module):
         """FP16-safe terrain subsurface mask without ONNX ``GreaterOrEqual`` or ``1e5`` overflow."""
         return ((z_top - terr_5d).clamp(-0.001, 0.0) * 32768.0 + 1.0).clamp(0.0, 1.0)
 
-    def _decode_density(self, hv: torch.Tensor, p_head: torch.Tensor, mask: torch.Tensor):
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        """Auto-migrate v6.0 checkpoints cleanly on strict=True into v6.1 modules."""
+        if f"{prefix}proto_head.weight" in state_dict and f"{prefix}proto_head_init.weight" not in state_dict:
+            for src, dst in (
+                ("proto_head.weight", "proto_head_init.weight"),
+                ("proto_head.bias", "proto_head_init.bias"),
+                ("rock_head.weight", "rock_head_init.weight"),
+                ("rock_head.bias", "rock_head_init.bias"),
+                ("res_head.weight", "res_head_init.weight"),
+                ("res_head.bias", "res_head_init.bias"),
+            ):
+                sk, dk = f"{prefix}{src}", f"{prefix}{dst}"
+                if sk in state_dict and dk not in state_dict:
+                    state_dict[dk] = state_dict[sk].detach().clone()
+            for name, tgt in (
+                ("cls_depth_prior.weight", self.cls_depth_prior.weight),
+                ("cls_depth_prior.bias", self.cls_depth_prior.bias),
+                ("bp_z_beta", self.bp_z_beta),
+            ):
+                fk = f"{prefix}{name}"
+                if fk not in state_dict:
+                    state_dict[fk] = torch.zeros_like(tgt)
+            for idx, blk in enumerate(self.blocks):
+                gb = getattr(blk, "greens_bias", None)
+                if gb is not None and f"{prefix}blocks.{idx}.greens_bias.gain" not in state_dict:
+                    state_dict[f"{prefix}blocks.{idx}.greens_bias.raw_decay"] = gb.raw_decay.detach().clone()
+                    state_dict[f"{prefix}blocks.{idx}.greens_bias.gain"] = torch.zeros_like(gb.gain)
+                    state_dict[f"{prefix}blocks.{idx}.greens_bias.asym"] = torch.zeros_like(gb.asym)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
+
+    def _decode_density(self, hv: torch.Tensor, p_head: torch.Tensor, mask: torch.Tensor,
+                        d_surf: torch.Tensor | None = None, rock_head=None, res_head=None):
         b, _, d, h, w = hv.shape
+        rk_h = self.rock_head if rock_head is None else rock_head
+        rs_h = self.res_head if res_head is None else res_head
         hv_4d = hv.permute(0, 2, 1, 3, 4).reshape(b * d, self.ch_vox, h, w)
         hv_flat = hv.reshape(b, self.ch_vox, d * h * w)
         logit_scale = self.logit_log_scale.exp().clamp(0.5, 4.0)
@@ -2053,23 +2147,26 @@ class PotentialFieldTransformer3DV6(nn.Module):
             .permute(0, 2, 1, 3)
             .reshape(b * d, self.num_classes, h, w)
         )
+        if d_surf is not None:
+            ds_4d = d_surf.permute(0, 2, 1, 3, 4).reshape(b * d, 1, h, w)
+            sub_4d = sub_4d + self.cls_depth_prior(ds_4d)
         probs_4d = F.softmax(sub_4d, dim=1)
         p_bg = probs_4d[:, 0:1]
         p_fg = probs_4d[:, 1:]
         p_fg_sum = p_fg.sum(dim=1, keepdim=True)
         occ_denom = (p_fg_sum + p_bg).clamp_min(1e-6)
         occ_raw = p_fg_sum / occ_denom
-        occ_4d = 0.10 * occ_raw + 0.90 * ((occ_raw - 0.25) * 2.0).clamp(0.0, 1.0)
+        occ_4d = 0.35 * occ_raw + 0.65 * ((occ_raw - 0.15) * 1.45).clamp(0.0, 1.0)
 
         cls_sharp = self.cls_log_sharp.exp().clamp(0.5, 4.0)
         active_probs = F.softmax(sub_4d[:, 1:] * cls_sharp, dim=1)
 
-        rock_u = torch.sigmoid(self.rock_head(hv_4d))
+        rock_u = torch.sigmoid(rk_h(hv_4d))
         rock_dens = self.rock_lo + self.rock_span * rock_u
         cav_dens = self.cav_vals + 0.0 * rock_u[:, :1]  # clean broadcast without Expand
         cls_dens = torch.cat([cav_dens, rock_dens], dim=1)
         rho_base = (active_probs * cls_dens).sum(dim=1, keepdim=True)
-        rho_res = 0.08 * torch.tanh(self.res_head(hv_4d))
+        rho_res = 0.20 * torch.tanh(rs_h(hv_4d))
         rho_4d = occ_4d * (rho_base + rho_res)
 
         rho = rho_4d.reshape(b, d, h, w).unsqueeze(1) * mask
@@ -2205,22 +2302,26 @@ class PotentialFieldTransformer3DV6(nn.Module):
         hv = self.dec_vox1(hv)
 
         mask = self._air_mask(self.z_top, terr.unsqueeze(2))
-        p_head = self.proto_head(p_ctx)
-        rho_init, _, _, _, _, _ = self._decode_density(hv, p_head, mask)
+        p_head_init = self.proto_head_init(p_ctx)
+        rho_init, _, _, _, _, _ = self._decode_density(
+            hv, p_head_init, mask, d_surf=None, rock_head=self.rock_head_init, res_head=self.res_head_init,
+        )
 
         g_init_mgal = self.g_64(rho_init.squeeze(1), z_obs_m, aspect)
         gn_bp = self.bp_64(gn)
         g_init_bp = self.bp_64(g_init_mgal / s)
         r_bp_64 = (gn_bp - g_init_bp) * valid_mask
 
-        d1_64 = (self.g_64.adjoint(valid_mask, z_obs_m, aspect) * mask.squeeze(1)).clamp_min(0.15)
+        d1_64 = (self.g_64.sensitivity_norm(valid_mask, z_obs_m, aspect) * mask.squeeze(1)).clamp_min(0.15)
         d1_64_safe = d1_64 + (1.0 - mask.squeeze(1))
         bp_64_norm = ((self.g_64.adjoint(r_bp_64, z_obs_m, aspect) * mask.squeeze(1)) / d1_64_safe).unsqueeze(1)
+        w_bp_z = 1.0 + F.relu(self.bp_z_beta) * d_surf * (1.0 + 2.0 * d_surf)
+        bp_64_z = bp_64_norm * w_bp_z
 
         res_vox_in = torch.cat([gn_bp, g_init_bp, r_bp_64, valid_mask], dim=1)
         f_vox_2d = self.res_vox_2d(res_vox_in).unsqueeze(2)
         f_vox_3d = self.res_vox_3d(
-            torch.cat([bp_64_norm, rho_init], dim=1).reshape(b, 2, self.nz * self.nx, self.ny)
+            torch.cat([bp_64_z, rho_init], dim=1).reshape(b, 2, self.nz * self.nx, self.ny)
         ).reshape(b, self.ch_vox, self.nz, self.nx, self.ny)
         hv = hv + torch.tanh(self.res_vox_gate) * (f_vox_2d + f_vox_3d) * mask
 
@@ -2230,7 +2331,10 @@ class PotentialFieldTransformer3DV6(nn.Module):
                 hv = blk(hv)
         hv = self.vox_drop(hv)
 
-        pred, probs, logits, occ, probs_4d, hv_4d = self._decode_density(hv, p_head, mask)
+        p_head = self.proto_head(p_ctx)
+        pred, probs, logits, occ, probs_4d, hv_4d = self._decode_density(
+            hv, p_head, mask, d_surf=d_surf, rock_head=self.rock_head, res_head=self.res_head,
+        )
         edt = torch.sigmoid(self.edt_head(hv_4d)).reshape(b, 1, self.nz, self.nx, self.ny) * mask
 
         # Full-resolution 7-cue Gaussian log_var head

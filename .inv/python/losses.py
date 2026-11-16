@@ -154,7 +154,7 @@ class CompoundInversionLoss(nn.Module):
     def __init__(self, lambda_data=0.25, lambda_ms=0.05, lambda_cls=0.25, body_boost=9.0,
                  e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None,
                  lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08,
-                 use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.25):
+                 use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.10):
         super().__init__()
         self.lambda_data, self.lambda_ms, self.lambda_cls = lambda_data, lambda_ms, lambda_cls
         self.body_boost, self.e_rel = body_boost, e_rel
@@ -169,6 +169,39 @@ class CompoundInversionLoss(nn.Module):
         self.lambda_rho_init = float(lambda_rho_init)
         self.forward_op = forward_op
         self.zhdanov = ZhdanovFocusingLoss()
+        self._bp_cache = {}
+
+    def _border_project_2d(self, g: torch.Tensor) -> torch.Tensor:
+        """Project out perimeter-fitted affine plane P_BP(g) for detrend-invariant residual loss."""
+        _, _, h, w = g.shape
+        key = (int(h), int(w), str(g.device), str(g.dtype))
+        cached = self._bp_cache.get(key)
+        if cached is None:
+            yy, xx = torch.meshgrid(
+                torch.linspace(-1.0, 1.0, h, device="cpu", dtype=torch.float32),
+                torch.linspace(-1.0, 1.0, w, device="cpu", dtype=torch.float32),
+                indexing="ij",
+            )
+            phi = torch.stack([torch.ones_like(xx), xx, yy], dim=0)
+            mask = torch.zeros(h, w, dtype=torch.bool)
+            mask[0, :] = True
+            mask[-1, :] = True
+            mask[:, 0] = True
+            mask[:, -1] = True
+            q_b = torch.linalg.pinv(phi[:, mask].T.double())
+            w_b = torch.zeros(3, 1, h, w, dtype=torch.float32)
+            for k in range(3):
+                buf = torch.zeros(h, w, dtype=torch.float32)
+                buf[mask] = q_b[k].float()
+                w_b[k, 0] = buf
+            cached = (
+                w_b.to(device=g.device, dtype=g.dtype),
+                phi.unsqueeze(0).to(device=g.device, dtype=g.dtype),
+            )
+            self._bp_cache[key] = cached
+        w_b, phi = cached
+        coeffs = F.conv2d(g, w_b)
+        return g - (coeffs * phi).sum(dim=1, keepdim=True)
 
     def _lithology_loss(self, aux, m_true, fg_mask, d3, w_z, gap_mask, contact_vox=None, is_v6: bool = False):
         logits = aux["logits"].float()                              # (B, K, D, H, W)
@@ -347,14 +380,14 @@ class CompoundInversionLoss(nn.Module):
         iso_fp_vox = F.relu(a_pred_1ch - a_true_1ch)
         iso_fn_vox = F.relu(a_true_1ch - a_pred_1ch)
 
-        u_tp = (tp_vox * grp_masks).flatten(2).sum(2)
-        u_fp = (fp_vox * grp_zone).flatten(2).sum(2)
-        u_fn = (fn_vox * grp_masks).flatten(2).sum(2)
+        u_tp = (tp_vox * grp_masks * w_z).flatten(2).sum(2)
+        u_fp = (fp_vox * grp_zone * w_z).flatten(2).sum(2)
+        u_fn = (fn_vox * grp_masks * w_z).flatten(2).sum(2)
         u_tver = (1.0 - (u_tp + 1e-6) / (u_tp + alpha * u_fp + beta * u_fn + 1e-6)).clamp_min(0.0)
 
-        iso_tp = (iso_tp_vox * grp_masks).flatten(2).sum(2)
-        iso_fp = (iso_fp_vox * grp_zone).flatten(2).sum(2)
-        iso_fn = (iso_fn_vox * grp_masks).flatten(2).sum(2)
+        iso_tp = (iso_tp_vox * grp_masks * w_z).flatten(2).sum(2)
+        iso_fp = (iso_fp_vox * grp_zone * w_z).flatten(2).sum(2)
+        iso_fn = (iso_fn_vox * grp_masks * w_z).flatten(2).sum(2)
         u_iso = (1.0 - (iso_tp + 1e-6) / (iso_tp + alpha * iso_fp + beta * iso_fn + 1e-6)).clamp_min(0.0)
 
         u_comb = (0.5 * u_tver + 0.5 * u_iso) * present_u
@@ -410,7 +443,7 @@ class CompoundInversionLoss(nn.Module):
         overshoot = F.relu(pn.abs() - tn.abs()) / t_loc
         fg_w = fg_mask * w_z
         fg_cnt = fg_w.flatten(1).sum(1).clamp_min(1.0)
-        err = e_loc + 0.35 * e_loc ** 2 + 0.20 * overshoot
+        err = (e_loc + 0.35 * e_loc ** 2) if is_v6 else (e_loc + 0.35 * e_loc ** 2 + 0.20 * overshoot)
         l_fg = ((err * fg_w).flatten(1).sum(1) / fg_cnt).mean()
 
         with torch.no_grad():
@@ -499,7 +532,7 @@ class CompoundInversionLoss(nn.Module):
                 same_faces = tuple((t.abs() <= 0.02) & fg_p for t, fg_p in zip(dt, fg_pairs))
             c_err = sum(((p - t).abs() * cf.float() * wz).flatten(1).sum(1)
                         for p, t, cf, wz in zip(dp, dt, contact_faces, wz_faces))
-            c_err_loc = sum((((p - t).abs() / t.abs().clamp_min(0.05)) * cf.float() * wz).flatten(1).sum(1)
+            c_err_loc = sum((((p - t).abs() / t.abs().clamp_min(0.12)) * cf.float() * wz).flatten(1).sum(1)
                             for p, t, cf, wz in zip(dp, dt, contact_faces, wz_faces))
             c_cnt = sum((cf.float() * wz).flatten(1).sum(1) for cf, wz in zip(contact_faces, wz_faces)).clamp_min(1.0)
             c_term = 0.5 * (c_err / c_cnt) + 0.5 * (c_err_loc / c_cnt)
@@ -561,8 +594,9 @@ class CompoundInversionLoss(nn.Module):
             mgs_t = self.zhdanov.minimum_gradient_support(tn, self.e_rel)
             l_mgs = self.lambda_ms * (mgs_p - mgs_t).abs()
 
+        eff_lambda_amp = max(float(self.lambda_amp), 0.20) if is_v6 and self.lambda_amp > 0 else float(self.lambda_amp)
         l_sup = (0.23 * (l_fg + l_rel_l1 + l_iou_comb + l_grad) + 0.12 * l_band
-                 + l_halo + l_mgs + self.lambda_amp * l_amp_cons)
+                 + l_halo + l_mgs + eff_lambda_amp * l_amp_cons)
 
         l_cls = torch.zeros((), device=m_pred.device)
         if aux is not None and "logits" in aux and self.lambda_cls > 0:
@@ -602,13 +636,14 @@ class CompoundInversionLoss(nn.Module):
             l_rho_init = 0.5 * ri_l1 + 0.5 * ri_tver
 
         l_nll = torch.zeros((), device=m_pred.device)
-        if aux is not None and "log_var" in aux and self.lambda_nll > 0:
+        eff_lambda_nll = max(float(self.lambda_nll), 0.10) if is_v6 and self.lambda_nll > 0 else float(self.lambda_nll)
+        if aux is not None and "log_var" in aux and eff_lambda_nll > 0:
             lv = aux["log_var"].float().clamp(-8.0, 4.0)
             sigma_b = torch.exp(0.5 * self.beta_nll * lv).detach()
             if is_v6:
                 # Stratified Huber-Gaussian NLL aligned with Gaussian sigma = exp(0.5 * log_var)
                 delta = (m_pred - m_true).abs()
-                c_h = 1.0
+                c_h = 3.0
                 huber_sq = torch.where(delta <= c_h, delta * delta, 2.0 * c_h * delta - c_h * c_h)
                 vox_nll = sigma_b * (0.5 * huber_sq * torch.exp(-lv) + 0.5 * lv + 4.0)
                 fg_n = fg_mask * sub_mask
@@ -619,7 +654,7 @@ class CompoundInversionLoss(nn.Module):
                 nll_d1 = ((vox_nll * d1_n).flatten(1).sum(1) / d1_n.flatten(1).sum(1).clamp_min(1.0)).mean()
                 nll_d3 = ((vox_nll * d3_d1_n).flatten(1).sum(1) / d3_d1_n.flatten(1).sum(1).clamp_min(1.0)).mean()
                 nll_far = ((vox_nll * far_n).flatten(1).sum(1) / far_n.flatten(1).sum(1).clamp_min(1.0)).mean()
-                l_nll = 0.50 * nll_fg + 0.20 * nll_d1 + 0.15 * nll_d3 + 0.15 * nll_far
+                l_nll = 0.45 * nll_fg + 0.18 * nll_d1 + 0.12 * nll_d3 + 0.25 * nll_far
             else:
                 err_abs = (m_pred - m_true).abs()
                 vox_nll = sigma_b * (err_abs * torch.exp(-0.5 * lv) + 0.5 * lv + 4.0)
@@ -645,11 +680,19 @@ class CompoundInversionLoss(nn.Module):
             g_num = (dx_e ** 2).flatten(1).sum(1) + (dy_e ** 2).flatten(1).sum(1)
             g_den = (dx_c ** 2).flatten(1).sum(1) + (dy_c ** 2).flatten(1).sum(1) + 1e-12
             l_dgrad = _charbonnier_rmse(g_num, g_den)
-            l_data = 0.65 * l_amp + 0.35 * l_dgrad
+            if is_v6 and d_err.shape[-2] >= 4 and d_err.shape[-1] >= 4:
+                d_err_bp = self._border_project_2d(d_err)
+                d_clean_bp = self._border_project_2d(d_clean)
+                bp_num = (d_err_bp ** 2).flatten(1).sum(1)
+                bp_den = (d_clean_bp ** 2).flatten(1).sum(1) + 1e-12
+                l_bp_amp = _charbonnier_rmse(bp_num, bp_den)
+                l_data = 0.50 * l_amp + 0.30 * l_dgrad + 0.20 * l_bp_amp
+            else:
+                l_data = 0.65 * l_amp + 0.35 * l_dgrad
 
         total = (l_sup + self.lambda_cls * l_cls + l_edt
                  + self.lambda_coarse * l_coarse + self.lambda_rho_init * l_rho_init
-                 + self.lambda_nll * l_nll + self.lambda_data * l_data)
+                 + eff_lambda_nll * l_nll + self.lambda_data * l_data)
         return total, {
             "loss_total": total.item(),
             "loss_sup": l_sup.item(),

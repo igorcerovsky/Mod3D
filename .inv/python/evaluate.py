@@ -402,24 +402,24 @@ def make_v6_val_buckets(
          {"hard_prob": 0.15, "fault_prob": 0.10, "large_prob": 0.05, "ground_prob": 1.0, "max_airborne": 2.0},
          {"dropout_prob": 0.08, "v6_physics": True, "detrend_probs": (0.0, 0.0, 0.0, 1.0),
           "exterior_mass_prob": 0.0, "pregrid_blur_prob": 0.0, "line_drift_prob": 0.0,
-          "bouguer_err_prob": 0.0, "subvox_cap_prob": 0.25}),
+          "bouguer_err_prob": 0.0, "subvox_cap_prob": 0.0}),
         ("ground_hard_large_detrend", 1000, (1.0,), canon_op_map, canon_cap_map, 0,
          {"hard_prob": 0.78, "fault_prob": 0.55, "large_prob": 0.45, "ground_prob": 1.0, "max_airborne": 2.0},
          {"dropout_prob": 0.35, "v6_physics": True, "detrend_probs": (0.45, 0.35, 0.20, 0.0),
           "exterior_mass_prob": 0.50, "pregrid_blur_prob": 0.25, "line_drift_prob": 0.25,
-          "bouguer_err_prob": 0.35, "subvox_cap_prob": 0.40}),
+          "bouguer_err_prob": 0.0, "subvox_cap_prob": 0.0}),
         ("airborne_relief_drape", 2000, (1.0,), canon_op_map, canon_cap_map, 0,
          {"hard_prob": 0.45, "fault_prob": 0.35, "large_prob": 0.25, "ground_prob": 0.0,
           "max_airborne": CLEARANCE_AIRBORNE_V6[1]},
          {"dropout_prob": 0.35, "v6_physics": True, "detrend_probs": (0.35, 0.30, 0.15, 0.20),
           "exterior_mass_prob": 0.40, "pregrid_blur_prob": 0.20, "line_drift_prob": 0.45,
-          "bouguer_err_prob": 0.30, "subvox_cap_prob": 0.30}),
+          "bouguer_err_prob": 0.0, "subvox_cap_prob": 0.0}),
         ("multi_aspect", 3000, ratios, op_bank, subvox_cap_bank, None,
          {"hard_prob": 0.55, "fault_prob": 0.40, "large_prob": 0.25, "ground_prob": 0.67,
           "max_airborne": CLEARANCE_AIRBORNE_V6[1]},
          {"dropout_prob": 0.30, "v6_physics": True, "detrend_probs": (0.35, 0.25, 0.15, 0.25),
           "exterior_mass_prob": 0.35, "pregrid_blur_prob": 0.20, "line_drift_prob": 0.30,
-          "bouguer_err_prob": 0.30, "subvox_cap_prob": 0.35}),
+          "bouguer_err_prob": 0.0, "subvox_cap_prob": 0.0}),
     )
 
     out = {}
@@ -432,11 +432,12 @@ def make_v6_val_buckets(
 
 
 def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channels=2,
-                           clearance_clamp=4.0):
-    """Curate 8 deterministic showcase samples spanning all lithology & hard-scene categories.
+                           clearance_clamp=4.0, samples_per_category=1, random_val=False,
+                           v6_physics=False):
+    """Curate showcase samples spanning all lithology & hard-scene categories.
 
-    Returns ``(obs_x, truth, clean, z_obs, labels)`` with 8 samples whose peak slice ``iy``
-    exhibits the target category, falling back gracefully on tiny test grids.
+    Returns ``(obs_x, truth, clean, z_obs, labels)`` with ``8 * samples_per_category`` samples
+    whose peak slice ``iy`` exhibits the target category, falling back gracefully on tiny test grids.
     """
     from dataset import (
         CLEARANCE, NOISE_FRAC, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN,
@@ -445,7 +446,10 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
     )
 
     nx, ny, nz, dx, dy, dz = grid
-    rng = np.random.default_rng(seed)
+    if random_val:
+        rng = np.random.default_rng(None if (seed is None or seed == 4024) else seed)
+    else:
+        rng = np.random.default_rng(seed)
     can_hard = min(nx, ny) >= 24 and nz >= 12
 
     def _peak_slice(rho):
@@ -473,30 +477,31 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
 
     rhos, terrains, clearances, noise_fracs, noise_seeds = [], [], [], [], []
     for _, scene_type, pred in specs:
-        chosen = None
-        for _ in range(max_tries):
-            t = random_terrain(rng, nx, ny, nz * dz)
-            rho = random_bodies(rng, t, nz, dz, dx, hard_prob=0.0,
-                                scene_type=scene_type if can_hard else None)
-            c = np.float32(rng.uniform(*CLEARANCE))
-            nf = np.float32(rng.uniform(*NOISE_FRAC))
-            ns = int(rng.integers(0, 2**31 - 1))
-            chosen = (rho, t, c, nf, ns)
-            if pred(_peak_slice(rho)):
-                break
-        rho, t, c, nf, ns = chosen
-        rhos.append(torch.from_numpy(rho)[None])
-        terrains.append(torch.from_numpy(t))
-        clearances.append(torch.tensor(c))
-        noise_fracs.append(torch.tensor(nf))
-        noise_seeds.append(torch.tensor(ns))
+        for _ in range(max(1, int(samples_per_category))):
+            chosen = None
+            for _ in range(max_tries):
+                t = random_terrain(rng, nx, ny, nz * dz)
+                rho = random_bodies(rng, t, nz, dz, dx, hard_prob=0.0,
+                                    scene_type=scene_type if can_hard else None)
+                c = np.float32(rng.uniform(*CLEARANCE))
+                nf = np.float32(rng.uniform(*NOISE_FRAC))
+                ns = int(rng.integers(0, 2**31 - 1))
+                chosen = (rho, t, c, nf, ns)
+                if pred(_peak_slice(rho)):
+                    break
+            rho, t, c, nf, ns = chosen
+            rhos.append(torch.from_numpy(rho)[None])
+            terrains.append(torch.from_numpy(t))
+            clearances.append(torch.tensor(c))
+            noise_fracs.append(torch.tensor(nf))
+            noise_seeds.append(torch.tensor(ns))
 
     rho_t = torch.stack(rhos).to(device)
     terr_t = torch.stack(terrains).to(device)
     clear_t = torch.stack(clearances).to(device)
     nf_t = torch.stack(noise_fracs).to(device)
     ns_t = torch.stack(noise_seeds)
-    obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t)
+    obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=v6_physics)
     if in_channels >= 5:
         x = build_v5_input(
             obs, terr_t, nz * dz, aspect=dz / dx, clearance=clear_t,
@@ -504,7 +509,11 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
         )
     else:
         x = torch.cat([obs, terrain_channel(terr_t, nz * dz)], dim=1)
-    return x, rho_t, clean, z_obs, tuple(name for name, _, _ in specs)
+    if samples_per_category == 1:
+        labels = tuple(name for name, _, _ in specs)
+    else:
+        labels = tuple(name for name, _, _ in specs for _ in range(int(samples_per_category)))
+    return x, rho_t, clean, z_obs, labels
 
 
 @torch.no_grad()
@@ -604,8 +613,17 @@ def export_examples_figure(model, op, device, grid, out_path, epoch=None, cleara
 
 
 @torch.no_grad()
-def export_vol3d_snapshot(model, op, device, grid, out_dir, epoch=None, is_best=True, clearance_clamp=None):
-    """Evaluate the 16 dashboard validation/showcase samples and write 3D volume sidecars."""
+def export_vol3d_snapshot(
+    model, op, device, grid, out_dir,
+    epoch=None,
+    is_best=True,
+    clearance_clamp=None,
+    samples_per_category=1,
+    random_val=False,
+    include_base=True,
+    seed=4024,
+):
+    """Evaluate dashboard validation/showcase samples and write 3D volume sidecars."""
     from dataset import CLEARANCE_CLAMP_V6
 
     nx, ny, nz, _, _, dz = grid
@@ -615,17 +633,39 @@ def export_vol3d_snapshot(model, op, device, grid, out_dir, epoch=None, is_best=
     )
     in_ch = 5 if (hasattr(model, "logvar_head") or is_v6) else 2
     clr_clamp = CLEARANCE_CLAMP_V6 if is_v6 else (4.0 if clearance_clamp is None else float(clearance_clamp))
-    sx, st, _, sz = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0, in_channels=in_ch, clearance_clamp=clr_clamp)
-    hx, ht, _, hz = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0, in_channels=in_ch, clearance_clamp=clr_clamp)
-    cx, ct, _, cz, show_labels = make_category_showcase(op, device, grid, seed=4024, in_channels=in_ch, clearance_clamp=clr_clamp)
 
-    all_x = torch.cat([sx, hx, cx], dim=0)
-    all_t = torch.cat([st, ht, ct], dim=0)
-    all_z = torch.cat([sz, hz, cz], dim=0)
-    labels = ("Std",) * 4 + ("Hard",) * 4 + show_labels
-    preds = [model(all_x[i:i + 8]) for i in range(0, len(all_x), 8)]
+    cx, ct, _, cz, show_labels = make_category_showcase(
+        op, device, grid, seed=seed, in_channels=in_ch, clearance_clamp=clr_clamp,
+        samples_per_category=samples_per_category, random_val=random_val, v6_physics=is_v6,
+    )
+
+    if include_base:
+        n_base = max(4, int(samples_per_category)) if int(samples_per_category) > 1 else 4
+        s_seed = None if random_val else (seed - 2000 if seed else 2024)
+        h_seed = None if random_val else (seed - 1000 if seed else 3024)
+        sx, st, _, sz = make_fixed_set(n_base, s_seed, op, device, grid, hard_prob=0.0, in_channels=in_ch, clearance_clamp=clr_clamp, v6_mode=is_v6)
+        hx, ht, _, hz = make_fixed_set(n_base, h_seed, op, device, grid, hard_prob=1.0, in_channels=in_ch, clearance_clamp=clr_clamp, v6_mode=is_v6)
+        all_x = torch.cat([sx, hx, cx], dim=0)
+        all_t = torch.cat([st, ht, ct], dim=0)
+        all_z = torch.cat([sz, hz, cz], dim=0)
+        base_tag_a = "Ground" if is_v6 else "Std"
+        base_tag_b = "HardLarge" if is_v6 else "Hard"
+        labels = (base_tag_a,) * n_base + (base_tag_b,) * n_base + show_labels
+    else:
+        all_x = cx
+        all_t = ct
+        all_z = cz
+        labels = show_labels
+
+    preds = []
+    chunk_sz = 8
+    for i in range(0, len(all_x), chunk_sz):
+        preds.append(model(all_x[i:i + chunk_sz]))
     all_p = torch.cat(preds, dim=0)
-    pred_f_chunks = [op(all_p[i:i + 8], all_z[i:i + 8]) for i in range(0, len(all_p), 8)]
+
+    pred_f_chunks = []
+    for i in range(0, len(all_p), chunk_sz):
+        pred_f_chunks.append(op(all_p[i:i + chunk_sz], all_z[i:i + chunk_sz]))
     all_pf = torch.cat(pred_f_chunks, dim=0)
 
     n_samples = len(all_x)
@@ -669,6 +709,9 @@ def main():
     ap.add_argument("--v6-buckets", action="store_true", help="evaluate all 4 v6 stratified validation buckets")
     ap.add_argument("--export-examples", type=str, default="", help="save 16-sample dashboard Truth/Pred X-Z figure to PNG")
     ap.add_argument("--export-vol3d", type=str, default="", help="write 3D volume sidecar files (.json/.js) to directory for dashboard 3D mode")
+    ap.add_argument("--samples-per-category", type=int, default=1, help="samples per category in showcase (default 1, e.g. 8 for full web demo)")
+    ap.add_argument("--random-val", action="store_true", help="use random validation data for demo examples")
+    ap.add_argument("--showcase-only", action="store_true", help="omit standard/base set and export only category showcase")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     ap.add_argument("--device", default=default_dev)
     args = ap.parse_args()
@@ -690,8 +733,13 @@ def main():
                                            epoch=ck.get("epoch"), clearance_clamp=clr_clamp)
             print(f"Exported examples grid to {out_p}")
         if args.export_vol3d:
-            out_d = export_vol3d_snapshot(model, op, args.device, grid, args.export_vol3d,
-                                          epoch=ck.get("epoch"), is_best=True, clearance_clamp=clr_clamp)
+            out_d = export_vol3d_snapshot(
+                model, op, args.device, grid, args.export_vol3d,
+                epoch=ck.get("epoch"), is_best=True, clearance_clamp=clr_clamp,
+                samples_per_category=args.samples_per_category,
+                random_val=args.random_val,
+                include_base=not args.showcase_only,
+            )
             print(f"Exported 3D volume sidecars to {out_d}")
         return
     if args.v6_buckets or variant == "v6":

@@ -932,10 +932,25 @@ def apply_continuous_fault_v6(rng, rho, unit_id, t_cells, mode="random", max_thr
         cot_d = 1.0 / math.tan(dip)
         f1 = h_proj - (-half_w + z_rel * cot_d)
         f2 = h_proj - (half_w - z_rel * cot_d)
-        in_block = (f1 > 0.0) & (f2 < 0.0)
-        throw_z = float(rng.choice([-1.0, 1.0]) * rng.integers(2, max(3, int(max_throw_cells) + 1)))
-        dz_off = np.where(in_block, throw_z, 0.0)
-        dh_off = np.zeros_like(dz_off)
+        if rng.random() < 0.50:
+            # Asymmetric half-graben: single active listric bounding fault + gentle antithetic rollover
+            side_sign = 1.0 if rng.random() < 0.5 else -1.0
+            f_main = f1 if side_sign > 0 else -f2
+            in_hg = f_main > 0.0
+            throw_z = float(rng.choice([-1.0, 1.0]) * rng.integers(2, max(3, int(max_throw_cells) + 1)))
+            taper = np.clip(1.0 - np.abs(f_main) / max(1.5 * half_w, 6.0), 0.15, 1.0)
+            dz_off = np.where(in_hg, throw_z * taper, 0.0)
+            dh_off = np.where(in_hg, -side_sign * throw_z * np.clip(cot_d, 0.25, 0.85) * 0.5 * taper, 0.0)
+        else:
+            # Symmetric two-wall graben/horst: vertical center throw + gentle outward footwall heave
+            in_block = (f1 > 0.0) & (f2 < 0.0)
+            throw_z = float(rng.choice([-1.0, 1.0]) * rng.integers(2, max(3, int(max_throw_cells) + 1)))
+            dz_off = np.where(in_block, throw_z, 0.0)
+            dh_off = np.where(
+                f1 <= 0.0,
+                -0.30 * throw_z * np.clip(cot_d, 0.2, 0.8),
+                np.where(f2 >= 0.0, 0.30 * throw_z * np.clip(cot_d, 0.2, 0.8), 0.0),
+            )
     else:
         dip = float(rng.uniform(math.radians(38.0), math.radians(82.0)))
         signed_dist = z_rel * math.cos(dip) + h_proj * math.sin(dip)
@@ -1030,8 +1045,20 @@ def _build_large_landfill_or_basin(rng, t_cells, nz, hs, vs, variant="landfill_p
 
     subsurf_cells = np.maximum(0.0, nz - t_cells)
     total_sub_vox = float(subsurf_cells.sum())
-    target_area_frac = float(rng.uniform(0.27, 0.72))
-    target_vol_frac = float(rng.uniform(0.16, 0.45))
+    if variant == "landfill_plume":
+        if rng.random() < 0.55:
+            # Realistic shallow/mid-thickness extensive waste disposal sites
+            target_area_frac = float(rng.uniform(0.42, 0.72))
+            target_vol_frac = float(rng.uniform(0.135, 0.22))
+            max_border_lim = 0.55
+        else:
+            target_area_frac = float(rng.uniform(0.27, 0.68))
+            target_vol_frac = float(rng.uniform(0.22, 0.42))
+            max_border_lim = 0.68 if rng.random() < 0.5 else 0.55
+    else:
+        target_area_frac = float(rng.uniform(0.27, 0.72))
+        target_vol_frac = float(rng.uniform(0.16, 0.45))
+        max_border_lim = 0.72
 
     # Build organic multi-lobe 2D lateral footprint with optional border contact (margin=0)
     fp_2d = np.zeros((nx, ny), dtype=bool)
@@ -1062,17 +1089,17 @@ def _build_large_landfill_or_basin(rng, t_cells, nz, hs, vs, variant="landfill_p
         score = score + 0.12 * t_norm  # valley/quarry-fill preference
     thresh = float(np.quantile(score, 1.0 - target_area_frac))
     fp_2d = score >= thresh
-    fp_2d = _trim_border_for_detrend(rng, fp_2d, max_border_frac=0.72)
+    fp_2d = _trim_border_for_detrend(rng, fp_2d, max_border_frac=max_border_lim)
 
     area_cnt = int(fp_2d.sum())
     if area_cnt < max(16, int(0.18 * nx * ny)):
         return rho, unit_id
 
-    # Choose smoothly tapered vertical thickness so volume spans ~15%-48% of subsurface domain
+    # Choose smoothly tapered vertical thickness respecting target_vol_frac and >=12% sub_vol contract
     avail_th = np.maximum(0.0, nz - 0.5 - t_cells)
     mean_avail = float(avail_th[fp_2d].mean())
-    target_vox = target_vol_frac * total_sub_vox
-    mean_th = float(np.clip(target_vox / max(1, area_cnt), max(2.5, 3.5 * vs), max(3.5, 0.88 * mean_avail)))
+    target_vox = max(target_vol_frac * total_sub_vox, 0.135 * total_sub_vox)
+    mean_th = float(np.clip(target_vox / max(1, area_cnt), max(2.2, 3.0 * vs), max(3.5, 0.88 * mean_avail)))
     shape_w = np.clip((score - score[fp_2d].min()) / (score[fp_2d].max() - score[fp_2d].min() + 1e-6), 0.25, 1.25)
     shape_w = shape_w / max(0.25, float(shape_w[fp_2d].mean()))
     th_2d = np.where(fp_2d, np.clip(mean_th * shape_w, 2.0 * vs, avail_th), 0.0)
@@ -1416,16 +1443,17 @@ def random_bodies_v6(rng, t, nz, dz, dx, hard_prob=0.50, fault_prob=0.40,
             if u < large_prob:
                 scene_type = "landfill_plume" if rng.random() < 0.58 else "broad_basin_pluton"
             else:
-                # Split remaining (1 - large_prob) between structural+graded, legacy hard, and isolated
+                # Rebalanced v6.1 structural & hard-archetype mix (~22% isolated at default hard_prob=0.50)
                 u2 = (u - large_prob) / max(1e-6, 1.0 - large_prob)
-                if u2 < max(0.20, hard_prob):
-                    if rng.random() < 0.45:
-                        scene_type = str(rng.choice([
-                            "folded_horizons", "listric_graben", "intrusive_plumbing",
-                            "basement_cover", "graded_halo",
-                        ]))
+                eff_struct = hard_prob if hard_prob < 0.30 else min(0.86, 1.44 * hard_prob)
+                if u2 < max(0.20, eff_struct):
+                    if rng.random() < 0.56:
+                        scene_type = str(rng.choice(
+                            ["listric_graben", "folded_horizons", "intrusive_plumbing", "basement_cover", "graded_halo"],
+                            p=[0.25, 0.25, 0.16, 0.17, 0.17],
+                        ))
                     else:
-                        scene_type = str(rng.choice(HARD_SCENE_TYPES, p=_HARD_SCENE_PROBS))
+                        scene_type = str(rng.choice(HARD_SCENE_TYPES, p=[0.13, 0.13, 0.24, 0.25, 0.25]))
                 else:
                     scene_type = "isolated"
 
@@ -1479,6 +1507,13 @@ def random_bodies_v6(rng, t, nz, dz, dx, hard_prob=0.50, fault_prob=0.40,
                 rx, ry = rng.uniform(1.2, 3.6, 2) * hs
                 rz = rng.uniform(0.9, 2.5) * vs
                 dip, is_box = 0.0, (rng.random() < 0.25)
+            elif rng.random() < 0.22:
+                # Steep tabular dyke / sheet (50-82 deg dip)
+                rx = rng.uniform(1.0, 2.2) * hs
+                ry = rng.uniform(4.2, 9.0) * hs
+                rz = rng.uniform(2.5, 5.5) * vs
+                dip = float(rng.choice([-1.0, 1.0]) * rng.uniform(math.radians(50.0), math.radians(82.0)))
+                is_box = True
             else:
                 rx, ry = rng.uniform(1.8, 9.0, 2) * hs
                 rz = rng.uniform(1.0, 5.2) * vs
@@ -1539,18 +1574,23 @@ def _guard_airborne_snr_v6(rng, rho, t, clr_map, dx, dz, keep_blurred_prob=0.10)
     if kz.size == 0:
         return clr_map
     z_top_rel = np.maximum(0.5, (kz * dz - t[kx, ky]))
-    # Approximate attenuated anomaly peak vs unattenuated peak & host clutter floor
+    # Compute true ground signal proxy & per-component horizontal half-width (avoids multi-body span inflation)
     g_ground = float(np.sum(np.abs(rho[kz, kx, ky]) / np.maximum(dx, z_top_rel + 1.0) ** 2))
-    # Characteristic source depth + width scale controls upward-continuation decay
+    amp_fac = float(np.clip(g_ground * dx * dx / 0.18, 0.25, 2.5))
     z_eff_med = float(np.quantile(z_top_rel, 0.25)) + 0.5 * dz
-    # Estimate body horizontal half-width via std of nonzero positions (fast, label-free)
-    w_est = max(dx, 2.0 * float(np.hypot(kx.std(), ky.std()) + 0.5) * dx)
+    lbl, n_c = label(rho != 0)
+    comp_ws = []
+    for cid in range(1, min(n_c, 16) + 1):
+        _, ckx, cky = np.nonzero(lbl == cid)
+        if ckx.size >= 4:
+            comp_ws.append(max(dx, 2.0 * float(np.hypot(ckx.std(), cky.std()) + 0.5) * dx))
+    w_est = float(np.median(comp_ws)) if comp_ws else max(dx, 2.0 * float(np.hypot(kx.std(), ky.std()) + 0.5) * dx)
     att = (z_eff_med + w_est) / max(1.0, z_eff_med + w_est + med_clr)
-    snr_proxy = float((att ** 2) / 0.04)  # relative to ~4% host/noise floor when source is broad/compact
+    snr_proxy = float((att ** 2) * amp_fac / 0.04)  # relative to ~4% host/noise floor
     # Only rescale if completely drowned AND not kept in the ~10% resolution-blur bucket for log_var
     if snr_proxy < 4.0 and rng.random() >= keep_blurred_prob:
         # Target at least SNR ~ 4.0 by scaling excess clearance above 2 m proportionally
-        need_att = math.sqrt(min(1.0, 4.0 * 0.04))
+        need_att = math.sqrt(min(1.0, 4.0 * 0.04 / amp_fac))
         max_safe_clr = max(2.0, (z_eff_med + w_est) * (1.0 / max(need_att, 1e-3) - 1.0))
         if med_clr > max_safe_clr:
             scale = (max_safe_clr - 1.5) / max(med_clr - 1.5, 1e-3)
@@ -1581,9 +1621,9 @@ def _sample_clearance_map_v6(rng, rho, t, dx, dz, ground_prob=GROUND_PROB_V6, ma
     # Secondary Airborne / Height-Grid (~33%): mostly relief-following smooth drape + ~25% FlightElevation/HighDrape
     u_air = rng.random()
     if u_air < 0.75:
-        # Relief-following smooth drape: 5 - min(80, max_airborne) m AGL + low-pass relief lag
+        # Relief-following smooth drape: 2 - min(80, max_airborne) m AGL (bridges ultra-low drone band)
         hi_agl = min(80.0, float(max_airborne))
-        h_agl = math.exp(rng.uniform(math.log(5.0), math.log(max(5.5, hi_agl))))
+        h_agl = math.exp(rng.uniform(math.log(2.0), math.log(max(2.5, hi_agl))))
         t_sm = gaussian_filter(t, rng.uniform(3.5, 9.0) * max(1.0, hs), mode="reflect")
         lag = rng.uniform(0.35, 0.90)
         clr_map = np.clip(h_agl + lag * (t - t_sm), 2.0, min(160.0, CLEARANCE_HIGH_DRAPE_MAX_V6)).astype(np.float32)
@@ -1878,6 +1918,34 @@ def _get_plane_projector(nx: int, ny: int, mode: str, device, dtype):
     cached = _PLANE_PROJ_CACHE.get(key)
     if cached is not None:
         return cached
+    if mode in ("cpp_border_proj", "cpp_border_eval"):
+        cx = torch.arange(nx, device="cpu", dtype=torch.float64) + 0.5 - 0.5 * nx
+        cy = torch.arange(ny, device="cpu", dtype=torch.float64) + 0.5 - 0.5 * ny
+        gx, gy = torch.meshgrid(cx, cy, indexing="ij")
+        x_all = torch.stack([torch.ones_like(gx), gx, gy], dim=-1).reshape(nx * ny, 3)
+        bmask = torch.zeros((nx, ny), device="cpu", dtype=torch.bool)
+        if nx <= 2 or ny <= 2:
+            bmask.fill_(True)
+        else:
+            bmask[0, :] = True
+            bmask[-1, :] = True
+            bmask[:, 0] = True
+            bmask[:, -1] = True
+        w_perim = torch.where(bmask, (gx * gx + gy * gy).clamp_min(1e-12), torch.zeros_like(gx))
+        w_perim = w_perim / w_perim.sum().clamp_min(1e-12)
+        sx2 = (w_perim * gx * gx).sum().clamp_min(1e-12)
+        sy2 = (w_perim * gy * gy).sum().clamp_min(1e-12)
+        est_all = torch.stack([
+            w_perim.reshape(-1),
+            (w_perim * gx).reshape(-1) / sx2,
+            (w_perim * gy).reshape(-1) / sy2,
+        ], dim=1)
+        idx = torch.nonzero(bmask.reshape(-1), as_tuple=False).squeeze(1)
+        pinv_T = est_all[idx].to(device=device, dtype=dtype).contiguous()
+        x_all_T = x_all.T.to(device=device, dtype=dtype).contiguous()
+        idx = idx.to(device=device)
+        _PLANE_PROJ_CACHE[key] = (pinv_T, x_all_T, idx)
+        return pinv_T, x_all_T, idx
     xs = torch.linspace(-1.0, 1.0, nx, device="cpu", dtype=torch.float64)
     ys = torch.linspace(-1.0, 1.0, ny, device="cpu", dtype=torch.float64)
     gx, gy = torch.meshgrid(xs, ys, indexing="ij")
@@ -1910,11 +1978,13 @@ def _normalize_detrend_mode(mode: str) -> str:
         return "planar"
     if m in ("border_planar", "borderplanar"):
         return "border_planar"
+    if m in ("cpp_border_proj", "cpp_border_eval"):
+        return m
     raise ValueError(f"Unknown detrend mode: {mode!r}")
 
 
 def apply_mod3d_detrend(obs: torch.Tensor, modes) -> torch.Tensor:
-    """Apply Mod3D-exact regional detrending (``BorderPlanar``, ``PlanarRamp``, ``ConstantShift``, ``raw``).
+    """Apply Mod3D-exact regional detrending (``BorderPlanar``, ``PlanarRamp``, ``cpp_border_*``, ``ConstantShift``, ``raw``).
 
     ``obs`` has shape ``(B, 1, H, W)`` (or ``(B, H, W)``). ``modes`` is a single mode string or
     sequence of length ``B``.
@@ -1931,7 +2001,7 @@ def apply_mod3d_detrend(obs: torch.Tensor, modes) -> torch.Tensor:
 
     out = x.clone()
     flat = out.reshape(b, nx * ny)
-    for target_mode in ("constant", "planar", "border_planar"):
+    for target_mode in ("constant", "planar", "border_planar", "cpp_border_proj", "cpp_border_eval"):
         idxs = [i for i, m in enumerate(norm_modes) if m == target_mode]
         if not idxs:
             continue
@@ -1945,7 +2015,10 @@ def apply_mod3d_detrend(obs: torch.Tensor, modes) -> torch.Tensor:
             pts = sub if b_idx is None else sub.index_select(1, b_idx)
             coeffs = pts @ pinv_T            # (G, 3)
             trend = coeffs @ x_all_T         # (G, nx*ny)
-            flat.index_copy_(0, idx_t, sub - trend)
+            rem = sub - trend
+            if target_mode == "cpp_border_eval":
+                rem = rem - rem.mean(dim=1, keepdim=True)
+            flat.index_copy_(0, idx_t, rem)
     return out[:, 0] if squeeze_ch else out
 
 
@@ -2021,10 +2094,10 @@ def _add_exterior_offgrid_mass(obs_vox: torch.Tensor, peak: torch.Tensor, t: tor
 @torch.no_grad()
 def _add_bouguer_topo_clutter(rho_vox: torch.Tensor, t: torch.Tensor, z_top: torch.Tensor, dz: float,
                               prob: float, rng_list, single_rng) -> None:
-    """Add mild spatially smooth relief-correlated rock density clutter into ``rho_vox`` ONLY."""
+    """Add mild strictly relief-correlated Bouguer terrain density error into ``rho_vox`` ONLY."""
     b, _, nz, nx, ny = rho_vox.shape
     below = (z_top >= t.unsqueeze(1).unsqueeze(2)).to(rho_vox.dtype)
-    shallow = (z_top < (t.unsqueeze(1).unsqueeze(2) + max(2.0 * dz, 110.0))).to(rho_vox.dtype)
+    shallow = (z_top < (t.unsqueeze(1).unsqueeze(2) + max(1.5 * dz, 80.0))).to(rho_vox.dtype)
     zone = below * shallow
     for i in range(b):
         if float((t[i].max() - t[i].min()).item()) < 15.0:
@@ -2033,16 +2106,15 @@ def _add_bouguer_topo_clutter(rho_vox: torch.Tensor, t: torch.Tensor, z_top: tor
         u = float(_rand_uniform(rng_i, 0.0, 1.0, (1,), rho_vox.device, rho_vox.dtype).item())
         if u >= prob:
             continue
-        if rng_i is None:
-            raw2 = torch.randn((1, 1, nx, ny), device=rho_vox.device, dtype=rho_vox.dtype)
-        else:
-            raw2 = torch.from_numpy(rng_i.standard_normal((1, 1, nx, ny)).astype(np.float32)).to(rho_vox.device)
-        sm = torch.nn.functional.avg_pool2d(raw2, kernel_size=7, stride=1, padding=3)
-        sm = torch.nn.functional.avg_pool2d(sm, kernel_size=7, stride=1, padding=3)
-        sm = sm - sm.mean()
-        std_sm = sm.std().clamp_min(1e-6)
-        amp = float(_rand_uniform(rng_i, 0.04, 0.11, (1,), rho_vox.device, rho_vox.dtype).item())
-        rho_vox[i, 0].add_((sm[0] * (amp / std_sm)) * zone[i, 0])
+        t_4d = t[i:i + 1].unsqueeze(1)
+        t_pad = torch.nn.functional.pad(t_4d, (4, 4, 4, 4), mode="replicate")
+        t_res = t_4d - torch.nn.functional.avg_pool2d(t_pad, kernel_size=9, stride=1)
+        t_res = t_res - t_res.mean()
+        std_r = t_res.std().clamp_min(1e-6)
+        rho_peak = float(rho_vox[i, 0].abs().amax().clamp_min(0.10).item())
+        sign = -1.0 if float(_rand_uniform(rng_i, 0.0, 1.0, (1,), rho_vox.device, rho_vox.dtype).item()) < 0.5 else 1.0
+        amp = float(_rand_uniform(rng_i, 0.008, 0.022, (1,), rho_vox.device, rho_vox.dtype).item()) * min(1.0, rho_peak / 0.50)
+        rho_vox[i, 0].add_((t_res[0] * (sign * amp / std_r)) * zone[i, 0])
 
 
 @torch.no_grad()
@@ -2050,12 +2122,12 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
                    body_vox_noise=BODY_VOX_NOISE, bg_vox_scale=BG_VOX_NOISE_SCALE,
                    dropout_prob: float = 0.0, return_mask: bool = False,
                    v6_physics: bool = False,
-                   subvox_cap_op=None, subvox_cap_prob: float = 0.35,
+                   subvox_cap_op=None, subvox_cap_prob: float = 0.0,
                    detrend_probs=(0.35, 0.25, 0.15, 0.25),
                    exterior_mass_prob: float = 0.40,
                    pregrid_blur_prob: float = 0.20,
                    line_drift_prob: float = 0.30,
-                   bouguer_err_prob: float = 0.30,
+                   bouguer_err_prob: float = 0.0,
                    anisotropic_clutter: bool = False,
                    return_detrend_modes: bool = False):
     """Batched forward on ``op``'s device. Returns ``(obs_noisy, obs_clean, z_obs[, valid_mask][, detrend_modes])``.
@@ -2224,12 +2296,20 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
         mode_names = ("border_planar", "planar", "constant", "raw")
         xs_n = torch.linspace(-1.0, 1.0, nx, device=rho.device, dtype=rho.dtype)[:, None]
         ys_n = torch.linspace(-1.0, 1.0, ny, device=rho.device, dtype=rho.dtype)[None, :]
+        exec_modes = ["raw"] * b
         for i in range(b):
             rng_i = rng_np if rng_list is None else rng_list[i]
             u_m = float(_rand_uniform(rng_i, 0.0, 0.999999, (1,), rho.device, rho.dtype).item())
             m_idx = int(np.searchsorted(cdf, u_m, side="right"))
             m_name = mode_names[min(m_idx, 3)]
             detrend_modes[i] = m_name
+            if m_name == "planar":
+                exec_modes[i] = "cpp_border_eval"
+            elif m_name == "border_planar":
+                u_c = float(_rand_uniform(rng_i, 0.0, 1.0, (1,), rho.device, rho.dtype).item())
+                exec_modes[i] = "cpp_border_eval" if u_c < 0.50 else ("cpp_border_proj" if u_c < 0.75 else "border_planar")
+            else:
+                exec_modes[i] = m_name
             if m_name != "raw":
                 # Mild regional quadratic curvature on ~25% of detrended scenes so planar removal leaves subtle leakage
                 if float(_rand_uniform(rng_i, 0.0, 1.0, (1,), rho.device, rho.dtype).item()) < 0.25:
@@ -2240,7 +2320,7 @@ def simulate_batch(op: TerrainGravityOperator, rho, t, clearance, noise_frac, no
                     quad = c_xx * (xs_n ** 2) + c_yy * (ys_n ** 2) + c_xy * (xs_n * ys_n)
                     quad = (quad - quad.mean()) * float(peak[i].item())
                     noisy[i, 0].add_(quad)
-        noisy = apply_mod3d_detrend(noisy, detrend_modes)
+        noisy = apply_mod3d_detrend(noisy, exec_modes)
 
     if return_mask and return_detrend_modes:
         return noisy, clean, z_obs, valid_mask, detrend_modes

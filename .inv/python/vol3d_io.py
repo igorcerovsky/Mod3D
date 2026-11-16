@@ -93,6 +93,14 @@ def encode_terrain_u16_b64(terr_xy, depth_total_m):
     return base64.b64encode(u16.tobytes()).decode("ascii")
 
 
+def decode_terrain_u16_b64(b64_str, shape_xy, depth_total_m):
+    """Decode an ``encode_terrain_u16_b64`` payload back into (NX, NY) terrain depth [m]."""
+    nx, ny = shape_xy
+    u16 = np.frombuffer(base64.b64decode(b64_str), dtype="<u2").reshape(ny, nx)
+    terr_yx = u16.astype(np.float32) / 65535.0 * float(depth_total_m)
+    return np.transpose(terr_yx, (1, 0)).astype(np.float32)
+
+
 def encode_field2d_i16_b64(field_xy, vmax=None):
     """Encode (NX, NY) surface gravity field [mGal] into (NY, NX) little-endian int16 normalized to vmax."""
     field_yx = np.transpose(np.asarray(field_xy, dtype=np.float32), (1, 0))

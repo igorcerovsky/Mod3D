@@ -152,6 +152,18 @@
     border-radius: 9999px;
     font-size: 0.72rem;
     font-weight: 600;
+    font-family: inherit;
+    line-height: inherit;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .status-badge:hover {
+    filter: brightness(0.95);
+  }
+  .status-badge.inactive {
+    background: var(--surface-inset);
+    color: var(--text-secondary);
+    border-color: var(--border);
   }
   .status-dot {
     width: 6px;
@@ -160,6 +172,11 @@
     border-radius: 50%;
     box-shadow: 0 0 6px var(--green);
     animation: pulse 1.8s infinite;
+  }
+  .status-badge.inactive .status-dot {
+    background: var(--text-secondary);
+    box-shadow: none;
+    animation: none;
   }
   @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
 
@@ -636,7 +653,7 @@
       <button id="btnThemeLight" type="button" class="theme-opt active" data-theme-val="light" aria-pressed="true" title="Light theme">&#9728; Light</button>
       <button id="btnThemeDark" type="button" class="theme-opt" data-theme-val="dark" aria-pressed="false" title="Dark theme">&#9790; Dark</button>
     </div>
-    <div class="status-badge"><span class="status-dot"></span> <span id="statusText">BEST RESULT PREVIEW</span></div>
+    <div class="status-badge" style="cursor:default;"><span class="status-dot"></span> <span id="statusText">BEST RESULT PREVIEW</span></div>
   </div>
 </header>
 
@@ -661,6 +678,10 @@
       <label style="cursor:pointer;padding:2px 7px;border-radius:4px;" id="lblRender3D" title="Interactive 3D volume raycasting (synchronized equal transform for Truth &amp; Predicted)">
         <input type="radio" name="renderMode" value="3d" id="radRender3D" style="cursor:pointer;"> 3D
       </label>
+    </div>
+    <div style="display:flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:6px;padding:2px 4px;gap:2px;" title="Palette mode for 2D cross-sections and 3D volumes">
+      <button type="button" class="layout-btn active" id="btnTopColormapPhysics" title="Continuous coolwarm relative density contrast (&plusmn;&Delta;&rho;)">Physics</button>
+      <button type="button" class="layout-btn" id="btnTopColormapLitho" title="Discrete geological rock &amp; cavity classes">Lithology</button>
     </div>
     <div class="layout-picker" id="layoutPicker" title="Configurable grid layout (Rows &times; Columns) &mdash; presets or custom dimensions">
       <button type="button" class="layout-btn active" data-layout-preset="1x1" title="Single 1&times;1 view (Truth, Prediction, and optional Difference)">1</button>
@@ -727,11 +748,14 @@
         <input type="checkbox" id="chkVol3dSlice" checked> Y-Slice
       </label>
       <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
-      <span style="font-weight:600;" title="Surface Bouguer gravity anomaly gz [mGal] draped onto Predicted terrain relief">Pred g<sub>z</sub>:</span>
-      <button type="button" class="vol3d-btn" data-field-mode="obs" title="Drape Observed Truth Bouguer anomaly on Predicted relief">Truth</button>
-      <button type="button" class="vol3d-btn active" data-field-mode="inv" title="Drape Forward Inversion Bouguer anomaly on Predicted relief">Inversion</button>
-      <button type="button" class="vol3d-btn" data-field-mode="diff" title="Drape Gravity Residual (Inversion minus Truth) on Predicted relief">Diff</button>
-      <span class="vol3d-val" id="vol3dFieldScale" style="min-width:68px;" title="Symmetric Bouguer anomaly color scale on Predicted relief"></span>
+      <span style="font-weight:600;" title="Ground Truth relief surface: show topography elevation or draped observed gravity field">Truth Relief:</span>
+      <button type="button" class="vol3d-btn active" data-truth-relief-mode="topo" title="Show hypsometric topography elevation on Truth relief">Topography</button>
+      <button type="button" class="vol3d-btn" data-truth-relief-mode="field" title="Drape observed Bouguer gravity anomaly gz on Truth relief">Field</button>
+      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <span style="font-weight:600;" title="Predicted relief surface: show predicted forward gravity field or difference (residual error)">Pred Relief:</span>
+      <button type="button" class="vol3d-btn active" data-pred-relief-mode="inv" data-field-mode="inv" title="Drape Forward Inversion Bouguer anomaly on Predicted relief">Predicted</button>
+      <button type="button" class="vol3d-btn" data-pred-relief-mode="diff" data-field-mode="diff" title="Drape Gravity Residual (Inversion minus Truth) on Predicted relief">Difference</button>
+      <span class="vol3d-val" id="vol3dFieldScale" style="min-width:68px;" title="Active surface relief color scale"></span>
       <span id="vol3dStatusPill" class="hover-pill" style="display:none;cursor:pointer;" title="Click to jump to nearest available 3D snapshot"></span>
     </div>
   </div>
@@ -784,11 +808,12 @@
 </div>
 
 <script src="preview_2d.js"></script>
-<script src="vol3d_meta.js"></script>
-<script src="vol3d_best.js"></script>
+<script src="vol3d_v6.1_meta.js"></script>
+<script src="vol3d_v6.1_best.js"></script>
 <script>
 (function() {
   const IS_DEMO_MODE = true;
+  const DEFAULT_REFRESH_SEC = 60;
   function normalizeTrainingData(raw) {
     if (!raw) return { meta: null, epochs: [] };
     if (!Array.isArray(raw)) {
@@ -840,11 +865,12 @@
   let lossLogScale = true;
   let isPlaying = false;
   let playTimer = null;
+  let pollTimer = null;
   let hoverCell = null;
 
   // Shared 3D camera & transfer-function state (guarantees identical transforms for Truth, Pred, Diff)
   const cam3d = { yaw: -0.62, pitch: -0.22, dist: 4.0 };
-  const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, fieldMode: 'inv', epMode: 'best' };
+  const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, truthReliefMode: 'topo', predReliefMode: 'inv', fieldMode: 'inv', epMode: 'best' };
   const vol3dCache = new Map();
   const terr3dCache = new Map();
   const terr3dRanges = new WeakMap();
@@ -892,8 +918,12 @@
   const btnLatest = document.getElementById('btnLatest');
   const btnThemeLight = document.getElementById('btnThemeLight');
   const btnThemeDark = document.getElementById('btnThemeDark');
+  const statusBadge = document.getElementById('statusBadge');
+  const statusText = document.getElementById('statusText');
   const speedSelect = document.getElementById('speedSelect');
   const chkFollowLive = document.getElementById('chkFollowLive');
+  const refreshIntervalSelect = document.getElementById('refreshIntervalSelect');
+  const btnRefreshNow = document.getElementById('btnRefreshNow');
   const chkShowDiff = document.getElementById('chkShowDiff');
   const diffPanel = document.getElementById('diffPanel');
   const predEpochBadge = document.getElementById('predEpochBadge');
@@ -915,6 +945,8 @@
   const cbarCaption = document.getElementById('cbarCaption');
   const btnColormapCoolwarm = document.getElementById('btnColormapCoolwarm');
   const btnColormapLitho = document.getElementById('btnColormapLitho');
+  const btnTopColormapPhysics = document.getElementById('btnTopColormapPhysics');
+  const btnTopColormapLitho = document.getElementById('btnTopColormapLitho');
   let colormapMode = 'coolwarm'; // 'coolwarm' | 'lithology'
   const bouguerBarRow = document.getElementById('bouguerBarRow');
   const cvsBouguerBar = document.getElementById('cvsBouguerBar');
@@ -993,17 +1025,109 @@
     }
   }
 
+  let currentRefreshSec = DEFAULT_REFRESH_SEC;
+
+  function updateLiveStatusBadge() {
+    if (IS_DEMO_MODE || !statusBadge) return;
+    const isRefreshOn = currentRefreshSec > 0;
+    const isFollowLive = chkFollowLive ? chkFollowLive.checked : true;
+    const isLive = isRefreshOn && isFollowLive;
+
+    statusBadge.classList.toggle('inactive', !isLive);
+    if (!isRefreshOn) {
+      if (statusText) statusText.textContent = 'LIVE DATA STREAM (OFF)';
+      statusBadge.title = 'Live auto-refresh is OFF • Click to enable';
+    } else if (!isFollowLive) {
+      if (statusText) statusText.textContent = 'LIVE DATA STREAM (PAUSED)';
+      statusBadge.title = 'Follow Live is unchecked • Click to follow live';
+    } else {
+      if (statusText) statusText.textContent = 'LIVE DATA STREAM';
+      const intervalDesc = currentRefreshSec >= 60 ? (currentRefreshSec / 60) + 'm' : currentRefreshSec + 's';
+      statusBadge.title = `Live auto-refresh is ON (${intervalDesc}) • Click to turn off`;
+    }
+  }
+
+  function getInitialRefreshSec() {
+    if (IS_DEMO_MODE) return 0;
+    try {
+      const saved = localStorage.getItem('mod3d_dashboard_refresh_sec');
+      if (saved !== null) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    } catch (_) {}
+    return DEFAULT_REFRESH_SEC;
+  }
+
+  function setRefreshInterval(sec, persist) {
+    const parsed = parseInt(sec, 10);
+    const s = Math.max(0, isNaN(parsed) ? 0 : parsed);
+    currentRefreshSec = s;
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+    if (refreshIntervalSelect) {
+      const valStr = String(s);
+      if (!Array.from(refreshIntervalSelect.options).some(o => o.value === valStr)) {
+        const opt = document.createElement('option');
+        opt.value = valStr;
+        opt.textContent = s >= 60 && s % 60 === 0 ? `Refresh: ${s / 60}m` : `Refresh: ${s}s`;
+        refreshIntervalSelect.appendChild(opt);
+      }
+      refreshIntervalSelect.value = valStr;
+    }
+    if (persist) {
+      try { localStorage.setItem('mod3d_dashboard_refresh_sec', String(s)); } catch (_) {}
+    }
+    if (!IS_DEMO_MODE && s > 0) {
+      pollTimer = setInterval(pollData, s * 1000);
+    }
+    updateLiveStatusBadge();
+  }
+
   function init() {
     setupControls();
     drawColorbar();
     syncData(trainingData);
-    if (!IS_DEMO_MODE) setInterval(pollData, 3000);
+    if (!IS_DEMO_MODE) setRefreshInterval(getInitialRefreshSec(), false);
   }
 
   function setupControls() {
     applyTheme(isDarkTheme() ? 'dark' : 'light', false);
     if (btnThemeLight) btnThemeLight.addEventListener('click', () => applyTheme('light', true));
     if (btnThemeDark) btnThemeDark.addEventListener('click', () => applyTheme('dark', true));
+    if (!IS_DEMO_MODE) {
+      if (refreshIntervalSelect) {
+        refreshIntervalSelect.addEventListener('change', e => setRefreshInterval(e.target.value, true));
+      }
+      if (btnRefreshNow) {
+        btnRefreshNow.addEventListener('click', () => pollData());
+      }
+      if (chkFollowLive) {
+        chkFollowLive.addEventListener('change', () => {
+          updateLiveStatusBadge();
+          if (chkFollowLive.checked) {
+            const epList = getEpochs();
+            if (epList.length > 0) showEpoch(epList.length - 1);
+          }
+        });
+      }
+      if (statusBadge) {
+        statusBadge.addEventListener('click', () => {
+          const isRefreshOn = currentRefreshSec > 0;
+          const isFollowLive = chkFollowLive ? chkFollowLive.checked : true;
+          if (isRefreshOn && isFollowLive) {
+            setRefreshInterval(0, true);
+          } else {
+            if (chkFollowLive) chkFollowLive.checked = true;
+            const targetSec = currentRefreshSec > 0 ? currentRefreshSec : (DEFAULT_REFRESH_SEC || 60);
+            setRefreshInterval(targetSec, true);
+            pollData();
+          }
+        });
+      }
+    }
 
     if (slider) {
       slider.addEventListener('input', e => {
@@ -1148,6 +1272,8 @@
       try { localStorage.setItem('mod3d_dashboard_colormap_mode', colormapMode); } catch (_) {}
       if (btnColormapCoolwarm) btnColormapCoolwarm.classList.toggle('active', colormapMode === 'coolwarm');
       if (btnColormapLitho) btnColormapLitho.classList.toggle('active', colormapMode === 'lithology');
+      if (btnTopColormapPhysics) btnTopColormapPhysics.classList.toggle('active', colormapMode === 'coolwarm');
+      if (btnTopColormapLitho) btnTopColormapLitho.classList.toggle('active', colormapMode === 'lithology');
       if (colorBarRow) colorBarRow.style.display = colormapMode === 'lithology' ? 'none' : 'flex';
       if (lithoLegendRow) lithoLegendRow.style.display = colormapMode === 'lithology' ? 'flex' : 'none';
       renderCurrentVoxelData();
@@ -1155,19 +1281,73 @@
     }
     if (btnColormapCoolwarm) btnColormapCoolwarm.addEventListener('click', () => setColormapMode('coolwarm'));
     if (btnColormapLitho) btnColormapLitho.addEventListener('click', () => setColormapMode('lithology'));
+    if (btnTopColormapPhysics) btnTopColormapPhysics.addEventListener('click', () => setColormapMode('coolwarm'));
+    if (btnTopColormapLitho) btnTopColormapLitho.addEventListener('click', () => setColormapMode('lithology'));
     try {
       const savedCm = localStorage.getItem('mod3d_dashboard_colormap_mode');
       if (savedCm === 'lithology' || savedCm === 'coolwarm') setColormapMode(savedCm);
     } catch (_) {}
 
+    document.querySelectorAll('[data-truth-relief-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.truthReliefMode === 'field' ? 'field' : 'topo';
+        vol3dOpts.truthReliefMode = mode;
+        try { localStorage.setItem('mod3d_dashboard_truth_relief_mode', mode); } catch (_) {}
+        document.querySelectorAll('[data-truth-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.truthReliefMode === mode);
+        });
+        scheduleVol3dRender();
+      });
+    });
+
+    document.querySelectorAll('[data-pred-relief-mode]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.predReliefMode === 'diff' ? 'diff' : 'inv';
+        vol3dOpts.predReliefMode = mode;
+        vol3dOpts.fieldMode = mode;
+        try { localStorage.setItem('mod3d_dashboard_pred_relief_mode', mode); } catch (_) {}
+        document.querySelectorAll('[data-pred-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.predReliefMode === mode);
+        });
+        scheduleVol3dRender();
+      });
+    });
+
+    try {
+      const savedTruthMode = localStorage.getItem('mod3d_dashboard_truth_relief_mode');
+      if (savedTruthMode === 'field' || savedTruthMode === 'topo') {
+        vol3dOpts.truthReliefMode = savedTruthMode;
+        document.querySelectorAll('[data-truth-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.truthReliefMode === savedTruthMode);
+        });
+      }
+      const savedPredMode = localStorage.getItem('mod3d_dashboard_pred_relief_mode');
+      if (savedPredMode === 'inv' || savedPredMode === 'diff') {
+        vol3dOpts.predReliefMode = savedPredMode;
+        vol3dOpts.fieldMode = savedPredMode;
+        document.querySelectorAll('[data-pred-relief-mode]').forEach(b => {
+          b.classList.toggle('active', b.dataset.predReliefMode === savedPredMode);
+        });
+      }
+    } catch (_) {}
+
     document.querySelectorAll('[data-field-mode]').forEach(btn => {
       btn.addEventListener('click', () => {
         const mode = btn.dataset.fieldMode || 'inv';
-        vol3dOpts.fieldMode = mode;
-        document.querySelectorAll('[data-field-mode]').forEach(b => {
-          b.classList.toggle('active', b.dataset.fieldMode === mode);
-        });
-        scheduleVol3dRender();
+        if (mode === 'diff' || mode === 'inv') {
+          vol3dOpts.predReliefMode = mode;
+          vol3dOpts.fieldMode = mode;
+          document.querySelectorAll('[data-pred-relief-mode]').forEach(b => {
+            b.classList.toggle('active', b.dataset.predReliefMode === mode);
+          });
+          scheduleVol3dRender();
+        } else if (mode === 'obs') {
+          vol3dOpts.truthReliefMode = 'field';
+          document.querySelectorAll('[data-truth-relief-mode]').forEach(b => {
+            b.classList.toggle('active', b.dataset.truthReliefMode === 'field');
+          });
+          scheduleVol3dRender();
+        }
       });
     });
 
@@ -2887,15 +3067,18 @@ void main() {
       const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[currentSampleIndex] : null;
       const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[currentSampleIndex]) || vmaxT;
       const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep3dKey}:${currentSampleIndex}`, pB64, nx, ny, nz) : null;
-      const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, vol3dOpts.fieldMode);
+      const truthSurf = (vol3dOpts.truthReliefMode === 'field')
+        ? getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, 'obs')
+        : null;
+      const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, vol3dOpts.predReliefMode || 'inv');
       const diffSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, currentSampleIndex, nx, ny, 'diff');
 
       updatePredEpochBadge(ep, ep3dKey, Boolean(pBytes));
       updateVol3dStatusPill(ep, ep3dKey, Boolean(pBytes));
-      updateFieldScaleBadge(predSurf);
+      updateFieldScaleBadge(predSurf || truthSurf);
 
       if (tBytes) {
-        drawVolume3D(cvsTruth, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, 112, true, null);
+        drawVolume3D(cvsTruth, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, 112, true, truthSurf);
       } else {
         drawPlaceholder(cvsTruth, "No 3D truth volume loaded (vol3d_meta.js)");
       }
@@ -3041,12 +3224,15 @@ void main() {
         const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[i] : null;
         const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[i]) || vmaxT;
         const pBytes = pB64 ? decodeVol3dRleCached(`pred:${ep3dKey}:${i}`, pB64, nx, ny, nz) : null;
-        const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, vol3dOpts.fieldMode);
-        if (i === currentSampleIndex) updateFieldScaleBadge(predSurf);
+        const truthSurf = (vol3dOpts.truthReliefMode === 'field')
+          ? getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, 'obs')
+          : null;
+        const predSurf = getSampleFieldSurface(vs, ep3d, ep3dKey, i, nx, ny, vol3dOpts.predReliefMode || 'inv');
+        if (i === currentSampleIndex) updateFieldScaleBadge(predSurf || truthSurf);
         if (pBytes) anyPred = true;
 
         if (cvsT) {
-          if (tBytes) drawVolume3D(cvsT, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, stepsMini, false, null);
+          if (tBytes) drawVolume3D(cvsT, tBytes, null, terrBytes, nx, ny, nz, vmaxT, vmaxT, vmaxT, iySlice, false, stepsMini, false, truthSurf);
           else drawPlaceholder(cvsT, "No 3D");
         }
         if (cvsP) {

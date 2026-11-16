@@ -752,7 +752,8 @@ def test_demo_export_and_html():
     assert "let layoutRows = IS_DEMO_MODE ? 2 : 1;" in demo_html
     assert "let gridStartIndex = IS_DEMO_MODE ? 5 : 0;" in demo_html
     assert 'src="preview_2d.js"' in demo_html
-    assert 'src="vol3d_meta.js"' in demo_html and 'src="vol3d_best.js"' in demo_html
+    assert ('src="vol3d_v6.1_meta.js"' in demo_html or 'src="vol3d_meta.js"' in demo_html)
+    assert ('src="vol3d_v6.1_best.js"' in demo_html or 'src="vol3d_best.js"' in demo_html)
     assert 'id="sampleSelect"' in demo_html and 'id="btnSamplePrev"' in demo_html and 'id="btnSampleNext"' in demo_html
     assert 'id="cvsBouguerBar"' in demo_html
     assert 'src="training_history.js"' not in demo_html
@@ -787,7 +788,9 @@ def test_demo_export_and_html():
 
         summary = export_demo(tmp_save, tmp_demo)
         assert summary["best_epoch"] == 1 and summary["n_samples"] == 8
-        assert sorted(os.listdir(tmp_demo)) == ["index.html", "preview_2d.js", "vol3d_best.js", "vol3d_meta.js"]
+        demo_files = sorted(os.listdir(tmp_demo))
+        assert "index.html" in demo_files and "preview_2d.js" in demo_files
+        assert "vol3d_v6.1_best.js" in demo_files and "vol3d_v6.1_meta.js" in demo_files
 
         with open(os.path.join(tmp_demo, "preview_2d.js")) as f:
             raw_preview = f.read()
@@ -805,7 +808,8 @@ def test_demo_export_and_html():
             assert len(s["truth_slice"]) == NZ and len(s["truth_slice"][0]) == NX
             assert len(s["pred_slice"]) == NZ and len(s["pred_slice"][0]) == NX
 
-        with open(os.path.join(tmp_demo, "vol3d_best.js")) as f:
+        target_best = "vol3d_v6.1_best.js" if "vol3d_v6.1_best.js" in demo_files else "vol3d_best.js"
+        with open(os.path.join(tmp_demo, target_best)) as f:
             vbest_js = f.read()
         assert "window.VOL3D_BEST_EPOCH = 1;" in vbest_js
 

@@ -149,6 +149,41 @@ def build_v6_scheduler(opt, total_steps: int, warmup_steps: int, min_lr_frac: fl
     return torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=_lr_lambda)
 
 
+def build_resume_v6_scheduler(opt, ck_resumed, start_epoch: int, end_epoch: int,
+                              steps_per_epoch: int, warmup_epochs: int,
+                              total_epochs: int = 0, warm_restart: bool = False,
+                              min_lr_frac: float = 0.02):
+    """Build v6 scheduler handling multi-resume cumulative horizons and cosine warm restarts."""
+    spe = max(1, int(steps_per_epoch))
+    ext_steps = max(1, (int(end_epoch) - int(start_epoch) + 1) * spe)
+    target_end = max(int(end_epoch), int(total_epochs)) if int(total_epochs) > 0 else int(end_epoch)
+    cum_steps = max(1, target_end * spe)
+    warm_steps = max(0, int(warmup_epochs)) * spe
+
+    if ck_resumed is None:
+        return build_v6_scheduler(opt, total_steps=cum_steps, warmup_steps=warm_steps, min_lr_frac=min_lr_frac)
+
+    prev_sd = ck_resumed.get("sched_state_dict") if isinstance(ck_resumed, dict) else None
+    prev_step = (
+        int(prev_sd.get("last_epoch", (int(start_epoch) - 1) * spe))
+        if isinstance(prev_sd, dict)
+        else (int(start_epoch) - 1) * spe
+    )
+    if warm_restart or not isinstance(prev_sd, dict) or prev_step >= cum_steps - spe:
+        wr_warm = min(max(spe, warm_steps // 2 if warm_steps > 0 else spe), max(1, ext_steps // 5))
+        return build_v6_scheduler(opt, total_steps=ext_steps, warmup_steps=wr_warm, min_lr_frac=min_lr_frac)
+
+    sched = build_v6_scheduler(opt, total_steps=cum_steps, warmup_steps=warm_steps, min_lr_frac=min_lr_frac)
+    try:
+        sched.load_state_dict(dict(prev_sd))
+        for pg, base_lr, lam in zip(opt.param_groups, sched.base_lrs, sched.lr_lambdas):
+            pg["lr"] = base_lr * lam(sched.last_epoch)
+        sched._last_lr = [pg["lr"] for pg in opt.param_groups]
+    except Exception:
+        pass
+    return sched
+
+
 def compute_v6_curriculum(epoch: int, curriculum_epochs: int, hard_prob: float, fault_prob: float,
                           do_prob: float, large_prob: float, ground_prob: float):
     """Compute epoch-wise v6 dataset and physics curriculum schedule."""
@@ -170,7 +205,7 @@ def compute_v6_curriculum(epoch: int, curriculum_epochs: int, hard_prob: float, 
         "do_prob": cur_do,
         "ground_prob": min(1.0, cur_ground),
         "max_airborne": cur_air_max,
-        "subvox_cap_prob": 0.20 + 0.15 * tau,
+        "subvox_cap_prob": 0.0,
         "exterior_mass_prob": 0.15 + 0.25 * tau,
         "pregrid_blur_prob": 0.05 + 0.15 * tau,
     }
@@ -337,7 +372,8 @@ def parse_args():
                    help="fraction of training samples using harder/larger composite & contact scenes [0.0-1.0]")
     p.add_argument("--num-workers", type=int, default=None,
                    help="DataLoader worker processes (default: 4 for v6, 0 for v1-v5)")
-    p.add_argument("--lambda-data", type=float, default=0.25)
+    p.add_argument("--lambda-data", type=float, default=None,
+                   help="physics data-misfit loss weight (default: 0.50 for v6, 0.25 for v1-v5)")
     p.add_argument("--lambda-ms", type=float, default=0.05)
     p.add_argument("--lambda-cls", type=float, default=0.25, help="lithology cross-entropy weight")
     p.add_argument("--depth-boost", type=float, default=0.5, help="depth sensitivity ramp in loss [0.0 = uniform]")
@@ -365,6 +401,12 @@ def parse_args():
                    help="v6 primary ground survey probability [0.30-2.0m]")
     p.add_argument("--no-amp", action="store_true", help="(deprecated no-op; training runs strictly in FP32)")
     p.add_argument("--resume", type=str, default="", help="continue from a checkpoint")
+    p.add_argument("--warm-restart", action="store_true",
+                   help="start a fresh cosine warmup+decay LR schedule over --epochs when resuming")
+    p.add_argument("--reset-best", action="store_true",
+                   help="re-baseline best validation loss on --resume")
+    p.add_argument("--total-epochs", type=int, default=0,
+                   help="optional cumulative end epoch for continuous cosine decay across resumes")
     p.add_argument("--gui", action="store_true", help="open a live native GUI window with training graphs")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     p.add_argument("--device", type=str, default=default_dev)
@@ -457,7 +499,8 @@ def main():
     v6_buckets = None
     vx = vtrue = vclean = vz = hard_val = None
     if is_v6:
-        n_per_bucket = max(8, args.n_val // 4)
+        eff_n_val = 128 if args.n_val == 64 else args.n_val
+        n_per_bucket = max(8, eff_n_val // 4)
         op_bank_map = {i: o for i, o in enumerate(op_bank)}
         cap_bank_map = {i: c for i, c in enumerate(subvox_cap_bank)}
         v6_buckets = make_v6_val_buckets(
@@ -496,21 +539,26 @@ def main():
     curr_tag = f" | Curriculum epochs: {args.curriculum_epochs}" if is_v5_or_v6 and args.curriculum_epochs > 0 else ""
     print(f"Architecture: {variant}{size_tag} | "
           f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M{curr_tag}")
-    crit = CompoundInversionLoss(lambda_data=args.lambda_data, lambda_ms=args.lambda_ms,
+    lambda_data = (0.50 if is_v6 else 0.25) if args.lambda_data is None else float(args.lambda_data)
+    crit = CompoundInversionLoss(lambda_data=lambda_data, lambda_ms=args.lambda_ms,
                                  lambda_cls=args.lambda_cls, depth_boost=args.depth_boost,
-                                 forward_op=batch_op)
+                                 forward_op=batch_op, use_v6_losses=is_v6)
 
     end_epoch = start_epoch + args.epochs - 1
     total_steps = max(1, (end_epoch - start_epoch + 1) * args.steps)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
+    if ck_resumed is not None and not args.warm_restart and "optimizer_state_dict" in ck_resumed:
+        try:
+            opt.load_state_dict(ck_resumed["optimizer_state_dict"])
+            for pg in opt.param_groups:
+                pg["initial_lr"] = args.lr
+        except Exception:
+            pass
     if is_v6:
-        warmup_steps = max(0, int(args.warmup_epochs)) * args.steps
-        sched = build_v6_scheduler(opt, total_steps=total_steps, warmup_steps=warmup_steps, min_lr_frac=0.02)
-        if ck_resumed is not None and "sched_state_dict" in ck_resumed:
-            try:
-                sched.load_state_dict(ck_resumed["sched_state_dict"])
-            except Exception:
-                pass
+        sched = build_resume_v6_scheduler(
+            opt, ck_resumed, start_epoch, end_epoch, args.steps, args.warmup_epochs,
+            total_epochs=args.total_epochs, warm_restart=args.warm_restart, min_lr_frac=0.02,
+        )
     elif args.resume:
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=total_steps, eta_min=args.lr * 0.02)
     else:
@@ -585,7 +633,12 @@ def main():
         return std_loss, std_m, std_loss, std_m, None, None, mon_tensors
 
     if args.resume:
-        best, *_ = validate()
+        init_vloss, *_ = validate()
+        best_ckpt_exists = os.path.exists(os.path.join(args.save_dir, "best_swin3d.pt"))
+        if args.reset_best or not best_ckpt_exists:
+            best = init_vloss
+        else:
+            best = min(best, init_vloss)
 
     if is_v6:
         for bname in ("ground_clean", "ground_hard_large_detrend"):
@@ -697,6 +750,7 @@ def main():
                 "bucket_losses": b_losses, "bucket_metrics": b_metrics,
                 "hard_prob": hard_prob, "large_prob": large_prob, "ground_prob": ground_prob,
                 "sched_state_dict": sched.state_dict(),
+                "optimizer_state_dict": opt.state_dict(),
                 "grid": {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL}, "arch": arch,
             }
             if ema.ema is not None:
