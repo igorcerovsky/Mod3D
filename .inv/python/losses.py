@@ -328,24 +328,33 @@ class CompoundInversionLoss(nn.Module):
 
     def _unit_and_instance_iou_loss_v6(self, pn, tn, fg_mask, d3, w_z, sub_mask,
                                        u_masks, u_d3, t_dil3, unit_id=None):
-        """V6 unit_id-aware asymmetric Tversky + per-unit 50%-contrast IoU (recall-weighted)."""
+        """V6 unit_id-aware asymmetric Tversky + smooth unit support IoU (recall-weighted)."""
         _, _, D, H, W = tn.shape
         kd = 9 if D >= 9 else (D if D % 2 == 1 else max(1, D - 1))
         kh = 9 if H >= 9 else (H if H % 2 == 1 else max(1, H - 1))
         kw = 9 if W >= 9 else (W if W % 2 == 1 else max(1, W - 1))
         alpha, beta = self.tversky_alpha, self.tversky_beta
         with torch.no_grad():
-            t_ref = torch.where(fg_mask > 0.5, tn.abs(), t_dil3).clamp_min(0.05)
+            bg_ref = (
+                (tn.abs() * fg_mask).flatten(1).sum(1) / fg_mask.flatten(1).sum(1).clamp_min(1.0)
+            ).view(-1, 1, 1, 1, 1)
+            t_ref_full = torch.where(
+                fg_mask > 0.5, tn.abs(), torch.where(d3 > 0.5, t_dil3, bg_ref)
+            ).clamp_min(0.05)
             v_loc = F.avg_pool3d(
                 fg_mask, kernel_size=(kd, kh, kw), stride=1, padding=(kd // 2, kh // 2, kw // 2)
             ).clamp_min(1e-3)
-            w_vol = (1.0 / v_loc.sqrt()) * d3 * sub_mask * w_z
-            t_loc = (tn / t_ref) * fg_mask
+            w_bg_far = (d3 + 0.20 * (1.0 - d3)) * sub_mask
+            w_vol = (1.0 / v_loc.sqrt()) * w_bg_far * w_z
+            t_loc = (tn / t_ref_full) * fg_mask
             t_abs_loc = t_loc.abs()
-            t0_sig = torch.sigmoid(pn.new_tensor(-5.0))
-            t1_sig = torch.sigmoid(pn.new_tensor(5.0))
+            t0_sig = torch.sigmoid(pn.new_tensor(-3.0))
+            t1_sig = torch.sigmoid(pn.new_tensor(3.0))
             inv_span = 1.0 / (t1_sig - t0_sig)
-            a_true_1ch = ((torch.sigmoid(10.0 * (t_abs_loc - 0.5)) - t0_sig) * inv_span).clamp(0.0, 1.0) * fg_mask
+            u_true = t_abs_loc.clamp(0.0, 1.0)
+            a_true_1ch = (
+                0.85 * ((torch.sigmoid(6.0 * (u_true - 0.5)) - t0_sig) * inv_span) + 0.15 * u_true
+            ).clamp(0.0, 1.0) * fg_mask
 
             if unit_id is not None and int(unit_id.amax().item()) > 0:
                 uid_3d = unit_id[:, 0].long()
@@ -362,7 +371,7 @@ class CompoundInversionLoss(nn.Module):
             grp_zone = grp_d3 * (1.0 - (fg_mask - grp_masks)).clamp_min(0.0) * sub_mask
             present_u = (grp_masks.flatten(2).sum(2) > 0).to(pn.dtype)
 
-        p_loc = (pn / t_ref) * d3 * sub_mask
+        p_loc = (pn / t_ref_full) * sub_mask
         p_abs_loc = p_loc.abs()
         p_ali_fg = F.relu(p_loc * torch.sign(t_loc))
         tp_vox = torch.minimum(p_ali_fg, t_abs_loc)
@@ -375,7 +384,10 @@ class CompoundInversionLoss(nn.Module):
         l_inst_tversky = (1.0 - (tp_loc + 1e-6) / (tp_loc + alpha * fp_loc + beta * fn_loc + 1e-6)).clamp_min(0.0).mean()
 
         p_eff = torch.where(fg_mask > 0.5, p_ali_fg, p_abs_loc)
-        a_pred_1ch = ((torch.sigmoid(10.0 * (p_eff - 0.5)) - t0_sig) * inv_span).clamp(0.0, 1.0) * d3 * sub_mask
+        u_pred = p_eff.clamp(0.0, 1.0)
+        a_pred_1ch = (
+            0.85 * ((torch.sigmoid(6.0 * (u_pred - 0.5)) - t0_sig) * inv_span) + 0.15 * u_pred
+        ).clamp(0.0, 1.0) * w_bg_far
         iso_tp_vox = torch.minimum(a_pred_1ch, a_true_1ch)
         iso_fp_vox = F.relu(a_pred_1ch - a_true_1ch)
         iso_fn_vox = F.relu(a_true_1ch - a_pred_1ch)

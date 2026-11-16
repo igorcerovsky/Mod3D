@@ -3,7 +3,7 @@
   * l1_rel           mean |m_pred - m_true| / max|m_true|            (zero model: ~body fraction)
   * body_l1_rel      same, restricted to true body cells             (zero model: ~1.0)
   * data_rel_misfit  ||G m_pred - d|| / ||d||                        (0 perfect, 1 zero model)
-  * iou              IoU of |m| >= 0.5 max|m| regions (pred vs truth)
+  * iou              smooth Jaccard IoU with support transition centered at 0.5 * ref
   * centroid_dz      |depth centroid of |m|: pred - true|            [m]
   * amp_ratio        sum(m_pred * sign(m_true) over body cells) / sum|m_true|  (1 == right mass)
   * halo_opp         opposite-sign compensating halo mass / (||m_pred||_1 + ||m_true||_1) in [0, 1]
@@ -110,6 +110,15 @@ def _sample_centroid_dz(p, t, dz, uid=None):
     return float(np.average(errs, weights=weights)) if errs else float("nan")
 
 
+def _smooth_support(u: torch.Tensor) -> torch.Tensor:
+    """Smooth [0, 1] support ramp: 0 at u=0, 0.5 at u=0.5, 1 at u>=1, positive slope everywhere."""
+    u_c = u.clamp(0.0, 1.0)
+    s0 = float(1.0 / (1.0 + np.exp(3.0)))
+    s1 = float(1.0 / (1.0 + np.exp(-3.0)))
+    sig = (torch.sigmoid(6.0 * (u_c - 0.5)) - s0) / (s1 - s0)
+    return (0.85 * sig + 0.15 * u_c).clamp(0.0, 1.0)
+
+
 @torch.no_grad()
 def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=None):
     """pred/truth: (B,1,D,H,W); d_clean: (B,1,H,W); z_obs: (B,H,W). Batch-averaged metrics.
@@ -174,10 +183,16 @@ def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=No
 
         bg_thresh = torch.where(torch.isinf(bg_thresh), torch.full_like(bg_thresh, 0.5 * ref_p), bg_thresh)
         thresh = torch.where(body, body_thresh, bg_thresh)
-        A = (pa >= thresh) & (pm > 0)
-        B = body
-        union = (A | B).sum().item()
-        out["iou"].append((A & B).sum().item() / union if union else 1.0)
+        if pm > 0:
+            u_p = pa / (2.0 * thresh).clamp_min(1e-6)
+            w_p = _smooth_support(u_p)
+        else:
+            w_p = torch.zeros_like(pa)
+        w_t = body.to(pa.dtype)
+        same_sign = (p * t > 0).to(pa.dtype)
+        inter = float((w_p * same_sign * w_t).sum().item())
+        union = float((w_p + w_t - w_p * same_sign * w_t).sum().item())
+        out["iou"].append(inter / union if union > 1e-12 else 1.0)
         uid_i_dz = unit_id[i, 0] if unit_id is not None else None
         out["centroid_dz"].append(_sample_centroid_dz(p, t, dz, uid=uid_i_dz))
         t_mass = float(ta.sum()) + 1e-12

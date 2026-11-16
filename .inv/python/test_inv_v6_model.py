@@ -422,6 +422,50 @@ def test_v61_fixes_and_checkpoint_compat():
     assert opt2.param_groups[0]["lr"] > 1e-4
 
 
+def test_v61_smooth_iou_empty_cell_and_continuity():
+    from evaluate import compute_metrics
+    from forward import TerrainGravityOperator
+    from losses import CompoundInversionLoss
+
+    op = TerrainGravityOperator(16, 16, 8)
+    z = torch.full((1, 16, 16), -0.35)
+    truth = torch.zeros((1, 1, 8, 16, 16), dtype=torch.float32)
+    uid = torch.zeros((1, 1, 8, 16, 16), dtype=torch.int32)
+    truth[0, 0, 2:5, 2:5, 2:5] = 1.0
+    uid[0, 0, 2:5, 2:5, 2:5] = 1
+    d_clean = op(truth, z)
+
+    # 1. Sub-threshold non-zero density (0.20 * max|t|) in an empty cell outside d3 must penalize IoU & loss_unit_iou
+    pred_clean = truth.clone()
+    pred_clean[0, 0, 2, 2, 2] = 0.0  # imperfect foreground so iou_clean < 1.0
+    pred_fp = pred_clean.clone()
+    pred_fp[0, 0, 6, 12, 12] = 0.20  # empty cell far outside d3 (> 3 voxels away from 2:5,2:5,2:5)
+
+    m_clean = compute_metrics(pred_clean, truth, d_clean, z, op, dz=50.0, unit_id=uid)
+    m_fp = compute_metrics(pred_fp, truth, d_clean, z, op, dz=50.0, unit_id=uid)
+    assert 0.0 < m_fp["iou"] < m_clean["iou"] < 1.0, (
+        f"Expected empty-cell FP penalty: fp={m_fp['iou']:.4f}, clean={m_clean['iou']:.4f}"
+    )
+
+    crit = CompoundInversionLoss(lambda_data=0.0, lambda_cls=0.0, lambda_coarse=0.0, lambda_nll=0.0, use_v6_losses=True)
+    _, s_clean = crit(pred_clean, truth, aux={"is_v6": True}, unit_id=uid)
+    _, s_fp = crit(pred_fp, truth, aux={"is_v6": True}, unit_id=uid)
+    assert s_fp["loss_unit_iou"] > s_clean["loss_unit_iou"], (
+        f"Expected far empty-cell loss_unit_iou penalty: fp={s_fp['loss_unit_iou']:.5f} vs clean={s_clean['loss_unit_iou']:.5f}"
+    )
+
+    # 2. Smooth continuity around 0.5 * max|t| (no step-function cliff)
+    p_low = truth * 0.49
+    p_low[0, 0, 2, 2, 2] = 1.0  # anchor unit peak at 1.0 so thresh = 0.5
+    p_high = truth * 0.51
+    p_high[0, 0, 2, 2, 2] = 1.0
+    m_low = compute_metrics(p_low, truth, d_clean, z, op, dz=50.0, unit_id=uid)
+    m_high = compute_metrics(p_high, truth, d_clean, z, op, dz=50.0, unit_id=uid)
+    assert abs(m_high["iou"] - m_low["iou"]) < 0.08, (
+        f"Cliff detected around 0.5 threshold: low={m_low['iou']:.4f}, high={m_high['iou']:.4f}"
+    )
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

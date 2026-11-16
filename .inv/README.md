@@ -141,25 +141,26 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
 │   └── unittest_inv.cpp        # Tests for voxel indexing, Nagy kernel, and Zhdanov metrics
 │
 ├── demo/                       # Static best-result WebGL2 + 2D HTML preview (GitHub Pages root)
-│   ├── index.html              # Stripped static demo viewer (2x2 layout, scene #5 default, no metrics)
+│   ├── index.html              # Stripped static demo viewer (Truth Topo/Field & Pred Field/Diff relief controls, 64 scenes)
 │   ├── preview_2d.js           # Pre-extracted 2D profiles & X-Z cross-sections for best epoch
-│   ├── vol3d_meta.js           # Terrain relief & RLE-encoded ground-truth 3D volumes
-│   └── vol3d_best.js           # RLE-encoded best-epoch predicted 3D volumes & Bouguer fields
+│   ├── vol3d_v6.1_meta.js      # Terrain relief, observed Bouguer fields & RLE-encoded ground-truth 3D volumes (v6.1)
+│   └── vol3d_v6.1_best.js      # RLE-encoded best-epoch predicted 3D volumes & Bouguer fields (v6.1)
 │
 └── python/                     # Python training & research sub-project
     ├── requirements.txt        # PyTorch, ONNX, and scientific dependencies
-    ├── dataset.py              # Stratified/deformed bodies, cavities, planar dipping faults, multi-aspect grids & harmonic infill (pure residual gravity)
-    ├── forward.py              # Multi-channel draped Nagy-prism (level_stride, fused bmm, h_min elevated drape) & flat FFT operators
-    ├── model_swin3d.py         # v5.1 5-ch Green's vertical decay bias Axial+Swin3D (2.73M params) + mid-stage aleatoric log_var uncertainty head (v1-v4 compat)
-    ├── losses.py               # CompoundInversionLoss with zone-balanced shifted beta-Laplace NLL, smooth-L1 coarse loss & foreground amp consistency
-    ├── train.py                # Dedicated on-the-fly training loop (v5.1 default, multi-aspect op bank, pure FP32 precision, ModelEMA)
+    ├── dataset.py              # Stratified/deformed bodies, cavities, bimodal landfills, faults, C++ detrend parity & clearance
+    ├── forward.py              # Multi-channel draped Nagy-prism (level_stride, fused bmm, h_min elevated drape) & SubvoxelCapOperator
+    ├── model_swin3d.py         # v6/v6.1 5-ch OddPyramidGravity (5 aspect / 32 rational knots), GreensVerticalBias, decoupled Stage-1 & log_var
+    ├── losses.py               # CompoundInversionLoss with v6.1 smooth support Tversky/unit IoU (far-bg coverage), Huber NLL & detrended data misfit
+    ├── train.py                # Dedicated on-the-fly training loop (v5.1/v6/v6.1, warm-restart/resume scheduler persistence, pure FP32, ModelEMA)
     ├── dashboard.py            # Decoupled GUI/matplotlib TrainingMonitor & HTML5/WebGL2 dashboard generator
-    ├── export_demo.py          # Exports best-epoch 2D/3D static viewer bundle to .inv/demo/
-    ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, local contrast IoU, amp & halo metrics
+    ├── export_demo.py          # Exports versioned best-epoch 2D/3D static viewer bundle (8 samples/category) to .inv/demo/
+    ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, smooth support IoU, 4-bucket eval & calibration metrics
     ├── infer_prior.py          # Input-scaled neural prior & uncertainty (density + sigma) writer into Mod3D JSON
     ├── export_onnx.py          # PyTorch to ONNX (opset 17) static export with dual density + log_var heads & CoreML verification
-    ├── vol3d_io.py             # Compact base64 RLE 3D volume & int16 2D field codecs for HTML/demo serialization
-    └── test_inv_python.py      # Automated 30-test Python, v5.1 Green's bias, NLL, realistic geology & CoreML parity suite
+    ├── vol3d_io.py             # Compact base64 RLE 3D volume, uint16 terrain & int16 2D field codecs for HTML/demo serialization
+    ├── test_inv_python.py      # Automated 39-test Python, v5.1/v6 physics, realistic geology & CoreML parity suite
+    └── test_inv_v6_model.py    # Automated 8-test v6/v6.1 OddPyramidGravity, smooth IoU, calibration & checkpoint compat suite
 ```
 
 ---
@@ -206,8 +207,9 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run automated Python test suite (30 tests verifying physics, v5.1 architecture, Green's bias, NLL, realistic geology & ONNX CoreML parity)
+# Run automated Python test suites (39 core/v5/v6 tests + 8 v6/v6.1 model, smooth IoU & CoreML parity tests)
 python test_inv_python.py
+python test_inv_v6_model.py
 
 # Train 3D Swin Transformer (v5.1 default, pure FP32) with live macOS GUI window
 python train.py --epochs 20 --steps 200 --batch-size 8 --gui

@@ -47,6 +47,27 @@ To solve this, `.inv` employs a **Three-Phase Hybrid Training Strategy**:
 
 ---
 
+### 1.1 `v6.1` Upgrades Summary
+
+Building on `v5.1` and `v6`, **`v6.1`** introduces drop-in architectural, physics, loss, training, and visualization upgrades while keeping the `(1, 5, 64, 64)` static ONNX contract and single-partition CoreML MLProgram compatibility:
+
+* **Forward & Physics Conditioning ([`model_swin3d.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/model_swin3d.py))**:
+  * `OddPyramidGravity` expands `aspect_knots` to 5 knots (`[0.55, 0.75, 1.00, 1.20, 1.40]`) and 32 rational `self_knots` (`u_self_knots`), cutting mid-aspect and self-column forward errors while avoiding redundant adjoint passes via analytical `sensitivity_norm`.
+  * Restores `GreensVerticalBias` inside `CoreMLAxialGlobalBlock3D`, adds learnable depth-weighted feedback (`bp_z_beta`, init `0.85`), decouples Stage-1 output heads (`proto_head_init`), adds `cls_depth_prior` lithology depth logits, smooths `occ_4d` occupancy gating, initializes `logvar_out.bias = -4.0`, and auto-migrates `v6.0` checkpoints in `_load_from_state_dict`.
+* **Dataset & Survey Parity ([`dataset.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/dataset.py), [`forward.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/forward.py))**:
+  * Ground-primary survey mix plus elevated relief-draped airborne clearance (`CLEARANCE_CLAMP_V6 = 8.0`), C++ `BackgroundBasis::evaluate()` parity detrending (`cpp_border_eval`, `cpp_border_proj`), disabled Bouguer clutter poisoning (`bouguer_err_prob = 0.0`), bimodal `landfill_plume` thickness, steep dykes, and rebalanced structural archetypes (`listric_graben`, `folded_horizons`, `tight_cluster`, `vertical_stack`, `abutting_contact`).
+* **Losses & Smooth Evaluation ([`losses.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/losses.py), [`evaluate.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/evaluate.py))**:
+  * Removes asymmetric `+0.20 * overshoot` from `l_fg`, sets `lambda_rho_init = 0.10`, tunes Huber-Gaussian NLL (`c_h = 3.0`, stronger `nll_far` calibration), and uses detrend-invariant `_border_project_2d` data misfit.
+  * Replaces hard step-cutoff IoU with an anchored smooth support transition (`_smooth_support` in `evaluate.py` and `_unit_and_instance_iou_loss_v6` in `losses.py`) plus far-background coverage (`w_bg_far = d3 + 0.20 * (1 - d3)`), penalizing sub-threshold empty-cell false positives continuously.
+  * Adds 4-bucket stratified validation (`make_v6_val_buckets`) and uncertainty calibration metrics (`compute_calibration_metrics`: `unc_spearman`, `aurc`, `bd_sig_err_ratio`, `fg_1sig_cov`).
+* **Resume & Scheduler Persistence ([`train.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/train.py))**:
+  * Adds `build_resume_v6_scheduler` with `--warm-restart`, `--total-epochs`, `--reset-best`, and persisted `optimizer_state_dict` / `sched_state_dict` for seamless multi-stage continuation.
+* **C++ Inference, Web Demo & Dashboards ([`neural_prior.hpp`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/include/inv/neural_prior.hpp), [`dashboard.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/dashboard.py), [`export_demo.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/export_demo.py))**:
+  * Supports 2D spatial clearance conditioning (`ceiling 8.0`) in C++ `NeuralPriorInference` and `Inversion3DDialog`.
+  * Updates `.inv/demo/` to 64 random validation scenes (8 samples $\times$ 8 categories) using versioned sidecars (`vol3d_v6.1_meta.js`, `vol3d_v6.1_best.js`), and adds independent 3D relief surface coloring toggles (`Topography` / `Field` on Truth; `Predicted` / `Difference` on Predicted).
+
+---
+
 ## 2. Prerequisites & Environment Setup
 
 The training pipeline requires **Python 3.10+** and **PyTorch 2.1+**. It natively supports **Apple Silicon Metal (MPS)**, **NVIDIA CUDA**, and CPU.
@@ -202,9 +223,14 @@ When training `v2`/`v3`/`v4` (`aux["logits"]`, weighted by `--lambda-cls`, defau
 * Soft Dice over present foreground classes **plus boundary-shell background (`class 0` inside $d_3$)** and absent-class leakage suppression.
 * **Surface-Distance Head ($\mathcal{L}_{\text{edt}}$, `v3`/`v4`)**: Supervises `aux["edt"]` against iterative 3D morphological interior depth (`_interior_edt_proxy`) with gap-saddle weighting (`+3×`) so body cores peak separately from narrow gaps.
 
-#### 7. Signed L1-IoU / Tanimoto Loss ($\mathcal{L}_{\text{Tanimoto}}$)
+#### 7. Signed L1-IoU / Tanimoto Loss & V6.1 Smooth Support IoU ($\mathcal{L}_{\text{Tanimoto}}, \mathcal{L}_{\text{unit-IoU}}$)
 $$\mathcal{L}_{\text{Tanimoto}} = 1.0 - \frac{2 \sum \min\left(\text{ReLU}(p_n \cdot \text{sgn}(t_n)), |t_n|\right)}{\|p_n\|_1 + \|t_n\|_1 + \epsilon}$$
 Guarantees the **unique global optimum is strictly $p_n = t_n$** regardless of partial spatial coverage.
+
+In `v6.1` (`_unit_and_instance_iou_loss_v6`), per-instance Tversky ($\alpha = 0.35$, $\beta = 0.65$) and per-unit `unit_id` IoU use a **smooth anchored support transition** centered at $u = 0.5$ ($50\%$ of local reference contrast) instead of a steep step cutoff:
+$$w(u) = \text{clamp}\!\left(0.85\,\frac{\sigma(6(u - 0.5)) - \sigma(-3)}{\sigma(3) - \sigma(-3)} + 0.15\,u,\; 0,\; 1\right)$$
+* **Zero at exact background ($u = 0$), $0.5$ at $u = 0.5$, $1.0$ at $u \ge 1$**, with a strictly positive slope across $(0, 1)$ so sub-threshold predictions are penalized smoothly without a $0.49 \to 0.51$ cliff.
+* **Far-background false-positive coverage**: Empty subsurface cells outside the 3-voxel body dilation $d_3$ remain active with weight $w_{\text{bg,far}} = d_3 + 0.20\,(1 - d_3)$ (using scene mean foreground contrast `bg_ref` as reference), preventing unpenalized background leakage outside $d_3$.
 
 #### 8. Shifted Beta-Laplace Aleatoric NLL ($\mathcal{L}_{\text{nll}}$, `v5`)
 When `aux["log_var"]` is present (weighted by `--lambda-nll`, default `0.06`):
@@ -289,7 +315,7 @@ python train.py --resume checkpoints_v5.1/best_swin3d.pt --epochs 40 --lr 1.5e-4
 3. **Standalone Static Demo Export** (`python export_demo.py`): Generates `.inv/demo/` (`index.html`, `preview_2d.js`, `vol3d_meta.js`, `vol3d_best.js`) containing only the best-epoch 2D/3D visualizations in a `2×2` grid starting at scene `#5`, omitting training curves, metrics, and checkpoints.
 4. **High-Resolution Snapshot** (`checkpoints/training_monitor.png`): 6-panel summary chart updated every epoch:
    * **Panel 1 (Losses)**: Train Loss, Val Loss, Relative Data Misfit, Opposite-Sign Halo loss.
-   * **Panel 2 (3D Recovery)**: 3D Volumetric IoU ($\ge 50\%$ peak), Amplitude Ratio ($\sum p / \sum t$), 1 - Body Rel L1.
+   * **Panel 2 (3D Recovery)**: Smooth 3D Volumetric IoU (anchored support transition centered at $50\%$ ref), Amplitude Ratio ($\sum p / \sum t$), 1 - Body Rel L1.
    * **Panel 3 (Depth Accuracy)**: 3D Depth Centroid Error [m] with 1-cell reference line.
    * **Panel 4 (Draped Gravity Map)**: Surface $g_z$ anomaly [mGal] with profile slice marker.
    * **Panel 5 (Ground Truth X-Z Section)**: Vertical density cross-section below relief with shaded air cells.
@@ -314,7 +340,7 @@ python train.py --resume checkpoints_v5.1/best_swin3d.pt --epochs 40 --lr 1.5e-4
 | `l1_rel` | Mean whole-volume L1 error / $\max|m_{\text{true}}|$ | `0.000` | $\approx$ Body volume fraction ($\approx 0.003$) |
 | `body_l1_rel` | Mean relative L1 error inside true bodies normalized per voxel by $|t_n|$ | `0.000` | `1.000` |
 | `data_rel_misfit` | Gravity misfit $\|G m_{\text{pred}} - d\| / \|d\|$ | `0.000` | `1.000` |
-| `iou` | 3D Volumetric IoU with per-body local contrast thresholds | `1.000` | `0.000` |
+| `iou` | Smooth 3D Volumetric Jaccard IoU with anchored support transition centered at $0.5 \times \text{ref}$ (penalizes sub-threshold empty-cell false positives) | `1.000` | `0.000` |
 | `centroid_dz` | Mass-weighted per-body vertical-cylinder depth centroid error $|z_{\text{pred}} - z_{\text{true}}|$ | `0 m` | `NaN` (no body) |
 | `amp_ratio` | Mass recovery ratio $\sum_{\text{body}} p \cdot \text{sgn}(t) / \sum |t|$ | `1.000` | `0.000` |
 | `halo_opp` | Mass fraction sitting in opposite-sign compensating halos | `0.000` | `0.000` |
