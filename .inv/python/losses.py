@@ -668,7 +668,11 @@ class CompoundInversionLoss(nn.Module):
                             ),
                         )
                     else:
-                        tt = F.adaptive_avg_pool3d(tf_slice, t_shape)
+                        # PyTorch aten::_adaptive_avg_pool3d is not implemented on MPS; evaluate on CPU for MPS inputs
+                        if tf_slice.device.type == "mps":
+                            tt = F.adaptive_avg_pool3d(tf_slice.cpu(), t_shape).to(tf_slice.device)
+                        else:
+                            tt = F.adaptive_avg_pool3d(tf_slice, t_shape)
                     tp_n = tp / a
                     tt_n = tt / a
                     tsum = tp_n.abs().flatten(1).sum(1) + tt_n.abs().flatten(1).sum(1) + 1e-6
