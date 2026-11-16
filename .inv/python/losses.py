@@ -154,7 +154,8 @@ class CompoundInversionLoss(nn.Module):
     def __init__(self, lambda_data=0.25, lambda_ms=0.05, lambda_cls=0.25, body_boost=9.0,
                  e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None,
                  lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08,
-                 use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.10):
+                 use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.10,
+                 lambda_tier=0.20):
         super().__init__()
         self.lambda_data, self.lambda_ms, self.lambda_cls = lambda_data, lambda_ms, lambda_cls
         self.body_boost, self.e_rel = body_boost, e_rel
@@ -167,6 +168,7 @@ class CompoundInversionLoss(nn.Module):
         self.tversky_alpha = float(tversky_alpha)
         self.tversky_beta = float(tversky_beta)
         self.lambda_rho_init = float(lambda_rho_init)
+        self.lambda_tier = float(lambda_tier)
         self.forward_op = forward_op
         self.zhdanov = ZhdanovFocusingLoss()
         self._bp_cache = {}
@@ -407,9 +409,11 @@ class CompoundInversionLoss(nn.Module):
         return 0.45 * l_inst_tversky + 0.55 * l_unit_iou
 
     def forward(self, m_pred, m_true, d_clean=None, z_obs=None, aux=None, unit_id=None):
+        is_v7 = bool(aux is not None and aux.get("is_v7", False))
         is_v6 = bool(
             self.use_v6_losses
             or unit_id is not None
+            or is_v7
             or (aux is not None and (aux.get("is_v6", False) or "rho_init" in aux))
         )
         m_pred = m_pred.float()
@@ -633,6 +637,50 @@ class CompoundInversionLoss(nn.Module):
             c_iou = (1.0 - (2.0 * c_int + 1e-6) / csum).clamp_min(0.0)
             l_coarse = (0.5 * c_l1 + 0.5 * c_iou).mean()
 
+        l_tier = torch.zeros((), device=m_pred.device, dtype=m_pred.dtype)
+        if aux is not None and "tier_preds" in aux and self.lambda_tier > 0:
+            tier_preds = aux["tier_preds"]
+            if isinstance(tier_preds, (tuple, list)) and len(tier_preds) == 3:
+                nz_tot = m_true.shape[2]
+                d0 = max(1, nz_tot // 4)
+                n1_fine = (nz_tot - d0) // 2
+                fine_slices = (
+                    m_true[:, :, :d0],
+                    m_true[:, :, d0:d0 + n1_fine],
+                    m_true[:, :, d0 + n1_fine:],
+                )
+                tier_weights = (0.45, 0.35, 0.20)
+                tier_terms = []
+                for tp_raw, tf_slice, tw in zip(tier_preds, fine_slices, tier_weights):
+                    tp = tp_raw.float()
+                    t_shape = tp.shape[2:]
+                    if tf_slice.shape[2:] == t_shape:
+                        tt = tf_slice
+                    elif (tf_slice.shape[2] % t_shape[0] == 0
+                          and tf_slice.shape[3] % t_shape[1] == 0
+                          and tf_slice.shape[4] % t_shape[2] == 0):
+                        tt = F.avg_pool3d(
+                            tf_slice,
+                            kernel_size=(
+                                tf_slice.shape[2] // t_shape[0],
+                                tf_slice.shape[3] // t_shape[1],
+                                tf_slice.shape[4] // t_shape[2],
+                            ),
+                        )
+                    else:
+                        tt = F.adaptive_avg_pool3d(tf_slice, t_shape)
+                    tp_n = tp / a
+                    tt_n = tt / a
+                    tsum = tp_n.abs().flatten(1).sum(1) + tt_n.abs().flatten(1).sum(1) + 1e-6
+                    t_l1 = (tp_n - tt_n).abs().flatten(1).sum(1) / tsum
+                    t_ali = F.relu(tp_n * torch.sign(tt_n))
+                    t_int = torch.minimum(t_ali, tt_n.abs()).flatten(1).sum(1)
+                    t_iou = (1.0 - (2.0 * t_int + 1e-6) / tsum).clamp_min(0.0)
+                    has_sig = (tp_n.abs().flatten(1).sum(1) + tt_n.abs().flatten(1).sum(1)) > 0
+                    t_comb = torch.where(has_sig, 0.5 * t_l1 + 0.5 * t_iou, torch.zeros_like(t_l1))
+                    tier_terms.append(tw * t_comb.mean())
+                l_tier = sum(tier_terms)
+
         l_rho_init = torch.zeros((), device=m_pred.device)
         if is_v6 and aux is not None and "rho_init" in aux and self.lambda_rho_init > 0:
             ri_n = aux["rho_init"].float() / a
@@ -703,7 +751,8 @@ class CompoundInversionLoss(nn.Module):
                 l_data = 0.65 * l_amp + 0.35 * l_dgrad
 
         total = (l_sup + self.lambda_cls * l_cls + l_edt
-                 + self.lambda_coarse * l_coarse + self.lambda_rho_init * l_rho_init
+                 + self.lambda_coarse * l_coarse + self.lambda_tier * l_tier
+                 + self.lambda_rho_init * l_rho_init
                  + eff_lambda_nll * l_nll + self.lambda_data * l_data)
         return total, {
             "loss_total": total.item(),
@@ -715,6 +764,7 @@ class CompoundInversionLoss(nn.Module):
             "loss_cls": l_cls.item(),
             "loss_edt": l_edt.item(),
             "loss_coarse": l_coarse.item(),
+            "loss_tier": l_tier.item(),
             "loss_rho_init": l_rho_init.item(),
             "loss_nll": l_nll.item(),
             "loss_amp": l_amp_cons.item(),
