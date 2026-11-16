@@ -1881,18 +1881,24 @@ class CoreMLSepSubpixelUp3D(nn.Module):
         self.conv_z = nn.Conv2d(c_out, c_out, kernel_size=(3, 1), padding=(1, 0), groups=c_out)
         self.proj = nn.Conv2d(c_out, c_out, 1)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, target_dhw: tuple[int, int, int] | None = None) -> torch.Tensor:
         b, c, d, h, w = x.shape
-        # 2x Z via 4D bilinear on (B, C, D, H*W)
-        xz = F.interpolate(
-            x.reshape(b, c, d, h * w), scale_factor=(2.0, 1.0), mode="bilinear", align_corners=False
-        ).reshape(b, c * 2 * d, h, w)
-        # 2x H, W via 4D bilinear on (B, C*2*D, H, W)
-        xhw = F.interpolate(xz, scale_factor=2.0, mode="bilinear", align_corners=False)
-        d2, h2, w2 = 2 * d, 2 * h, 2 * w
+        if target_dhw is None or tuple(int(v) for v in target_dhw) == (2 * d, 2 * h, 2 * w):
+            # 2x Z via 4D bilinear on (B, C, D, H*W)
+            xz = F.interpolate(
+                x.reshape(b, c, d, h * w), scale_factor=(2.0, 1.0), mode="bilinear", align_corners=False
+            ).reshape(b, c * 2 * d, h, w)
+            # 2x H, W via 4D bilinear on (B, C*2*D, H, W)
+            x_res = F.interpolate(xz, scale_factor=2.0, mode="bilinear", align_corners=False).reshape(
+                b, c, 2 * d, 2 * h, 2 * w
+            )
+            d2, h2, w2 = 2 * d, 2 * h, 2 * w
+        else:
+            d2, h2, w2 = (int(v) for v in target_dhw)
+            x_res = _trilinear_coreml(x, (d2, h2, w2))
         hw_f = F.gelu(
             self.conv_hw(
-                xhw.reshape(b, c, d2, h2, w2).permute(0, 2, 1, 3, 4).reshape(b * d2, c, h2, w2)
+                x_res.permute(0, 2, 1, 3, 4).reshape(b * d2, c, h2, w2)
             )
         )
         c_out = hw_f.shape[1]
@@ -2724,10 +2730,8 @@ class PotentialFieldTransformer3DV7(nn.Module):
             self.extra_dec_mid = nn.ModuleList([CoreMLSepConv25DBlock(ch_mid) for _ in range(self.dec_depth - 2)])
 
         # Stage 2 Option A 3-Tier Slab Hierarchy (41,984 internal voxels on 64x64x32)
-        self.up_vox = CoreMLSepSubpixelUp3D(ch_mid, ch_vox)
-        self.proj_vox_t1 = nn.Conv2d(ch_mid, ch_vox, 1)
-        self.proj_vox_t2 = nn.Conv2d(ch_mid, ch_vox, 1)
-        self.skip_vox = CoreMLDepthConditionedSkip5(c0, ch_vox)
+        self.up_vox_tiers = nn.ModuleList([CoreMLSepSubpixelUp3D(ch_mid, ch_vox) for _ in range(3)])
+        self.skip_vox_tiers = nn.ModuleList([CoreMLDepthConditionedSkip5(c0, ch_vox) for _ in range(3)])
         self.skip_vox_t1 = CoreMLDepthConditionedSkip5(c1, ch_vox)
         self.skip_vox_t2 = CoreMLDepthConditionedSkip5(c, ch_vox)
         self.scale_vox = nn.Linear(c, ch_vox)
@@ -2880,6 +2884,8 @@ class PotentialFieldTransformer3DV7(nn.Module):
 
         # Map un-tiered V6 Stage-2 refinement modules onto all 3 V7 tiers when absent
         tier_src_maps = [
+            ("up_vox.", [f"up_vox_tiers.{i}." for i in range(3)]),
+            ("skip_vox.", [f"skip_vox_tiers.{i}." for i in range(3)]),
             ("dec_vox1.", [f"dec_vox1_tiers.{i}." for i in range(3)]),
             ("dec_vox2.", [f"dec_vox2_tiers.{i}." for i in range(3)]),
             ("res_vox_3d.", [f"res_vox_3d_tiers.{i}." for i in range(3)]),
@@ -2898,12 +2904,12 @@ class PotentialFieldTransformer3DV7(nn.Module):
                             state_dict[dk] = state_dict[sk].detach().clone()
                     state_dict.pop(sk, None)
 
-        # Zero-pad newly added ch-5 / head input dimensions; preserve base_init on expanded hidden ch_vox
+        # Zero-pad newly added ch-5 / head / expanded ch_vox dimensions on V6 -> V7 migration
         zero_pad_heads = (
             "enc0.0.weight", "scale_mlp.0.weight", "res_mid_2d.0.weight",
             "proto_head.weight", "proto_head.bias", "proto_head_init.weight", "proto_head_init.bias",
             "rock_head.weight", "rock_head_init.weight", "res_head.weight", "res_head_init.weight",
-            "edt_head.weight", "logvar_hv.weight", "logvar_out.weight",
+            "edt_head.weight", "logvar_hv.weight", "logvar_hv.bias", "logvar_out.weight",
         )
         ch5_mixed_weights = ("res_vox_2d.0.weight", "logvar_2d.weight")
         for name, base_t in own_sd.items():
@@ -2911,7 +2917,7 @@ class PotentialFieldTransformer3DV7(nn.Module):
             if fk in state_dict and state_dict[fk].shape != base_t.shape:
                 src_t = state_dict[fk]
                 if name in ch5_mixed_weights and src_t.ndim == base_t.ndim:
-                    out = base_t.detach().clone()
+                    out = torch.zeros_like(base_t) if is_v6_ckpt else base_t.detach().clone()
                     min_o = min(src_t.shape[0], base_t.shape[0])
                     min_i = min(src_t.shape[1], base_t.shape[1])
                     out[:min_o, :min_i] = src_t[:min_o, :min_i].to(dtype=out.dtype)
@@ -2919,11 +2925,29 @@ class PotentialFieldTransformer3DV7(nn.Module):
                         out[:, src_t.shape[1]:] = 0.0
                     state_dict[fk] = out
                 else:
-                    state_dict[fk] = _adapt_state_dict_tensor(
-                        src_t, base_t, zero_pad_new=(name in zero_pad_heads),
+                    out = _adapt_state_dict_tensor(
+                        src_t, base_t, zero_pad_new=(is_v6_ckpt or name in zero_pad_heads),
                     )
+                    if (
+                        is_v6_ckpt
+                        and (name.startswith("dec_vox1_tiers.") or name.startswith("dec_vox2_tiers."))
+                        and (name.endswith(".pw1.weight") or name.endswith(".pw2.weight"))
+                        and src_t.ndim == base_t.ndim == 4
+                        and base_t.shape[0] > src_t.shape[0]
+                    ):
+                        out[src_t.shape[0]:, :src_t.shape[1]] = (
+                            1e-3 * base_t[src_t.shape[0]:, :src_t.shape[1]].to(dtype=out.dtype)
+                        )
+                    state_dict[fk] = out
             elif is_v6_ckpt and fk not in state_dict:
-                state_dict[fk] = base_t.detach().clone()
+                cloned = base_t.detach().clone()
+                if any(
+                    name == f"{m_name}.{p_name}"
+                    for m_name in ("skip_vox_t1", "skip_vox_t2", "bridge_skip_0to1", "bridge_skip_1to2")
+                    for p_name in ("proj_2d.weight", "proj_2d.bias")
+                ):
+                    cloned.zero_()
+                state_dict[fk] = cloned
 
         super()._load_from_state_dict(
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
@@ -3106,38 +3130,39 @@ class PotentialFieldTransformer3DV7(nn.Module):
 
         se_vox = self.scale_vox(se).view(b, self.ch_vox, 1, 1, 1)
 
-        # Tier 0: (B, ch_vox, d0, H, W)
-        if self.d0 % 2 == 0:
-            u0 = self.up_vox(u_mid[:, :, :self.d0 // 2])
-        else:
-            u0 = _trilinear_coreml(self.up_vox(u_mid[:, :, :(self.d0 + 1) // 2]), (self.d0, self.nx, self.ny))
-        hv0 = self.dec_vox1_tiers[0](u0 + self.skip_vox(f0, clr_s, d_surf_tiers[0], self.z_top_t0) + se_vox)
+        f0_t1 = F.avg_pool2d(f0, 2)
+        f0_t2 = F.avg_pool2d(f0, 4)
 
-        # Tier 1: (B, ch_vox, d1, H/2, W/2) with cross-tier 0 -> 1 bridge
+        # Tier 0: (B, ch_vox, d0, H, W)
+        u0_in = u_mid[:, :, :self.d0 // 2] if self.d0 % 2 == 0 else u_mid[:, :, :(self.d0 + 1) // 2]
+        u0 = self.up_vox_tiers[0](u0_in, target_dhw=(self.d0, self.nx, self.ny))
+        hv0 = self.dec_vox1_tiers[0](u0 + self.skip_vox_tiers[0](f0, clr_s, d_surf_tiers[0], self.z_top_t0) + se_vox)
+
+        # Tier 1: (B, ch_vox, d1, H/2, W/2) with inherited up_vox/skip_vox + multi-scale f1 & cross-tier 0 -> 1 bridge
         s1_lo = self.d0 // 2
         s1_hi = max(s1_lo + 1, (self.d0 + self.n1_fine + 1) // 2)
         h1, w1 = self.tier_hw[1]
-        u1_src = _trilinear_coreml(u_mid[:, :, s1_lo:s1_hi], (self.d1, h1, w1))
-        u1 = self.proj_vox_t1(u1_src.reshape(b, self.ch_mid, self.d1 * h1, w1)).reshape(
-            b, self.ch_vox, self.d1, h1, w1
-        )
+        u1 = self.up_vox_tiers[1](u_mid[:, :, s1_lo:s1_hi], target_dhw=(self.d1, h1, w1))
         b0_2d = F.gelu(self.bridge_0to1(self._last_two_slices(hv0)))
         hv1 = self.dec_vox1_tiers[1](
-            u1 + self.skip_vox_t1(f1, clr_s_mid, d_surf_tiers[1], self.z_top_t1)
-            + self.bridge_skip_0to1(b0_2d, clr_s_mid, d_surf_tiers[1], self.z_rel_t1) + se_vox
+            u1
+            + self.skip_vox_tiers[1](f0_t1, clr_s_mid, d_surf_tiers[1], self.z_top_t1)
+            + self.skip_vox_t1(f1, clr_s_mid, d_surf_tiers[1], self.z_top_t1)
+            + self.bridge_skip_0to1(b0_2d, clr_s_mid, d_surf_tiers[1], self.z_rel_t1)
+            + se_vox
         )
 
-        # Tier 2: (B, ch_vox, d2, H/4, W/4) with cross-tier 1 -> 2 bridge
+        # Tier 2: (B, ch_vox, d2, H/4, W/4) with inherited up_vox/skip_vox + multi-scale f2 & cross-tier 1 -> 2 bridge
         s2_lo = min(nz_mid - 1, (self.d0 + self.n1_fine) // 2)
         h2, w2 = self.tier_hw[2]
-        u2_src = _trilinear_coreml(u_mid[:, :, s2_lo:], (self.d2, h2, w2))
-        u2 = self.proj_vox_t2(u2_src.reshape(b, self.ch_mid, self.d2 * h2, w2)).reshape(
-            b, self.ch_vox, self.d2, h2, w2
-        )
+        u2 = self.up_vox_tiers[2](u_mid[:, :, s2_lo:], target_dhw=(self.d2, h2, w2))
         b1_2d = F.gelu(self.bridge_1to2(self._last_two_slices(hv1)))
         hv2 = self.dec_vox1_tiers[2](
-            u2 + self.skip_vox_t2(f2, clr_s_t2, d_surf_tiers[2], self.z_top_t2)
-            + self.bridge_skip_1to2(b1_2d, clr_s_t2, d_surf_tiers[2], self.z_rel_t2) + se_vox
+            u2
+            + self.skip_vox_tiers[2](f0_t2, clr_s_t2, d_surf_tiers[2], self.z_top_t2)
+            + self.skip_vox_t2(f2, clr_s_t2, d_surf_tiers[2], self.z_top_t2)
+            + self.bridge_skip_1to2(b1_2d, clr_s_t2, d_surf_tiers[2], self.z_rel_t2)
+            + se_vox
         )
         hv_tiers = [hv0, hv1, hv2]
 

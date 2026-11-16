@@ -271,6 +271,14 @@ def test_v7_compound_loss_tier_supervision_zero_and_gradients():
         assert p.grad is not None and torch.isfinite(p.grad).all() and float(p.grad.abs().sum()) > 0.0
 
 
+def _corr_3d(a: torch.Tensor, b: torch.Tensor) -> float:
+    af = a.double().reshape(-1)
+    bf = b.double().reshape(-1)
+    af = af - af.mean()
+    bf = bf - bf.mean()
+    return float((af * bf).sum() / (af.norm() * bf.norm() + 1e-12))
+
+
 def test_v7_warm_start_from_v61_checkpoint():
     torch.manual_seed(53)
     x6 = _make_probe_input(batch=2, channels=6, nx=64, ny=64)
@@ -286,14 +294,48 @@ def test_v7_warm_start_from_v61_checkpoint():
     assert torch.equal(m7_base.blocks[0].n1.weight, m6_base.blocks[0].n1.weight)
     assert torch.equal(m7_base.enc0[0].weight[:, :19], m6_base.enc0[0].weight)
     assert float(m7_base.enc0[0].weight[:, 19:].detach().abs().max()) == 0.0
-    assert torch.equal(m7_base.dec_vox1_tiers[0].pw1.weight[:48, :24], m6_base.dec_vox1.pw1.weight)
-    assert torch.equal(m7_base.dec_vox1_tiers[2].pw1.weight[:48, :24], m6_base.dec_vox1.pw1.weight)
+    for tier_i in range(3):
+        assert torch.equal(m7_base.up_vox_tiers[tier_i].conv_hw.weight[:24], m6_base.up_vox.conv_hw.weight)
+        assert torch.equal(m7_base.skip_vox_tiers[tier_i].proj_2d.weight[:24], m6_base.skip_vox.proj_2d.weight)
+        assert torch.equal(m7_base.dec_vox1_tiers[tier_i].pw1.weight[:48, :24], m6_base.dec_vox1.pw1.weight)
+        assert torch.equal(m7_base.dec_vox2_tiers[tier_i].pw1.weight[:48, :24], m6_base.dec_vox2.pw1.weight)
+    assert float(m7_base.bridge_skip_0to1.proj_2d.weight.detach().abs().max()) == 0.0
+    assert float(m7_base.skip_vox_t1.proj_2d.weight.detach().abs().max()) == 0.0
+
     with torch.no_grad():
+        rho_m6_b = m6_base(x6[:, :5])
         rho_b, lv_b = m7_base.forward_uncertainty(x6)
     assert rho_b.shape == (2, 1, 32, 64, 64) and lv_b.shape == (2, 1, 32, 64, 64)
     assert torch.isfinite(rho_b).all() and torch.isfinite(lv_b).all()
+    corr_b = _corr_3d(rho_m6_b, rho_b)
+    assert corr_b > 0.90, f"Expected step-0 V6.1 base -> V7 base correlation > 0.90, got {corr_b:.4f}"
 
-    # 2. V6.1 base -> V7 slim via train._load_ckpt_weights_compat(..., strict=False)
+    # Verify 1 backward pass wakes up newly expanded ch_vox channels (24..32) and cross-tier bridges
+    m7_base.train()
+    rho_b_grad = m7_base(x6)
+    (rho_b_grad ** 2).mean().backward()
+    for pname, pgrad in (
+        ("res_head.weight[:, 24:]", m7_base.res_head.weight.grad[:, 24:]),
+        ("rock_head.weight[:, 24:]", m7_base.rock_head.weight.grad[:, 24:]),
+        ("proto_head.weight[24:]", m7_base.proto_head.weight.grad[24:]),
+        ("dec_vox2_tiers.0.pw2.weight[:24, 48:]", m7_base.dec_vox2_tiers[0].pw2.weight.grad[:24, 48:]),
+        ("bridge_skip_0to1.proj_2d.weight", m7_base.bridge_skip_0to1.proj_2d.weight.grad),
+        ("skip_vox_t1.proj_2d.weight", m7_base.skip_vox_t1.proj_2d.weight.grad),
+    ):
+        assert pgrad is not None and torch.isfinite(pgrad).all()
+        assert float(pgrad.abs().sum()) > 0.0, f"Expected non-zero gradient on {pname}"
+
+    # 2. V6.1 slim (ch_vox=16) -> V7 slim (ch_vox=24) preserves >0.90 correlation;
+    #    V6.1 base -> V7 slim also loads cleanly via _load_ckpt_weights_compat(..., strict=False).
+    m6_slim = create_model(64, 64, 32, **V6_SIZE_PRESETS["slim"]).eval()
+    m7_slim_matched = create_model(64, 64, 32, **V7_SIZE_PRESETS["slim"]).eval()
+    m7_slim_matched.load_state_dict({k: v.clone() for k, v in m6_slim.state_dict().items()}, strict=True)
+    with torch.no_grad():
+        rho_m6_s = m6_slim(x6[:, :5])
+        rho_s_matched = m7_slim_matched(x6)
+    corr_s = _corr_3d(rho_m6_s, rho_s_matched)
+    assert corr_s > 0.90, f"Expected step-0 V6.1 slim -> V7 slim correlation > 0.90, got {corr_s:.4f}"
+
     m7_slim = create_model(64, 64, 32, **V7_SIZE_PRESETS["slim"]).eval()
     _load_ckpt_weights_compat(m7_slim, {k: v.clone() for k, v in v61_sd.items()}, strict=False)
     with torch.no_grad():
