@@ -2363,6 +2363,74 @@ def build_v6_input(obs, t, depth_total, valid_mask=None, aspect=1.0, clearance=0
     )
 
 
+# Normalized detrend-mode conditioning codes for v7 channel 5 (includes both canonical
+# ``simulate_batch(..., return_detrend_modes=True)`` names and C++/config aliases).
+DETREND_MODE_CODE = {
+    "raw": 0.0,
+    "none": 0.0,
+    "constant": 0.33,
+    "constant_shift": 0.33,
+    "planar": 0.67,
+    "planar_ramp": 0.67,
+    "border_planar": 1.0,
+    "cpp_border": 1.0,
+    "cpp_border_eval": 1.0,
+    "cpp_border_proj": 1.0,
+}
+
+
+def _detrend_mode_to_code(mode) -> float:
+    if mode is None:
+        return 1.0
+    if isinstance(mode, (int, float)):
+        return float(mode)
+    key = str(mode).strip().lower()
+    if key in DETREND_MODE_CODE:
+        return float(DETREND_MODE_CODE[key])
+    try:
+        norm = _normalize_detrend_mode(key)
+        return float(DETREND_MODE_CODE.get(norm, 1.0))
+    except ValueError:
+        return 1.0
+
+
+def build_v7_input(obs, t, depth_total, valid_mask=None, aspect=1.0, clearance=0.35,
+                   clearance_clamp=CLEARANCE_CLAMP_V6, detrend_modes=None, dxy_canon=CELL):
+    """Build 6-channel v7 input ``(B, 6, H, W)``:
+    ``[gz_50m_eq, terr/depth, valid_mask, log(dz/dxy), clearance/dxy_canon, detrend_mode_code]``.
+    """
+    if float(clearance_clamp) == float(CLEARANCE_CLAMP_V6):
+        x5 = build_v6_input(
+            obs, t, depth_total, valid_mask=valid_mask, aspect=aspect,
+            clearance=clearance, dxy_canon=dxy_canon,
+        )
+    else:
+        x5 = build_v5_input(
+            obs, t, depth_total, valid_mask=valid_mask, aspect=aspect,
+            clearance=clearance, dxy_canon=dxy_canon, clearance_clamp=clearance_clamp,
+        )
+    b, _, nx, ny = x5.shape
+    if detrend_modes is None:
+        ch5 = torch.ones((b, 1, nx, ny), device=x5.device, dtype=x5.dtype)
+    elif isinstance(detrend_modes, torch.Tensor):
+        if detrend_modes.shape == (b, 1, nx, ny):
+            ch5 = detrend_modes.to(device=x5.device, dtype=x5.dtype)
+        else:
+            ch5 = detrend_modes.to(device=x5.device, dtype=x5.dtype).reshape(b, 1, 1, 1).expand(b, 1, nx, ny)
+    elif isinstance(detrend_modes, np.ndarray) and detrend_modes.dtype.kind not in ("U", "S", "O"):
+        ch5 = torch.as_tensor(detrend_modes, device=x5.device, dtype=x5.dtype).reshape(b, 1, 1, 1).expand(b, 1, nx, ny)
+    else:
+        if isinstance(detrend_modes, str):
+            modes_list = [detrend_modes] * b
+        else:
+            modes_list = list(detrend_modes)
+            if len(modes_list) != b:
+                raise ValueError(f"Expected {b} detrend modes, got {len(modes_list)}")
+        codes = [_detrend_mode_to_code(m) for m in modes_list]
+        ch5 = torch.tensor(codes, device=x5.device, dtype=x5.dtype).view(b, 1, 1, 1).expand(b, 1, nx, ny)
+    return torch.cat([x5, ch5], dim=1)
+
+
 def augment_d4(rho, t, obs, clean, z_obs, valid_mask=None, k=None, flip=None,
                clearance=None, unit_id=None):
     """Exact horizontal dihedral D4 symmetry augmentation (rotations + reflection) for gz inversion."""
