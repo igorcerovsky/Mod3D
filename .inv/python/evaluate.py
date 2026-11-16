@@ -304,7 +304,7 @@ def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
                    clearance_clamp=4.0, v6_mode=False):
     """Deterministic validation tensors on ``device``: obs (B,C,H,W), truth, clean, z_obs."""
     from dataset import (
-        CLEARANCE, BodyTerrainDataset, build_v5_input, simulate_batch, terrain_channel,
+        CLEARANCE, BodyTerrainDataset, build_v5_input, build_v7_input, simulate_batch, terrain_channel,
     )
     nx, ny, nz, dx, dy, dz = grid
     cr = CLEARANCE if clearance_range is None else clearance_range
@@ -316,7 +316,16 @@ def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
     else:
         rho, t, c, nf, ns = (torch.stack([it[k] for it in items]) for k in range(5))
     rho, t, c, nf = rho.to(device), t.to(device), c.to(device), nf.to(device)
-    if in_channels >= 5 or dropout_prob > 0.0:
+    if in_channels >= 6:
+        obs, clean, z_obs, vm, dmodes = simulate_batch(
+            op, rho, t, c, nf, ns, dropout_prob=dropout_prob, return_mask=True,
+            v6_physics=v6_mode, return_detrend_modes=True,
+        )
+        x = build_v7_input(
+            obs, t, nz * dz, valid_mask=vm, aspect=dz / dx, clearance=c,
+            clearance_clamp=clearance_clamp, detrend_modes=dmodes,
+        )
+    elif in_channels >= 5 or dropout_prob > 0.0:
         obs, clean, z_obs, vm = simulate_batch(
             op, rho, t, c, nf, ns, dropout_prob=dropout_prob, return_mask=True,
             v6_physics=v6_mode,
@@ -346,8 +355,9 @@ def _build_v6_bucket_chunks(
     ds_kwargs: dict,
     sim_kwargs: dict,
     chunk_size: int = 8,
+    in_channels: int = 5,
 ):
-    from dataset import ASPECT_MULTI, BodyTerrainDataset, build_v6_input, simulate_batch
+    from dataset import ASPECT_MULTI, BodyTerrainDataset, build_v6_input, build_v7_input, simulate_batch
 
     nx, ny, nz, dx, dy, _ = grid
     ds = BodyTerrainDataset(n_samples, nx, ny, nz, dx, dy, dx, seed=seed, v6_mode=True,
@@ -362,6 +372,7 @@ def _build_v6_bucket_chunks(
         groups.setdefault(a_idx, []).append(it)
 
     chunks = []
+    want_v7 = int(in_channels) >= 6
     for a_idx, grp in sorted(groups.items()):
         asp = float(aspect_ratios[a_idx])
         dz_cur = dx * asp
@@ -375,10 +386,20 @@ def _build_v6_bucket_chunks(
             c = torch.stack([it[3] for it in sub]).to(device)
             nf = torch.stack([it[4] for it in sub]).to(device)
             ns = torch.stack([it[5] for it in sub])
-            obs, clean, z_obs, vm = simulate_batch(
-                op_cur, rho, t, c, nf, ns, return_mask=True, subvox_cap_op=cap_cur, **sim_kwargs
-            )
-            x = build_v6_input(obs, t, nz * dz_cur, valid_mask=vm, aspect=asp, clearance=c, dxy_canon=dx)
+            if want_v7:
+                obs, clean, z_obs, vm, dmodes = simulate_batch(
+                    op_cur, rho, t, c, nf, ns, return_mask=True, return_detrend_modes=True,
+                    subvox_cap_op=cap_cur, **sim_kwargs
+                )
+                x = build_v7_input(
+                    obs, t, nz * dz_cur, valid_mask=vm, aspect=asp, clearance=c,
+                    detrend_modes=dmodes, dxy_canon=dx,
+                )
+            else:
+                obs, clean, z_obs, vm = simulate_batch(
+                    op_cur, rho, t, c, nf, ns, return_mask=True, subvox_cap_op=cap_cur, **sim_kwargs
+                )
+                x = build_v6_input(obs, t, nz * dz_cur, valid_mask=vm, aspect=asp, clearance=c, dxy_canon=dx)
             chunks.append({
                 "x": x, "truth": rho, "unit_id": uid, "terrain": t,
                 "clean": clean, "z_obs": z_obs, "op": op_cur,
@@ -397,8 +418,9 @@ def make_v6_val_buckets(
     subvox_cap_bank: dict | None = None,
     aspect_ratios=None,
     chunk_size: int = 8,
+    in_channels: int = 5,
 ):
-    """Build 4 stratified v6 validation buckets matching primary ground + large + airborne + multi-aspect:
+    """Build 4 stratified v6/v7 validation buckets matching primary ground + large + airborne + multi-aspect:
 
       - ``ground_clean``: primary ground ``[0.30..2.0 m]``, clean/moderate anomalies, raw/mild clutter
       - ``ground_hard_large_detrend``: primary ground, hard faults + large landfills/basins + Mod3D detrending
@@ -442,6 +464,7 @@ def make_v6_val_buckets(
         out[name] = _build_v6_bucket_chunks(
             n_per_bucket, seed + s_off, device, grid, o_map, c_map,
             r_tuple, f_idx, d_kw, s_kw, chunk_size=chunk_size,
+            in_channels=in_channels,
         )
     return out
 
@@ -456,7 +479,7 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
     """
     from dataset import (
         CLEARANCE, NOISE_FRAC, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN,
-        RHO_MAFIC_MIN, RHO_WATER, build_v5_input, random_bodies, random_terrain,
+        RHO_MAFIC_MIN, RHO_WATER, build_v5_input, build_v7_input, random_bodies, random_terrain,
         simulate_batch, terrain_channel,
     )
 
@@ -516,19 +539,56 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
     clear_t = torch.stack(clearances).to(device)
     nf_t = torch.stack(noise_fracs).to(device)
     ns_t = torch.stack(noise_seeds)
-    obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=v6_physics)
-    if in_channels >= 5:
-        x = build_v5_input(
+    if in_channels >= 6:
+        obs, clean, z_obs, dmodes = simulate_batch(
+            op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=v6_physics,
+            return_detrend_modes=True,
+        )
+        x = build_v7_input(
             obs, terr_t, nz * dz, aspect=dz / dx, clearance=clear_t,
-            clearance_clamp=clearance_clamp,
+            clearance_clamp=clearance_clamp, detrend_modes=dmodes,
         )
     else:
-        x = torch.cat([obs, terrain_channel(terr_t, nz * dz)], dim=1)
+        obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=v6_physics)
+        if in_channels >= 5:
+            x = build_v5_input(
+                obs, terr_t, nz * dz, aspect=dz / dx, clearance=clear_t,
+                clearance_clamp=clearance_clamp,
+            )
+        else:
+            x = torch.cat([obs, terrain_channel(terr_t, nz * dz)], dim=1)
     if samples_per_category == 1:
         labels = tuple(name for name, _, _ in specs)
     else:
         labels = tuple(name for name, _, _ in specs for _ in range(int(samples_per_category)))
     return x, rho_t, clean, z_obs, labels
+
+
+def _infer_eval_model_cfg(model, clearance_clamp=None):
+    """Detect v7/v6/v5/legacy model variant, input channel count, and clearance clamp."""
+    from dataset import CLEARANCE_CLAMP_V6
+
+    model_variant = str(getattr(model, "variant", "") or "").lower()
+    model_in_ch = getattr(model, "in_channels", None)
+    is_v7 = (
+        model_variant == "v7"
+        or "V7" in type(model).__name__
+        or (model_in_ch is not None and int(model_in_ch) >= 6)
+    )
+    is_v6 = (
+        is_v7
+        or model_variant == "v6"
+        or "V6" in type(model).__name__
+        or (clearance_clamp is not None and float(clearance_clamp) > 4.0)
+    )
+    if is_v7:
+        in_ch = int(getattr(model, "in_channels", 6))
+    elif hasattr(model, "logvar_head") or is_v6:
+        in_ch = int(getattr(model, "in_channels", 5))
+    else:
+        in_ch = int(getattr(model, "in_channels", 2))
+    clr_clamp = CLEARANCE_CLAMP_V6 if is_v6 else (4.0 if clearance_clamp is None else float(clearance_clamp))
+    return is_v7, is_v6, in_ch, clr_clamp
 
 
 @torch.no_grad()
@@ -542,16 +602,11 @@ def export_examples_figure(model, op, device, grid, out_path, epoch=None, cleara
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-    from dataset import CLEARANCE_CLAMP_V6
 
     nx, ny, nz, dx, _, dz = grid
     x_km = np.arange(nx) * dx / 1000.0
     z_m = np.arange(nz) * dz
-    is_v6 = getattr(model, "variant", None) == "v6" or (
-        clearance_clamp is not None and float(clearance_clamp) > 4.0
-    )
-    in_ch = 5 if (hasattr(model, "logvar_head") or is_v6) else 2
-    clr_clamp = CLEARANCE_CLAMP_V6 if is_v6 else (4.0 if clearance_clamp is None else float(clearance_clamp))
+    _, _, in_ch, clr_clamp = _infer_eval_model_cfg(model, clearance_clamp=clearance_clamp)
 
     sx, st, _, _ = make_fixed_set(4, 2024, op, device, grid, hard_prob=0.0, in_channels=in_ch, clearance_clamp=clr_clamp)
     hx, ht, _, _ = make_fixed_set(4, 3024, op, device, grid, hard_prob=1.0, in_channels=in_ch, clearance_clamp=clr_clamp)
@@ -639,15 +694,9 @@ def export_vol3d_snapshot(
     seed=4024,
 ):
     """Evaluate dashboard validation/showcase samples and write 3D volume sidecars."""
-    from dataset import CLEARANCE_CLAMP_V6
-
     nx, ny, nz, _, _, dz = grid
     y_km = np.arange(ny) * dz / 1000.0
-    is_v6 = getattr(model, "variant", None) == "v6" or (
-        clearance_clamp is not None and float(clearance_clamp) > 4.0
-    )
-    in_ch = 5 if (hasattr(model, "logvar_head") or is_v6) else 2
-    clr_clamp = CLEARANCE_CLAMP_V6 if is_v6 else (4.0 if clearance_clamp is None else float(clearance_clamp))
+    _, is_v6, in_ch, clr_clamp = _infer_eval_model_cfg(model, clearance_clamp=clearance_clamp)
 
     cx, ct, _, cz, show_labels = make_category_showcase(
         op, device, grid, seed=seed, in_channels=in_ch, clearance_clamp=clr_clamp,
@@ -739,9 +788,12 @@ def main():
     model = create_model(g["nx"], g["ny"], g["nz"], **arch)
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
-    h_min = -220.0 if variant == "v6" else -85.0
+    is_v7 = variant == "v7"
+    is_v6_family = variant in ("v6", "v7")
+    h_min = -220.0 if is_v6_family else -85.0
     op = TerrainGravityOperator(*grid, h_min=h_min).to(args.device)
-    clr_clamp = CLEARANCE_CLAMP_V6 if variant == "v6" else 4.0
+    clr_clamp = CLEARANCE_CLAMP_V6 if is_v6_family else 4.0
+    in_ch = int(getattr(model, "in_channels", 6)) if is_v7 else (5 if variant in ("v5", "v6") else 2)
     if args.export_examples or args.export_vol3d:
         if args.export_examples:
             out_p = export_examples_figure(model, op, args.device, grid, args.export_examples,
@@ -757,7 +809,7 @@ def main():
             )
             print(f"Exported 3D volume sidecars to {out_d}")
         return
-    if args.v6_buckets or variant == "v6":
+    if args.v6_buckets or is_v6_family:
         n_pb = max(4, args.samples // 4)
         op_bank = {i: TerrainGravityOperator(g["nx"], g["ny"], g["nz"], g["cell"], g["cell"], g["cell"] * a, h_min=-220.0).to(args.device)
                    for i, a in enumerate(ASPECT_MULTI)}
@@ -765,7 +817,10 @@ def main():
             i: SubvoxelCapOperator(g["nx"], g["ny"], g["cell"], g["cell"], g["cell"] * a).to(args.device)
             for i, a in enumerate(ASPECT_MULTI)
         }
-        buckets = make_v6_val_buckets(n_pb, args.seed, op, op_bank, args.device, grid, subvox_cap_bank=cap_bank)
+        buckets = make_v6_val_buckets(
+            n_pb, args.seed, op, op_bank, args.device, grid,
+            subvox_cap_bank=cap_bank, in_channels=in_ch,
+        )
         with torch.no_grad():
             for bname, chunks in buckets.items():
                 agg = {}
@@ -784,7 +839,6 @@ def main():
                 line = " | ".join(f"{k}={agg[k] / tot_n:.4f}" for k in sorted(agg))
                 print(f"[{bname}] {line}")
         return
-    in_ch = 5 if variant in ("v5", "v6") else 2
     x, truth, clean, z_obs = make_fixed_set(
         args.samples, args.seed, op, args.device, grid,
         hard_prob=args.hard_prob, in_channels=in_ch, clearance_clamp=clr_clamp,

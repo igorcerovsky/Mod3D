@@ -36,6 +36,7 @@ from dataset import (
     augment_d4,
     build_v5_input,
     build_v6_input,
+    build_v7_input,
     simulate_batch,
     terrain_channel,
 )
@@ -60,6 +61,14 @@ try:
     from model_swin3d import V6_SIZE_PRESETS
 except ImportError:
     V6_SIZE_PRESETS = None
+try:
+    from model_swin3d import V7_SIZE_PRESETS
+except ImportError:
+    V7_SIZE_PRESETS = None
+try:
+    from model_swin3d import PotentialFieldTransformer3DV7
+except ImportError:
+    PotentialFieldTransformer3DV7 = None
 from dashboard import TrainingMonitor
 
 ARCH_BY_VARIANT = {
@@ -73,6 +82,8 @@ ARCH_BY_VARIANT = {
 }
 if V6_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v6"] = dict(V6_SIZE_PRESETS["base"])
+if V7_SIZE_PRESETS is not None:
+    ARCH_BY_VARIANT["v7"] = dict(V7_SIZE_PRESETS["base"])
 ARCH = ARCH_BY_VARIANT["v5"]
 
 V6_BUCKET_WEIGHTS = {
@@ -221,8 +232,9 @@ def _call_crit(crit, pred, truth, clean, z_obs, aux=None, unit_id=None):
 
 @torch.no_grad()
 def prepare_v6_batch(batch, op_bank, subvox_cap_bank, asp_list, dev, batch_op,
-                     dropout_prob: float, sim_kwargs: dict | None = None):
-    """Simulate v6 physics + D4 augment (with 2D clearance & unit_id) + build 5-ch input."""
+                     dropout_prob: float, sim_kwargs: dict | None = None,
+                     use_v7_input: bool = False, in_channels: int = 5):
+    """Simulate v6/v7 physics + D4 augment (with 2D clearance & unit_id) + build 5-ch or 6-ch input."""
     rho, uid, t, clr, nf, _, asp_idx = batch
     rho = rho.to(dev)
     uid = uid.to(dev)
@@ -235,23 +247,40 @@ def prepare_v6_batch(batch, op_bank, subvox_cap_bank, asp_list, dev, batch_op,
     clean = torch.empty((b, 1, nx, ny), device=dev, dtype=rho.dtype)
     z_obs = torch.empty((b, nx, ny), device=dev, dtype=rho.dtype)
     vm = torch.ones((b, 1, nx, ny), device=dev, dtype=rho.dtype)
+    want_v7 = bool(use_v7_input or int(in_channels) >= 6)
+    dmodes = ["raw"] * b if want_v7 else None
     kw = dict(sim_kwargs or {})
     for ai, op_i in enumerate(op_bank):
         m_a = asp_idx == ai
         if m_a.any():
             cap_i = None if subvox_cap_bank is None else subvox_cap_bank[ai]
-            o_a, c_a, z_a, v_a = simulate_batch(
-                op_i, rho[m_a], t[m_a], clr[m_a], nf[m_a],
-                dropout_prob=dropout_prob, return_mask=True, v6_physics=True,
-                subvox_cap_op=cap_i, **kw,
-            )
+            if want_v7:
+                o_a, c_a, z_a, v_a, dm_a = simulate_batch(
+                    op_i, rho[m_a], t[m_a], clr[m_a], nf[m_a],
+                    dropout_prob=dropout_prob, return_mask=True, v6_physics=True,
+                    subvox_cap_op=cap_i, return_detrend_modes=True, **kw,
+                )
+                for src_idx, dst_idx in enumerate(torch.nonzero(m_a, as_tuple=False).flatten().tolist()):
+                    dmodes[dst_idx] = dm_a[src_idx]
+            else:
+                o_a, c_a, z_a, v_a = simulate_batch(
+                    op_i, rho[m_a], t[m_a], clr[m_a], nf[m_a],
+                    dropout_prob=dropout_prob, return_mask=True, v6_physics=True,
+                    subvox_cap_op=cap_i, **kw,
+                )
             obs[m_a], clean[m_a], z_obs[m_a], vm[m_a] = o_a, c_a, z_a, v_a
     rho, t, obs, clean, z_obs, vm, clr, uid = augment_d4(
         rho, t, obs, clean, z_obs, valid_mask=vm, clearance=clr, unit_id=uid,
     )
     asp_vals = torch.tensor([asp_list[int(i)] for i in asp_idx.tolist()], device=dev, dtype=rho.dtype)
     depth_totals = (rho.shape[2] * CELL) * asp_vals.view(b, 1, 1)
-    x = build_v6_input(obs, t, depth_totals, valid_mask=vm, aspect=asp_vals, clearance=clr)
+    if want_v7:
+        x = build_v7_input(
+            obs, t, depth_totals, valid_mask=vm, aspect=asp_vals, clearance=clr,
+            detrend_modes=dmodes,
+        )
+    else:
+        x = build_v6_input(obs, t, depth_totals, valid_mask=vm, aspect=asp_vals, clearance=clr)
     batch_op.aspect_indices = asp_idx
     return x, rho, uid, clean, z_obs
 
@@ -361,6 +390,28 @@ def _build_train_loader(train_ds, batch_size: int, num_workers: int):
     return DataLoader(train_ds, batch_size=batch_size, num_workers=0, drop_last=True)
 
 
+def _load_ckpt_weights_compat(target_model: torch.nn.Module, state_dict: dict, strict: bool = True) -> None:
+    """Load checkpoint weights, permitting partial/5->6ch warm-start migration when ``strict=False``."""
+    if strict:
+        target_model.load_state_dict(state_dict, strict=True)
+        return
+    try:
+        missing, unexpected = target_model.load_state_dict(state_dict, strict=False)
+    except RuntimeError:
+        cur_sd = target_model.state_dict()
+        filtered = {
+            k: v for k, v in state_dict.items()
+            if k in cur_sd and getattr(v, "shape", None) == getattr(cur_sd[k], "shape", None)
+        }
+        missing, unexpected = target_model.load_state_dict(filtered, strict=False)
+    if missing or unexpected:
+        print(
+            f"Warm-start partial load (strict=False): {len(missing)} missing, "
+            f"{len(unexpected)} unexpected keys",
+            flush=True,
+        )
+
+
 def parse_args():
     p = argparse.ArgumentParser(description="Train the 3D gravity-inversion transformer")
     p.add_argument("--epochs", type=int, default=20)
@@ -371,34 +422,34 @@ def parse_args():
     p.add_argument("--hard-prob", type=float, default=0.50,
                    help="fraction of training samples using harder/larger composite & contact scenes [0.0-1.0]")
     p.add_argument("--num-workers", type=int, default=None,
-                   help="DataLoader worker processes (default: 4 for v6, 0 for v1-v5)")
+                   help="DataLoader worker processes (default: 4 for v6/v7, 0 for v1-v5)")
     p.add_argument("--lambda-data", type=float, default=None,
-                   help="physics data-misfit loss weight (default: 0.50 for v6, 0.25 for v1-v5)")
+                   help="physics data-misfit loss weight (default: 0.50 for v6/v7, 0.25 for v1-v5)")
     p.add_argument("--lambda-ms", type=float, default=0.05)
     p.add_argument("--lambda-cls", type=float, default=0.25, help="lithology cross-entropy weight")
     p.add_argument("--depth-boost", type=float, default=0.5, help="depth sensitivity ramp in loss [0.0 = uniform]")
     p.add_argument("--ema-decay", type=float, default=None,
-                   help="EMA decay for eval/best weights (default: 0.997 for v6, 0.995 for v1-v5; 0 disables)")
+                   help="EMA decay for eval/best weights (default: 0.997 for v6/v7, 0.995 for v1-v5; 0 disables)")
     p.add_argument("--warmup-epochs", type=int, default=10,
-                   help="v6 linear LR warmup epochs before CosineAnnealingLR")
+                   help="v6/v7 linear LR warmup epochs before CosineAnnealingLR")
     p.add_argument("--save-dir", type=str, default="./checkpoints")
     p.add_argument("--vol3d-stride", type=int, default=10,
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
     p.add_argument("--refresh-sec", type=int, default=60,
                    help="web dashboard auto-refresh interval in seconds (0 disables auto-refresh, default: 60)")
-    p.add_argument("--variant", type=str, default="v5", choices=["v6", "v5", "v4", "v3", "v2", "v1"],
+    p.add_argument("--variant", type=str, default="v5", choices=["v7", "v6", "v5", "v4", "v3", "v2", "v1"],
                    help="model architecture variant (default: v5)")
     p.add_argument("--model-size", type=str, default="base", choices=["slim", "base", "heavy"],
-                   help="v5/v6 capacity tier: slim, base, heavy")
+                   help="v5/v6/v7 capacity tier: slim, base, heavy")
     p.add_argument("--curriculum-epochs", type=int, default=25,
                    help="number of initial epochs to ramp difficulty & max clearance (0 disables)")
-    p.add_argument("--dropout", type=float, default=0.05, help="Dropout3d/MLP rate for v5/v6")
-    p.add_argument("--fault-prob", type=float, default=0.40, help="v5/v6 dipping fault cut probability")
-    p.add_argument("--dropout-prob", type=float, default=0.35, help="v5/v6 missing-station infill prob")
+    p.add_argument("--dropout", type=float, default=0.05, help="Dropout3d/MLP rate for v5/v6/v7")
+    p.add_argument("--fault-prob", type=float, default=0.40, help="v5/v6/v7 dipping fault cut probability")
+    p.add_argument("--dropout-prob", type=float, default=0.35, help="v5/v6/v7 missing-station infill prob")
     p.add_argument("--large-prob", type=float, default=LARGE_BODY_PROB_V6,
-                   help="v6 large-area landfill/basin/pluton scene probability")
+                   help="v6/v7 large-area landfill/basin/pluton scene probability")
     p.add_argument("--ground-prob", type=float, default=GROUND_PROB_V6,
-                   help="v6 primary ground survey probability [0.30-2.0m]")
+                   help="v6/v7 primary ground survey probability [0.30-2.0m]")
     p.add_argument("--no-amp", action="store_true", help="(deprecated no-op; training runs strictly in FP32)")
     p.add_argument("--resume", type=str, default="", help="continue from a checkpoint")
     p.add_argument("--warm-restart", action="store_true",
@@ -421,7 +472,12 @@ def main():
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
 
-    if args.variant == "v6":
+    if args.variant == "v7":
+        if V7_SIZE_PRESETS is None:
+            raise RuntimeError("--variant v7 requires V7_SIZE_PRESETS in model_swin3d.py")
+        arch = dict(V7_SIZE_PRESETS[args.model_size])
+        arch["dropout"] = float(args.dropout)
+    elif args.variant == "v6":
         if V6_SIZE_PRESETS is None:
             raise RuntimeError("--variant v6 requires V6_SIZE_PRESETS in model_swin3d.py")
         arch = dict(V6_SIZE_PRESETS[args.model_size])
@@ -431,20 +487,30 @@ def main():
         arch["dropout"] = float(args.dropout)
     else:
         arch = dict(ARCH_BY_VARIANT[args.variant])
-    start_epoch, best, ck_resumed = 1, float("inf"), None
+    start_epoch, best, ck_resumed, migrating = 1, float("inf"), None, False
     if args.resume:
         ck_resumed = torch.load(args.resume, map_location="cpu")
-        arch = ck_resumed.get("arch", {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4})
-        if "epoch" in ck_resumed:
-            start_epoch = ck_resumed["epoch"] + 1
-        if "val_loss" in ck_resumed:
-            best = ck_resumed["val_loss"]
-        print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
+        ck_arch = ck_resumed.get("arch", {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4})
+        ck_variant = str(ck_arch.get("variant", "v1"))
+        if args.variant == "v7" and ck_variant != "v7":
+            migrating = True
+            print(
+                f"Warm-starting v7 ({args.model_size}) from {ck_variant} checkpoint {args.resume} "
+                f"(checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})"
+            )
+        else:
+            arch = dict(ck_arch)
+            if "epoch" in ck_resumed:
+                start_epoch = ck_resumed["epoch"] + 1
+            if "val_loss" in ck_resumed:
+                best = ck_resumed["val_loss"]
+            print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
 
     variant = arch.get("variant", "v1")
-    is_v6 = variant == "v6"
+    is_v7 = variant == "v7"
+    is_v6 = variant in ("v6", "v7")
     is_v5 = variant == "v5"
-    is_v5_or_v6 = is_v5 or is_v6
+    is_v5_or_v6 = variant in ("v7", "v6", "v5")
     num_workers = (4 if is_v6 else 0) if args.num_workers is None else int(args.num_workers)
     ema_decay = (0.997 if is_v6 else 0.995) if args.ema_decay is None else float(args.ema_decay)
 
@@ -456,7 +522,7 @@ def main():
     asp_list = ASPECT_MULTI if is_v5_or_v6 else None
 
     clr_desc = (
-        f"v6 primary ground {ground_prob:.0%} (0.3-2m) + relief drape, large {large_prob:.0%}, workers {num_workers}, ema {ema_decay:.3f}"
+        f"{variant} primary ground {ground_prob:.0%} (0.3-2m) + relief drape, large {large_prob:.0%}, workers {num_workers}, ema {ema_decay:.3f}"
         if is_v6 else ("clearance 0.30-80m, multi-aspect" if is_v5 else "ground clearance 0.30-0.40 m")
     )
     print(f"Device {dev} (FP32) | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
@@ -489,7 +555,7 @@ def main():
     )
     loader = _build_train_loader(train_ds, args.batch_size, num_workers)
 
-    val_ch = 5 if is_v5_or_v6 else 2
+    val_ch = int(arch.get("in_channels", 6)) if is_v7 else (5 if is_v5_or_v6 else 2)
     clr_clamp_val = 8.0 if is_v6 else 4.0
     show_tuple = make_category_showcase(
         op, dev, grid, seed=4024, in_channels=val_ch, clearance_clamp=clr_clamp_val,
@@ -504,7 +570,8 @@ def main():
         op_bank_map = {i: o for i, o in enumerate(op_bank)}
         cap_bank_map = {i: c for i, c in enumerate(subvox_cap_bank)}
         v6_buckets = make_v6_val_buckets(
-            n_per_bucket, 2024, op, op_bank_map, dev, grid, subvox_cap_bank=cap_bank_map, aspect_ratios=asp_list,
+            n_per_bucket, 2024, op, op_bank_map, dev, grid,
+            subvox_cap_bank=cap_bank_map, aspect_ratios=asp_list, in_channels=val_ch,
         )
         n_gc = min(4, v6_buckets["ground_clean"][0]["truth"].shape[0])
         n_hl = min(4, v6_buckets["ground_hard_large_detrend"][0]["truth"].shape[0])
@@ -526,13 +593,16 @@ def main():
 
     model = create_model(NX, NY, NZ, **arch).to(dev)
     if ck_resumed is not None:
-        model.load_state_dict(ck_resumed.get("raw_model_state_dict", ck_resumed["model_state_dict"]))
-    init_updates = (start_epoch - 1) * args.steps if args.resume else 0
+        _load_ckpt_weights_compat(
+            model, ck_resumed.get("raw_model_state_dict", ck_resumed["model_state_dict"]),
+            strict=not migrating,
+        )
+    init_updates = 0 if (migrating or not args.resume) else (start_epoch - 1) * args.steps
     ema = ModelEMA(model, ema_decay, lambda: create_model(NX, NY, NZ, **arch).to(dev), initial_updates=init_updates)
     if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
-        ema.ema.load_state_dict(ck_resumed["ema_state_dict"])
+        _load_ckpt_weights_compat(ema.ema, ck_resumed["ema_state_dict"], strict=not migrating)
     eval_model = ema.ema if ema.ema is not None else model
-    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6")
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7")
                         else (lambda m, inp: (m(inp), None)))
 
     size_tag = f" ({arch.get('model_size', 'custom')})" if is_v5_or_v6 else ""
@@ -547,7 +617,7 @@ def main():
     end_epoch = start_epoch + args.epochs - 1
     total_steps = max(1, (end_epoch - start_epoch + 1) * args.steps)
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    if ck_resumed is not None and not args.warm_restart and "optimizer_state_dict" in ck_resumed:
+    if ck_resumed is not None and not args.warm_restart and not migrating and "optimizer_state_dict" in ck_resumed:
         try:
             opt.load_state_dict(ck_resumed["optimizer_state_dict"])
             for pg in opt.param_groups:
@@ -556,8 +626,8 @@ def main():
             pass
     if is_v6:
         sched = build_resume_v6_scheduler(
-            opt, ck_resumed, start_epoch, end_epoch, args.steps, args.warmup_epochs,
-            total_epochs=args.total_epochs, warm_restart=args.warm_restart, min_lr_frac=0.02,
+            opt, None if migrating else ck_resumed, start_epoch, end_epoch, args.steps, args.warmup_epochs,
+            total_epochs=args.total_epochs, warm_restart=(args.warm_restart or migrating), min_lr_frac=0.02,
         )
     elif args.resume:
         sched = torch.optim.lr_scheduler.CosineAnnealingLR(opt, T_max=total_steps, eta_min=args.lr * 0.02)
@@ -684,7 +754,8 @@ def main():
             uid = None
             if is_v6:
                 x, rho, uid, clean, z_obs = prepare_v6_batch(
-                    batch, op_bank, subvox_cap_bank, asp_list, dev, batch_op, cur_do, sim_kwargs=sim_kw,
+                    batch, op_bank, subvox_cap_bank, asp_list, dev, batch_op, cur_do,
+                    sim_kwargs=sim_kw, use_v7_input=is_v7, in_channels=val_ch,
                 )
             elif is_v5:
                 rho, t, c, nf, _, asp_idx = batch
