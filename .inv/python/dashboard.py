@@ -3784,11 +3784,11 @@ void main() {
       { key: 'unc_spearman', color: pal.misfitColor, label: 'Unc Spearman' }
     ], 0.0, 1.0, false);
 
-    // 5. Centroid Depth Error |dz| [m]
+    // 5. Centroid Depth Error |dz| [m] (auto-zoomed to data range +/- margin)
     renderSvgChart('svgDz', 'legDz', [
       { key: 'centroid_dz', color: pal.dzColor, label: '|dz| All [m]' },
       { key: 'hard_dz', color: '#f59e0b', label: '|dz| Hard [m]', dash: true }
-    ], 0.0, null, false);
+    ], null, null, false);
 
     // 6. Small/Ratio uncertainty metrics (log scale)
     renderSvgChart('svgRatio', 'legRatio', [
