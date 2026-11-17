@@ -382,6 +382,23 @@ def test_v7_train_cli_cpu_smoke():
         assert np.isfinite(ep0["train_loss"]) and np.isfinite(ep0["val_loss"]) and np.isfinite(ep0["val_gc_iou"])
 
 
+def test_v7_onnx_export_coreml_single_partition():
+    from export_onnx import export_checkpoint_to_onnx
+
+    torch.manual_seed(61)
+    model = create_model(64, 64, 32, **V7_SIZE_PRESETS["slim"]).eval()
+    with tempfile.TemporaryDirectory(prefix="v7_onnx_") as td:
+        ckpt_path = Path(td) / "v7_slim.pt"
+        onnx_path = Path(td) / "v7_slim.onnx"
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "arch": dict(V7_SIZE_PRESETS["slim"]),
+            "grid": {"nx": 64, "ny": 64, "nz": 32, "cell": 50.0},
+        }, ckpt_path)
+        export_checkpoint_to_onnx(str(ckpt_path), str(onnx_path), opset=17, verify=True, verify_mps=False)
+        assert onnx_path.is_file() and onnx_path.stat().st_size > 1_000_000
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_")]
     for name, fn in tests:

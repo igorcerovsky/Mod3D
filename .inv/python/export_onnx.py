@@ -8,6 +8,9 @@ Interface (static shapes, matches neural_prior.hpp):
     v5-v6 input  "observation_field" (1, 5, 64, 64): [gz, terr, valid_mask, log(aspect), clearance]
           output "density_volume"    (1, 1, 32, 64, 64)
           output "log_var_volume"    (1, 1, 32, 64, 64)
+    v7    input  "observation_field" (1, 6, 64, 64): [gz, terr, valid_mask, log(aspect), clearance, detrend_mode]
+          output "density_volume"    (1, 1, 32, 64, 64)
+          output "log_var_volume"    (1, 1, 32, 64, 64)
 The export is verified against PyTorch with onnxruntime (CPU and CoreML MLProgram on macOS).
 """
 
@@ -20,7 +23,12 @@ import torch
 import torch.nn as nn
 
 from dataset import CELL, NX, NY, NZ
-from model_swin3d import PotentialFieldTransformer3DV5, PotentialFieldTransformer3DV6, create_model
+from model_swin3d import (
+    PotentialFieldTransformer3DV5,
+    PotentialFieldTransformer3DV6,
+    PotentialFieldTransformer3DV7,
+    create_model,
+)
 
 
 class _V5UncertaintyExportWrapper(nn.Module):
@@ -33,7 +41,7 @@ class _V5UncertaintyExportWrapper(nn.Module):
 
 
 def export_checkpoint_to_onnx(checkpoint: str, output: str, opset: int = 17, verify: bool = True,
-                              variant: str | None = None):
+                              variant: str | None = None, verify_mps: bool = True):
     os.makedirs(os.path.dirname(output) or ".", exist_ok=True)
     ck = torch.load(checkpoint, map_location="cpu")
     g = ck.get("grid", {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL})
@@ -45,12 +53,13 @@ def export_checkpoint_to_onnx(checkpoint: str, output: str, opset: int = 17, ver
     model.eval()
 
     resolved_variant = arch.get("variant")
+    is_v7 = isinstance(model, PotentialFieldTransformer3DV7) or resolved_variant == "v7"
     is_v5_or_v6 = (
-        isinstance(model, (PotentialFieldTransformer3DV5, PotentialFieldTransformer3DV6))
-        or resolved_variant in ("v5", "v6")
+        isinstance(model, (PotentialFieldTransformer3DV5, PotentialFieldTransformer3DV6, PotentialFieldTransformer3DV7))
+        or resolved_variant in ("v5", "v6", "v7")
     )
-    is_v6 = isinstance(model, PotentialFieldTransformer3DV6) or resolved_variant == "v6"
-    in_ch = 5 if is_v5_or_v6 else 2
+    is_v6 = isinstance(model, (PotentialFieldTransformer3DV6, PotentialFieldTransformer3DV7)) or resolved_variant in ("v6", "v7")
+    in_ch = 6 if is_v7 else (5 if is_v5_or_v6 else 2)
     x = torch.zeros(1, in_ch, g["nx"], g["ny"])
     xx, yy = np.meshgrid(np.arange(g["nx"]) - 0.5 * g["nx"], np.arange(g["ny"]) - 0.5 * g["ny"], indexing="ij")
     x[0, 0] = torch.from_numpy(1.5 * np.exp(-(xx ** 2 + yy ** 2) / 60.0)).float()
@@ -59,6 +68,8 @@ def export_checkpoint_to_onnx(checkpoint: str, output: str, opset: int = 17, ver
         x[0, 2] = 1.0
         x[0, 3] = 0.0
         x[0, 4] = 0.35 / g.get("cell", CELL)
+    if is_v7:
+        x[0, 5] = 1.0
 
     export_mod = _V5UncertaintyExportWrapper(model).eval() if is_v5_or_v6 else model
     output_names = ["density_volume", "log_var_volume"] if is_v5_or_v6 else ["density_volume"]
@@ -108,7 +119,7 @@ def export_checkpoint_to_onnx(checkpoint: str, output: str, opset: int = 17, ver
                     print(f"onnxruntime CoreML MLProgram check ({name}): shape {yo.shape}, max rel diff {err_cm:.2e}")
                     assert err_cm < 1e-2, f"CoreML parity check failed for {name}: rel diff {err_cm}"
 
-        if is_v6 and torch.backends.mps.is_available():
+        if is_v6 and verify_mps and torch.backends.mps.is_available():
             m16 = create_model(g["nx"], g["ny"], g["nz"], **arch).to("mps").half().eval()
             m16.load_state_dict(ck["model_state_dict"])
             with torch.no_grad():
@@ -117,9 +128,9 @@ def export_checkpoint_to_onnx(checkpoint: str, output: str, opset: int = 17, ver
                     x16[:, 4] = clr_v
                     d16, lv16 = m16.forward_uncertainty(x16)
                     assert torch.isfinite(d16).all() and torch.isfinite(lv16).all(), (
-                        f"V6 FP16 produced NaN/Inf at clearance={clr_v}"
+                        f"V6/V7 FP16 produced NaN/Inf at clearance={clr_v}"
                     )
-            print("V6 FP16 NaN=0 check passed on MPS across clr=[0.007, 4.0, 8.0]")
+            print("V6/V7 FP16 NaN=0 check passed on MPS across clr=[0.007, 4.0, 8.0]")
     except ImportError:
         print("onnxruntime not installed; skipped verification")
 
@@ -129,11 +140,13 @@ def main():
     ap.add_argument("--checkpoint", default="./checkpoints/best_swin3d.pt")
     ap.add_argument("--output", default="./models/inv_swin3d.onnx")
     ap.add_argument("--opset", type=int, default=17)
-    ap.add_argument("--variant", default=None, choices=["v1", "v2", "v3", "v4", "v5", "v6"])
+    ap.add_argument("--variant", default=None, choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7"])
     ap.add_argument("--no-verify", action="store_true")
+    ap.add_argument("--no-mps", action="store_true")
     args = ap.parse_args()
     export_checkpoint_to_onnx(
-        args.checkpoint, args.output, opset=args.opset, verify=not args.no_verify, variant=args.variant
+        args.checkpoint, args.output, opset=args.opset, verify=not args.no_verify,
+        variant=args.variant, verify_mps=not args.no_mps,
     )
 
 

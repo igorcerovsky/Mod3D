@@ -1125,6 +1125,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
                                     setup.config.x0, setup.config.y0, setup.config.z0,
                                     setup.config.dx, setup.config.dy, setup.config.dz};
       const std::vector<double> nn_obs = prepare_nn_obs(d_fine, gf_nn, obsBgTrendMode);
+      const int nnDetrendMode = (obsBgTrendMode == 0) ? 3 : obsBgTrendMode;
       const double scalar_clr_fallback = std::max(0.0, setup.config.obs_height);
       const std::vector<double> nn_clr_cols =
           inv::NeuralPriorInference::compute_clearance_cols(
@@ -1134,7 +1135,7 @@ void Inversion3DDialog::startInversion(bool forceColdStart) {
               setup.config.x0, setup.config.y0, setup.config.z0,
               setup.config.dx, setup.config.dy, setup.config.dz, prior_grid,
               err, modelPath, surf_cols, &sigma_grid, scalar_clr_fallback,
-              obs_valid, nn_clr_cols)) {
+              obs_valid, nn_clr_cols, nnDetrendMode)) {
         prior_values = std::move(prior_grid.data());
         const double mean_sig = mean_subsurface_sigma(sigma_grid, surf_cols);
         prior_sigma = std::move(sigma_grid.data());
@@ -1585,6 +1586,7 @@ void Inversion3DDialog::onInstantAiClicked() {
           : rawObsH;
   const int obsBgTrendMode =
       m_doc ? m_doc->observation().background_trend_mode() : 0;
+  const int nnDetrendMode = (obsBgTrendMode == 0) ? 3 : obsBgTrendMode;
   const inv::GridGeometry gf_nn{nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz};
   const std::vector<double> nn_obs = prepare_nn_obs(d_fine, gf_nn, obsBgTrendMode);
   const std::vector<double> obs_z_cols =
@@ -1607,7 +1609,7 @@ void Inversion3DDialog::onInstantAiClicked() {
   bool ok = inv::NeuralPriorInference::predict(
       nn_obs, nx, ny, nz, x0_geom, y0_geom, z0_geom, dx, dy, dz, pred_grid, err,
       modelPath, surf_cols, &sigma_grid, scalarClrFallback, obs_valid,
-      nn_clr_cols);
+      nn_clr_cols, nnDetrendMode);
 
   const auto t_end = std::chrono::high_resolution_clock::now();
   const double elapsed_ms =

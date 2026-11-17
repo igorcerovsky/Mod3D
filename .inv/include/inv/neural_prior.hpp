@@ -54,7 +54,22 @@ public:
     /// Training geometry of the network (see .inv/python/dataset.py).
     static constexpr double kTrainCell = 50.0;             ///< training cell size [m]
     static constexpr double kMaxReliefFrac = 0.25;         ///< max terrain relief / domain depth seen in training
-    static constexpr double kMaxCanonicalClearance = 8.0;  ///< max clearance / dxy_canon (400 m at 50 m cell; v6)
+    static constexpr double kMaxCanonicalClearance = 8.0;  ///< max clearance / dxy_canon (400 m at 50 m cell; v6/v7)
+
+    /**
+     * @brief Maps C++ `BackgroundTrendMode` integer (`0=None`, `1=ConstantShift`,
+     *        `2=PlanarRamp`, `3=BorderPlanar`) to the V7 channel-5 conditioning code.
+     */
+    static constexpr float detrend_mode_code(int mode) noexcept {
+        switch (mode) {
+            case 0: return 0.0f;
+            case 1: return 0.33f;
+            case 2: return 0.67f;
+            case 3:
+            default:
+                return 1.0f;
+        }
+    }
 
     /**
      * @brief Converts per-column station depths (z down) and terrain surface depths into
@@ -92,13 +107,14 @@ public:
     /**
      * @brief Prepares the static-shape `(1, kC, kNx, kNy)` ONNX input tensor buffer.
      *
-     * Channels (v5/v6, `kC >= 5`):
+     * Channels (v5/v6 `kC >= 5`, v7 `kC >= 6`):
      *   0: gravity anomaly scaled to canonical 50 m cell equivalent
      *   1: normalized terrain depth `clamp(surface_depth / depth_total, 0, kMaxReliefFrac)`
      *   2: valid station mask `[0, 1]`
      *   3: `log(clamp(dz_canon / dxy_canon, 0.1, 10.0))`
      *   4: normalized clearance `clamp(clearance / dxy_canon, 0.0, kMaxCanonicalClearance)` (2D when
      *      @p obs_clearance_cols has size `nx * ny`, otherwise uniform scalar @p obs_height_m)
+     *   5: detrend mode conditioning (`0.0` raw, `0.33` constant_shift, `0.67` planar_ramp, `1.0` border_planar)
      */
     static bool build_input_tensor(const std::vector<double>& obs_cols,
                                    std::size_t nx, std::size_t ny,
@@ -110,7 +126,8 @@ public:
                                    const std::vector<double>& surface_depth_cols = {},
                                    double obs_height_m = 0.35,
                                    const std::vector<char>& obs_valid_cols = {},
-                                   const std::vector<double>& obs_clearance_cols = {})
+                                   const std::vector<double>& obs_clearance_cols = {},
+                                   int detrend_mode = 3)
     {
         if (obs_cols.size() != nx * ny || nx == 0 || ny == 0 || target_nz == 0 ||
             kC == 0 || kNx == 0 || kNy == 0 || kNz == 0) {
@@ -209,6 +226,9 @@ public:
                     std::clamp(safe_obs_h / denom, 0.0, kMaxCanonicalClearance));
                 std::fill_n(out_buf.data() + 4 * plane_n, plane_n, clr_norm);
             }
+        }
+        if (kC >= 6) {
+            std::fill_n(out_buf.data() + 5 * plane_n, plane_n, detrend_mode_code(detrend_mode));
         }
         return true;
     }
@@ -319,14 +339,15 @@ public:
                         VoxelGrid<double>* out_sigma_grid = nullptr,
                         double obs_height_m = 0.35,
                         const std::vector<char>& obs_valid_cols = {},
-                        const std::vector<double>& obs_clearance_cols = {})
+                        const std::vector<double>& obs_clearance_cols = {},
+                        int detrend_mode = 3)
     {
 #if !defined(MOD3D_HAS_ONNX) || !MOD3D_HAS_ONNX
         (void)obs_cols; (void)nx; (void)ny; (void)target_nz;
         (void)x0; (void)y0; (void)z0; (void)dx; (void)dy; (void)dz;
         (void)out_grid; (void)custom_model_path; (void)surface_depth_cols;
         (void)out_sigma_grid; (void)obs_height_m; (void)obs_valid_cols;
-        (void)obs_clearance_cols;
+        (void)obs_clearance_cols; (void)detrend_mode;
         err_msg = "ONNX Runtime support is not compiled into Mod3D.";
         return false;
 #else
@@ -423,7 +444,8 @@ public:
             std::vector<float> in_buf;
             if (!build_input_tensor(obs_cols, nx, ny, target_nz, dx, dy, dz,
                                     kC, kNx, kNy, kNz, in_buf, err_msg,
-                                    surface_depth_cols, obs_height_m, obs_valid_cols, obs_clearance_cols)) {
+                                    surface_depth_cols, obs_height_m, obs_valid_cols,
+                                    obs_clearance_cols, detrend_mode)) {
                 return false;
             }
 

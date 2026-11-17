@@ -614,6 +614,34 @@ TEST(ObservationSpaceTest, BackgroundTrendModesAndParameters) {
   EXPECT_NEAR(t3.gy_per_km, -10.0, 1e-4);
 }
 
+TEST(ObservationSpaceTest, BackgroundTrendWithDummyCellsUsesHarmonicInfill) {
+  ObservationSpace obs(9, 9, 0.0, 0.0, 100.0, 100.0);
+  Grid raw(9, 9, 0.0, 0.0, 100.0, 100.0);
+  for (size_t iy = 0; iy < 9; ++iy) {
+    for (size_t ix = 0; ix < 9; ++ix) {
+      const double x = static_cast<double>(ix) * 100.0;
+      const double y = static_cast<double>(iy) * 100.0;
+      raw(iy, ix) = 5.0 + 0.02 * x - 0.01 * y;
+    }
+  }
+  // Introduce GRID_DUMMY holes on corners and interior
+  raw(0, 0) = GRID_DUMMY;
+  raw(8, 8) = GRID_DUMMY;
+  raw(0, 4) = GRID_DUMMY;
+  raw(4, 4) = GRID_DUMMY;
+  obs.set_observed_grid(FieldComponent::GZ, raw);
+
+  obs.set_background_trend_mode(BackgroundTrendMode::BorderPlanar);
+  const Grid *anom = std::as_const(obs).observed_grid(FieldComponent::GZ);
+  ASSERT_NE(anom, nullptr);
+  EXPECT_TRUE(anom->is_dummy(0, 0));
+  EXPECT_TRUE(anom->is_dummy(4, 4));
+  auto t = obs.observed_trend_parameters(FieldComponent::GZ);
+  EXPECT_NEAR(t.gx_per_km, 20.0, 0.5);
+  EXPECT_NEAR(t.gy_per_km, -10.0, 0.5);
+  EXPECT_NEAR(anom->mean(), 0.0, 0.05);
+}
+
 TEST(ObservationSpaceTest, VoxelGridForwardCalculationDirectGravity) {
   ObservationSpace obs(9, 9, 0.0, 0.0, 100.0, 100.0);
   obs.set_gravity_field_unit(GravityFieldUnit::MilliGal);

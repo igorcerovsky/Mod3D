@@ -348,12 +348,18 @@ void ObservationSpace::update_virtual_observed_anomalies() {
       geom.y0 = y0_.value() - 0.5 * geom.dy;
 
       std::vector<double> v(cols_ * rows_, 0.0);
+      std::vector<char> valid(cols_ * rows_, 0);
       for (size_t ix = 0; ix < cols_; ++ix) {
         for (size_t iy = 0; iy < rows_; ++iy) {
           double val = grd(iy, ix);
-          v[ix * rows_ + iy] = (Grid::is_dummy_value(val) || std::isnan(val)) ? 0.0 : val;
+          const size_t idx = ix * rows_ + iy;
+          if (!Grid::is_dummy_value(val) && !std::isnan(val)) {
+            v[idx] = val;
+            valid[idx] = 1;
+          }
         }
       }
+      inv::observation::infill_missing_columns(cols_, rows_, valid, v);
 
       inv::BackgroundBasis bg(geom, background_trend_mode_);
       std::vector<double> bg_field;

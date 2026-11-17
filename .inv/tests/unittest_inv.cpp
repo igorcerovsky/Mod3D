@@ -752,6 +752,30 @@ TEST(NeuralPriorTest, BuildInputTensor2DClearanceAndCeiling8) {
     EXPECT_FALSE(err.empty());
 }
 
+TEST(NeuralPriorTest, BuildInputTensor6ChDetrendMode) {
+    const std::size_t nx = 16, ny = 16, nz = 32;
+    const std::size_t kC = 6, kNx = 64, kNy = 64, kNz = 32;
+    const std::size_t plane_n = kNx * kNy;
+    const std::vector<double> obs(nx * ny, 1.0);
+    std::vector<float> buf;
+    std::string err;
+
+    struct Case { int mode; float expected; };
+    for (const auto& tc : {Case{0, 0.0f}, Case{1, 0.33f}, Case{2, 0.67f}, Case{3, 1.0f}}) {
+        ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+            obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err,
+            {}, 0.35, {}, {}, tc.mode));
+        ASSERT_EQ(buf.size(), kC * plane_n);
+        for (std::size_t i = 0; i < plane_n; ++i) {
+            EXPECT_NEAR(buf[5 * plane_n + i], tc.expected, 1e-6f);
+        }
+    }
+    // Default detrend_mode matches BorderPlanar (1.0f)
+    ASSERT_TRUE(inv::NeuralPriorInference::build_input_tensor(
+        obs, nx, ny, nz, 200.0, 200.0, 50.0, kC, kNx, kNy, kNz, buf, err));
+    EXPECT_NEAR(buf[5 * plane_n], 1.0f, 1e-6f);
+}
+
 TEST(NeuralPriorTest, DecodeLogVarMatchesCalibratedGaussianSigma) {
     const std::size_t kNx = 4, kNy = 4, kNz = 4;
     const std::vector<float> rho_raw(kNz * kNx * kNy, 0.25f);
