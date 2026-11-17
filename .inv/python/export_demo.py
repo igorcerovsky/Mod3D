@@ -67,9 +67,9 @@ def export_demo(
         model.load_state_dict(ck["model_state_dict"])
         model.to(device).eval()
 
-        h_min = -220.0 if variant in ("v6", "v7") else -85.0
+        h_min = -220.0 if variant in ("v6", "v7", "v8") else -85.0
         op = TerrainGravityOperator(*grid, h_min=h_min).to(device)
-        clr_clamp = CLEARANCE_CLAMP_V6 if variant in ("v6", "v7") else 4.0
+        clr_clamp = CLEARANCE_CLAMP_V6 if variant in ("v6", "v7", "v8") else 4.0
         best_epoch = int(ck.get("epoch") or 1)
 
         print(f"Generating 3D volume snapshot from {checkpoint} (variant={variant}, samples_per_cat={samples_per_category}, random_val={random_val})...")

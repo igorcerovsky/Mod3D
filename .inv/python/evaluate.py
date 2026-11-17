@@ -571,8 +571,9 @@ def _infer_eval_model_cfg(model, clearance_clamp=None):
     model_variant = str(getattr(model, "variant", "") or "").lower()
     model_in_ch = getattr(model, "in_channels", None)
     is_v7 = (
-        model_variant == "v7"
+        model_variant in ("v7", "v8")
         or "V7" in type(model).__name__
+        or "V8" in type(model).__name__
         or (model_in_ch is not None and int(model_in_ch) >= 6)
     )
     is_v6 = (
@@ -788,8 +789,8 @@ def main():
     model = create_model(g["nx"], g["ny"], g["nz"], **arch)
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
-    is_v7 = variant == "v7"
-    is_v6_family = variant in ("v6", "v7")
+    is_v7 = variant in ("v7", "v8")
+    is_v6_family = variant in ("v6", "v7", "v8")
     h_min = -220.0 if is_v6_family else -85.0
     op = TerrainGravityOperator(*grid, h_min=h_min).to(args.device)
     clr_clamp = CLEARANCE_CLAMP_V6 if is_v6_family else 4.0

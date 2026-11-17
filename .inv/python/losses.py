@@ -155,7 +155,7 @@ class CompoundInversionLoss(nn.Module):
                  e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None,
                  lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08,
                  use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.10,
-                 lambda_tier=0.20):
+                 lambda_tier=0.20, lambda_peak_amp=None, lambda_focus=None):
         super().__init__()
         self.lambda_data, self.lambda_ms, self.lambda_cls = lambda_data, lambda_ms, lambda_cls
         self.body_boost, self.e_rel = body_boost, e_rel
@@ -169,6 +169,8 @@ class CompoundInversionLoss(nn.Module):
         self.tversky_beta = float(tversky_beta)
         self.lambda_rho_init = float(lambda_rho_init)
         self.lambda_tier = float(lambda_tier)
+        self.lambda_peak_amp = None if lambda_peak_amp is None else float(lambda_peak_amp)
+        self.lambda_focus = None if lambda_focus is None else float(lambda_focus)
         self.forward_op = forward_op
         self.zhdanov = ZhdanovFocusingLoss()
         self._bp_cache = {}
@@ -754,10 +756,65 @@ class CompoundInversionLoss(nn.Module):
             else:
                 l_data = 0.65 * l_amp + 0.35 * l_dgrad
 
+        is_v8 = bool(aux is not None and aux.get("is_v8", False))
+        eff_lambda_peak = (0.12 if is_v8 else 0.0) if self.lambda_peak_amp is None else self.lambda_peak_amp
+        eff_lambda_focus = (0.06 if is_v8 else 0.0) if self.lambda_focus is None else self.lambda_focus
+
+        l_peak_amp = torch.zeros((), device=m_pred.device, dtype=m_pred.dtype)
+        if eff_lambda_peak > 0:
+            t_sgn = torch.where(tn < 0, -torch.ones_like(tn), torch.ones_like(tn))
+            p_pos = F.relu(pn * t_sgn)
+            t_abs = tn.abs()
+            if unit_id is not None and (unit_id > 0).any():
+                u_max = int(unit_id.max().item())
+                u_errs = []
+                for uid_val in range(1, u_max + 1):
+                    u_m = (unit_id == uid_val).to(dtype=pn.dtype)
+                    has_u = u_m.flatten(1).sum(1) > 0
+                    if has_u.any():
+                        p_pk = (p_pos * u_m).flatten(1).amax(dim=1)
+                        t_pk = (t_abs * u_m).flatten(1).amax(dim=1)
+                        err_u = (p_pk - t_pk).abs() / t_pk.clamp_min(1e-6)
+                        u_errs.append(torch.where(has_u, err_u, torch.zeros_like(err_u)).mean())
+                if u_errs:
+                    l_peak_amp = sum(u_errs) / float(len(u_errs))
+            else:
+                has_fg = fg_mask.flatten(1).sum(1) > 0
+                if has_fg.any():
+                    p_pk = (p_pos * fg_mask).flatten(1).amax(dim=1)
+                    t_pk = (t_abs * fg_mask).flatten(1).amax(dim=1)
+                    err_b = (p_pk - t_pk).abs() / t_pk.clamp_min(1e-6)
+                    l_peak_amp = torch.where(has_fg, err_b, torch.zeros_like(err_b)).mean()
+
+        l_focus = torch.zeros((), device=m_pred.device, dtype=m_pred.dtype)
+        if eff_lambda_focus > 0:
+            ext_halo = (d3 - fg_mask).clamp_min(0.0) * sub_mask * w_z
+            focus_pen = (pn * pn) / (pn * pn + 0.0064)
+            l_focus = ((focus_pen * ext_halo).flatten(1).sum(1) / ext_halo.flatten(1).sum(1).clamp_min(1.0)).mean()
+
+        l_iter_data = torch.zeros((), device=m_pred.device, dtype=m_pred.dtype)
+        if is_v8 and aux is not None and "rho_iter_preds" in aux and self.forward_op is not None and d_clean is not None:
+            iter_preds = aux["rho_iter_preds"]
+            iter_weights = (0.15, 0.30, 0.45)
+            for idx_it, rho_k in enumerate(iter_preds):
+                iw = iter_weights[min(idx_it, len(iter_weights) - 1)]
+                try:
+                    d_err_k = self.forward_op(rho_k - m_true, z_obs, level_stride=2)
+                except TypeError:
+                    d_err_k = self.forward_op(rho_k, z_obs) - d_clean
+                num_k = (d_err_k ** 2).flatten(1).sum(1)
+                den_k = (d_clean ** 2).flatten(1).sum(1) + 1e-12
+                l_it_d = _charbonnier_rmse(num_k, den_k)
+                rk_n = rho_k.float() / a
+                l_it_l1 = (((rk_n - tn).abs() * w_tot).flatten(1).sum(1) / (rk_n.abs().flatten(1).sum(1) + tn.abs().flatten(1).sum(1) + 1e-6)).mean()
+                l_iter_data = l_iter_data + iw * (l_it_d + 0.30 * l_it_l1)
+
         total = (l_sup + self.lambda_cls * l_cls + l_edt
                  + self.lambda_coarse * l_coarse + self.lambda_tier * l_tier
                  + self.lambda_rho_init * l_rho_init
-                 + eff_lambda_nll * l_nll + self.lambda_data * l_data)
+                 + eff_lambda_nll * l_nll + self.lambda_data * l_data
+                 + eff_lambda_peak * l_peak_amp + eff_lambda_focus * l_focus
+                 + l_iter_data)
         return total, {
             "loss_total": total.item(),
             "loss_sup": l_sup.item(),
@@ -770,6 +827,9 @@ class CompoundInversionLoss(nn.Module):
             "loss_coarse": l_coarse.item(),
             "loss_tier": l_tier.item(),
             "loss_rho_init": l_rho_init.item(),
+            "loss_peak_amp": l_peak_amp.item(),
+            "loss_focus": l_focus.item(),
+            "loss_iter_data": l_iter_data.item(),
             "loss_nll": l_nll.item(),
             "loss_amp": l_amp_cons.item(),
             "loss_unit_iou": l_unit_inst_iou.item(),

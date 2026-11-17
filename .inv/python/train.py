@@ -66,6 +66,10 @@ try:
 except ImportError:
     V7_SIZE_PRESETS = None
 try:
+    from model_swin3d import V8_SIZE_PRESETS
+except ImportError:
+    V8_SIZE_PRESETS = None
+try:
     from model_swin3d import PotentialFieldTransformer3DV7
 except ImportError:
     PotentialFieldTransformer3DV7 = None
@@ -84,6 +88,8 @@ if V6_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v6"] = dict(V6_SIZE_PRESETS["base"])
 if V7_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v7"] = dict(V7_SIZE_PRESETS["base"])
+if V8_SIZE_PRESETS is not None:
+    ARCH_BY_VARIANT["v8"] = dict(V8_SIZE_PRESETS["base"])
 ARCH = ARCH_BY_VARIANT["v5"]
 
 V6_BUCKET_WEIGHTS = {
@@ -437,7 +443,7 @@ def parse_args():
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
     p.add_argument("--refresh-sec", type=int, default=60,
                    help="web dashboard auto-refresh interval in seconds (0 disables auto-refresh, default: 60)")
-    p.add_argument("--variant", type=str, default="v5", choices=["v7", "v6", "v5", "v4", "v3", "v2", "v1"],
+    p.add_argument("--variant", type=str, default="v5", choices=["v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"],
                    help="model architecture variant (default: v5)")
     p.add_argument("--model-size", type=str, default="base", choices=["slim", "base", "heavy"],
                    help="v5/v6/v7 capacity tier: slim, base, heavy")
@@ -472,7 +478,12 @@ def main():
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
 
-    if args.variant == "v7":
+    if args.variant == "v8":
+        if V8_SIZE_PRESETS is None:
+            raise RuntimeError("--variant v8 requires V8_SIZE_PRESETS in model_swin3d.py")
+        arch = dict(V8_SIZE_PRESETS[args.model_size])
+        arch["dropout"] = float(args.dropout)
+    elif args.variant == "v7":
         if V7_SIZE_PRESETS is None:
             raise RuntimeError("--variant v7 requires V7_SIZE_PRESETS in model_swin3d.py")
         arch = dict(V7_SIZE_PRESETS[args.model_size])
@@ -492,10 +503,10 @@ def main():
         ck_resumed = torch.load(args.resume, map_location="cpu")
         ck_arch = ck_resumed.get("arch", {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4})
         ck_variant = str(ck_arch.get("variant", "v1"))
-        if args.variant == "v7" and ck_variant != "v7":
+        if args.variant in ("v7", "v8") and ck_variant != args.variant:
             migrating = True
             print(
-                f"Warm-starting v7 ({args.model_size}) from {ck_variant} checkpoint {args.resume} "
+                f"Warm-starting {args.variant} ({args.model_size}) from {ck_variant} checkpoint {args.resume} "
                 f"(checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})"
             )
         else:
@@ -507,10 +518,11 @@ def main():
             print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
 
     variant = arch.get("variant", "v1")
-    is_v7 = variant == "v7"
-    is_v6 = variant in ("v6", "v7")
+    is_v8 = variant == "v8"
+    is_v7 = variant in ("v7", "v8")
+    is_v6 = variant in ("v6", "v7", "v8")
     is_v5 = variant == "v5"
-    is_v5_or_v6 = variant in ("v7", "v6", "v5")
+    is_v5_or_v6 = variant in ("v8", "v7", "v6", "v5")
     num_workers = (4 if is_v6 else 0) if args.num_workers is None else int(args.num_workers)
     ema_decay = (0.997 if is_v6 else 0.995) if args.ema_decay is None else float(args.ema_decay)
 
@@ -602,14 +614,14 @@ def main():
     if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
         _load_ckpt_weights_compat(ema.ema, ck_resumed["ema_state_dict"], strict=not migrating)
     eval_model = ema.ema if ema.ema is not None else model
-    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7")
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7", "v8")
                         else (lambda m, inp: (m(inp), None)))
 
     size_tag = f" ({arch.get('model_size', 'custom')})" if is_v5_or_v6 else ""
     curr_tag = f" | Curriculum epochs: {args.curriculum_epochs}" if is_v5_or_v6 and args.curriculum_epochs > 0 else ""
     print(f"Architecture: {variant}{size_tag} | "
           f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M{curr_tag}")
-    lambda_data = (0.50 if is_v6 else 0.25) if args.lambda_data is None else float(args.lambda_data)
+    lambda_data = ((0.80 if is_v8 else 0.50) if is_v6 else 0.25) if args.lambda_data is None else float(args.lambda_data)
     crit = CompoundInversionLoss(lambda_data=lambda_data, lambda_ms=args.lambda_ms,
                                  lambda_cls=args.lambda_cls, depth_boost=args.depth_boost,
                                  forward_op=batch_op, use_v6_losses=is_v6)

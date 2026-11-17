@@ -1398,6 +1398,12 @@ V7_SIZE_PRESETS = {
 }
 
 
+V8_SIZE_PRESETS = {
+    sz: {**cfg, "variant": "v8", "n_iters": 3}
+    for sz, cfg in V7_SIZE_PRESETS.items()
+}
+
+
 def _rep_pad1(t: torch.Tensor) -> torch.Tensor:
     """CoreML-safe 1-pixel replicate padding for 4D ``(B, C, H, W)`` via Slice+Concat (no edge Pad)."""
     t_h = torch.cat([t[:, :, :1, :], t, t[:, :, -1:, :]], dim=2)
@@ -3000,7 +3006,7 @@ class PotentialFieldTransformer3DV7(nn.Module):
         out2 = blocks_tiers[2](torch.cat([s1_bot, hv_tiers[2]], dim=2))[:, :, 1:]
         return [out0, out1, out2]
 
-    def _forward_impl(self, x: torch.Tensor, return_aux: bool = False, return_logvar: bool = True):
+    def _forward_to_stage2_init(self, x: torch.Tensor):
         b = x.shape[0]
         gz, terr, valid_mask, log_aspect, clearance, detrend_mode = self._unpack_input(x)
         clr_s = clearance / (clearance + 1.0)
@@ -3166,7 +3172,6 @@ class PotentialFieldTransformer3DV7(nn.Module):
         )
         hv_tiers = [hv0, hv1, hv2]
 
-        # Per-tier initial density + Multi-Tier OddPyramidGravity Physics Feedback
         p_head_init = self.proto_head_init(p_ctx)
         rho_init_tiers = [
             self._decode_tier_density(
@@ -3175,22 +3180,32 @@ class PotentialFieldTransformer3DV7(nn.Module):
             )[0]
             for i in range(3)
         ]
-        g0 = self.g_tiers[0](rho_init_tiers[0].squeeze(1), z_obs_tiers[0], aspect)
+        return (
+            b, s, gn, terr, valid_mask, clearance, aspect, detrend_mode,
+            clr_tiers, valid_tiers, detrend_tiers, d_surf_tiers, mask_tiers, z_obs_tiers,
+            valid_mid, r_bp_mid, coarse_pred, p_ctx, hv_tiers, rho_init_tiers,
+        )
+
+    def _run_tier_physics_feedback(
+        self, hv_tiers, rho_cur_tiers, b, s, gn_bp, valid_mask, detrend_mode,
+        valid_tiers, d_surf_tiers, mask_tiers, z_obs_tiers, aspect, gate_param,
+    ):
+        g0 = self.g_tiers[0](rho_cur_tiers[0].squeeze(1), z_obs_tiers[0], aspect)
         g1 = F.interpolate(
-            self.g_tiers[1](rho_init_tiers[1].squeeze(1), z_obs_tiers[1], aspect),
+            self.g_tiers[1](rho_cur_tiers[1].squeeze(1), z_obs_tiers[1], aspect),
             size=(self.nx, self.ny), mode="bilinear", align_corners=False,
         )
         g2 = F.interpolate(
-            self.g_tiers[2](rho_init_tiers[2].squeeze(1), z_obs_tiers[2], aspect),
+            self.g_tiers[2](rho_cur_tiers[2].squeeze(1), z_obs_tiers[2], aspect),
             size=(self.nx, self.ny), mode="bilinear", align_corners=False,
         )
-        g_init_mgal = g0 + g1 + g2
-        gn_bp = self.bp_64(gn)
-        g_init_bp = self.bp_64(g_init_mgal / s)
-        r_bp_64 = (gn_bp - g_init_bp) * valid_mask
+        g_cur_mgal = g0 + g1 + g2
+        g_cur_bp = self.bp_64(g_cur_mgal / s)
+        r_bp_64 = (gn_bp - g_cur_bp) * valid_mask
 
-        f_vox_2d_0 = self.res_vox_2d(torch.cat([gn_bp, g_init_bp, r_bp_64, valid_mask, detrend_mode], dim=1))
+        f_vox_2d_0 = self.res_vox_2d(torch.cat([gn_bp, g_cur_bp, r_bp_64, valid_mask, detrend_mode], dim=1))
         bp_norm_tiers = []
+        hv_next = []
         for i in range(3):
             d_i = self.tier_depths[i]
             h_i, w_i = self.tier_hw[i]
@@ -3207,27 +3222,41 @@ class PotentialFieldTransformer3DV7(nn.Module):
             bp_i_z = bp_i_norm * w_bp_z_i
             f_2d_i = (f_vox_2d_0 if i == 0 else F.avg_pool2d(f_vox_2d_0, 2 ** i)).unsqueeze(2)
             f_3d_i = self.res_vox_3d_tiers[i](
-                torch.cat([bp_i_z, rho_init_tiers[i]], dim=1).reshape(b, 2, d_i * h_i, w_i)
+                torch.cat([bp_i_z, rho_cur_tiers[i]], dim=1).reshape(b, 2, d_i * h_i, w_i)
             ).reshape(b, self.ch_vox, d_i, h_i, w_i)
-            hv_tiers[i] = hv_tiers[i] + torch.tanh(self.res_vox_gate) * (f_2d_i + f_3d_i) * mask_tiers[i]
+            hv_next.append(hv_tiers[i] + torch.tanh(gate_param) * (f_2d_i + f_3d_i) * mask_tiers[i])
+        return hv_next, r_bp_64, bp_norm_tiers, g_cur_mgal
 
-        # Seamed Stage-2 3D refinement (vertical boundary sharing across z=400m & z=1000m)
-        hv_tiers = self._run_seamed_dec2(hv_tiers, self.dec_vox2_tiers)
+    def _run_stage2_refine_and_decode(self, hv_tiers, p_head, d_surf_tiers, mask_tiers):
+        hv_out = self._run_seamed_dec2(hv_tiers, self.dec_vox2_tiers)
         if self.dec_depth > 2:
             for extra_idx in range(self.dec_depth - 2):
                 step_blocks = nn.ModuleList([self.extra_dec_vox_tiers[t][extra_idx] for t in range(3)])
-                hv_tiers = self._run_seamed_dec2(hv_tiers, step_blocks)
-        hv_tiers = [self.vox_drop(hv_i) for hv_i in hv_tiers]
-
-        # Per-tier density + optional log_var decoding & Option I prolongation
-        p_head = self.proto_head(p_ctx)
+                hv_out = self._run_seamed_dec2(hv_out, step_blocks)
+        hv_out = [self.vox_drop(hv_i) for hv_i in hv_out]
         dec_tiers = [
             self._decode_tier_density(
-                hv_tiers[i], p_head, mask_tiers[i], d_surf=d_surf_tiers[i],
+                hv_out[i], p_head, mask_tiers[i], d_surf=d_surf_tiers[i],
                 rock_head=self.rock_head, res_head=self.res_head,
             )
             for i in range(3)
         ]
+        return hv_out, dec_tiers
+
+    def _forward_impl(self, x: torch.Tensor, return_aux: bool = False, return_logvar: bool = True):
+        (
+            b, s, gn, terr, valid_mask, clearance, aspect, detrend_mode,
+            clr_tiers, valid_tiers, detrend_tiers, d_surf_tiers, mask_tiers, z_obs_tiers,
+            valid_mid, r_bp_mid, coarse_pred, p_ctx, hv_tiers, rho_init_tiers,
+        ) = self._forward_to_stage2_init(x)
+
+        gn_bp = self.bp_64(gn)
+        hv_tiers, r_bp_64, bp_norm_tiers, g_init_mgal = self._run_tier_physics_feedback(
+            hv_tiers, rho_init_tiers, b, s, gn_bp, valid_mask, detrend_mode,
+            valid_tiers, d_surf_tiers, mask_tiers, z_obs_tiers, aspect, self.res_vox_gate,
+        )
+        p_head = self.proto_head(p_ctx)
+        _, dec_tiers = self._run_stage2_refine_and_decode(hv_tiers, p_head, d_surf_tiers, mask_tiers)
         rho_tiers = tuple(dt[0] for dt in dec_tiers)
         mask = self._air_mask(self.z_top, terr.unsqueeze(2))
 
@@ -3292,11 +3321,171 @@ class PotentialFieldTransformer3DV7(nn.Module):
         }
 
 
+class PotentialFieldTransformer3DV8(PotentialFieldTransformer3DV7):
+    """V8 Unrolled Stage-2 Gauss-Newton Physics Loop over the V7 3-Tier Slab Hierarchy.
+
+    Reuses V7's 6-channel input, 3-tier slab hierarchy, and Option I prolongation tail
+    while unrolling ``n_iters`` (default 3) weight-tied Stage-2 residual physics updates
+    with zero-gated iterations ``1..n_iters-1`` for exact V7 warm-start compatibility.
+    """
+
+    def __init__(self, nx=64, ny=64, nz=32, patch=4, embed_dim=128, num_heads=4, depth=6,
+                 ch_mid=40, ch_vox=32, n_sub=3, num_classes=7, dropout=0.05, dec_depth=2,
+                 in_channels=6, n_iters=3, **_unused):
+        super().__init__(
+            nx=nx, ny=ny, nz=nz, patch=patch, embed_dim=embed_dim, num_heads=num_heads,
+            depth=depth, ch_mid=ch_mid, ch_vox=ch_vox, n_sub=n_sub, num_classes=num_classes,
+            dropout=dropout, dec_depth=dec_depth, in_channels=in_channels,
+        )
+        self.variant = "v8"
+        self.n_iters = max(1, int(n_iters))
+        self.res_vox_gates = nn.ParameterList([nn.Parameter(torch.zeros(1)) for _ in range(self.n_iters)])
+        self.iter_step_gates = nn.ParameterList([
+            nn.Parameter(torch.zeros(1)) for _ in range(max(0, self.n_iters - 1))
+        ])
+        self.iter_scale = nn.Parameter(torch.zeros(self.n_iters, self.ch_vox))
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        own_sd = self.state_dict()
+        if f"{prefix}iter_scale" not in state_dict:
+            if f"{prefix}res_vox_gate" in state_dict:
+                state_dict[f"{prefix}res_vox_gates.0"] = state_dict[f"{prefix}res_vox_gate"].detach().clone()
+            for name, base_t in own_sd.items():
+                if (
+                    name.startswith("res_vox_gates.")
+                    or name.startswith("iter_step_gates.")
+                    or name == "iter_scale"
+                ):
+                    fk = f"{prefix}{name}"
+                    if fk not in state_dict:
+                        state_dict[fk] = torch.zeros_like(base_t)
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
+        )
+
+    def _forward_impl(self, x: torch.Tensor, return_aux: bool = False, return_logvar: bool = True):
+        (
+            b, s, gn, terr, valid_mask, clearance, aspect, detrend_mode,
+            clr_tiers, valid_tiers, detrend_tiers, d_surf_tiers, mask_tiers, z_obs_tiers,
+            valid_mid, r_bp_mid, coarse_pred, p_ctx, hv_tiers, rho_init_tiers,
+        ) = self._forward_to_stage2_init(x)
+
+        gn_bp = self.bp_64(gn)
+        p_head = self.proto_head(p_ctx)
+        mask = self._air_mask(self.z_top, terr.unsqueeze(2))
+
+        hv_cur = hv_tiers
+        rho_cur_tiers = tuple(rho_init_tiers)
+        dec_tiers = None
+        r_bp_64 = None
+        bp_norm_tiers = None
+        g_init_mgal = None
+        rho_iter_preds = []
+
+        for it in range(self.n_iters):
+            hv_fb, r_bp_it, bp_norm_it, g_it_mgal = self._run_tier_physics_feedback(
+                hv_cur, rho_cur_tiers, b, s, gn_bp, valid_mask, detrend_mode,
+                valid_tiers, d_surf_tiers, mask_tiers, z_obs_tiers, aspect, self.res_vox_gates[it],
+            )
+            sc = self.iter_scale[it].view(1, self.ch_vox, 1, 1, 1)
+            hv_fb = [hv_fb[i] + sc * mask_tiers[i] for i in range(3)]
+            hv_ref, dec_it = self._run_stage2_refine_and_decode(hv_fb, p_head, d_surf_tiers, mask_tiers)
+
+            if it == 0:
+                hv_cur = hv_ref
+                dec_tiers = dec_it
+                r_bp_64 = r_bp_it
+                bp_norm_tiers = bp_norm_it
+                g_init_mgal = g_it_mgal
+                rho_cur_tiers = tuple(dt[0] for dt in dec_it)
+            else:
+                step_g = torch.tanh(self.iter_step_gates[it - 1])
+                hv_cur = [hv_cur[i] + step_g * (hv_ref[i] - hv_cur[i]) * mask_tiers[i] for i in range(3)]
+                dec_tiers = [
+                    self._decode_tier_density(
+                        hv_cur[i], p_head, mask_tiers[i], d_surf=d_surf_tiers[i],
+                        rock_head=self.rock_head, res_head=self.res_head,
+                    )
+                    for i in range(3)
+                ]
+                rho_cur_tiers = tuple(dt[0] for dt in dec_tiers)
+                r_bp_64 = r_bp_it
+                bp_norm_tiers = bp_norm_it
+
+            if return_aux and it < self.n_iters - 1:
+                rho_k, _ = self.prolong(rho_cur_tiers, None, mask=mask)
+                rho_iter_preds.append(rho_k)
+
+        rho_tiers = rho_cur_tiers
+        if not return_logvar and not return_aux:
+            pred, _ = self.prolong(rho_tiers, None, mask=mask)
+            return pred, None, None
+
+        r_bp_energy = (r_bp_64 * r_bp_64) / (0.04 + r_bp_64 * r_bp_64)
+        lv_tiers = tuple(
+            _compute_v6_logvar(
+                dec_tiers[i][5], rho_tiers[i], dec_tiers[i][4], mask_tiers[i],
+                d_surf_tiers[i], bp_norm_tiers[i],
+                torch.cat([
+                    clr_tiers[i], 1.0 - valid_tiers[i],
+                    r_bp_energy if i == 0 else F.avg_pool2d(r_bp_energy, 2 ** i),
+                    detrend_tiers[i],
+                ], dim=1),
+                self.logvar_hv, self.logvar_3d, self.logvar_2d, self.logvar_out,
+            )
+            for i in range(3)
+        )
+        pred, log_var = self.prolong(rho_tiers, lv_tiers, mask=mask)
+        if not return_aux:
+            return pred, log_var, None
+
+        rho_init = self.prolong.prolong_tensor(tuple(rho_init_tiers), mask=mask)
+        logits = self.prolong.prolong_tensor(tuple(dt[2] for dt in dec_tiers))
+        probs = F.softmax(
+            logits.permute(0, 2, 1, 3, 4).reshape(b * self.nz, self.num_classes, self.nx, self.ny), dim=1,
+        ).reshape(b, self.nz, self.num_classes, self.nx, self.ny).permute(0, 2, 1, 3, 4)
+        occ = self.prolong.prolong_tensor(tuple(dt[3] for dt in dec_tiers))
+        edt_tiers = tuple(
+            torch.sigmoid(self.edt_head(dec_tiers[i][5])).reshape(
+                b, 1, self.tier_depths[i], self.tier_hw[i][0], self.tier_hw[i][1]
+            ) * mask_tiers[i]
+            for i in range(3)
+        )
+        edt = self.prolong.prolong_tensor(edt_tiers, mask=mask)
+
+        denom_m = valid_mid.sum(dim=(2, 3), keepdim=True).clamp_min(1.0)
+        denom_f = valid_mask.sum(dim=(2, 3), keepdim=True).clamp_min(1.0)
+        coarse_res_rms = torch.sqrt(((r_bp_mid * r_bp_mid).sum(dim=(2, 3), keepdim=True) / denom_m) + 1e-8)
+        res_rms = torch.sqrt(((r_bp_64 * r_bp_64).sum(dim=(2, 3), keepdim=True) / denom_f) + 1e-8)
+        return pred, log_var, {
+            "is_v7": True,
+            "is_v8": True,
+            "tier_preds": rho_tiers,
+            "rho_iter_preds": tuple(rho_iter_preds),
+            "log_var": log_var,
+            "coarse_pred": coarse_pred,
+            "rho_init": rho_init,
+            "mask": mask,
+            "occ": occ,
+            "probs": probs,
+            "logits": logits,
+            "edt": edt,
+            "res_rms": res_rms,
+            "coarse_res_rms": coarse_res_rms,
+            "terr": terr.unsqueeze(2),
+            "clr": clearance.unsqueeze(2),
+            "aspect": aspect.unsqueeze(2),
+            "g_init": g_init_mgal,
+        }
+
+
 def create_model(nx=64, ny=64, nz=32, **arch):
-    """Instantiate v7, v6, v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
+    """Instantiate v8, v7, v6, v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
     cfg = dict(arch)
     variant = cfg.pop("variant", "v1")
     presets_and_cls = {
+        "v8": (V8_SIZE_PRESETS, PotentialFieldTransformer3DV8),
         "v7": (V7_SIZE_PRESETS, PotentialFieldTransformer3DV7),
         "v6": (V6_SIZE_PRESETS, PotentialFieldTransformer3DV6),
         "v5": (V5_SIZE_PRESETS, PotentialFieldTransformer3DV5),

@@ -53,12 +53,12 @@ def export_checkpoint_to_onnx(checkpoint: str, output: str, opset: int = 17, ver
     model.eval()
 
     resolved_variant = arch.get("variant")
-    is_v7 = isinstance(model, PotentialFieldTransformer3DV7) or resolved_variant == "v7"
+    is_v7 = isinstance(model, PotentialFieldTransformer3DV7) or resolved_variant in ("v7", "v8")
     is_v5_or_v6 = (
         isinstance(model, (PotentialFieldTransformer3DV5, PotentialFieldTransformer3DV6, PotentialFieldTransformer3DV7))
-        or resolved_variant in ("v5", "v6", "v7")
+        or resolved_variant in ("v5", "v6", "v7", "v8")
     )
-    is_v6 = isinstance(model, (PotentialFieldTransformer3DV6, PotentialFieldTransformer3DV7)) or resolved_variant in ("v6", "v7")
+    is_v6 = isinstance(model, (PotentialFieldTransformer3DV6, PotentialFieldTransformer3DV7)) or resolved_variant in ("v6", "v7", "v8")
     in_ch = 6 if is_v7 else (5 if is_v5_or_v6 else 2)
     x = torch.zeros(1, in_ch, g["nx"], g["ny"])
     xx, yy = np.meshgrid(np.arange(g["nx"]) - 0.5 * g["nx"], np.arange(g["ny"]) - 0.5 * g["ny"], indexing="ij")
@@ -140,7 +140,7 @@ def main():
     ap.add_argument("--checkpoint", default="./checkpoints/best_swin3d.pt")
     ap.add_argument("--output", default="./models/inv_swin3d.onnx")
     ap.add_argument("--opset", type=int, default=17)
-    ap.add_argument("--variant", default=None, choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7"])
+    ap.add_argument("--variant", default=None, choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"])
     ap.add_argument("--no-verify", action="store_true")
     ap.add_argument("--no-mps", action="store_true")
     args = ap.parse_args()
