@@ -125,7 +125,7 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
         """<div class="charts-grid">
   <div class="chart-card">
     <h4>
-      <span>Loss &amp; Data Misfit</span>
+      <span>Train &amp; Validation Loss</span>
       <span style="display:flex;align-items:center;gap:6px;">
         <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
           <label id="lblLossLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Logarithmic Y axis">
@@ -138,15 +138,33 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
         <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span>
       </span>
     </h4>
+    <div id="legLoss" class="chart-legend"></div>
     <svg id="svgLoss" class="chart-svg"></svg>
   </div>
   <div class="chart-card">
-    <h4>3D Volumetric IoU &amp; Amplitude Recovery <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
+    <h4><span>Data Misfit &amp; Relative Errors [0..max]</span> <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span></h4>
+    <div id="legMisfit" class="chart-legend"></div>
+    <svg id="svgMisfit" class="chart-svg"></svg>
+  </div>
+  <div class="chart-card">
+    <h4><span>3D IoU &amp; Amplitude Recovery [0..1]</span> <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span></h4>
+    <div id="legIoU" class="chart-legend"></div>
     <svg id="svgIoU" class="chart-svg"></svg>
   </div>
   <div class="chart-card">
-    <h4>Centroid Depth Error |dz| [m] <span style="font-size:0.75rem;color:var(--text-secondary);">Click chart to seek</span></h4>
+    <h4><span>Lithology Recall &amp; Uncertainty Calibration [0..1]</span> <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span></h4>
+    <div id="legLithoUnc" class="chart-legend"></div>
+    <svg id="svgLithoUnc" class="chart-svg"></svg>
+  </div>
+  <div class="chart-card">
+    <h4><span>Centroid Depth Error |dz| [m]</span> <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span></h4>
+    <div id="legDz" class="chart-legend"></div>
     <svg id="svgDz" class="chart-svg"></svg>
+  </div>
+  <div class="chart-card">
+    <h4><span>Boundary Uncertainty Ratio &amp; AURC [log]</span> <span style="font-size:0.72rem;color:var(--text-secondary);">Click to seek</span></h4>
+    <div id="legRatio" class="chart-legend"></div>
+    <svg id="svgRatio" class="chart-svg"></svg>
   </div>
 </div>"""
     )
@@ -777,7 +795,7 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     width: 100%;
     max-width: 1360px;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: 8px;
     margin-bottom: 6px;
   }
@@ -791,13 +809,33 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     font-size: 0.72rem;
     color: var(--text-secondary);
     font-weight: 600;
-    margin-bottom: 4px;
+    margin-bottom: 3px;
     display: flex;
     justify-content: space-between;
   }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 4px;
+    font-size: 0.65rem;
+    color: var(--text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .chart-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .chart-legend-swatch {
+    width: 10px;
+    height: 2.5px;
+    border-radius: 1px;
+    display: inline-block;
+  }
   svg.chart-svg {
     width: 100%;
-    height: 85px;
+    height: 92px;
     display: block;
     cursor: pointer;
   }
@@ -3698,21 +3736,65 @@ void main() {
     renderProfileCanvas();
   }
 
-  // --- SVG Convergence Charts ---
+  // --- SVG Convergence Charts (grouped by metric range) ---
+  function renderChartLegend(legendId, activeSeries) {
+    const el = document.getElementById(legendId);
+    if (!el) return;
+    el.innerHTML = activeSeries.map(s => {
+      const dash = s.dash ? 'background:repeating-linear-gradient(90deg,' + s.color + ' 0 3px,transparent 3px 5px);' : 'background:' + s.color + ';';
+      return `<span class="chart-legend-item"><span class="chart-legend-swatch" style="${dash}"></span>${s.label}</span>`;
+    }).join('');
+  }
+
   function renderAllCharts() {
     const pal = getThemePalette();
-    renderSvgChart('svgLoss', [
+    // 1. Train & Validation Loss together (same scale)
+    renderSvgChart('svgLoss', 'legLoss', [
       { key: 'train_loss', color: pal.lossColor, label: 'Train Loss' },
       { key: 'val_loss', color: pal.valColor, label: 'Val Loss' },
-      { key: 'data_rel_misfit', color: pal.misfitColor, label: 'Data Misfit' }
+      { key: 'val_gc_loss', color: '#059669', label: 'GC Loss', dash: true },
+      { key: 'val_hl_loss', color: '#8b5cf6', label: 'HL Loss', dash: true },
+      { key: 'val_air_loss', color: '#06b6d4', label: 'Air Loss', dash: true },
+      { key: 'val_ma_loss', color: '#f59e0b', label: 'MA Loss', dash: true }
     ], null, null, lossLogScale);
-    renderSvgChart('svgIoU', [
+
+    // 2. Data misfit & relative errors (~0.0 .. 0.6)
+    renderSvgChart('svgMisfit', 'legMisfit', [
+      { key: 'data_rel_misfit', color: pal.misfitColor, label: 'Data Misfit' },
+      { key: 'body_l1_rel', color: '#f59e0b', label: 'Body Rel L1' },
+      { key: 'l1_rel', color: pal.lossColor, label: 'Full Rel L1' },
+      { key: 'halo_opp', color: pal.dzColor, label: 'Opp Halo', dash: true }
+    ], 0.0, null, false);
+
+    // 3. 3D IoU & Amplitude Recovery [0..1]
+    renderSvgChart('svgIoU', 'legIoU', [
       { key: 'iou', color: pal.valColor, label: '3D IoU' },
-      { key: 'amp_ratio', color: pal.lossColor, label: 'Amp Ratio' }
+      { key: 'amp_ratio', color: pal.lossColor, label: 'Amp Ratio' },
+      { key: 'val_gc_iou', color: '#059669', label: 'GC IoU', dash: true },
+      { key: 'val_hl_iou', color: '#8b5cf6', label: 'HL IoU', dash: true },
+      { key: 'val_air_iou', color: '#06b6d4', label: 'Air IoU', dash: true },
+      { key: 'val_ma_iou', color: '#f59e0b', label: 'MA IoU', dash: true }
     ], 0.0, 1.0, false);
-    renderSvgChart('svgDz', [
-      { key: 'centroid_dz', color: pal.dzColor, label: '|dz| [m]' }
-    ], null, null, false);
+
+    // 4. Lithology Recall & Uncertainty Calibration [0..1]
+    renderSvgChart('svgLithoUnc', 'legLithoUnc', [
+      { key: 'sediment_recall', color: '#38bdf8', label: 'Sed Recall' },
+      { key: 'mafic_recall', color: '#fb923c', label: 'Mafic Recall' },
+      { key: 'fg_1sig_cov', color: pal.valColor, label: 'FG 1σ Cov' },
+      { key: 'unc_spearman', color: pal.misfitColor, label: 'Unc Spearman' }
+    ], 0.0, 1.0, false);
+
+    // 5. Centroid Depth Error |dz| [m]
+    renderSvgChart('svgDz', 'legDz', [
+      { key: 'centroid_dz', color: pal.dzColor, label: '|dz| All [m]' },
+      { key: 'hard_dz', color: '#f59e0b', label: '|dz| Hard [m]', dash: true }
+    ], 0.0, null, false);
+
+    // 6. Small/Ratio uncertainty metrics (log scale)
+    renderSvgChart('svgRatio', 'legRatio', [
+      { key: 'bd_sig_err_ratio', color: pal.lossColor, label: 'Bd σ/|err|' },
+      { key: 'aurc', color: pal.misfitColor, label: 'AURC', dash: true }
+    ], null, null, true);
   }
 
   function formatChartTick(val, useLog) {
@@ -3725,10 +3807,12 @@ void main() {
     return val.toFixed(val < 10 ? 2 : 0);
   }
 
-  function renderSvgChart(svgId, series, fixedMin = null, fixedMax = null, useLog = false) {
+  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false) {
     const svg = document.getElementById(svgId);
     const epochs = getEpochs();
     if (!svg || !epochs.length) return;
+    const activeSeries = series.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
+    renderChartLegend(legendId, activeSeries);
     const N = epochs.length;
     const w = 420, h = 125, padL = 42, padR = 14, padT = 10, padB = 22;
     const pw = w - padL - padR, ph = h - padT - padB;
@@ -3738,7 +3822,7 @@ void main() {
     const LOG_FLOOR = 1e-4;
 
     if (fixedMin == null || fixedMax == null) {
-      series.forEach(s => {
+      activeSeries.forEach(s => {
         epochs.forEach(r => {
           const v = r[s.key];
           if (v != null && isFinite(v)) {
@@ -3800,14 +3884,16 @@ void main() {
     `;
 
     // Polylines
-    series.forEach(s => {
+    activeSeries.forEach(s => {
       const pts = [];
       epochs.forEach((r, idx) => {
         const v = r[s.key];
         if (v != null && isFinite(v)) pts.push(`${xCoord(idx).toFixed(1)},${yCoord(v).toFixed(1)}`);
       });
       if (pts.length) {
-        content += `<polyline fill="none" stroke="${s.color}" stroke-width="1.8" points="${pts.join(' ')}"/>`;
+        const dashAttr = s.dash ? ' stroke-dasharray="4,3"' : '';
+        const sw = s.dash ? '1.3' : '1.8';
+        content += `<polyline fill="none" stroke="${s.color}" stroke-width="${sw}"${dashAttr} points="${pts.join(' ')}"/>`;
       }
     });
 
@@ -3836,7 +3922,7 @@ void main() {
     const pw = w - padL - padR;
     const x = padL + (N > 1 ? (idx / (N - 1)) * pw : pw * 0.5);
 
-    ['svgLoss_scrubber', 'svgIoU_scrubber', 'svgDz_scrubber'].forEach(id => {
+    ['svgLoss_scrubber', 'svgMisfit_scrubber', 'svgIoU_scrubber', 'svgLithoUnc_scrubber', 'svgDz_scrubber', 'svgRatio_scrubber'].forEach(id => {
       const el = document.getElementById(id);
       if (el) { el.setAttribute('x1', x); el.setAttribute('x2', x); }
     });
