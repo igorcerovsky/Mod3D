@@ -76,6 +76,10 @@ try:
 except ImportError:
     V9_SIZE_PRESETS = None
 try:
+    from model_swin3d import V9_1_SIZE_PRESETS
+except ImportError:
+    V9_1_SIZE_PRESETS = None
+try:
     from model_swin3d import PotentialFieldTransformer3DV7
 except ImportError:
     PotentialFieldTransformer3DV7 = None
@@ -102,6 +106,8 @@ if V8_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v8"] = dict(V8_SIZE_PRESETS["base"])
 if V9_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v9"] = dict(V9_SIZE_PRESETS["base"])
+if V9_1_SIZE_PRESETS is not None:
+    ARCH_BY_VARIANT["v9.1"] = dict(V9_1_SIZE_PRESETS["base"])
 ARCH = ARCH_BY_VARIANT["v5"]
 
 V6_BUCKET_WEIGHTS = {
@@ -303,6 +309,20 @@ def prepare_v6_batch(batch, op_bank, subvox_cap_bank, asp_list, dev, batch_op,
     return x, rho, uid, clean, z_obs
 
 
+_LOSS_COMP_NAMES = (
+    "sup", "data", "cls", "coherence", "edt", "coarse",
+    "tier", "rho_init", "nll", "peak_amp", "focus", "iter_data",
+)
+
+
+def _record_loss_components(dst: dict, stats: dict, prefix: str, denom: float = 1.0):
+    inv_d = 1.0 / max(float(denom), 1.0)
+    for name in _LOSS_COMP_NAMES:
+        val = float(stats.get(f"wloss_{name}", 0.0)) * inv_d
+        if val > 0.0:
+            dst[f"{prefix}wloss_{name}"] = val
+
+
 def _merge_bucket_metrics(bucket_metrics: dict, weights: dict):
     all_keys = set()
     for m in bucket_metrics.values():
@@ -347,7 +367,7 @@ def validate_v6_buckets(eval_model, model, forward_with_aux, buckets: dict, crit
                 if force_v3_loss and a_c is not None:
                     a_c["use_v3_loss"] = True
                 b_preds.append(p_c)
-                closs, _ = _call_crit(
+                closs, cstats = _call_crit(
                     crit, p_c, ch["truth"], ch["clean"], ch["z_obs"], aux=a_c, unit_id=ch["unit_id"],
                 )
                 n_c = ch["truth"].shape[0]
@@ -356,6 +376,9 @@ def validate_v6_buckets(eval_model, model, forward_with_aux, buckets: dict, crit
                     p_c, ch["truth"], ch["clean"], ch["z_obs"], ch["op"], ch["dz"],
                     unit_id=ch["unit_id"], detrend_modes=ch.get("detrend_modes"),
                 )
+                if cstats.get("loss_coherence", 0.0) > 0.0:
+                    met["val_coherence"] = float(cstats["loss_coherence"])
+                _record_loss_components(met, cstats, "val_")
                 cal = compute_calibration_metrics(
                     p_c, ch["truth"], None if a_c is None else a_c.get("log_var"),
                     terrain=ch["terrain"], dz=ch["dz"],
@@ -451,6 +474,8 @@ def parse_args():
                    help="physics data-misfit loss weight (default: 0.50 for v6/v7, 0.25 for v1-v5)")
     p.add_argument("--lambda-ms", type=float, default=0.05)
     p.add_argument("--lambda-cls", type=float, default=0.25, help="lithology cross-entropy weight")
+    p.add_argument("--lambda-coherence", type=float, default=None,
+                   help="composite-safe body-lithology coherence weight (default: 0.12 for v9.1, 0.0 otherwise)")
     p.add_argument("--depth-boost", type=float, default=0.5, help="depth sensitivity ramp in loss [0.0 = uniform]")
     p.add_argument("--ema-decay", type=float, default=None,
                    help="EMA decay for eval/best weights (default: 0.997 for v6/v7, 0.995 for v1-v5; 0 disables)")
@@ -461,7 +486,7 @@ def parse_args():
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
     p.add_argument("--refresh-sec", type=int, default=60,
                    help="web dashboard auto-refresh interval in seconds (0 disables auto-refresh, default: 60)")
-    p.add_argument("--variant", type=str, default="v5", choices=["v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"],
+    p.add_argument("--variant", type=str, default="v5", choices=["v9.1", "v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"],
                    help="model architecture variant (default: v5)")
     p.add_argument("--model-size", type=str, default="base", choices=["slim", "base", "heavy"],
                    help="v5/v6/v7 capacity tier: slim, base, heavy")
@@ -500,7 +525,12 @@ def main():
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
 
-    if args.variant == "v9":
+    if args.variant == "v9.1":
+        if V9_1_SIZE_PRESETS is None:
+            raise RuntimeError("--variant v9.1 requires V9_1_SIZE_PRESETS in model_swin3d.py")
+        arch = dict(V9_1_SIZE_PRESETS[args.model_size])
+        arch["dropout"] = float(args.dropout)
+    elif args.variant == "v9":
         if V9_SIZE_PRESETS is None:
             raise RuntimeError("--variant v9 requires V9_SIZE_PRESETS in model_swin3d.py")
         arch = dict(V9_SIZE_PRESETS[args.model_size])
@@ -530,7 +560,7 @@ def main():
         ck_resumed = torch.load(args.resume, map_location="cpu")
         ck_arch = ck_resumed.get("arch", {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4})
         ck_variant = str(ck_arch.get("variant", "v1"))
-        if args.variant in ("v7", "v8", "v9") and ck_variant != args.variant:
+        if args.variant in ("v7", "v8", "v9", "v9.1") and ck_variant != args.variant:
             migrating = True
             print(
                 f"Warm-starting {args.variant} ({args.model_size}) from {ck_variant} checkpoint {args.resume} "
@@ -545,12 +575,12 @@ def main():
             print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
 
     variant = arch.get("variant", "v1")
-    is_v9 = variant == "v9"
+    is_v9 = variant in ("v9", "v9.1")
     is_v8 = variant == "v8"
-    is_v7 = variant in ("v7", "v8", "v9")
-    is_v6 = variant in ("v6", "v7", "v8", "v9")
+    is_v7 = variant in ("v7", "v8", "v9", "v9.1")
+    is_v6 = variant in ("v6", "v7", "v8", "v9", "v9.1")
     is_v5 = variant == "v5"
-    is_v5_or_v6 = variant in ("v9", "v8", "v7", "v6", "v5")
+    is_v5_or_v6 = variant in ("v9.1", "v9", "v8", "v7", "v6", "v5")
     use_v6_data = is_v6 and (not args.v3_data)
     num_workers = (4 if use_v6_data else 0) if args.num_workers is None else int(args.num_workers)
     ema_decay = (0.997 if is_v6 else 0.995) if args.ema_decay is None else float(args.ema_decay)
@@ -648,7 +678,7 @@ def main():
     if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
         _load_ckpt_weights_compat(ema.ema, ck_resumed["ema_state_dict"], strict=not migrating)
     eval_model = ema.ema if ema.ema is not None else model
-    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9")
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9", "v9.1")
                         else (lambda m, inp: (m(inp), None)))
 
     size_tag = f" ({arch.get('model_size', 'custom')})" if is_v5_or_v6 else ""
@@ -658,7 +688,8 @@ def main():
     lambda_data = ((0.50 if is_v9 else (0.80 if is_v8 else 0.50)) if is_v6 else 0.25) if args.lambda_data is None else float(args.lambda_data)
     crit = CompoundInversionLoss(lambda_data=lambda_data, lambda_ms=args.lambda_ms,
                                  lambda_cls=args.lambda_cls, depth_boost=args.depth_boost,
-                                 forward_op=batch_op, use_v6_losses=(is_v6 and (not is_v9) and (not args.v3_loss)))
+                                 forward_op=batch_op, use_v6_losses=(is_v6 and (not is_v9) and (not args.v3_loss)),
+                                 lambda_coherence=args.lambda_coherence)
 
     end_epoch = start_epoch + args.epochs - 1
     total_steps = max(1, (end_epoch - start_epoch + 1) * args.steps)
@@ -710,8 +741,16 @@ def main():
                 if vaux is None:
                     vaux = {}
                 vaux["use_v3_loss"] = True
-            sloss, _ = _call_crit(crit, pred, ys, cs, zs, aux=vaux)
-        return float(sloss), compute_metrics(pred, ys, cs, zs, op, CELL), pred
+            sloss, sstats = _call_crit(crit, pred, ys, cs, zs, aux=vaux)
+            smet = compute_metrics(pred, ys, cs, zs, op, CELL)
+            if sstats.get("loss_coherence", 0.0) > 0.0:
+                smet["val_coherence"] = float(sstats["loss_coherence"])
+            _record_loss_components(smet, sstats, "val_")
+            if vaux is not None and "log_var" in vaux:
+                smet.update(compute_calibration_metrics(
+                    pred, ys, vaux.get("log_var"), terrain=xs[:, 1] * depth_total, dz=CELL,
+                ))
+        return float(sloss), smet, pred
 
     def _pack_monitor(parts):
         xs, ts, ps, cs, zs = zip(*parts)
@@ -735,8 +774,9 @@ def main():
                 model.train()
             comb_loss = (1.0 - hard_prob) * std_loss + hard_prob * hard_loss
             comb_m = {}
-            for k in std_m:
-                vs, vh = std_m[k], hard_m[k]
+            for k in sorted(set(std_m) | set(hard_m)):
+                vs = std_m.get(k, float("nan"))
+                vh = hard_m.get(k, float("nan"))
                 if np.isnan(vs) and np.isnan(vh):
                     comb_m[k] = float("nan")
                 elif np.isnan(vs):
@@ -876,7 +916,7 @@ def main():
         if use_v6_data:
             vloss, vm, b_losses, b_metrics, mon_t = validate()
             sel_score = compute_selection_score(vm, b_metrics)
-            tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items())
+            tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items() if k.startswith("loss_"))
             gc_m = b_metrics["ground_clean"]
             hl_m = b_metrics["ground_hard_large_detrend"]
             air_m = b_metrics["airborne_relief_drape"]
@@ -919,10 +959,13 @@ def main():
                 "val_air_loss": b_losses["airborne_relief_drape"], "val_air_iou": air_m["iou"],
                 "val_ma_loss": b_losses["multi_aspect"], "val_ma_iou": ma_m["iou"],
             }
+            if acc.get("loss_coherence", 0.0) > 0.0:
+                rec_mon["train_coherence"] = acc["loss_coherence"] / n
+            _record_loss_components(rec_mon, acc, "train_", denom=n)
             monitor.update(rec_mon, *mon_t, sample_labels=mon_labels, is_best=is_best)
         else:
             vloss, vm, std_loss, std_m, hard_loss, hard_m, mon_t = validate()
-            tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items())
+            tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items() if k.startswith("loss_"))
             msg = (f"Epoch {epoch:02d}/{end_epoch} [{time.time() - t0:.0f}s] train {tr} | "
                    f"val loss {std_loss:.3f} L1 {std_m['l1_rel']:.3f} bodyL1 {std_m['body_l1_rel']:.3f} "
                    f"data {std_m['data_rel_misfit']:.3f} IoU {std_m['iou']:.2f} dz {std_m['centroid_dz']:.0f} m "
@@ -948,6 +991,9 @@ def main():
                 is_best = True
                 torch.save(ck, os.path.join(args.save_dir, "best_swin3d.pt"))
             rec_mon = {"epoch": epoch, "train_loss": acc["loss_total"] / n, "val_loss": vloss, **vm}
+            if acc.get("loss_coherence", 0.0) > 0.0:
+                rec_mon["train_coherence"] = acc["loss_coherence"] / n
+            _record_loss_components(rec_mon, acc, "train_", denom=n)
             if hard_m is not None:
                 rec_mon["val_std_loss"] = std_loss
                 rec_mon["val_hard_loss"] = hard_loss

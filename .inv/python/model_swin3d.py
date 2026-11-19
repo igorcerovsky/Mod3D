@@ -1410,6 +1410,12 @@ V9_SIZE_PRESETS = {
 }
 
 
+V9_1_SIZE_PRESETS = {
+    sz: {**cfg, "variant": "v9.1", "in_channels": 6}
+    for sz, cfg in V5_SIZE_PRESETS.items()
+}
+
+
 def _rep_pad1(t: torch.Tensor) -> torch.Tensor:
     """CoreML-safe 1-pixel replicate padding for 4D ``(B, C, H, W)`` via Slice+Concat (no edge Pad)."""
     t_h = torch.cat([t[:, :, :1, :], t, t[:, :, -1:, :]], dim=2)
@@ -3498,10 +3504,10 @@ class PotentialFieldTransformer3DV9(nn.Module):
 
     def __init__(self, nx=64, ny=64, nz=32, patch=4, embed_dim=128, num_heads=4, depth=6,
                  ch_mid=40, ch_vox=24, n_sub=3, num_classes=7, dropout=0.05, dec_depth=2,
-                 in_channels=6, **_unused):
+                 in_channels=6, variant="v9", **_unused):
         super().__init__()
         assert patch == 4 and nx % (4 * patch) == 0 and ny % (4 * patch) == 0 and nz % 4 == 0
-        self.variant = "v9"
+        self.variant = str(variant)
         self.in_channels = int(in_channels)
         self.nx, self.ny, self.nz, self.p, self.n_sub = nx, ny, nz, patch, n_sub
         self.num_classes = num_classes
@@ -3889,6 +3895,7 @@ class PotentialFieldTransformer3DV9(nn.Module):
         edt = F.softplus(self.edt_head(hv_4d)).reshape(b, self.nz, 1, self.nx, self.ny).permute(0, 2, 1, 3, 4) * mask
         return pred, log_var, {
             "is_v9": True,
+            "is_v9_1": (self.variant == "v9.1"),
             "logits": logits,
             "probs": probs,
             "edt": edt,
@@ -3913,10 +3920,11 @@ class PotentialFieldTransformer3DV9(nn.Module):
 
 
 def create_model(nx=64, ny=64, nz=32, **arch):
-    """Instantiate v9, v8, v7, v6, v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
+    """Instantiate v9.1, v9, v8, v7, v6, v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
     cfg = dict(arch)
     variant = cfg.pop("variant", "v1")
     presets_and_cls = {
+        "v9.1": (V9_1_SIZE_PRESETS, PotentialFieldTransformer3DV9),
         "v9": (V9_SIZE_PRESETS, PotentialFieldTransformer3DV9),
         "v8": (V8_SIZE_PRESETS, PotentialFieldTransformer3DV8),
         "v7": (V7_SIZE_PRESETS, PotentialFieldTransformer3DV7),
@@ -3932,6 +3940,8 @@ def create_model(nx=64, ny=64, nz=32, **arch):
             merged.pop("model_size", None)
             merged.update(cfg)
             cfg = merged
+        if variant in ("v9", "v9.1"):
+            cfg["variant"] = variant
         return cls(nx, ny, nz, **cfg)
     if variant == "v4":
         return PotentialFieldTransformer3DV4(nx, ny, nz, **cfg)

@@ -155,7 +155,7 @@ class CompoundInversionLoss(nn.Module):
                  e_rel=0.05, depth_boost=0.5, halo_boost=3.0, forward_op=None,
                  lambda_nll=0.06, beta_nll=0.5, lambda_coarse=0.20, lambda_amp=0.08,
                  use_v6_losses=False, tversky_alpha=0.35, tversky_beta=0.65, lambda_rho_init=0.10,
-                 lambda_tier=0.20, lambda_peak_amp=None, lambda_focus=None):
+                 lambda_tier=0.20, lambda_peak_amp=None, lambda_focus=None, lambda_coherence=None):
         super().__init__()
         self.lambda_data, self.lambda_ms, self.lambda_cls = lambda_data, lambda_ms, lambda_cls
         self.body_boost, self.e_rel = body_boost, e_rel
@@ -171,9 +171,11 @@ class CompoundInversionLoss(nn.Module):
         self.lambda_tier = float(lambda_tier)
         self.lambda_peak_amp = None if lambda_peak_amp is None else float(lambda_peak_amp)
         self.lambda_focus = None if lambda_focus is None else float(lambda_focus)
+        self.lambda_coherence = None if lambda_coherence is None else float(lambda_coherence)
         self.forward_op = forward_op
         self.zhdanov = ZhdanovFocusingLoss()
         self._bp_cache = {}
+        self._incompat_cache = {}
 
     def _border_project_2d(self, g: torch.Tensor) -> torch.Tensor:
         """Project out perimeter-fitted affine plane P_BP(g) for detrend-invariant residual loss."""
@@ -207,6 +209,200 @@ class CompoundInversionLoss(nn.Module):
         coeffs = F.conv2d(g, w_b)
         return g - (coeffs * phi).sum(dim=1, keepdim=True)
 
+    @staticmethod
+    @torch.no_grad()
+    def _lithology_class_targets(m_true: torch.Tensor, num_classes: int, is_v6: bool = False) -> torch.Tensor:
+        t0 = m_true[:, 0]
+        cls_tgt = torch.zeros_like(t0, dtype=torch.long)
+        cls_tgt[t0 <= -2.17] = 1                                    # air cavity (-2.67)
+        if num_classes >= 7:
+            if is_v6:
+                cls_tgt[(t0 > -2.17) & (t0 <= -1.635)] = 2          # water cavity (-1.67)
+                cls_tgt[(t0 > -1.635) & (t0 <= -0.855)] = 3         # light rock / coal [-1.60, -0.80]
+                cls_tgt[(t0 > -0.855) & (t0 < -1e-5)] = 4           # sediment / waste [-0.85, 0.00)
+            else:
+                cls_tgt[(t0 > -2.17) & (t0 <= -1.61)] = 2           # water cavity (-1.67)
+                cls_tgt[(t0 > -1.61) & (t0 <= -0.825)] = 3          # light rock / coal [-1.55, -0.85]
+                cls_tgt[(t0 > -0.825) & (t0 < -1e-5)] = 4           # sediment / waste [-0.80, -0.10]
+            cls_tgt[(t0 > 1e-5) & (t0 <= 0.775)] = 5                # mafic / ultramafic [+0.15, +0.75] / [0, +0.80]
+            cls_tgt[t0 > 0.775] = 6                                 # high-grade ore [+0.80, +1.85] / [+0.75, +1.95]
+        else:
+            cls_tgt[(t0 > -2.17) & (t0 <= -1.235)] = 2
+            cls_tgt[(t0 > -1.235) & (t0 < -1e-5)] = 3
+            cls_tgt[t0 > 1e-5] = 4
+        return cls_tgt
+
+    def _get_incompat_matrix(self, num_classes: int, device, dtype) -> torch.Tensor:
+        """Return (K, K) geophysical lithology incompatibility weights W[true_c, pred_c]."""
+        key = (int(num_classes), device, dtype)
+        mat = self._incompat_cache.get(key)
+        if mat is None:
+            w = torch.zeros((num_classes, num_classes), device=device, dtype=dtype)
+            if num_classes >= 7:
+                # Negative-contrast classes {1=air, 2=water, 3=light/coal, 4=sediment} vs positive {5=mafic, 6=ore}
+                neg_cls = (1, 2, 3, 4)
+                pos_cls = (5, 6)
+                for cn in neg_cls:
+                    for cp in pos_cls:
+                        w[cn, cp] = 1.0
+                        w[cp, cn] = 1.0
+                # Mild penalty for extreme negative-contrast confusion (air cavity vs sediment / coal)
+                w[1, 4] = 0.35
+                w[4, 1] = 0.35
+                w[1, 3] = 0.15
+                w[3, 1] = 0.15
+            else:
+                for cn in (1, 2, 3):
+                    w[cn, 4] = 1.0
+                    w[4, cn] = 1.0
+            self._incompat_cache[key] = w
+            mat = w
+        return mat
+
+    def _lithology_coherence_loss(
+        self, aux, m_true, fg_mask, d3, w_z, wz_faces, pos_zone, neg_zone,
+        contact_vox=None, unit_id=None, is_v6: bool = False,
+    ):
+        """Composite-safe body-lithology coherence loss (zero at exact match).
+
+        Combines:
+          1. Geophysical incompatibility penalty (forbids opposite-sign mixing such as coal vs ore
+             inside bodies and in each sign's exclusive halo).
+          2. Within-unit lithology probability smoothness strictly on same-unit / same-lithology
+             interior faces (zeroed across composite unit contacts and body walls).
+          3. Per-unit pooled lithology match + within-unit variance + strict interior core crispness.
+        """
+        probs = aux["probs"].float()                                # (B, K, D, H, W)
+        b, num_classes, D, H, W = probs.shape
+        sub_mask = aux.get("mask")
+        if sub_mask is None:
+            sub_mask = torch.ones_like(fg_mask)
+        else:
+            sub_mask = sub_mask.to(dtype=probs.dtype)
+
+        with torch.no_grad():
+            cls_tgt = self._lithology_class_targets(m_true, num_classes, is_v6=is_v6)
+            w_mat = self._get_incompat_matrix(num_classes, probs.device, probs.dtype)
+            # (B, D, H, W, K) -> (B, K, D, H, W)
+            w_incompat_fg = w_mat[cls_tgt].permute(0, 4, 1, 2, 3)
+
+            # Same-unit & same-lithology interior faces (strictly excludes composite contacts & outer walls)
+            c_pairs = (
+                (cls_tgt[:, 1:, :, :], cls_tgt[:, :-1, :, :]),
+                (cls_tgt[:, :, 1:, :], cls_tgt[:, :, :-1, :]),
+                (cls_tgt[:, :, :, 1:], cls_tgt[:, :, :, :-1]),
+            )
+            if unit_id is not None:
+                uid = unit_id[:, 0].long()
+                u_pairs = (
+                    (uid[:, 1:, :, :], uid[:, :-1, :, :]),
+                    (uid[:, :, 1:, :], uid[:, :, :-1, :]),
+                    (uid[:, :, :, 1:], uid[:, :, :, :-1]),
+                )
+                same_lith_faces = tuple(
+                    ((ca > 0) & (ca == cb) & (ua > 0) & (ua == ub)).unsqueeze(1).to(probs.dtype)
+                    for (ca, cb), (ua, ub) in zip(c_pairs, u_pairs)
+                )
+            else:
+                same_lith_faces = tuple(
+                    ((ca > 0) & (ca == cb)).unsqueeze(1).to(probs.dtype)
+                    for ca, cb in c_pairs
+                )
+
+            # Per-unit masks (unit_id when available, else active lithology classes 1..K-1)
+            if unit_id is not None and int(unit_id.amax().item()) > 0:
+                uid_3d = unit_id[:, 0].long()
+                max_u = min(16, int(uid_3d.amax().item()))
+                grp_masks = (
+                    F.one_hot(uid_3d.clamp(0, max_u), num_classes=max_u + 1)[..., 1:]
+                    .permute(0, 4, 1, 2, 3)
+                    .to(probs.dtype)
+                )
+            else:
+                grp_masks = (
+                    F.one_hot(cls_tgt.clamp(0, num_classes - 1), num_classes=num_classes)[..., 1:]
+                    .permute(0, 4, 1, 2, 3)
+                    .to(probs.dtype)
+                )
+            y_onehot = (
+                F.one_hot(cls_tgt.clamp(0, num_classes - 1), num_classes=num_classes)
+                .permute(0, 4, 1, 2, 3)
+                .to(probs.dtype)
+            )
+            # Strict interior core (at least 1 cell inside fg_mask and off internal composite contacts)
+            eroded_fg = (1.0 - _dilate3d(1.0 - fg_mask, 1)).clamp_min(0.0)
+            core_mask = eroded_fg * sub_mask if contact_vox is None else eroded_fg * (1.0 - contact_vox).clamp_min(0.0) * sub_mask
+
+        # 1. Geophysical incompatibility (foreground + sign-exclusive d3 halo)
+        incompat_vox = (probs * w_incompat_fg).sum(dim=1, keepdim=True)
+        fg_w = fg_mask * w_z
+        has_fg = fg_mask.flatten(1).sum(1) > 0
+        l_inc_fg_b = (incompat_vox * fg_w).flatten(1).sum(1) / fg_w.flatten(1).sum(1).clamp_min(1.0)
+        l_incompat_fg = torch.where(has_fg, l_inc_fg_b, torch.zeros_like(l_inc_fg_b)).mean()
+
+        neg_end = 5 if num_classes >= 7 else 4
+        p_neg = probs[:, 1:neg_end].sum(dim=1, keepdim=True)
+        p_pos = probs[:, neg_end:].sum(dim=1, keepdim=True)
+        bg_shell = (d3 - fg_mask).clamp_min(0.0) * sub_mask
+        bg_pos_halo = bg_shell * pos_zone
+        bg_neg_halo = bg_shell * neg_zone
+        halo_incompat = p_neg * bg_pos_halo + p_pos * bg_neg_halo
+        halo_w = (bg_pos_halo + bg_neg_halo) * w_z
+        has_halo = halo_w.flatten(1).sum(1) > 0
+        l_inc_h_b = (halo_incompat * w_z).flatten(1).sum(1) / halo_w.flatten(1).sum(1).clamp_min(1.0)
+        l_incompat_halo = torch.where(has_halo, l_inc_h_b, torch.zeros_like(l_inc_h_b)).mean()
+        l_incompat = 0.70 * l_incompat_fg + 0.30 * l_incompat_halo
+
+        # 2. Within-unit lithology probability smoothness (strictly on same_lith_faces)
+        dp_axes = (
+            (probs[:, :, 1:, :, :] - probs[:, :, :-1, :, :]).abs().sum(dim=1, keepdim=True) * 0.5,
+            (probs[:, :, :, 1:, :] - probs[:, :, :, :-1, :]).abs().sum(dim=1, keepdim=True) * 0.5,
+            (probs[:, :, :, :, 1:] - probs[:, :, :, :, :-1]).abs().sum(dim=1, keepdim=True) * 0.5,
+        )
+        sm_num = sum((dp_a * sf * wz).flatten(1).sum(1) for dp_a, sf, wz in zip(dp_axes, same_lith_faces, wz_faces))
+        sm_den = sum((sf * wz).flatten(1).sum(1) for sf, wz in zip(same_lith_faces, wz_faces))
+        has_sf = sm_den > 0
+        l_cls_smooth = torch.where(has_sf, sm_num / sm_den.clamp_min(1.0), torch.zeros_like(sm_num)).mean()
+
+        # 3. Unit-level lithology match, within-unit variance, and strict-core Gini crispness
+        m_units = grp_masks.shape[1]
+        nvox = D * H * W
+        grp_flat = grp_masks.reshape(b, m_units, nvox)
+        cnt_u = grp_flat.sum(dim=2)                                 # (B, M)
+        present_u = (cnt_u > 0).to(probs.dtype)
+        inv_cnt = 1.0 / cnt_u.clamp_min(1.0)
+
+        probs_flat = probs.reshape(b, num_classes, nvox)
+        y_flat = y_onehot.reshape(b, num_classes, nvox)
+        p_bar = torch.bmm(grp_flat, probs_flat.transpose(1, 2)) * inv_cnt.unsqueeze(-1)     # (B, M, K)
+        y_bar = torch.bmm(grp_flat, y_flat.transpose(1, 2)) * inv_cnt.unsqueeze(-1)         # (B, M, K)
+
+        unit_match_u = 0.5 * (p_bar - y_bar).abs().sum(dim=-1)                              # (B, M) in [0, 1]
+        l_unit_match = ((unit_match_u * present_u).sum(dim=1) / present_u.sum(dim=1).clamp_min(1.0)).mean()
+
+        # E[||p - p_bar||^2] = E[||p||^2] - ||p_bar||^2; allow true spread on graded units
+        p2_vox = probs.pow(2).sum(dim=1).reshape(b, 1, nvox)
+        mean_p2_u = torch.bmm(grp_flat, p2_vox.transpose(1, 2)).squeeze(-1) * inv_cnt       # (B, M)
+        var_u = (mean_p2_u - p_bar.pow(2).sum(dim=-1)).clamp_min(0.0)
+        true_spread_u = (1.0 - y_bar.pow(2).sum(dim=-1)).clamp_min(0.0)
+        excess_var_u = F.relu(var_u - true_spread_u)
+        l_unit_var = ((excess_var_u * present_u).sum(dim=1) / present_u.sum(dim=1).clamp_min(1.0)).mean()
+
+        core_w = core_mask * w_z
+        core_den = core_w.flatten(1).sum(1)
+        has_core = core_den > 0
+        # Penalize empty/nearly-empty core predictions (linear p_empty prevents vanishing gradient at p_0=1)
+        # alongside foreground-only Gini crispness (zero at any confident non-empty lithology).
+        p_empty = probs[:, 0:1]
+        p_fg_sq = probs[:, 1:].pow(2).sum(dim=1, keepdim=True)
+        core_void_crisp = (0.50 * p_empty + 0.50 * (1.0 - p_fg_sq)).clamp_min(0.0)
+        l_core_crisp = torch.where(
+            has_core, (core_void_crisp * core_w).flatten(1).sum(1) / core_den.clamp_min(1.0), torch.zeros_like(core_den)
+        ).mean()
+
+        l_unit_purity = 0.45 * l_unit_match + 0.20 * l_unit_var + 0.35 * l_core_crisp
+        return 0.45 * l_incompat + 0.30 * l_cls_smooth + 0.25 * l_unit_purity
+
     def _lithology_loss(self, aux, m_true, fg_mask, d3, w_z, gap_mask, contact_vox=None, is_v6: bool = False):
         logits = aux["logits"].float()                              # (B, K, D, H, W)
         probs = aux["probs"].float()                                # (B, K, D, H, W)
@@ -215,25 +411,7 @@ class CompoundInversionLoss(nn.Module):
         if sub_mask is None:
             sub_mask = torch.ones_like(fg_mask)
 
-        with torch.no_grad():
-            t0 = m_true[:, 0]
-            cls_tgt = torch.zeros_like(t0, dtype=torch.long)
-            cls_tgt[t0 <= -2.17] = 1                                # air cavity (-2.67)
-            if num_classes >= 7:
-                if is_v6:
-                    cls_tgt[(t0 > -2.17) & (t0 <= -1.635)] = 2      # water cavity (-1.67)
-                    cls_tgt[(t0 > -1.635) & (t0 <= -0.855)] = 3     # light rock / coal [-1.60, -0.80]
-                    cls_tgt[(t0 > -0.855) & (t0 < -1e-5)] = 4       # sediment / waste [-0.85, 0.00)
-                else:
-                    cls_tgt[(t0 > -2.17) & (t0 <= -1.61)] = 2       # water cavity (-1.67)
-                    cls_tgt[(t0 > -1.61) & (t0 <= -0.825)] = 3      # light rock / coal [-1.55, -0.85]
-                    cls_tgt[(t0 > -0.825) & (t0 < -1e-5)] = 4       # sediment / waste [-0.80, -0.10]
-                cls_tgt[(t0 > 1e-5) & (t0 <= 0.775)] = 5            # mafic / ultramafic [+0.15, +0.75] / [0, +0.80]
-                cls_tgt[t0 > 0.775] = 6                             # high-grade ore [+0.80, +1.85] / [+0.75, +1.95]
-            else:
-                cls_tgt[(t0 > -2.17) & (t0 <= -1.235)] = 2
-                cls_tgt[(t0 > -1.235) & (t0 < -1e-5)] = 3
-                cls_tgt[t0 > 1e-5] = 4
+        cls_tgt = self._lithology_class_targets(m_true, num_classes, is_v6=is_v6)
 
         ce = F.cross_entropy(logits, cls_tgt, reduction="none").unsqueeze(1)  # (B, 1, D, H, W)
         fg_w = fg_mask * w_z
@@ -811,12 +989,32 @@ class CompoundInversionLoss(nn.Module):
                 l_it_l1 = (((rk_n - tn).abs() * w_tot).flatten(1).sum(1) / (rk_n.abs().flatten(1).sum(1) + tn.abs().flatten(1).sum(1) + 1e-6)).mean()
                 l_iter_data = l_iter_data + iw * (l_it_d + 0.30 * l_it_l1)
 
-        total = (l_sup + self.lambda_cls * l_cls + l_edt
-                 + self.lambda_coarse * l_coarse + self.lambda_tier * l_tier
-                 + self.lambda_rho_init * l_rho_init
-                 + eff_lambda_nll * l_nll + self.lambda_data * l_data
-                 + eff_lambda_peak * l_peak_amp + eff_lambda_focus * l_focus
-                 + l_iter_data)
+        is_v9_1 = bool(aux is not None and aux.get("is_v9_1", False))
+        eff_lambda_coh = (0.12 if is_v9_1 else 0.0) if self.lambda_coherence is None else self.lambda_coherence
+        l_coherence = torch.zeros((), device=m_pred.device, dtype=m_pred.dtype)
+        if eff_lambda_coh > 0 and aux is not None and "probs" in aux:
+            l_coherence = self._lithology_coherence_loss(
+                aux, m_true, fg_mask, d3, w_z, wz_faces, pos_zone, neg_zone,
+                contact_vox=contact_vox, unit_id=unit_id, is_v6=is_v6,
+            )
+
+        w_sup = l_sup
+        w_cls = self.lambda_cls * l_cls
+        w_coherence = eff_lambda_coh * l_coherence
+        w_edt = l_edt
+        w_coarse = self.lambda_coarse * l_coarse
+        w_tier = self.lambda_tier * l_tier
+        w_rho_init = self.lambda_rho_init * l_rho_init
+        w_nll = eff_lambda_nll * l_nll
+        w_data = self.lambda_data * l_data
+        w_peak_amp = eff_lambda_peak * l_peak_amp
+        w_focus = eff_lambda_focus * l_focus
+        w_iter_data = l_iter_data
+
+        total = (w_sup + w_cls + w_coherence + w_edt
+                 + w_coarse + w_tier + w_rho_init
+                 + w_nll + w_data + w_peak_amp + w_focus
+                 + w_iter_data)
         return total, {
             "loss_total": total.item(),
             "loss_sup": l_sup.item(),
@@ -825,6 +1023,7 @@ class CompoundInversionLoss(nn.Module):
             "loss_grad": l_grad.item(),
             "loss_halo": l_halo.item(),
             "loss_cls": l_cls.item(),
+            "loss_coherence": l_coherence.item(),
             "loss_edt": l_edt.item(),
             "loss_coarse": l_coarse.item(),
             "loss_tier": l_tier.item(),
@@ -835,4 +1034,17 @@ class CompoundInversionLoss(nn.Module):
             "loss_nll": l_nll.item(),
             "loss_amp": l_amp_cons.item(),
             "loss_unit_iou": l_unit_inst_iou.item(),
+            # Exact weighted additive contributions summing to loss_total
+            "wloss_sup": w_sup.item(),
+            "wloss_data": w_data.item(),
+            "wloss_cls": w_cls.item(),
+            "wloss_coherence": w_coherence.item(),
+            "wloss_edt": w_edt.item(),
+            "wloss_coarse": w_coarse.item(),
+            "wloss_tier": w_tier.item(),
+            "wloss_rho_init": w_rho_init.item(),
+            "wloss_nll": w_nll.item(),
+            "wloss_peak_amp": w_peak_amp.item(),
+            "wloss_focus": w_focus.item(),
+            "wloss_iter_data": w_iter_data.item(),
         }

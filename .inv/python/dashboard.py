@@ -166,6 +166,32 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     <div id="legRatio" class="chart-legend"></div>
     <svg id="svgRatio" class="chart-svg"></svg>
   </div>
+  <div id="cardLossComp" class="chart-card chart-card-wide" style="display:none;">
+    <h4>
+      <span>Final Loss Components (Weighted Sum = Total Loss)</span>
+      <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
+          <label id="lblCompVal" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Validation weighted loss components">
+            <input type="radio" name="compSplit" value="val" id="radCompVal" checked style="display:none;">Val
+          </label>
+          <label id="lblCompTrain" style="cursor:pointer;padding:1px 5px;border-radius:3px;" title="Training weighted loss components">
+            <input type="radio" name="compSplit" value="train" id="radCompTrain" style="display:none;">Train
+          </label>
+        </span>
+        <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
+          <label id="lblCompLog" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Logarithmic Y axis">
+            <input type="radio" name="compScale" value="log" id="radCompLog" checked style="display:none;">Log
+          </label>
+          <label id="lblCompLin" style="cursor:pointer;padding:1px 5px;border-radius:3px;" title="Linear Y axis">
+            <input type="radio" name="compScale" value="lin" id="radCompLin" style="display:none;">Lin
+          </label>
+        </span>
+        <span style="font-size:0.72rem;color:var(--text-secondary);">Click legend to toggle &bull; Click chart to seek</span>
+      </span>
+    </h4>
+    <div id="legLossComp" class="chart-legend"></div>
+    <svg id="svgLossComp" class="chart-svg"></svg>
+  </div>
 </div>"""
     )
     shortcut_html = (
@@ -805,6 +831,9 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     border-radius: 6px;
     padding: 6px 10px;
   }
+  .chart-card-wide {
+    grid-column: 1 / -1;
+  }
   .chart-card h4 {
     font-size: 0.72rem;
     color: var(--text-secondary);
@@ -826,6 +855,19 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     display: inline-flex;
     align-items: center;
     gap: 4px;
+  }
+  .chart-legend-item.interactive {
+    cursor: pointer;
+    user-select: none;
+    padding: 1px 4px;
+    border-radius: 3px;
+  }
+  .chart-legend-item.interactive:hover {
+    background: var(--surface-inset);
+  }
+  .chart-legend-item.muted {
+    opacity: 0.35;
+    text-decoration: line-through;
   }
   .chart-legend-swatch {
     width: 10px;
@@ -1053,6 +1095,9 @@ __DATA_SCRIPTS_HTML__
   let layoutCols = IS_DEMO_MODE ? 2 : 1;
   let renderMode = IS_DEMO_MODE ? '3d' : '2d'; // '2d' or '3d'
   let lossLogScale = true;
+  let compSplit = 'val';
+  let compLogScale = true;
+  const compHiddenKeys = new Set();
   let isPlaying = false;
   let playTimer = null;
   let pollTimer = null;
@@ -1657,6 +1702,33 @@ __DATA_SCRIPTS_HTML__
     }
     if (radLossLog) radLossLog.addEventListener('change', () => setLossScale(true));
     if (radLossLin) radLossLin.addEventListener('change', () => setLossScale(false));
+
+    const radCompVal = document.getElementById('radCompVal');
+    const radCompTrain = document.getElementById('radCompTrain');
+    const lblCompVal = document.getElementById('lblCompVal');
+    const lblCompTrain = document.getElementById('lblCompTrain');
+    function setCompSplit(split) {
+      compSplit = split;
+      const isVal = (split === 'val');
+      if (lblCompVal) { lblCompVal.style.background = isVal ? '#0284c7' : 'transparent'; lblCompVal.style.color = isVal ? '#fff' : 'inherit'; }
+      if (lblCompTrain) { lblCompTrain.style.background = isVal ? 'transparent' : '#0284c7'; lblCompTrain.style.color = isVal ? 'inherit' : '#fff'; }
+      renderLossCompChart();
+    }
+    if (radCompVal) radCompVal.addEventListener('change', () => setCompSplit('val'));
+    if (radCompTrain) radCompTrain.addEventListener('change', () => setCompSplit('train'));
+
+    const radCompLog = document.getElementById('radCompLog');
+    const radCompLin = document.getElementById('radCompLin');
+    const lblCompLog = document.getElementById('lblCompLog');
+    const lblCompLin = document.getElementById('lblCompLin');
+    function setCompScale(useLog) {
+      compLogScale = useLog;
+      if (lblCompLog) { lblCompLog.style.background = useLog ? '#0284c7' : 'transparent'; lblCompLog.style.color = useLog ? '#fff' : 'inherit'; }
+      if (lblCompLin) { lblCompLin.style.background = useLog ? 'transparent' : '#0284c7'; lblCompLin.style.color = useLog ? 'inherit' : '#fff'; }
+      renderLossCompChart();
+    }
+    if (radCompLog) radCompLog.addEventListener('change', () => setCompScale(true));
+    if (radCompLin) radCompLin.addEventListener('change', () => setCompScale(false));
 
     if (btnFirst) btnFirst.addEventListener('click', () => { stopPlayback(); showEpoch(0); });
     if (btnPrev) btnPrev.addEventListener('click', () => { stopPlayback(); if (currentIndex > 0) showEpoch(currentIndex - 1); });
@@ -3763,7 +3835,9 @@ void main() {
       { key: 'data_rel_misfit', color: pal.misfitColor, label: 'Data Misfit' },
       { key: 'body_l1_rel', color: '#f59e0b', label: 'Body Rel L1' },
       { key: 'l1_rel', color: pal.lossColor, label: 'Full Rel L1' },
-      { key: 'halo_opp', color: pal.dzColor, label: 'Opp Halo', dash: true }
+      { key: 'halo_opp', color: pal.dzColor, label: 'Opp Halo', dash: true },
+      { key: 'val_coherence', color: '#ec4899', label: 'Val Coherence' },
+      { key: 'train_coherence', color: '#ec4899', label: 'Train Coherence', dash: true }
     ], 0.0, null, false);
 
     // 3. 3D IoU & Amplitude Recovery [0..1]
@@ -3795,6 +3869,80 @@ void main() {
       { key: 'bd_sig_err_ratio', color: pal.lossColor, label: 'Bd σ/|err|' },
       { key: 'aurc', color: pal.misfitColor, label: 'AURC', dash: true }
     ], null, null, true);
+
+    // 7. Full-width Final Loss Components (exact weighted terms summing to Total Loss)
+    renderLossCompChart();
+  }
+
+  function getLossCompSeriesDefs() {
+    const pfx = (compSplit === 'train') ? 'train_wloss_' : 'val_wloss_';
+    const totKey = (compSplit === 'train') ? 'train_loss' : 'val_loss';
+    return [
+      { key: totKey, id: 'total', color: '#94a3b8', label: (compSplit === 'train') ? 'Train Total' : 'Val Total', dash: true, isTotal: true },
+      { key: pfx + 'sup', id: 'sup', color: '#3b82f6', label: 'Sup (rho/IoU/grad)' },
+      { key: pfx + 'data', id: 'data', color: '#ef4444', label: 'Data (gravity)' },
+      { key: pfx + 'cls', id: 'cls', color: '#10b981', label: 'Litho Cls' },
+      { key: pfx + 'coherence', id: 'coherence', color: '#ec4899', label: 'Coherence' },
+      { key: pfx + 'edt', id: 'edt', color: '#f59e0b', label: 'EDT' },
+      { key: pfx + 'coarse', id: 'coarse', color: '#8b5cf6', label: 'Coarse' },
+      { key: pfx + 'rho_init', id: 'rho_init', color: '#06b6d4', label: 'RhoInit' },
+      { key: pfx + 'nll', id: 'nll', color: '#f97316', label: 'Unc NLL' },
+      { key: pfx + 'tier', id: 'tier', color: '#84cc16', label: 'Tier' },
+      { key: pfx + 'peak_amp', id: 'peak_amp', color: '#a855f7', label: 'PeakAmp' },
+      { key: pfx + 'focus', id: 'focus', color: '#14b8a6', label: 'Focus' },
+      { key: pfx + 'iter_data', id: 'iter_data', color: '#e11d48', label: 'IterData' }
+    ];
+  }
+
+  function renderLossCompLegend(activeSeries, epIdx) {
+    const el = document.getElementById('legLossComp');
+    if (!el) return;
+    const epochs = getEpochs();
+    const rec = (epIdx >= 0 && epIdx < epochs.length) ? epochs[epIdx] : (epochs.length ? epochs[epochs.length - 1] : null);
+    const totKey = (compSplit === 'train') ? 'train_loss' : 'val_loss';
+    const totVal = (rec && rec[totKey] != null && isFinite(rec[totKey]) && rec[totKey] > 0) ? rec[totKey] : null;
+    el.innerHTML = activeSeries.map(s => {
+      const hidden = compHiddenKeys.has(s.id);
+      const dash = s.dash ? 'background:repeating-linear-gradient(90deg,' + s.color + ' 0 3px,transparent 3px 5px);' : 'background:' + s.color + ';';
+      let valTxt = '';
+      if (rec && rec[s.key] != null && isFinite(rec[s.key])) {
+        const v = rec[s.key];
+        const vStr = v >= 0.1 ? v.toFixed(3) : v.toFixed(4);
+        if (!s.isTotal && totVal) {
+          const pct = Math.round((v / totVal) * 100);
+          valTxt = ` <span style="opacity:0.85;">${vStr} (${pct}%)</span>`;
+        } else {
+          valTxt = ` <span style="opacity:0.85;">${vStr}</span>`;
+        }
+      }
+      const cls = 'chart-legend-item interactive' + (hidden ? ' muted' : '');
+      return `<span class="${cls}" data-comp-id="${s.id}" title="Click to toggle ${s.label}"><span class="chart-legend-swatch" style="${dash}"></span>${s.label}${valTxt}</span>`;
+    }).join('');
+    el.querySelectorAll('[data-comp-id]').forEach(node => {
+      node.onclick = () => {
+        const cid = node.getAttribute('data-comp-id');
+        if (compHiddenKeys.has(cid)) compHiddenKeys.delete(cid);
+        else compHiddenKeys.add(cid);
+        renderLossCompChart();
+      };
+    });
+  }
+
+  function renderLossCompChart() {
+    const card = document.getElementById('cardLossComp');
+    const epochs = getEpochs();
+    if (!card) return;
+    const hasAnyComp = epochs.some(r => Object.keys(r).some(k => k.startsWith('val_wloss_') || k.startsWith('train_wloss_')));
+    if (!hasAnyComp) {
+      card.style.display = 'none';
+      return;
+    }
+    card.style.display = 'block';
+    const allDefs = getLossCompSeriesDefs();
+    const activeSeries = allDefs.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
+    renderLossCompLegend(activeSeries, currentIndex);
+    const visibleSeries = activeSeries.filter(s => !compHiddenKeys.has(s.id));
+    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 165);
   }
 
   function formatChartTick(val, useLog) {
@@ -3807,14 +3955,14 @@ void main() {
     return val.toFixed(val < 10 ? 2 : 0);
   }
 
-  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false) {
+  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125) {
     const svg = document.getElementById(svgId);
     const epochs = getEpochs();
     if (!svg || !epochs.length) return;
     const activeSeries = series.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
-    renderChartLegend(legendId, activeSeries);
+    if (legendId) renderChartLegend(legendId, activeSeries);
     const N = epochs.length;
-    const w = 420, h = 125, padL = 42, padR = 14, padT = 10, padB = 22;
+    const padL = 42, padR = 14, padT = 10, padB = 22;
     const pw = w - padL - padR, ph = h - padT - padB;
 
     let yMin = fixedMin != null ? fixedMin : Infinity;
@@ -3926,6 +4074,18 @@ void main() {
       const el = document.getElementById(id);
       if (el) { el.setAttribute('x1', x); el.setAttribute('x2', x); }
     });
+    const compScrub = document.getElementById('svgLossComp_scrubber');
+    if (compScrub) {
+      const pwWide = 860 - padL - padR;
+      const xWide = padL + (N > 1 ? (idx / (N - 1)) * pwWide : pwWide * 0.5);
+      compScrub.setAttribute('x1', xWide);
+      compScrub.setAttribute('x2', xWide);
+    }
+    const cardComp = document.getElementById('cardLossComp');
+    if (cardComp && cardComp.style.display !== 'none') {
+      const activeSeries = getLossCompSeriesDefs().filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
+      renderLossCompLegend(activeSeries, idx);
+    }
   }
 
   init();
@@ -4110,6 +4270,10 @@ class TrainingMonitor:
         ax[0, 0].plot(ep, [max(1e-4, _num(r, "val_loss", 1e-4)) for r in self.hist], "s-", label="Val Total")
         ax[0, 0].plot(ep, [max(1e-4, _num(r, "data_rel_misfit", 1e-4)) for r in self.hist], "^--", label="Val Data Misfit ||Gm-d||/||d||")
         ax[0, 0].plot(ep, [max(1e-4, _num(r, "halo_opp", 0.0)) for r in self.hist], "d:", label="Val Opposite-Sign Halo")
+        if any(r.get("val_coherence") is not None for r in self.hist):
+            ax[0, 0].plot(ep, [max(1e-4, _num(r, "val_coherence", 1e-4)) for r in self.hist], "v-", color="#ec4899", label="Val Coherence")
+        if any(r.get("train_coherence") is not None for r in self.hist):
+            ax[0, 0].plot(ep, [max(1e-4, _num(r, "train_coherence", 1e-4)) for r in self.hist], "--", color="#ec4899", alpha=0.7, label="Train Coherence")
         ax[0, 0].set_yscale("log")
         ax[0, 0].set_title("Loss, Data Misfit & Opposite Halo (Log)")
         ax[0, 0].set_xlabel("Epoch")

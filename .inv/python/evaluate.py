@@ -611,7 +611,7 @@ def _infer_eval_model_cfg(model, clearance_clamp=None):
     model_variant = str(getattr(model, "variant", "") or "").lower()
     model_in_ch = getattr(model, "in_channels", None)
     is_v7 = (
-        model_variant in ("v7", "v8", "v9")
+        model_variant in ("v7", "v8", "v9", "v9.1")
         or "V7" in type(model).__name__
         or "V8" in type(model).__name__
         or "V9" in type(model).__name__
@@ -734,11 +734,14 @@ def export_vol3d_snapshot(
     random_val=False,
     include_base=True,
     seed=4024,
+    v6_physics=None,
 ):
     """Evaluate dashboard validation/showcase samples and write 3D volume sidecars."""
     nx, ny, nz, _, _, dz = grid
     y_km = np.arange(ny) * dz / 1000.0
     _, is_v6, in_ch, clr_clamp = _infer_eval_model_cfg(model, clearance_clamp=clearance_clamp)
+    if v6_physics is not None:
+        is_v6 = bool(v6_physics)
 
     cx, ct, _, cz, show_labels = make_category_showcase(
         op, device, grid, seed=seed, in_channels=in_ch, clearance_clamp=clr_clamp,
@@ -830,8 +833,8 @@ def main():
     model = create_model(g["nx"], g["ny"], g["nz"], **arch)
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
-    is_v7 = variant in ("v7", "v8", "v9")
-    is_v6_family = variant in ("v6", "v7", "v8", "v9")
+    is_v7 = variant in ("v7", "v8", "v9", "v9.1")
+    is_v6_family = variant in ("v6", "v7", "v8", "v9", "v9.1")
     h_min = -220.0 if is_v6_family else -85.0
     op = TerrainGravityOperator(*grid, h_min=h_min).to(args.device)
     clr_clamp = CLEARANCE_CLAMP_V6 if is_v6_family else 4.0

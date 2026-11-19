@@ -150,17 +150,18 @@ Building on Igor Cerovský's original `Inv3D` research (voxelization, kernel pre
     ├── requirements.txt        # PyTorch, ONNX, and scientific dependencies
     ├── dataset.py              # Stratified/deformed bodies, cavities, bimodal landfills, faults, C++ detrend parity & clearance
     ├── forward.py              # Multi-channel draped Nagy-prism (level_stride, fused bmm, h_min elevated drape) & SubvoxelCapOperator
-    ├── model_swin3d.py         # v6/v6.1 5-ch OddPyramidGravity (5 aspect / 32 rational knots), GreensVerticalBias, decoupled Stage-1 & log_var
-    ├── losses.py               # CompoundInversionLoss with v6.1 smooth support Tversky/unit IoU (far-bg coverage), Huber NLL & detrended data misfit
-    ├── train.py                # Dedicated on-the-fly training loop (v5.1/v6/v6.1, warm-restart/resume scheduler persistence, pure FP32, ModelEMA)
-    ├── dashboard.py            # Decoupled GUI/matplotlib TrainingMonitor & HTML5/WebGL2 dashboard generator
+    ├── model_swin3d.py         # v5–v9.1 Swin3D architectures; v9/v9.1 unified (32,64,64) depth-accurate decoder, 6-ch survey + detrend conditioning, OddPyramidGravity & log_var
+    ├── losses.py               # CompoundInversionLoss with smooth support Tversky/unit IoU, Huber NLL, v9.1 composite-safe lithology coherence & wloss_* breakdown
+    ├── train.py                # Dedicated on-the-fly training loop (v1–v9.1, --v3-data/--v3-loss, warm-restart/resume persistence, pure FP32, ModelEMA)
+    ├── dashboard.py            # Decoupled GUI/matplotlib TrainingMonitor & HTML5/WebGL2 dashboard (coherence + weighted loss-component breakdown)
     ├── export_demo.py          # Exports versioned best-epoch 2D/3D static viewer bundle (8 samples/category) to .inv/demo/
-    ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, smooth support IoU, 4-bucket eval & calibration metrics
+    ├── evaluate.py             # Multi-body vertical-cylinder centroid dz, smooth support IoU, selection_score, 4-bucket eval & calibration metrics
     ├── infer_prior.py          # Input-scaled neural prior & uncertainty (density + sigma) writer into Mod3D JSON
     ├── export_onnx.py          # PyTorch to ONNX (opset 17) static export with dual density + log_var heads & CoreML verification
     ├── vol3d_io.py             # Compact base64 RLE 3D volume, uint16 terrain & int16 2D field codecs for HTML/demo serialization
     ├── test_inv_python.py      # Automated 39-test Python, v5.1/v6 physics, realistic geology & CoreML parity suite
-    └── test_inv_v6_model.py    # Automated 8-test v6/v6.1 OddPyramidGravity, smooth IoU, calibration & checkpoint compat suite
+    ├── test_inv_v6_model.py    # Automated 8-test v6/v6.1 OddPyramidGravity, smooth IoU, calibration & checkpoint compat suite
+    └── test_inv_v9_model.py    # Automated v9/v9.1 unified decoder, ONNX/CoreML parity, coherence loss & dashboard component tests
 ```
 
 ---
@@ -207,12 +208,13 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 
-# Run automated Python test suites (39 core/v5/v6 tests + 8 v6/v6.1 model, smooth IoU & CoreML parity tests)
+# Run automated Python test suites
 python test_inv_python.py
 python test_inv_v6_model.py
+python test_inv_v9_model.py
 
-# Train 3D Swin Transformer (v5.1 default, pure FP32) with live macOS GUI window
-python train.py --epochs 20 --steps 200 --batch-size 8 --gui
+# Train 3D Swin Transformer (e.g. v9.1 with lithology coherence, pure FP32) with live macOS GUI window
+python train.py --variant v9.1 --epochs 120 --steps 250 --batch-size 8 --gui --save-dir ./checkpoints_v9_1
 
 # Smoke test (quick 1-minute verification)
 python train.py --epochs 2 --steps 20 --n-val 8

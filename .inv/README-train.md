@@ -66,6 +66,28 @@ Building on `v5.1` and `v6`, **`v6.1`** introduces drop-in architectural, physic
   * Supports 2D spatial clearance conditioning (`ceiling 8.0`) in C++ `NeuralPriorInference` and `Inversion3DDialog`.
   * Updates `.inv/demo/` to 64 random validation scenes (8 samples $\times$ 8 categories) using versioned sidecars (`vol3d_v6.1_meta.js`, `vol3d_v6.1_best.js`), and adds independent 3D relief surface coloring toggles (`Topography` / `Field` on Truth; `Predicted` / `Difference` on Predicted).
 
+### 1.2 `v9` & `v9.1` Upgrades Summary
+
+Building on the controlled `v3`–`v8` ablation findings (where `v7`/`v8`'s 3-tier slab hierarchy and stripped CoreML blocks caused shallow depth bias and `centroid_dz` regression), **`v9`** (`PotentialFieldTransformer3DV9`, `2,729,729` params in `base`, `1,355,098` in `slim`) restores depth accuracy while keeping 6-channel survey/detrend conditioning, and **`v9.1`** adds composite-safe body-lithology coherence supervision:
+
+* **Unified Full-Resolution Decoder (`v9` / `v9.1` in [`model_swin3d.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/model_swin3d.py))**:
+  * Replaces `v7`/`v8`'s 3-tier slab hierarchy (`tier_preds` / `tier_blocks`) with a single unified `(32, 64, 64)` Stage-2 decoder.
+  * Restores `GroupNorm` in `SepConv25DBlock`, trilinear residual skip in `SepSubpixelUp3D`, full `z_gate + d_bias` in `DepthConditionedSkip`, 2-layer `cls_depth_prior([d_surf, z_full])`, and `logsumexp + proto_bias` prototype scoring.
+  * Uses occupancy-gated Stage-1 coarse prediction (`coarse_occ_head * coarse_rho_head`), detrend-mode-aware `w_bp` physics residual feedback, and `F.softplus(bp_z_beta)` vertical sensitivity scaling.
+  * Accepts 6-channel `(1, 6, 64, 64)` input (`19`-channel physics/structural stem + `9`-dim `scale_mlp` conditioning) and outputs `(density_volume, log_var_volume)`.
+  * Exports cleanly to ONNX (`density_volume`, `log_var_volume`) with verified CPU (`1.77e-6` max rel diff) and CoreML EP (`5.09e-4` max rel diff, 15 partitions) parity.
+  * Pruned dead experimental paths (`focus_refine.py`, `model_flow3d.py`, `train_gen_refiner.py`).
+* **`v9.1` Composite-Safe Body-Lithology Coherence Loss (`--variant v9.1`, [`losses.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/losses.py))**:
+  * Adds `_lithology_coherence_loss` weighted by `--lambda-coherence` (default `0.12` for `v9.1`, `0.0` for earlier variants):
+    $$\mathcal{L}_{\text{coherence}} = 0.45\,\mathcal{L}_{\text{incompat}} + 0.30\,\mathcal{L}_{\text{cls\_smooth}} + 0.25\,\mathcal{L}_{\text{unit\_purity}}$$
+    strictly zero at exact ground-truth match — including **composite multi-lithology bodies** (e.g. coal + ore, or ore core in mafic halo).
+  * **Geophysical Incompatibility ($\mathcal{L}_{\text{incompat}}$)**: $7 \times 7$ incompatibility matrix penalizes opposite-sign mixing (`{air, water, coal, sediment}` vs `{mafic, ore}` at `1.0`) and extreme air-cavity vs sediment/coal confusion (`0.35`/`0.15`) inside bodies and sign-exclusive $d_3$ halos, while sparing adjacent same-sign bands.
+  * **Within-Unit Smoothness ($\mathcal{L}_{\text{cls\_smooth}}$)**: Penalizes class probability jumps strictly across same-unit, same-lithology interior faces (zeroed across composite unit contacts and outer walls).
+  * **Unit Purity & Tightened Interior Core ($\mathcal{L}_{\text{unit\_purity}}$)**: Combines per-unit pooled lithology match (`0.45`), excess within-unit variance (`0.20`, allowing true graded spreads), and interior core occupancy/crispness (`0.35`, evaluating $0.50\,p_{\text{empty}} + 0.50\,(1 - \sum_{k \ge 1} p_k^2)$ strictly on the eroded `core_mask` so empty/washed-out cores are penalized without puffing out boundaries).
+* **Loss-Component Observability & Dashboard ([`losses.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/losses.py), [`train.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/train.py), [`dashboard.py`](file:///Users/igorcerovsky/Documents/Mod3D/.inv/python/dashboard.py))**:
+  * Returns exact weighted loss contributions (`wloss_*` summing to `loss_total`) and logs `train_coherence`, `val_coherence`, `train_wloss_*`, and `val_wloss_*` per epoch in `training_history.json`.
+  * Plots coherence in `svgMisfit` and `training_monitor.png`, and adds a full-width **Final Loss Components** chart (`svgLossComp`) with **Val/Train** and **Log/Lin** toggles, interactive legend filtering, and per-epoch `%` share.
+
 ---
 
 ## 2. Prerequisites & Environment Setup
@@ -271,11 +293,14 @@ python train.py --epochs 20 --steps 200 --batch-size 8 --gui
 # Smoke test (~1 minute)
 python train.py --epochs 2 --steps 20 --n-val 8
 
-# Extended multi-hour training run (v5.1 default, pure FP32, save to checkpoints_v5.1)
-python train.py --variant v5 --epochs 100 --steps 250 --batch-size 8 --lr 5e-4 --n-val 64 --gui --save-dir ./checkpoints_v5.1
+# Extended multi-hour training run (v9.1 with lithology coherence, pure FP32)
+python train.py --variant v9.1 --epochs 120 --steps 250 --batch-size 8 --lr 5e-4 --n-val 64 --gui --save-dir ./checkpoints_v9_1
+
+# Warm-start v9.1 from a finished v9 checkpoint on clean V3 ground data
+python train.py --variant v9.1 --v3-data --resume checkpoints_v9_v3data/best_swin3d.pt --warm-restart --reset-best --epochs 40 --lr 1.5e-4 --n-val 128 --gui --save-dir ./checkpoints_v9_1_v3data
 
 # Resuming / Fine-tuning with automatic Cosine Annealing decay
-python train.py --resume checkpoints_v5.1/best_swin3d.pt --epochs 40 --lr 1.5e-4 --n-val 128 --gui --save-dir ./checkpoints_v5.1
+python train.py --resume checkpoints_v9_1/best_swin3d.pt --epochs 40 --lr 1.5e-4 --n-val 128 --gui --save-dir ./checkpoints_v9_1
 ```
 
 #### Training Arguments
@@ -285,23 +310,30 @@ python train.py --resume checkpoints_v5.1/best_swin3d.pt --epochs 40 --lr 1.5e-4
 | `--epochs` | `20` | Number of training epochs. |
 | `--steps` | `200` | Optimizer steps per epoch (batches generated on the fly). |
 | `--batch-size` | `8` | Mini-batch size (8 fits comfortably in Apple Silicon unified memory). |
-| `--lr` | `5e-4` | Learning rate (`OneCycleLR` with `div_factor=10, final_div_factor=50` from scratch; `CosineAnnealingLR` on `--resume`). |
-| `--lambda-data` | `0.25` | Weight on draped Charbonnier RMSE + gradient data misfit $\mathcal{L}_{\text{data}}$. |
+| `--lr` | `5e-4` | Learning rate (`OneCycleLR` with `div_factor=10, final_div_factor=50` from scratch; `CosineAnnealingLR` on `--resume` or warmup+cosine for `v6`–`v9.1`). |
+| `--lambda-data` | `0.50` (`v6`–`v9.1`) / `0.25` (`v1`–`v5`) | Weight on draped Charbonnier RMSE + gradient data misfit $\mathcal{L}_{\text{data}}$. |
 | `--lambda-ms` | `0.05` | Weight on Zhdanov Minimum Gradient Support structural match. |
 | `--lambda-cls` | `0.25` | Weight on 7-class lithology prototype cross-entropy + soft Dice ($\mathcal{L}_{\text{cls}}$). |
+| `--lambda-coherence` | `0.12` (`v9.1`) / `0.0` (others) | Weight on composite-safe body-lithology coherence loss ($\mathcal{L}_{\text{coherence}}$). |
 | `--depth-boost`| `0.5` | Linear vertical sensitivity ramp $w_z(z) = 1.0 + \text{depth\_boost} \cdot z/z_{\max}$. |
-| `--ema-decay` | `0.995` | Exponential moving average (`ModelEMA`) decay for validation and `best_swin3d.pt` weights (`0` disables). |
+| `--ema-decay` | `0.997` (`v6`–`v9.1`) / `0.995` (`v1`–`v5`) | Exponential moving average (`ModelEMA`) decay for validation and `best_swin3d.pt` weights (`0` disables). |
 | `--n-val` | `64` | Fixed seeded standard validation samples (`hard_prob=0.0`, `seed=2024`, plus `n_val//2` hard-only samples `seed=3024` when `--hard-prob > 0`). |
 | `--hard-prob` | `0.50` | Fraction of training batches using harder composite, nested, abutting, stacked, and tight-cluster scenes `[0.0-1.0]`. |
-| `--num-workers` | `0` | PyTorch DataLoader workers (set `2–4` for fast on-the-fly CPU synthesis). |
+| `--num-workers` | `4` (`v6`–`v9.1`) / `0` (`v1`–`v5`) | PyTorch DataLoader workers. |
 | `--gui` | `False` | Opens a live native GUI window with 6 real-time training graphs. |
-| `--save-dir` | `./checkpoints_v5.1` | Checkpoint directory (`best_swin3d.pt`, `last_swin3d.pt`). |
-| `--variant` | `v5` | Architecture variant (`v5` / `v5.1`, `v4`, `v3`, `v2`, `v1`). |
-| `--dropout` | `0.05` | Dropout3d rate for v5/v5.1 Monte Carlo epistemic uncertainty. |
+| `--save-dir` | `./checkpoints` | Checkpoint directory (`best_swin3d.pt`, `last_swin3d.pt`). |
+| `--variant` | `v5` | Architecture variant (`v9.1`, `v9`, `v8`, `v7`, `v6`, `v5`, `v4`, `v3`, `v2`, `v1`). |
+| `--model-size` | `base` | Capacity tier (`slim`, `base`, `heavy`) for `v5`–`v9.1`. |
+| `--v3-data` | `False` | Train and validate `v6`–`v9.1` on the clean V3 ground dataset (`v6_mode=False`). |
+| `--v3-loss` | `False` | Use V3 symmetric Jaccard/supervision/NLL/data loss instead of V6 Tversky losses. |
+| `--dropout` | `0.05` | Dropout3d rate for `v5`–`v9.1` Monte Carlo epistemic uncertainty. |
 | `--fault-prob` | `0.40` | Probability of planar dipping fault cuts on 3D rock bodies. |
 | `--dropout-prob` | `0.35` | Probability of survey missing-station dropout with harmonic infill. |
 | `--no-amp` | `False` | Deprecated no-op; all training is executed in pure float32 (FP32). |
-| `--resume` | `""` | Checkpoint path to resume from (auto-selects `v1`–`v5` via `ck["arch"]` and loads `raw_model_state_dict` + `ema_state_dict` when present). |
+| `--resume` | `""` | Checkpoint path to resume or warm-start from (cross-variant migration supported into `v7`–`v9.1`). |
+| `--warm-restart` | `False` | Start a fresh cosine warmup+decay LR schedule over `--epochs` when resuming. |
+| `--reset-best` | `False` | Re-baseline best validation loss on `--resume`. |
+| `--total-epochs` | `0` | Optional cumulative end epoch for continuous cosine decay across resumes. |
 
 #### Precision & Hardware Acceleration (Pure FP32)
 * **Pure `float32` Execution**: All training forward/backward loops execute strictly in single precision (`torch.float32`) across Apple Silicon (MPS), NVIDIA GPUs (CUDA), and CPU.
@@ -366,10 +398,11 @@ python export_onnx.py \
 ```
 
 * **Model Input**:
+  * **v6–v9.1 (6 channels)**: `(1, 6, 64, 64)` [surface gravity gz scaled by `50 m / L_eff`, normalized terrain depth, valid mask, log(aspect ratio $dz/dx$), normalized sensor clearance `clearance / dxy`, detrend mode].
   * **v5 / v5.1 (5 channels)**: `(1, 5, 64, 64)` [surface gravity gz scaled by `50 m / L_eff`, normalized terrain depth, valid mask, log(aspect ratio $dz/dx$), normalized sensor clearance `clearance / dxy`].
   * **v2–v4 (2 channels)**: `(1, 2, 64, 64)` [surface gravity gz, normalized terrain depth].
 * **Model Output**:
-  * **v5 / v5.1**: Dual outputs:
+  * **v5–v9.1**: Dual outputs:
     1. `density_volume`: `(1, 1, 32, 64, 64)` density contrast ($\text{g/cm}^3$, calibrated in `[-2.67, +1.85]`).
     2. `log_var_volume`: `(1, 1, 32, 64, 64)` aleatoric log-variance $\log(\sigma^2) \in [-8.0, 4.0]$.
   * **v1–v4**: Single output `density_volume` `(1, 1, 32, 64, 64)`.

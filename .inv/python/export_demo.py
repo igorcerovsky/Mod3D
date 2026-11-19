@@ -41,6 +41,7 @@ def export_demo(
     device=None,
     version_tag="v6.1",
     keep_legacy=False,
+    v3_data=False,
 ):
     """Build static 2D+3D best-result demo bundle in ``out_dir``."""
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -67,18 +68,20 @@ def export_demo(
         model.load_state_dict(ck["model_state_dict"])
         model.to(device).eval()
 
-        h_min = -220.0 if variant in ("v6", "v7", "v8") else -85.0
+        is_v6_variant = variant in ("v6", "v7", "v8", "v9", "v9.1") and (not v3_data)
+        h_min = -220.0 if is_v6_variant else -85.0
         op = TerrainGravityOperator(*grid, h_min=h_min).to(device)
-        clr_clamp = CLEARANCE_CLAMP_V6 if variant in ("v6", "v7", "v8") else 4.0
+        clr_clamp = CLEARANCE_CLAMP_V6 if is_v6_variant else 4.0
         best_epoch = int(ck.get("epoch") or 1)
 
-        print(f"Generating 3D volume snapshot from {checkpoint} (variant={variant}, samples_per_cat={samples_per_category}, random_val={random_val})...")
+        print(f"Generating 3D volume snapshot from {checkpoint} (variant={variant}, v3_data={v3_data}, samples_per_cat={samples_per_category}, random_val={random_val})...")
         export_vol3d_snapshot(
             model, op, device, grid, out_dir,
             epoch=best_epoch, is_best=True, clearance_clamp=clr_clamp,
             samples_per_category=samples_per_category,
             random_val=random_val,
             include_base=include_base,
+            v6_physics=is_v6_variant,
         )
         save_dir = out_dir
 
@@ -226,6 +229,8 @@ def export_demo(
         for legacy in (
             "vol3d_best.js", "vol3d_meta.js", "vol3d_best.json", "vol3d_meta.json",
             "vol3d_v6.1_best.js", "vol3d_v6.1_meta.js",
+            "vol3d_v7_best.js", "vol3d_v7_meta.js",
+            "vol3d_v9_best.js", "vol3d_v9_meta.js",
             "vol3d_latest.js", "vol3d_latest.json", "vol3d_index.js", "vol3d_index.json",
         ):
             if legacy in (vmeta_name, vbest_name):
@@ -301,6 +306,12 @@ def main():
         default=False,
         help="Keep unversioned legacy vol3d_best.js and vol3d_meta.js sidecars",
     )
+    p.add_argument(
+        "--v3-data",
+        action="store_true",
+        default=False,
+        help="Evaluate demo samples using V3 ground-clearance physics (h_min=-85, v6_physics=False)",
+    )
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     p.add_argument("--device", default=default_dev)
     args = p.parse_args()
@@ -316,6 +327,7 @@ def main():
         device=args.device,
         version_tag=args.version_tag,
         keep_legacy=args.keep_legacy,
+        v3_data=args.v3_data,
     )
     print(
         f"Exported demo preview for Epoch {summary['best_epoch']} "
