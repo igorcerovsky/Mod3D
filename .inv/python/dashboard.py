@@ -190,7 +190,7 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
       </span>
     </h4>
     <div id="legLossComp" class="chart-legend"></div>
-    <svg id="svgLossComp" class="chart-svg"></svg>
+    <svg id="svgLossComp" class="chart-svg chart-svg-tall"></svg>
   </div>
 </div>"""
     )
@@ -880,6 +880,9 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     height: 92px;
     display: block;
     cursor: pointer;
+  }
+  svg.chart-svg-tall {
+    height: 220px;
   }
 
   .shortcut-footer {
@@ -3942,7 +3945,7 @@ void main() {
     const activeSeries = allDefs.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
     renderLossCompLegend(activeSeries, currentIndex);
     const visibleSeries = activeSeries.filter(s => !compHiddenKeys.has(s.id));
-    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 165);
+    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 220, true);
   }
 
   function formatChartTick(val, useLog) {
@@ -3955,7 +3958,7 @@ void main() {
     return val.toFixed(val < 10 ? 2 : 0);
   }
 
-  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125) {
+  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125, showGrid = false) {
     const svg = document.getElementById(svgId);
     const epochs = getEpochs();
     if (!svg || !epochs.length) return;
@@ -4019,6 +4022,38 @@ void main() {
         if (gy > padT + 14 && gy < padT + ph - 10) {
           gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="${pal.axisText}" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, true)}</text>`;
         }
+      }
+      if (showGrid) {
+        for (let k = Math.floor(lMin) - 1; k <= Math.ceil(lMax); ++k) {
+          [2, 5].forEach(m => {
+            const sub = m * Math.pow(10, k);
+            if (sub > yMin * 1.05 && sub < yMax * 0.95) {
+              const gy = yCoord(sub).toFixed(1);
+              gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="${pal.gridLine}" stroke-width="0.6" stroke-opacity="0.45" stroke-dasharray="2,3"/>`;
+            }
+          });
+        }
+      }
+    } else if (showGrid) {
+      const nTicks = 5;
+      for (let t = 1; t < nTicks; ++t) {
+        const tick = yMin + (yMax - yMin) * (t / nTicks);
+        const gy = yCoord(tick).toFixed(1);
+        gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="${pal.gridLine}" stroke-width="1" stroke-dasharray="2,2"/>`;
+        if (gy > padT + 12 && gy < padT + ph - 10) {
+          gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="${pal.axisText}" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, false)}</text>`;
+        }
+      }
+    }
+    if (showGrid && N > 1) {
+      const step = Math.max(1, Math.ceil((N - 1) / 10));
+      for (let i = 0; i < N; i += step) {
+        const gx = xCoord(i).toFixed(1);
+        if (i > 0 && i < N - 1) {
+          gridSvg += `<line x1="${gx}" y1="${padT}" x2="${gx}" y2="${padT + ph}" stroke="${pal.gridLine}" stroke-width="0.8" stroke-opacity="0.6" stroke-dasharray="2,3"/>`;
+        }
+        const epNum = epochs[i].epoch != null ? epochs[i].epoch : (i + 1);
+        gridSvg += `<text x="${gx}" y="${padT + ph + 13}" fill="${pal.axisText}" font-size="8" text-anchor="middle" font-family="monospace">${epNum}</text>`;
       }
     }
 
