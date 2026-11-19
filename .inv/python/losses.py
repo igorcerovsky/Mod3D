@@ -411,8 +411,10 @@ class CompoundInversionLoss(nn.Module):
         return 0.45 * l_inst_tversky + 0.55 * l_unit_iou
 
     def forward(self, m_pred, m_true, d_clean=None, z_obs=None, aux=None, unit_id=None):
+        force_v3_loss = bool(aux is not None and aux.get("use_v3_loss", False))
+        is_v9 = bool(aux is not None and aux.get("is_v9", False))
         is_v7 = bool(aux is not None and aux.get("is_v7", False))
-        is_v6 = bool(
+        is_v6 = False if (force_v3_loss or is_v9) else bool(
             self.use_v6_losses
             or unit_id is not None
             or is_v7
@@ -688,7 +690,7 @@ class CompoundInversionLoss(nn.Module):
                 l_tier = sum(tier_terms)
 
         l_rho_init = torch.zeros((), device=m_pred.device)
-        if is_v6 and aux is not None and "rho_init" in aux and self.lambda_rho_init > 0:
+        if (is_v6 or is_v9 or force_v3_loss) and aux is not None and "rho_init" in aux and self.lambda_rho_init > 0:
             ri_n = aux["rho_init"].float() / a
             ri_l1 = (((ri_n - tn).abs() * w_tot).flatten(1).sum(1) / (ri_n.abs().flatten(1).sum(1) + tn.abs().flatten(1).sum(1) + 1e-6)).mean()
             ri_ali = F.relu(ri_n * torch.sign(tn))

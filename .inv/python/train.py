@@ -26,6 +26,7 @@ from dataset import (
     CELL,
     CLEARANCE,
     CLEARANCE_AIRBORNE_V6,
+    CLEARANCE_CLAMP_V6,
     CLEARANCE_MULTI,
     GROUND_PROB_V6,
     LARGE_BODY_PROB_V6,
@@ -43,6 +44,7 @@ from dataset import (
 from evaluate import (
     compute_calibration_metrics,
     compute_metrics,
+    compute_selection_score,
     make_category_showcase,
     make_fixed_set,
     make_v6_val_buckets,
@@ -70,9 +72,17 @@ try:
 except ImportError:
     V8_SIZE_PRESETS = None
 try:
+    from model_swin3d import V9_SIZE_PRESETS
+except ImportError:
+    V9_SIZE_PRESETS = None
+try:
     from model_swin3d import PotentialFieldTransformer3DV7
 except ImportError:
     PotentialFieldTransformer3DV7 = None
+try:
+    from model_swin3d import PotentialFieldTransformer3DV9
+except ImportError:
+    PotentialFieldTransformer3DV9 = None
 from dashboard import TrainingMonitor
 
 ARCH_BY_VARIANT = {
@@ -90,6 +100,8 @@ if V7_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v7"] = dict(V7_SIZE_PRESETS["base"])
 if V8_SIZE_PRESETS is not None:
     ARCH_BY_VARIANT["v8"] = dict(V8_SIZE_PRESETS["base"])
+if V9_SIZE_PRESETS is not None:
+    ARCH_BY_VARIANT["v9"] = dict(V9_SIZE_PRESETS["base"])
 ARCH = ARCH_BY_VARIANT["v5"]
 
 V6_BUCKET_WEIGHTS = {
@@ -309,7 +321,8 @@ def _merge_bucket_metrics(bucket_metrics: dict, weights: dict):
 
 @torch.no_grad()
 def validate_v6_buckets(eval_model, model, forward_with_aux, buckets: dict, crit,
-                        batch_op, canonical_op, showcase_tuple=None, weights=None):
+                        batch_op, canonical_op, showcase_tuple=None, weights=None,
+                        force_v3_loss: bool = False):
     """Evaluate all 4 stratified v6 buckets cleanly and return composite loss/metrics & monitor tensors."""
     eval_model.eval()
     w_map = dict(V6_BUCKET_WEIGHTS if weights is None else weights)
@@ -329,6 +342,10 @@ def validate_v6_buckets(eval_model, model, forward_with_aux, buckets: dict, crit
                 batch_op.aspect_indices = None
                 batch_op.canonical_op = ch["op"]
                 p_c, a_c = forward_with_aux(eval_model, ch["x"])
+                if a_c is None and force_v3_loss:
+                    a_c = {}
+                if force_v3_loss and a_c is not None:
+                    a_c["use_v3_loss"] = True
                 b_preds.append(p_c)
                 closs, _ = _call_crit(
                     crit, p_c, ch["truth"], ch["clean"], ch["z_obs"], aux=a_c, unit_id=ch["unit_id"],
@@ -336,7 +353,8 @@ def validate_v6_buckets(eval_model, model, forward_with_aux, buckets: dict, crit
                 n_c = ch["truth"].shape[0]
                 loss_sum += float(closs) * n_c
                 met = compute_metrics(
-                    p_c, ch["truth"], ch["clean"], ch["z_obs"], ch["op"], ch["dz"], unit_id=ch["unit_id"],
+                    p_c, ch["truth"], ch["clean"], ch["z_obs"], ch["op"], ch["dz"],
+                    unit_id=ch["unit_id"], detrend_modes=ch.get("detrend_modes"),
                 )
                 cal = compute_calibration_metrics(
                     p_c, ch["truth"], None if a_c is None else a_c.get("log_var"),
@@ -443,7 +461,7 @@ def parse_args():
                    help="save full 3D prediction volume snapshot every N epochs in addition to best/latest (0 = best+latest only)")
     p.add_argument("--refresh-sec", type=int, default=60,
                    help="web dashboard auto-refresh interval in seconds (0 disables auto-refresh, default: 60)")
-    p.add_argument("--variant", type=str, default="v5", choices=["v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"],
+    p.add_argument("--variant", type=str, default="v5", choices=["v9", "v8", "v7", "v6", "v5", "v4", "v3", "v2", "v1"],
                    help="model architecture variant (default: v5)")
     p.add_argument("--model-size", type=str, default="base", choices=["slim", "base", "heavy"],
                    help="v5/v6/v7 capacity tier: slim, base, heavy")
@@ -464,6 +482,10 @@ def parse_args():
                    help="re-baseline best validation loss on --resume")
     p.add_argument("--total-epochs", type=int, default=0,
                    help="optional cumulative end epoch for continuous cosine decay across resumes")
+    p.add_argument("--v3-data", action="store_true",
+                   help="train and validate v6/v7/v8 on clean V3 ground dataset (v6_mode=False)")
+    p.add_argument("--v3-loss", action="store_true",
+                   help="use V3 symmetric Jaccard/supervision/NLL/data loss instead of V6 Tversky losses")
     p.add_argument("--gui", action="store_true", help="open a live native GUI window with training graphs")
     default_dev = "cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu")
     p.add_argument("--device", type=str, default=default_dev)
@@ -478,7 +500,12 @@ def main():
     grid = (NX, NY, NZ, CELL, CELL, CELL)
     depth_total = NZ * CELL
 
-    if args.variant == "v8":
+    if args.variant == "v9":
+        if V9_SIZE_PRESETS is None:
+            raise RuntimeError("--variant v9 requires V9_SIZE_PRESETS in model_swin3d.py")
+        arch = dict(V9_SIZE_PRESETS[args.model_size])
+        arch["dropout"] = float(args.dropout)
+    elif args.variant == "v8":
         if V8_SIZE_PRESETS is None:
             raise RuntimeError("--variant v8 requires V8_SIZE_PRESETS in model_swin3d.py")
         arch = dict(V8_SIZE_PRESETS[args.model_size])
@@ -503,7 +530,7 @@ def main():
         ck_resumed = torch.load(args.resume, map_location="cpu")
         ck_arch = ck_resumed.get("arch", {"variant": "v1", "embed_dim": 96, "num_heads": 4, "depth": 4})
         ck_variant = str(ck_arch.get("variant", "v1"))
-        if args.variant in ("v7", "v8") and ck_variant != args.variant:
+        if args.variant in ("v7", "v8", "v9") and ck_variant != args.variant:
             migrating = True
             print(
                 f"Warm-starting {args.variant} ({args.model_size}) from {ck_variant} checkpoint {args.resume} "
@@ -518,31 +545,36 @@ def main():
             print(f"Resumed weights from {args.resume} (checkpoint epoch {ck_resumed.get('epoch')}, starting epoch {start_epoch})")
 
     variant = arch.get("variant", "v1")
+    is_v9 = variant == "v9"
     is_v8 = variant == "v8"
-    is_v7 = variant in ("v7", "v8")
-    is_v6 = variant in ("v6", "v7", "v8")
+    is_v7 = variant in ("v7", "v8", "v9")
+    is_v6 = variant in ("v6", "v7", "v8", "v9")
     is_v5 = variant == "v5"
-    is_v5_or_v6 = variant in ("v8", "v7", "v6", "v5")
-    num_workers = (4 if is_v6 else 0) if args.num_workers is None else int(args.num_workers)
+    is_v5_or_v6 = variant in ("v9", "v8", "v7", "v6", "v5")
+    use_v6_data = is_v6 and (not args.v3_data)
+    num_workers = (4 if use_v6_data else 0) if args.num_workers is None else int(args.num_workers)
     ema_decay = (0.997 if is_v6 else 0.995) if args.ema_decay is None else float(args.ema_decay)
 
-    fault_prob = float(args.fault_prob) if is_v5_or_v6 else 0.0
-    do_prob = float(args.dropout_prob) if is_v5_or_v6 else 0.0
+    fault_prob = float(args.fault_prob) if (use_v6_data or is_v5) else 0.0
+    do_prob = float(args.dropout_prob) if (use_v6_data or is_v5) else 0.0
     large_prob = min(1.0, max(0.0, float(args.large_prob)))
     ground_prob = min(1.0, max(0.0, float(args.ground_prob)))
-    clear_rng = CLEARANCE_AIRBORNE_V6 if is_v6 else (CLEARANCE_MULTI if is_v5 else CLEARANCE)
-    asp_list = ASPECT_MULTI if is_v5_or_v6 else None
+    clear_rng = CLEARANCE_AIRBORNE_V6 if use_v6_data else (CLEARANCE_MULTI if is_v5 else CLEARANCE)
+    asp_list = ASPECT_MULTI if (use_v6_data or is_v5) else None
 
     clr_desc = (
         f"{variant} primary ground {ground_prob:.0%} (0.3-2m) + relief drape, large {large_prob:.0%}, workers {num_workers}, ema {ema_decay:.3f}"
-        if is_v6 else ("clearance 0.30-80m, multi-aspect" if is_v5 else "ground clearance 0.30-0.40 m")
+        if use_v6_data else (
+            "clearance 0.30-80m, multi-aspect"
+            if is_v5 else (f"{variant} ground clearance 0.30-0.40 m (v3 data)" if is_v6 else "ground clearance 0.30-0.40 m")
+        )
     )
     print(f"Device {dev} (FP32) | {args.epochs} epochs x {args.steps} steps x batch {args.batch_size} | "
           f"grid {NX}x{NY}x{NZ} @ {CELL} m | hard-prob {hard_prob:.2f} | {clr_desc}")
     print(f"Monitor: {os.path.join(args.save_dir, 'training_monitor.png')} "
           f"| HTML: {os.path.join(args.save_dir, 'dashboard.html')} | GUI window: {'ON' if args.gui else 'OFF (pass --gui)'}")
 
-    if is_v6:
+    if use_v6_data:
         op_bank = [TerrainGravityOperator(NX, NY, NZ, CELL, CELL, CELL * a, h_min=-220.0).to(dev) for a in asp_list]
         subvox_cap_bank = [SubvoxelCapOperator(NX, NY, CELL, CELL, CELL * a).to(dev) for a in asp_list]
         op = op_bank[asp_list.index(1.0)] if 1.0 in asp_list else TerrainGravityOperator(*grid, h_min=-220.0).to(dev)
@@ -555,7 +587,7 @@ def main():
     else:
         op_bank = None
         subvox_cap_bank = None
-        op = TerrainGravityOperator(*grid).to(dev)
+        op = TerrainGravityOperator(*grid, h_min=-220.0 if is_v6 else -85.0).to(dev)
         batch_op = op
 
     monitor = TrainingMonitor(args.save_dir, gui=args.gui, vol3d_stride=args.vol3d_stride,
@@ -563,20 +595,20 @@ def main():
     train_ds = BodyTerrainDataset(
         args.steps * args.batch_size, *grid, hard_prob=hard_prob,
         fault_prob=fault_prob, clearance_range=clear_rng, aspect_ratios=asp_list,
-        v6_mode=is_v6, large_prob=large_prob, ground_prob=ground_prob,
+        v6_mode=use_v6_data, large_prob=large_prob, ground_prob=ground_prob,
     )
     loader = _build_train_loader(train_ds, args.batch_size, num_workers)
 
     val_ch = int(arch.get("in_channels", 6)) if is_v7 else (5 if is_v5_or_v6 else 2)
-    clr_clamp_val = 8.0 if is_v6 else 4.0
+    clr_clamp_val = CLEARANCE_CLAMP_V6 if is_v6 else 4.0
     show_tuple = make_category_showcase(
-        op, dev, grid, seed=4024, in_channels=val_ch, clearance_clamp=clr_clamp_val,
+        op, dev, grid, seed=4024, in_channels=val_ch, clearance_clamp=clr_clamp_val, v6_physics=False,
     )
     show_x, show_true, show_clean, show_z, show_labels = show_tuple
 
     v6_buckets = None
     vx = vtrue = vclean = vz = hard_val = None
-    if is_v6:
+    if use_v6_data:
         eff_n_val = 128 if args.n_val == 64 else args.n_val
         n_per_bucket = max(8, eff_n_val // 4)
         op_bank_map = {i: o for i, o in enumerate(op_bank)}
@@ -592,12 +624,14 @@ def main():
         vx, vtrue, vclean, vz = make_fixed_set(
             args.n_val, 2024, op, dev, grid, hard_prob=0.0, in_channels=val_ch,
             fault_prob=fault_prob * 0.75, clearance_range=clear_rng, dropout_prob=do_prob * 0.75,
+            clearance_clamp=clr_clamp_val, v6_mode=False,
         )
         if hard_prob > 0.0:
             n_hard = max(8, args.n_val // 2)
             hard_val = make_fixed_set(
                 n_hard, 3024, op, dev, grid, hard_prob=1.0, in_channels=val_ch,
                 fault_prob=fault_prob, clearance_range=clear_rng, dropout_prob=do_prob,
+                clearance_clamp=clr_clamp_val, v6_mode=False,
             )
             mon_labels = ("Std",) * min(4, len(vx)) + ("Hard",) * min(4, len(hard_val[0])) + show_labels
         else:
@@ -614,17 +648,17 @@ def main():
     if ck_resumed is not None and ema.ema is not None and "ema_state_dict" in ck_resumed:
         _load_ckpt_weights_compat(ema.ema, ck_resumed["ema_state_dict"], strict=not migrating)
     eval_model = ema.ema if ema.ema is not None else model
-    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7", "v8")
+    forward_with_aux = ((lambda m, inp: m(inp, return_aux=True)) if variant in ("v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9")
                         else (lambda m, inp: (m(inp), None)))
 
     size_tag = f" ({arch.get('model_size', 'custom')})" if is_v5_or_v6 else ""
-    curr_tag = f" | Curriculum epochs: {args.curriculum_epochs}" if is_v5_or_v6 and args.curriculum_epochs > 0 else ""
+    curr_tag = f" | Curriculum epochs: {args.curriculum_epochs}" if (use_v6_data or is_v5) and args.curriculum_epochs > 0 else ""
     print(f"Architecture: {variant}{size_tag} | "
           f"Parameters: {sum(p.numel() for p in model.parameters()) / 1e6:.2f} M{curr_tag}")
-    lambda_data = ((0.80 if is_v8 else 0.50) if is_v6 else 0.25) if args.lambda_data is None else float(args.lambda_data)
+    lambda_data = ((0.50 if is_v9 else (0.80 if is_v8 else 0.50)) if is_v6 else 0.25) if args.lambda_data is None else float(args.lambda_data)
     crit = CompoundInversionLoss(lambda_data=lambda_data, lambda_ms=args.lambda_ms,
                                  lambda_cls=args.lambda_cls, depth_boost=args.depth_boost,
-                                 forward_op=batch_op, use_v6_losses=is_v6)
+                                 forward_op=batch_op, use_v6_losses=(is_v6 and (not is_v9) and (not args.v3_loss)))
 
     end_epoch = start_epoch + args.epochs - 1
     total_steps = max(1, (end_epoch - start_epoch + 1) * args.steps)
@@ -649,7 +683,7 @@ def main():
                                                     pct_start=pct_start, div_factor=10.0, final_div_factor=50.0)
 
     def _eval_split(xs, ys, cs, zs):
-        if is_v5_or_v6:
+        if use_v6_data or is_v5:
             batch_op.aspect_indices = None
         preds, aux_chunks = [], []
         with torch.no_grad():
@@ -659,10 +693,24 @@ def main():
                 if a_i is not None:
                     aux_chunks.append(a_i)
             pred = torch.cat(preds)
-            vaux = ({k: torch.cat([c[k] for c in aux_chunks])
-                     if isinstance(aux_chunks[0][k], torch.Tensor) else aux_chunks[0][k]
-                     for k in aux_chunks[0]} if aux_chunks else None)
-            sloss, _ = crit(pred, ys, cs, zs, aux=vaux)
+            if aux_chunks:
+                vaux = {}
+                for k, v0 in aux_chunks[0].items():
+                    if isinstance(v0, torch.Tensor):
+                        vaux[k] = torch.cat([c[k] for c in aux_chunks], dim=0)
+                    elif isinstance(v0, (tuple, list)) and v0 and all(isinstance(t, torch.Tensor) for t in v0):
+                        vaux[k] = type(v0)(
+                            torch.cat([c[k][j] for c in aux_chunks], dim=0) for j in range(len(v0))
+                        )
+                    else:
+                        vaux[k] = v0
+            else:
+                vaux = None
+            if args.v3_loss:
+                if vaux is None:
+                    vaux = {}
+                vaux["use_v3_loss"] = True
+            sloss, _ = _call_crit(crit, pred, ys, cs, zs, aux=vaux)
         return float(sloss), compute_metrics(pred, ys, cs, zs, op, CELL), pred
 
     def _pack_monitor(parts):
@@ -670,10 +718,10 @@ def main():
         return tuple(torch.cat(seq, dim=0) for seq in (xs, ts, ps, cs, zs))
 
     def validate():
-        if is_v6:
+        if use_v6_data:
             return validate_v6_buckets(
                 eval_model, model, forward_with_aux, v6_buckets, crit,
-                batch_op, op, showcase_tuple=show_tuple,
+                batch_op, op, showcase_tuple=show_tuple, force_v3_loss=args.v3_loss,
             )
         eval_model.eval()
         std_loss, std_m, std_pred = _eval_split(vx, vtrue, vclean, vz)
@@ -722,7 +770,7 @@ def main():
         else:
             best = min(best, init_vloss)
 
-    if is_v6:
+    if use_v6_data:
         for bname in ("ground_clean", "ground_hard_large_detrend"):
             c0 = v6_buckets[bname][0]
             z0 = compute_metrics(torch.zeros_like(c0["truth"]), c0["truth"], c0["clean"], c0["z_obs"], c0["op"], c0["dz"], unit_id=c0["unit_id"])
@@ -737,7 +785,7 @@ def main():
 
     for epoch in range(start_epoch, end_epoch + 1):
         sim_kw = {}
-        if is_v6:
+        if use_v6_data:
             c_cfg = compute_v6_curriculum(
                 epoch, args.curriculum_epochs, hard_prob, fault_prob, do_prob, large_prob, ground_prob,
             )
@@ -764,7 +812,7 @@ def main():
         t0, acc, n = time.time(), {}, 0
         for batch in loader:
             uid = None
-            if is_v6:
+            if use_v6_data:
                 x, rho, uid, clean, z_obs = prepare_v6_batch(
                     batch, op_bank, subvox_cap_bank, asp_list, dev, batch_op, cur_do,
                     sim_kwargs=sim_kw, use_v7_input=is_v7, in_channels=val_ch,
@@ -796,9 +844,24 @@ def main():
                 rho, t, c, nf = rho.to(dev), t.to(dev), c.to(dev), nf.to(dev)
                 obs, clean, z_obs = simulate_batch(op, rho, t, c, nf)
                 rho, t, obs, clean, z_obs = augment_d4(rho, t, obs, clean, z_obs)
-                x = torch.cat([obs, terrain_channel(t, depth_total)], dim=1)
+                if val_ch >= 6:
+                    x = build_v7_input(
+                        obs, t, depth_total, valid_mask=torch.ones_like(obs), aspect=1.0,
+                        clearance=c, clearance_clamp=clr_clamp_val, detrend_modes="raw",
+                    )
+                elif val_ch == 5:
+                    x = build_v6_input(
+                        obs, t, depth_total, valid_mask=torch.ones_like(obs), aspect=1.0,
+                        clearance=c,
+                    )
+                else:
+                    x = torch.cat([obs, terrain_channel(t, depth_total)], dim=1)
 
             pred, aux = forward_with_aux(model, x)
+            if args.v3_loss:
+                if aux is None:
+                    aux = {}
+                aux["use_v3_loss"] = True
             loss, m = _call_crit(crit, pred, rho, clean, z_obs, aux=aux, unit_id=uid)
             opt.zero_grad(set_to_none=True)
             loss.backward()
@@ -810,8 +873,9 @@ def main():
                 acc[k] = acc.get(k, 0.0) + v
             n += 1
 
-        if is_v6:
+        if use_v6_data:
             vloss, vm, b_losses, b_metrics, mon_t = validate()
+            sel_score = compute_selection_score(vm, b_metrics)
             tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items())
             gc_m = b_metrics["ground_clean"]
             hl_m = b_metrics["ground_hard_large_detrend"]
@@ -819,7 +883,7 @@ def main():
             ma_m = b_metrics["multi_aspect"]
             msg = (
                 f"Epoch {epoch:02d}/{end_epoch} [{time.time() - t0:.0f}s] train {tr} | "
-                f"val {vloss:.3f} (GC {b_losses['ground_clean']:.3f} IoU {gc_m['iou']:.2f} | "
+                f"val {vloss:.3f} sel {sel_score:.4f} (GC {b_losses['ground_clean']:.3f} IoU {gc_m['iou']:.2f} | "
                 f"HL {b_losses['ground_hard_large_detrend']:.3f} IoU {hl_m['iou']:.2f} dz {hl_m['centroid_dz']:.0f}m | "
                 f"Air IoU {air_m['iou']:.2f} | MA IoU {ma_m['iou']:.2f} | "
                 f"sedR {vm.get('sediment_recall', float('nan')):.2f} mafR {vm.get('mafic_recall', float('nan')):.2f} | "
@@ -829,8 +893,8 @@ def main():
             print(msg, flush=True)
             ck = {
                 "epoch": epoch, "model_state_dict": eval_model.state_dict(),
-                "raw_model_state_dict": model.state_dict(), "val_loss": vloss, "metrics": vm,
-                "bucket_losses": b_losses, "bucket_metrics": b_metrics,
+                "raw_model_state_dict": model.state_dict(), "val_loss": vloss, "selection_score": sel_score,
+                "metrics": vm, "bucket_losses": b_losses, "bucket_metrics": b_metrics,
                 "hard_prob": hard_prob, "large_prob": large_prob, "ground_prob": ground_prob,
                 "sched_state_dict": sched.state_dict(),
                 "optimizer_state_dict": opt.state_dict(),
@@ -844,7 +908,8 @@ def main():
                 best = vloss
                 torch.save(ck, os.path.join(args.save_dir, "best_swin3d.pt"))
             rec_mon = {
-                "epoch": epoch, "train_loss": acc["loss_total"] / n, "val_loss": vloss, **vm,
+                "epoch": epoch, "train_loss": acc["loss_total"] / n, "val_loss": vloss,
+                "selection_score": sel_score, **vm,
                 "val_std_loss": b_losses["ground_clean"],
                 "val_hard_loss": b_losses["ground_hard_large_detrend"],
                 "hard_iou": hl_m["iou"],

@@ -18,6 +18,7 @@ import torch
 import torch.nn.functional as F
 from scipy.ndimage import distance_transform_edt, label
 
+from dataset import apply_mod3d_detrend
 from losses import _dilate3d
 from vol3d_io import write_vol3d_sidecars
 
@@ -120,19 +121,31 @@ def _smooth_support(u: torch.Tensor) -> torch.Tensor:
 
 
 @torch.no_grad()
-def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=None):
+def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=None, detrend_modes=None):
     """pred/truth: (B,1,D,H,W); d_clean: (B,1,H,W); z_obs: (B,H,W). Batch-averaged metrics.
 
     When integer ``unit_id`` ``(B,1,D,H,W)`` is supplied, per-unit thresholds and Voronoi centroids
     are computed directly from geological units (fast, vectorized, and graded-rock safe).
+    When ``detrend_modes`` is supplied, ``data_misfit_detrend`` additionally records the misfit
+    after applying each scene's detrending operator to both ``G m_pred`` and ``d_clean``.
     """
     keys = (
         "l1_rel", "body_l1_rel", "data_rel_misfit", "iou", "centroid_dz",
-        "amp_ratio", "halo_opp", "sediment_recall", "mafic_recall",
+        "amp_ratio", "mass_d1", "mass_d3", "halo_opp", "sediment_recall", "mafic_recall",
     )
+    if detrend_modes is not None:
+        keys = keys + ("data_misfit_detrend",)
     out = {k: [] for k in keys}
     dp_all = forward_op(pred, z_obs)
+    if detrend_modes is not None:
+        dp_dt_all = apply_mod3d_detrend(dp_all, detrend_modes)
+        d_dt_all = apply_mod3d_detrend(d_clean, detrend_modes)
+    else:
+        dp_dt_all = d_dt_all = None
     pos_m, neg_m = (truth > 0).float(), (truth < 0).float()
+    fg_m = (truth != 0).float()
+    d1_m = _dilate3d(fg_m, 1) > 0
+    d3_m = _dilate3d(fg_m, 3) > 0
     pos_p = _dilate3d(pos_m, 1) + _dilate3d(pos_m, 3) + _dilate3d(pos_m, 7)
     neg_p = _dilate3d(neg_m, 1) + _dilate3d(neg_m, 3) + _dilate3d(neg_m, 7)
     for i in range(pred.shape[0]):
@@ -143,6 +156,9 @@ def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=No
         out["l1_rel"].append(float((p - t).abs().mean()) / a)
         out["body_l1_rel"].append(float(((p - t)[body].abs() / ta[body]).mean()) if body.any() else 0.0)
         out["data_rel_misfit"].append(float(torch.linalg.norm(dp - d) / (torch.linalg.norm(d) + 1e-12)))
+        if dp_dt_all is not None:
+            d_dt, dp_dt = d_dt_all[i], dp_dt_all[i]
+            out["data_misfit_detrend"].append(float(torch.linalg.norm(dp_dt - d_dt) / (torch.linalg.norm(d_dt) + 1e-12)))
         pm = float(pa.max())
         ref_p = min(pm, a) if pm > 0 else 0.0
         body_thresh = torch.full_like(pa, 0.5 * ref_p)
@@ -202,6 +218,9 @@ def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=No
         only_neg = float((t > 0).sum() == 0)
         pos_z = (((pp > np_).float() + only_pos).clamp_max(1.0)) * (~body).float()
         neg_z = (((np_ > pp).float() + only_neg).clamp_max(1.0)) * (~body).float()
+        sgn_zone = torch.where(body, torch.sign(t), pos_z - neg_z)
+        out["mass_d1"].append(float((p * sgn_zone)[d1_m[i, 0]].sum()) / t_mass)
+        out["mass_d3"].append(float((p * sgn_zone)[d3_m[i, 0]].sum()) / t_mass)
         opp_halo = (F.relu(-p) * pos_z + F.relu(p) * neg_z).sum()
         out["halo_opp"].append(float(opp_halo) / (float(pa.sum()) + t_mass))
 
@@ -219,6 +238,26 @@ def compute_metrics(pred, truth, d_clean, z_obs, forward_op, dz=50.0, unit_id=No
         k: (float(np.mean(valid)) if (valid := [x for x in v if not np.isnan(x)]) else float("nan"))
         for k, v in out.items()
     }
+
+
+def compute_selection_score(metrics: dict, bucket_metrics: dict | None = None) -> float:
+    """Version-invariant, equal-variance checkpoint selection score (higher is better).
+
+    Weights are scaled by the empirical epoch-to-epoch standard deviations observed in
+    V7/V8 histories (iou ~0.006, gc_iou ~0.008, amp_ratio ~0.005, centroid_dz ~2.5 m)
+    so each term contributes comparable 1-sigma leverage.
+    """
+    iou = float(metrics.get("iou", 0.0))
+    gc_iou = (
+        float(bucket_metrics["ground_clean"].get("iou", iou))
+        if (bucket_metrics and "ground_clean" in bucket_metrics)
+        else iou
+    )
+    amp = float(metrics.get("amp_ratio", 0.0))
+    dz = float(metrics.get("centroid_dz", 100.0))
+    if np.isnan(iou) or np.isnan(gc_iou) or np.isnan(amp) or np.isnan(dz):
+        return -1e9
+    return iou + 0.75 * gc_iou - 1.0 * abs(1.0 - amp) - dz / 400.0
 
 
 @torch.no_grad()
@@ -404,6 +443,7 @@ def _build_v6_bucket_chunks(
                 "x": x, "truth": rho, "unit_id": uid, "terrain": t,
                 "clean": clean, "z_obs": z_obs, "op": op_cur,
                 "dz": dz_cur, "aspect": asp,
+                "detrend_modes": dmodes if want_v7 else ["raw"] * len(sub),
             })
     return chunks
 
@@ -571,9 +611,10 @@ def _infer_eval_model_cfg(model, clearance_clamp=None):
     model_variant = str(getattr(model, "variant", "") or "").lower()
     model_in_ch = getattr(model, "in_channels", None)
     is_v7 = (
-        model_variant in ("v7", "v8")
+        model_variant in ("v7", "v8", "v9")
         or "V7" in type(model).__name__
         or "V8" in type(model).__name__
+        or "V9" in type(model).__name__
         or (model_in_ch is not None and int(model_in_ch) >= 6)
     )
     is_v6 = (
@@ -789,8 +830,8 @@ def main():
     model = create_model(g["nx"], g["ny"], g["nz"], **arch)
     model.load_state_dict(ck["model_state_dict"])
     model.to(args.device).eval()
-    is_v7 = variant in ("v7", "v8")
-    is_v6_family = variant in ("v6", "v7", "v8")
+    is_v7 = variant in ("v7", "v8", "v9")
+    is_v6_family = variant in ("v6", "v7", "v8", "v9")
     h_min = -220.0 if is_v6_family else -85.0
     op = TerrainGravityOperator(*grid, h_min=h_min).to(args.device)
     clr_clamp = CLEARANCE_CLAMP_V6 if is_v6_family else 4.0
@@ -829,7 +870,10 @@ def main():
                 for ch in chunks:
                     out = model(ch["x"], return_aux=True)
                     pred, aux = (out[0], out[1]) if isinstance(out, tuple) else (out, {})
-                    met = compute_metrics(pred, ch["truth"], ch["clean"], ch["z_obs"], ch["op"], ch["dz"], unit_id=ch["unit_id"])
+                    met = compute_metrics(
+                        pred, ch["truth"], ch["clean"], ch["z_obs"], ch["op"], ch["dz"],
+                        unit_id=ch["unit_id"], detrend_modes=ch.get("detrend_modes"),
+                    )
                     cal = compute_calibration_metrics(pred, ch["truth"], aux.get("log_var"), terrain=ch["terrain"], dz=ch["dz"])
                     met.update(cal)
                     n_c = ch["truth"].shape[0]

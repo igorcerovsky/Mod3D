@@ -144,33 +144,95 @@ def test_v8_onnx_export_coreml_single_partition():
         assert onnx_path.is_file() and onnx_path.stat().st_size > 1_000_000
 
 
-def test_v8_train_cli_cpu_smoke():
+def _run_v8_train_cli(td: str, extra_args: list[str]) -> tuple[str, dict, dict]:
     inv_py_dir = Path(__file__).resolve().parent
+    cmd = [
+        sys.executable, "-u", str(inv_py_dir / "train.py"),
+        "--variant", "v8",
+        "--model-size", "slim",
+        "--epochs", "1",
+        "--steps", "2",
+        "--batch-size", "2",
+        "--n-val", "4",
+        "--device", "cpu",
+        "--save-dir", td,
+        *extra_args,
+    ]
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(inv_py_dir) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    proc = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
+    out = proc.stdout + proc.stderr
+    assert "Architecture: v8 (slim)" in out
+    assert "Best val loss" in out
+    assert (Path(td) / "best_swin3d.pt").is_file()
+    assert (Path(td) / "last_swin3d.pt").is_file()
+    ck = torch.load(Path(td) / "best_swin3d.pt", map_location="cpu")
+    assert ck["arch"]["variant"] == "v8"
+    assert ck["arch"]["n_iters"] == 3
+    with open(Path(td) / "training_history.json", encoding="utf-8") as f:
+        hist = json.load(f)
+    assert len(hist["epochs"]) == 1 and np.isfinite(hist["epochs"][0]["val_loss"])
+    return out, ck, hist
+
+
+def test_v8_train_cli_cpu_smoke():
     with tempfile.TemporaryDirectory(prefix="v8_cpu_smoke_") as td:
-        cmd = [
-            sys.executable, "-u", str(inv_py_dir / "train.py"),
-            "--variant", "v8",
-            "--model-size", "slim",
-            "--epochs", "1",
-            "--steps", "2",
-            "--batch-size", "2",
-            "--n-val", "4",
-            "--num-workers", "0",
-            "--device", "cpu",
-            "--save-dir", td,
-        ]
-        env = dict(os.environ)
-        env["PYTHONPATH"] = str(inv_py_dir) + (os.pathsep + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
-        proc = subprocess.run(cmd, env=env, capture_output=True, text=True, check=True)
-        out = proc.stdout + proc.stderr
-        assert "Architecture: v8 (slim)" in out
-        assert "Best val loss" in out
-        ck = torch.load(Path(td) / "best_swin3d.pt", map_location="cpu")
-        assert ck["arch"]["variant"] == "v8"
-        assert ck["arch"]["n_iters"] == 3
-        with open(Path(td) / "training_history.json", encoding="utf-8") as f:
-            hist = json.load(f)
-        assert len(hist["epochs"]) == 1 and np.isfinite(hist["epochs"][0]["val_loss"])
+        _run_v8_train_cli(td, ["--num-workers", "0"])
+
+
+def test_v8_v3_loss_flag_unit():
+    torch.manual_seed(91)
+    B, D, H, W = 2, 16, 32, 32
+    m_true = torch.zeros(B, 1, D, H, W)
+    m_true[0, 0, 3:7, 10:18, 10:18] = 1.0
+    m_true[1, 0, 5:9, 12:20, 12:20] = -1.2
+    m_pred = m_true * 0.7 + 0.05 * torch.randn_like(m_true)
+    rho_init = m_true * 0.5
+    log_var = torch.full_like(m_true, -2.0)
+    tier_preds = (
+        torch.nn.functional.avg_pool3d(m_pred[:, :, :4], 4),
+        torch.nn.functional.avg_pool3d(m_pred[:, :, 4:10], 2),
+        m_pred[:, :, 10:],
+    )
+    op = TerrainGravityOperator(H, W, D, 50.0, 50.0, 50.0, h_min=-85.0)
+    z_obs = torch.full((B, H, W), -0.35)
+    d_clean = op(m_true, z_obs)
+
+    crit_v3 = CompoundInversionLoss(
+        lambda_data=0.80, lambda_ms=0.05, lambda_cls=0.0, lambda_coarse=0.0,
+        lambda_rho_init=0.10, lambda_nll=0.06, lambda_tier=0.20,
+        forward_op=op, use_v6_losses=False,
+    )
+    aux_v3_flag = {
+        "is_v7": True, "is_v8": True, "use_v3_loss": True,
+        "rho_init": rho_init, "log_var": log_var, "tier_preds": tier_preds,
+        "rho_iter_preds": (m_pred * 0.8,),
+    }
+    aux_v6_flag = {
+        "is_v7": True, "is_v8": True,
+        "rho_init": rho_init, "log_var": log_var, "tier_preds": tier_preds,
+        "rho_iter_preds": (m_pred * 0.8,),
+    }
+    aux_plain_v3 = {
+        "is_v8": True, "log_var": log_var, "tier_preds": tier_preds,
+        "rho_iter_preds": (m_pred * 0.8,),
+    }
+
+    _, st_v3_flag = crit_v3(m_pred, m_true, d_clean=d_clean, z_obs=z_obs, aux=aux_v3_flag)
+    _, st_plain_v3 = crit_v3(m_pred, m_true, d_clean=d_clean, z_obs=z_obs, aux=aux_plain_v3)
+    _, st_v6_flag = crit_v3(m_pred, m_true, d_clean=d_clean, z_obs=z_obs, aux=aux_v6_flag)
+
+    for k in ("loss_sup", "loss_data", "loss_nll", "loss_unit_iou", "loss_tier"):
+        assert abs(st_v3_flag[k] - st_plain_v3[k]) < 1e-6, f"Mismatch on {k} vs V3 baseline"
+    assert st_v3_flag["loss_rho_init"] > 0.0
+    assert abs(st_v3_flag["loss_unit_iou"] - st_v6_flag["loss_unit_iou"]) > 1e-4
+
+
+def test_v8_v3_data_and_v3_loss_smoke():
+    with tempfile.TemporaryDirectory(prefix="v8_v3mode_smoke_") as td:
+        out, _, hist = _run_v8_train_cli(td, ["--v3-data", "--v3-loss"])
+        assert "Zero predictor (std):" in out
+        assert "val_gc_loss" not in hist["epochs"][0]
 
 
 if __name__ == "__main__":

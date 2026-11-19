@@ -1404,6 +1404,12 @@ V8_SIZE_PRESETS = {
 }
 
 
+V9_SIZE_PRESETS = {
+    sz: {**cfg, "variant": "v9", "in_channels": 6}
+    for sz, cfg in V5_SIZE_PRESETS.items()
+}
+
+
 def _rep_pad1(t: torch.Tensor) -> torch.Tensor:
     """CoreML-safe 1-pixel replicate padding for 4D ``(B, C, H, W)`` via Slice+Concat (no edge Pad)."""
     t_h = torch.cat([t[:, :, :1, :], t, t[:, :, -1:, :]], dim=2)
@@ -3480,11 +3486,438 @@ class PotentialFieldTransformer3DV8(PotentialFieldTransformer3DV7):
         }
 
 
+class PotentialFieldTransformer3DV9(nn.Module):
+    """V9 Unified Full-Resolution Depth-Accurate 3D Inversion Network.
+
+    Combines V3/V5.2's unified ``(nz, nx, ny)`` decoder and depth-conditioned skips
+    (``GroupNorm`` 2.5D convs, trilinear-skip subpixel upsamplers, per-depth ``z_gate`` +
+    additive ``d_bias``, 2-layer ``cls_depth_prior``, ``logsumexp`` prototype scoring) with
+    6-channel survey conditioning, occupancy-gated coarse physics feedback, and
+    detrend-mode-aware full-resolution ``OddPyramidGravity`` Stage-2 physics feedback.
+    """
+
+    def __init__(self, nx=64, ny=64, nz=32, patch=4, embed_dim=128, num_heads=4, depth=6,
+                 ch_mid=40, ch_vox=24, n_sub=3, num_classes=7, dropout=0.05, dec_depth=2,
+                 in_channels=6, **_unused):
+        super().__init__()
+        assert patch == 4 and nx % (4 * patch) == 0 and ny % (4 * patch) == 0 and nz % 4 == 0
+        self.variant = "v9"
+        self.in_channels = int(in_channels)
+        self.nx, self.ny, self.nz, self.p, self.n_sub = nx, ny, nz, patch, n_sub
+        self.num_classes = num_classes
+        self.hp, self.wp, self.dp = nx // patch, ny // patch, nz // 4
+        self.ch_mid, self.ch_vox = ch_mid, ch_vox
+        self.dropout_rate = float(dropout)
+        self.dec_depth = max(2, int(dec_depth))
+        c = embed_dim
+        c0, c1 = max(24, c // 4), max(48, c // 2)
+
+        # 9-dim scale/survey/detrend conditioning MLP
+        self.scale_mlp = nn.Sequential(nn.Linear(9, c), nn.GELU(), nn.Linear(c, c))
+
+        # 19-channel stem: V5 18-channel physics/structural stem + detrend_mode
+        self.enc0 = nn.Sequential(
+            nn.Conv2d(19, c0, 3, padding=1), nn.GELU(),
+            nn.Conv2d(c0, c0, 3, padding=1), nn.GELU(),
+        )
+        self.enc1 = nn.Sequential(
+            nn.Conv2d(c0, c1, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(c1, c1, 3, padding=1), nn.GELU(),
+        )
+        self.enc2 = nn.Sequential(
+            nn.Conv2d(c1, c, 3, stride=2, padding=1), nn.GELU(),
+            nn.Conv2d(c, c, 3, padding=1),
+        )
+        self.pos2d = nn.Parameter(torch.randn(1, self.hp * self.wp, c) * 0.02)
+        self.n2d_1 = nn.LayerNorm(c)
+        self.attn2d = Attention(c, num_heads, dropout=dropout)
+        self.n2d_2 = nn.LayerNorm(c)
+        self.mlp2d = nn.Sequential(nn.Linear(c, 3 * c), nn.GELU(), nn.Linear(3 * c, c))
+
+        # Stage-0 3D transformer bottleneck with Green's vertical distance bias
+        self.depth_lift = nn.Sequential(nn.LayerNorm(c), nn.Linear(c, self.dp * c))
+        self.pos3d = nn.Parameter(torch.randn(1, self.dp, self.hp, self.wp, c) * 0.02)
+        self.depth_cond = nn.Sequential(nn.Conv2d(5, c, 1), nn.GELU(), nn.Conv2d(c, c, 1))
+        self.blocks = nn.ModuleList([
+            (
+                AxialGlobalBlock3D(c, num_heads, use_greens_bias=True, dp=self.dp, dropout=dropout)
+                if i % 2
+                else SwinBlock3D(
+                    c, num_heads, wh=4, ww=4, shift=(2 if (i // 2) % 2 else 0),
+                    use_greens_bias=True, dp=self.dp, dropout=dropout,
+                )
+            )
+            for i in range(depth)
+        ])
+
+        # Bidirectional lithology prototype cross-attention
+        self.proto_emb = nn.Parameter(torch.randn(1, num_classes * n_sub, c) * 0.05)
+        self.proto_scale = nn.Linear(c, c)
+        self.proto_nq = nn.LayerNorm(c)
+        self.proto_nk = nn.LayerNorm(c)
+        self.proto_attn = Attention(c, num_heads, dropout=dropout)
+        self.proto_mlp_n = nn.LayerNorm(c)
+        self.proto_mlp = nn.Sequential(nn.Linear(c, 2 * c), nn.GELU(), nn.Linear(2 * c, c))
+        self.s2p_nq = nn.LayerNorm(c)
+        self.s2p_nk = nn.LayerNorm(c)
+        self.s2p_attn = Attention(c, num_heads, dropout=dropout)
+        self.s2p_mlp_n = nn.LayerNorm(c)
+        self.s2p_mlp = nn.Sequential(nn.Linear(c, 2 * c), nn.GELU(), nn.Linear(2 * c, c))
+        self.norm3d = nn.LayerNorm(c)
+
+        # Stage 1 -> (nz/2, nx/2, ny/2) + occupancy-gated coarse physics residual feedback
+        nz_mid, nx_mid, ny_mid = nz // 2, nx // 2, ny // 2
+        self.proj_mid = nn.Conv2d(c, c, 1)
+        self.up_mid = SepSubpixelUp3D(c, ch_mid)
+        self.skip_mid = DepthConditionedSkip(c1, ch_mid, nz_mid)
+        self.dec_mid1 = SepConv25DBlock(ch_mid)
+        self.coarse_occ_head = nn.Conv2d(ch_mid, 1, 1)
+        self.coarse_rho_head = nn.Conv2d(ch_mid, 1, 1)
+        with torch.no_grad():
+            self.coarse_occ_head.bias.fill_(-2.0)
+            self.coarse_rho_head.weight.mul_(0.05)
+            self.coarse_rho_head.bias.fill_(math.log(-RHO_AIR / RHO_MAX_V6))
+
+        self.g_mid = OddPyramidGravity(nx_mid, ny_mid, nz_mid, cell_xy=2.0 * REF_CELL, dz_ref=2.0 * REF_CELL)
+        self.bp_mid = BorderProjectorConv(nx_mid, ny_mid)
+        for p in self.g_mid.parameters():
+            p.requires_grad_(False)
+        for p in self.bp_mid.parameters():
+            p.requires_grad_(False)
+
+        self.res_feedback_2d = nn.Sequential(
+            nn.Conv2d(5, ch_mid, 3, padding=1), nn.GELU(),
+            nn.Conv2d(ch_mid, ch_mid, 1),
+        )
+        self.res_bp_mid = nn.Conv2d(1, ch_mid, 1)
+        self.res_depth_gate = nn.Sequential(nn.Conv2d(3, ch_mid, 1), nn.Sigmoid())
+        self.res_mid_gate = nn.Parameter(torch.tensor(0.25))
+        self.dec_mid2 = SepConv25DBlock(ch_mid)
+        if self.dec_depth > 2:
+            self.extra_dec_mid = nn.ModuleList([SepConv25DBlock(ch_mid) for _ in range(self.dec_depth - 2)])
+
+        # Stage 2 -> unified full-res (nz, nx, ny) + full-res physics residual feedback
+        self.up_vox = SepSubpixelUp3D(ch_mid, ch_vox)
+        self.skip_vox = DepthConditionedSkip(c0, ch_vox, nz)
+        self.scale_vox = nn.Linear(c, ch_vox)
+        self.dec_vox1 = SepConv25DBlock(ch_vox)
+
+        self.g_64 = OddPyramidGravity(nx, ny, nz, cell_xy=REF_CELL, dz_ref=REF_CELL)
+        self.bp_64 = BorderProjectorConv(nx, ny)
+        for p in self.g_64.parameters():
+            p.requires_grad_(False)
+        for p in self.bp_64.parameters():
+            p.requires_grad_(False)
+
+        self.res_vox_2d = nn.Sequential(
+            nn.Conv2d(5, ch_vox, 3, padding=1), nn.GELU(),
+            nn.Conv2d(ch_vox, ch_vox, 1),
+        )
+        self.res_vox_3d = nn.Conv2d(2, ch_vox, 1)  # [bp_64_z, rho_init]
+        self.res_vox_gate = nn.Parameter(torch.tensor(0.25))
+        self.bp_z_beta = nn.Parameter(torch.tensor(0.85))
+        self.dec_vox2 = SepConv25DBlock(ch_vox)
+        if self.dec_depth > 2:
+            self.extra_dec_vox = nn.ModuleList([SepConv25DBlock(ch_vox) for _ in range(self.dec_depth - 2)])
+        self.vox_drop = nn.Dropout3d(p=dropout) if dropout > 0 else nn.Identity()
+
+        # Unified depth-aware prototype + bounded rock heads (init & final)
+        self.proto_head_init = nn.Linear(c, ch_vox)
+        self.rock_head_init = nn.Conv2d(ch_vox, len(_ROCK_BOUNDS_V6), 1)
+        self.res_head_init = nn.Conv2d(ch_vox, 1, 1)
+        self.proto_head = nn.Linear(c, ch_vox)
+        self.proto_bias = nn.Linear(c, num_classes * n_sub)
+        self.logit_log_scale = nn.Parameter(torch.zeros(1))
+        self.cls_depth_prior = nn.Sequential(nn.Conv2d(2, 16, 1), nn.GELU(), nn.Conv2d(16, num_classes, 1))
+        self.occ_sharpness = nn.Parameter(torch.tensor(1.35))
+        self.cls_sharpness = nn.Parameter(torch.tensor(1.25))
+        self.occ_bias = nn.Parameter(torch.tensor(0.15))
+        self.rock_head = nn.Conv2d(ch_vox, len(_ROCK_BOUNDS_V6), 1)
+        self.res_head = nn.Conv2d(ch_vox, 1, 1)
+        with torch.no_grad():
+            self.res_head_init.weight.mul_(0.25)
+            self.res_head_init.bias.zero_()
+            self.res_head.weight.mul_(0.25)
+            self.res_head.bias.zero_()
+        self.edt_head = nn.Conv2d(ch_vox, 1, 1)
+
+        # Full-resolution 8-cue Gaussian log_var head
+        lv_ch = max(12, ch_vox)
+        self.logvar_hv = nn.Conv2d(ch_vox, lv_ch, 1)
+        self.logvar_3d = nn.Conv2d(4, lv_ch, 1, bias=False)
+        self.logvar_2d = nn.Conv2d(4, lv_ch, 1, bias=False)
+        self.logvar_out = nn.Conv2d(lv_ch, 1, 1)
+        with torch.no_grad():
+            self.logvar_out.bias.fill_(-4.0)
+
+        self.register_buffer("z_top_coarse", (torch.arange(nz // 4, dtype=torch.float32) / (nz // 4)).view(1, 1, nz // 4, 1, 1), persistent=False)
+        self.register_buffer("z_top_mid", (torch.arange(nz_mid, dtype=torch.float32) / nz_mid).view(1, 1, nz_mid, 1, 1), persistent=False)
+        self.register_buffer("z_top", (torch.arange(nz, dtype=torch.float32) / nz).view(1, 1, nz, 1, 1), persistent=False)
+        lo_t = torch.tensor([b[0] for b in _ROCK_BOUNDS_V6], dtype=torch.float32).view(1, len(_ROCK_BOUNDS_V6), 1, 1)
+        span_t = torch.tensor([b[1] - b[0] for b in _ROCK_BOUNDS_V6], dtype=torch.float32).view(1, len(_ROCK_BOUNDS_V6), 1, 1)
+        self.register_buffer("rock_lo", lo_t, persistent=False)
+        self.register_buffer("rock_span", span_t, persistent=False)
+
+    @staticmethod
+    def _avg(g: torch.Tensor, k: int) -> torch.Tensor:
+        return PotentialFieldTransformer3DV3._avg(g, k)
+
+    def _unpack_input(self, x: torch.Tensor):
+        c_in = x.shape[1]
+        gz = x[:, 0:1]
+        terr = x[:, 1:2].clamp(0.0, 0.25)
+        valid_mask = x[:, 2:3].clamp(0.0, 1.0) if c_in >= 3 else torch.ones_like(gz)
+        log_aspect = x[:, 3:4] if c_in >= 4 else torch.zeros_like(gz)
+        clearance = x[:, 4:5].clamp(0.0, 8.0) if c_in >= 5 else torch.full_like(gz, 0.35 / REF_CELL)
+        detrend_mode = x[:, 5:6].clamp(0.0, 1.0) if c_in >= 6 else torch.zeros_like(gz)
+        return gz, terr, valid_mask, log_aspect, clearance, detrend_mode
+
+    def enable_mc_dropout(self, enabled: bool = True):
+        for m in self.modules():
+            if isinstance(m, (nn.Dropout, nn.Dropout3d)):
+                m.train(enabled)
+
+    def _decode_v9_density(self, hv: torch.Tensor, se: torch.Tensor, p_head: torch.Tensor,
+                           d_surf: torch.Tensor, mask: torch.Tensor,
+                           rock_head: nn.Module, res_head: nn.Module):
+        b = hv.shape[0]
+        hv_flat = hv.reshape(b, self.ch_vox, self.nz * self.nx * self.ny)
+        logit_scale = self.logit_log_scale.exp().clamp(0.5, 4.0)
+        sim = torch.bmm(p_head, hv_flat) * (self.ch_vox ** -0.5) * logit_scale
+        sim = (
+            sim.view(b, self.num_classes, self.n_sub, self.nz, self.nx, self.ny)
+            + self.proto_bias(se).view(b, self.num_classes, self.n_sub, 1, 1, 1)
+        )
+        z_full = self.z_top.expand(b, 1, self.nz, self.nx, self.ny)
+        depth_prior = self.cls_depth_prior(
+            torch.cat([d_surf, z_full], dim=1).reshape(b, 2, self.nz * self.nx, self.ny)
+        ).reshape(b, self.num_classes, self.nz, self.nx, self.ny)
+        logits = torch.logsumexp(sim, dim=2) + depth_prior
+        probs = F.softmax(logits, dim=1)
+
+        fg_lse = torch.logsumexp(logits[:, 1:], dim=1, keepdim=True)
+        occ_sharp = self.occ_sharpness.clamp(0.5, 3.0)
+        cls_sharp = self.cls_sharpness.clamp(0.5, 3.0)
+        occ = torch.sigmoid(occ_sharp * (fg_lse - logits[:, 0:1]) + self.occ_bias)
+        active_probs = F.softmax(logits[:, 1:] * cls_sharp, dim=1)
+        w_active = 0.25 * probs[:, 1:] + 0.75 * (occ * active_probs)
+
+        hv_4d = hv.permute(0, 2, 1, 3, 4).reshape(b * self.nz, self.ch_vox, self.nx, self.ny)
+        rock_u = torch.sigmoid(rock_head(hv_4d))
+        rock_dens = (
+            (self.rock_lo + self.rock_span * rock_u)
+            .reshape(b, self.nz, len(_ROCK_BOUNDS_V6), self.nx, self.ny)
+            .permute(0, 2, 1, 3, 4)
+        )
+        rho_base = (
+            w_active[:, 0:1] * RHO_AIR
+            + w_active[:, 1:2] * RHO_WATER
+            + w_active[:, 2:3] * rock_dens[:, 0:1]
+            + w_active[:, 3:4] * rock_dens[:, 1:2]
+            + w_active[:, 4:5] * rock_dens[:, 2:3]
+            + w_active[:, 5:6] * rock_dens[:, 3:4]
+        )
+        rho_res = 0.10 * occ * torch.tanh(res_head(hv_4d)).reshape(b, 1, self.nz, self.nx, self.ny)
+        pred = (rho_base + rho_res) * mask
+        probs_4d = probs.permute(0, 2, 1, 3, 4).reshape(b * self.nz, self.num_classes, self.nx, self.ny)
+        return pred, probs, logits, occ, probs_4d, hv_4d
+
+    def _forward_impl(self, x: torch.Tensor, return_aux: bool = False, return_logvar: bool = True):
+        b = x.shape[0]
+        gz, terr, valid_mask, log_aspect, clearance, detrend_mode = self._unpack_input(x)
+        clr_s = clearance / (clearance + 1.0)
+        aspect = torch.exp(log_aspect.mean(dim=(2, 3), keepdim=True)).clamp(0.55, 1.40)
+
+        s = gz.abs().amax(dim=(2, 3), keepdim=True).clamp_min(1e-6)
+        gn = gz / s
+        h_in = torch.cat([
+            PotentialFieldTransformer3DV5._stem_features_v5(self, gn, terr, valid_mask),
+            detrend_mode * 2.0 - 1.0,
+        ], dim=1)
+
+        s_flat = s.view(b, 1)
+        s_slab = s_flat / SLAB
+        s_vec = torch.cat([
+            torch.log(s_slab + 1e-4) * 0.25,
+            s_slab / (s_slab + 1.0),
+            gz.amax(dim=(2, 3)).view(b, 1) / s_flat,
+            gz.amin(dim=(2, 3)).view(b, 1) / s_flat,
+            terr.mean(dim=(2, 3)).view(b, 1) * 4.0,
+            terr.std(dim=(2, 3)).view(b, 1) * 8.0,
+            log_aspect.mean(dim=(2, 3)).view(b, 1),
+            torch.log1p(clearance.mean(dim=(2, 3)).view(b, 1)),
+            detrend_mode.mean(dim=(2, 3)).view(b, 1),
+        ], dim=1)
+        se = self.scale_mlp(s_vec)
+
+        f0 = self.enc0(h_in)
+        f1 = self.enc1(f0)
+        f2 = self.enc2(f1)
+
+        t2 = f2.flatten(2).transpose(1, 2) + self.pos2d + se.unsqueeze(1)
+        t2 = t2 + self.attn2d(self.n2d_1(t2), self.n2d_1(t2))
+        t2 = t2 + self.mlp2d(self.n2d_2(t2))
+
+        v = self.depth_lift(t2).view(b, self.hp, self.wp, self.dp, -1).permute(0, 3, 1, 2, 4)
+        terr_coarse = F.avg_pool2d(terr, 4)
+        clear_coarse = F.avg_pool2d(clearance, 4).unsqueeze(2).expand(b, 1, self.dp, self.hp, self.wp)
+        asp_coarse = F.avg_pool2d(log_aspect, 4).unsqueeze(2).expand(b, 1, self.dp, self.hp, self.wp)
+        d_surf_coarse = (self.z_top_coarse - terr_coarse.unsqueeze(2)).clamp_min(0.0)
+        z_c = self.z_top_coarse.expand(b, 1, self.dp, self.hp, self.wp)
+        sens_c = 0.04 / ((d_surf_coarse + clear_coarse * 0.08 + 0.12) ** 2)
+        dc_in = torch.cat([d_surf_coarse, z_c, sens_c, clear_coarse, asp_coarse], dim=1).reshape(
+            b, 5, self.dp * self.hp, self.wp
+        )
+        dc_mod = self.depth_cond(dc_in).reshape(b, -1, self.dp, self.hp, self.wp).permute(0, 2, 3, 4, 1)
+        v = v + self.pos3d + dc_mod + se.view(b, 1, 1, 1, -1)
+
+        for blk in self.blocks:
+            v = blk(v)
+
+        vf = v.reshape(b, self.dp * self.hp * self.wp, -1)
+        p_ctx = self.proto_emb.expand(b, -1, -1) + self.proto_scale(se).unsqueeze(1)
+        vf = vf + self.proto_attn(self.proto_nq(vf), self.proto_nk(p_ctx))
+        vf = vf + self.proto_mlp(self.proto_mlp_n(vf))
+        p_ctx = p_ctx + self.s2p_attn(self.s2p_nq(p_ctx), self.s2p_nk(vf))
+        p_ctx = p_ctx + self.s2p_mlp(self.s2p_mlp_n(p_ctx))
+        v = self.norm3d(vf).view(b, self.dp, self.hp, self.wp, -1)
+
+        total_depth_m = self.nz * REF_CELL * aspect
+        z_obs_m = terr * total_depth_m - clearance * REF_CELL
+        z_obs_mid_m = F.avg_pool2d(z_obs_m, 2)
+        w_bp = detrend_mode.mean(dim=(2, 3), keepdim=True).clamp(0.0, 1.0)
+
+        # Stage 1 -> (nz/2, nx/2, ny/2) + occupancy-gated coarse physics residual
+        vc = self.proj_mid(v.permute(0, 4, 1, 2, 3).reshape(b, -1, self.dp * self.hp, self.wp)).reshape(
+            b, -1, self.dp, self.hp, self.wp
+        )
+        u = self.up_mid(vc)
+        terr_mid = F.avg_pool2d(terr, 2)
+        d_surf_mid = (self.z_top_mid - terr_mid.unsqueeze(2)).clamp_min(0.0)
+        u = u + self.skip_mid(f1, d_surf_mid, self.z_top_mid)
+        u = self.dec_mid1(u)
+
+        nz_mid, nx_mid, ny_mid = self.nz // 2, self.nx // 2, self.ny // 2
+        mask_mid = (self.z_top_mid >= terr_mid.unsqueeze(2)).to(u.dtype)
+        u_mid_flat = u.reshape(b, self.ch_mid, nz_mid * nx_mid, ny_mid)
+        coarse_occ = torch.sigmoid(self.coarse_occ_head(u_mid_flat)).reshape(b, 1, nz_mid, nx_mid, ny_mid)
+        coarse_body = (RHO_AIR + (RHO_MAX_V6 - RHO_AIR) * torch.sigmoid(self.coarse_rho_head(u_mid_flat))).reshape(
+            b, 1, nz_mid, nx_mid, ny_mid
+        )
+        coarse_pred = coarse_occ * coarse_body * mask_mid
+
+        g_coarse_mgal = self.g_mid(coarse_pred.squeeze(1), z_obs_mid_m, aspect)
+        gn_mid = F.avg_pool2d(gn, 2)
+        valid_mid = F.avg_pool2d(valid_mask, 2)
+        detrend_mid = F.avg_pool2d(detrend_mode, 2)
+        g_hat_mid = g_coarse_mgal / s
+        r_raw_mid = (gn_mid - g_hat_mid) * valid_mid
+        r_bp_mid = (self.bp_mid(gn_mid) - self.bp_mid(g_hat_mid)) * valid_mid
+        r_mid = (1.0 - w_bp) * r_raw_mid + w_bp * r_bp_mid
+
+        d1_mid = (self.g_mid.adjoint(valid_mid, z_obs_mid_m, aspect) * mask_mid.squeeze(1)).clamp_min(0.15)
+        d1_mid_safe = d1_mid + (1.0 - mask_mid.squeeze(1))
+        bp_mid_norm = ((self.g_mid.adjoint(r_mid, z_obs_mid_m, aspect) * mask_mid.squeeze(1)) / d1_mid_safe).unsqueeze(1)
+
+        res_2d = self.res_feedback_2d(torch.cat([gn_mid, g_hat_mid, r_mid, valid_mid, detrend_mid], dim=1)).unsqueeze(2)
+        res_bp_3d = self.res_bp_mid(bp_mid_norm.reshape(b, 1, nz_mid * nx_mid, ny_mid)).reshape(
+            b, self.ch_mid, nz_mid, nx_mid, ny_mid
+        )
+        z_m = self.z_top_mid.expand(b, 1, nz_mid, nx_mid, ny_mid)
+        clear_m = F.avg_pool2d(clearance, 2).unsqueeze(2).expand(b, 1, nz_mid, nx_mid, ny_mid)
+        d_gate = self.res_depth_gate(
+            torch.cat([d_surf_mid, z_m, clear_m], dim=1).reshape(b, 3, nz_mid * nx_mid, ny_mid)
+        ).reshape(b, self.ch_mid, nz_mid, nx_mid, ny_mid)
+        u = u + self.res_mid_gate.tanh() * ((res_2d + res_bp_3d) * d_gate * mask_mid)
+        u_mid = self.dec_mid2(u)
+        if self.dec_depth > 2:
+            for blk in self.extra_dec_mid:
+                u_mid = blk(u_mid)
+
+        # Stage 2 -> unified full-res (nz, nx, ny) + full-res physics residual feedback
+        u2 = self.up_vox(u_mid)
+        d_surf = (self.z_top - terr.unsqueeze(2)).clamp_min(0.0)
+        hv = u2 + self.skip_vox(f0, d_surf, self.z_top) + self.scale_vox(se).view(b, self.ch_vox, 1, 1, 1)
+        hv = self.dec_vox1(hv)
+        mask = (self.z_top >= terr.unsqueeze(2)).to(hv.dtype)
+
+        p_head_init = self.proto_head_init(p_ctx)
+        rho_init, _, _, _, _, _ = self._decode_v9_density(
+            hv, se, p_head_init, d_surf, mask, self.rock_head_init, self.res_head_init,
+        )
+
+        g_init_mgal = self.g_64(rho_init.squeeze(1), z_obs_m, aspect)
+        g_init_hat = g_init_mgal / s
+        r_raw_64 = (gn - g_init_hat) * valid_mask
+        r_bp_64 = (self.bp_64(gn) - self.bp_64(g_init_hat)) * valid_mask
+        r_64 = (1.0 - w_bp) * r_raw_64 + w_bp * r_bp_64
+
+        d1_64 = (self.g_64.sensitivity_norm(valid_mask, z_obs_m, aspect) * mask.squeeze(1)).clamp_min(0.15)
+        d1_64_safe = d1_64 + (1.0 - mask.squeeze(1))
+        bp_64_norm = ((self.g_64.adjoint(r_64, z_obs_m, aspect) * mask.squeeze(1)) / d1_64_safe).unsqueeze(1)
+        w_bp_z = 1.0 + F.softplus(self.bp_z_beta) * d_surf * (1.0 + 2.0 * d_surf)
+        bp_64_z = bp_64_norm * w_bp_z
+
+        f_vox_2d = self.res_vox_2d(torch.cat([gn, g_init_hat, r_64, valid_mask, detrend_mode], dim=1)).unsqueeze(2)
+        f_vox_3d = self.res_vox_3d(
+            torch.cat([bp_64_z, rho_init], dim=1).reshape(b, 2, self.nz * self.nx, self.ny)
+        ).reshape(b, self.ch_vox, self.nz, self.nx, self.ny)
+        hv = hv + torch.tanh(self.res_vox_gate) * (f_vox_2d + f_vox_3d) * mask
+
+        hv = self.dec_vox2(hv)
+        if self.dec_depth > 2:
+            for blk in self.extra_dec_vox:
+                hv = blk(hv)
+        hv = self.vox_drop(hv)
+
+        p_head = self.proto_head(p_ctx)
+        pred, probs, logits, occ, probs_4d, hv_4d = self._decode_v9_density(
+            hv, se, p_head, d_surf, mask, self.rock_head, self.res_head,
+        )
+        if not return_logvar and not return_aux:
+            return pred, None, None
+
+        r_energy = (r_64 * r_64) / (0.04 + r_64 * r_64)
+        cues_2d = torch.cat([clr_s, 1.0 - valid_mask, r_energy, detrend_mode], dim=1)
+        log_var = _compute_v6_logvar(
+            hv_4d, pred, probs_4d, mask, d_surf, bp_64_norm, cues_2d,
+            self.logvar_hv, self.logvar_3d, self.logvar_2d, self.logvar_out,
+        )
+        if not return_aux:
+            return pred, log_var, None
+
+        edt = F.softplus(self.edt_head(hv_4d)).reshape(b, self.nz, 1, self.nx, self.ny).permute(0, 2, 1, 3, 4) * mask
+        return pred, log_var, {
+            "is_v9": True,
+            "logits": logits,
+            "probs": probs,
+            "edt": edt,
+            "log_var": log_var,
+            "coarse_pred": coarse_pred,
+            "rho_init": rho_init,
+            "mask": mask,
+            "occ": occ * mask,
+            "valid_mask": valid_mask,
+        }
+
+    def forward_uncertainty(self, x: torch.Tensor):
+        """Return ``(density, log_var)`` tensors (used by ONNX export & uncertainty inference)."""
+        pred, log_var, _ = self._forward_impl(x, return_aux=False, return_logvar=True)
+        return pred, log_var
+
+    def forward(self, x: torch.Tensor, return_aux: bool = False):
+        pred, _, aux = self._forward_impl(x, return_aux=return_aux, return_logvar=return_aux)
+        if not return_aux:
+            return pred
+        return pred, aux
+
+
 def create_model(nx=64, ny=64, nz=32, **arch):
-    """Instantiate v8, v7, v6, v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
+    """Instantiate v9, v8, v7, v6, v5, v4, v3, v2, or legacy v1 from checkpoint ``arch``."""
     cfg = dict(arch)
     variant = cfg.pop("variant", "v1")
     presets_and_cls = {
+        "v9": (V9_SIZE_PRESETS, PotentialFieldTransformer3DV9),
         "v8": (V8_SIZE_PRESETS, PotentialFieldTransformer3DV8),
         "v7": (V7_SIZE_PRESETS, PotentialFieldTransformer3DV7),
         "v6": (V6_SIZE_PRESETS, PotentialFieldTransformer3DV6),
