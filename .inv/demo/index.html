@@ -662,6 +662,9 @@
     display: block;
     cursor: pointer;
   }
+  svg.chart-svg-tall {
+    height: 220px;
+  }
 
   .shortcut-footer {
     font-size: 0.68rem;
@@ -694,6 +697,11 @@
 </header>
 
 <div class="controls-panel">
+  <div class="slider-group" id="demoModelGroup" style="display:none;flex:0 0 auto;min-width:0;">
+    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Model</span>
+    <select id="demoModelSelect" title="Select inversion model dataset" style="max-width:250px;"></select>
+  </div>
+
   <div class="btn-group">
     <button id="btnSamplePrev" class="playback-btn" title="Previous Sample (&larr;)">&lsaquo; Prev</button>
     <button id="btnSampleNext" class="playback-btn" title="Next Sample (&rarr;)">Next &rsaquo;</button>
@@ -843,9 +851,8 @@
   Keyboard shortcuts: <kbd>&larr;</kbd> / <kbd>&rarr;</kbd> switch scenes &bull; <kbd>Home</kbd> / <kbd>End</kbd> first/last scene &bull; 2D: hover voxels &bull; 3D: drag to orbit, scroll to zoom, double-click to reset
 </div>
 
-<script src="preview_2d.js"></script>
-<script src="vol3d_v9.1_meta.js"></script>
-<script src="vol3d_v9.1_best.js"></script>
+<script src="demo_models.js"></script>
+<script src="demo_v9.1_hard.js"></script>
 <script>
 (function() {
   const IS_DEMO_MODE = true;
@@ -925,6 +932,8 @@
   const sampleSlider = document.getElementById('sampleSlider');
   const sampleDisplay = document.getElementById('sampleDisplay');
   const sampleSelect = document.getElementById('sampleSelect');
+  const demoModelGroup = document.getElementById('demoModelGroup');
+  const demoModelSelect = document.getElementById('demoModelSelect');
   const btnSamplePrev = document.getElementById('btnSamplePrev');
   const btnSampleNext = document.getElementById('btnSampleNext');
   const sampleSliderGroup = document.getElementById('sampleSliderGroup');
@@ -1125,10 +1134,92 @@
     updateLiveStatusBadge();
   }
 
+  function activateDemoBundle(entry, bundle) {
+    if (!bundle) return;
+    window.PREVIEW_2D = bundle.preview_2d;
+    window.VOL3D_META = bundle.vol3d_meta;
+    window.VOL3D_EPOCHS = {};
+    if (bundle.vol3d_best) {
+      const ep = bundle.best_epoch || bundle.vol3d_best.epoch || 1;
+      window.VOL3D_EPOCHS[ep] = bundle.vol3d_best;
+      window.VOL3D_BEST_EPOCH = ep;
+    }
+    vol3dCache.clear();
+    terr3dCache.clear();
+    field3dCache.clear();
+    field3dTexCache.clear();
+    if (sampleSelect) sampleSelect.innerHTML = '';
+    if (statusText && entry) {
+      const epTag = bundle.best_epoch ? ` · Ep ${bundle.best_epoch}` : '';
+      statusText.textContent = `${entry.label || entry.id}${epTag}`;
+    }
+    currentIndex = -1;
+    syncData(window.PREVIEW_2D);
+  }
+
+  function loadAndSelectDemoModel(modelId) {
+    const models = Array.isArray(window.DEMO_MODELS) ? window.DEMO_MODELS : [];
+    if (!models.length) return;
+    const entry = models.find(m => m.id === modelId) || models[0];
+    if (demoModelSelect) demoModelSelect.value = entry.id;
+    try { localStorage.setItem('mod3d_demo_model_id', entry.id); } catch (_) {}
+    const bundles = window.DEMO_BUNDLES || {};
+    if (bundles[entry.id]) {
+      activateDemoBundle(entry, bundles[entry.id]);
+      return;
+    }
+    if (statusText) statusText.textContent = `LOADING ${entry.label || entry.id}...`;
+    if (demoModelSelect) demoModelSelect.disabled = true;
+    const s = document.createElement('script');
+    s.src = entry.file;
+    s.onload = () => {
+      if (demoModelSelect) demoModelSelect.disabled = false;
+      const b = (window.DEMO_BUNDLES || {})[entry.id];
+      if (b) activateDemoBundle(entry, b);
+      else if (statusText) statusText.textContent = `FAILED TO LOAD ${entry.id}`;
+    };
+    s.onerror = () => {
+      if (demoModelSelect) demoModelSelect.disabled = false;
+      if (statusText) statusText.textContent = `FAILED TO LOAD ${entry.file}`;
+    };
+    document.head.appendChild(s);
+  }
+
+  function initDemoModels() {
+    const models = Array.isArray(window.DEMO_MODELS) ? window.DEMO_MODELS : [];
+    if (!models.length) {
+      syncData(trainingData);
+      return;
+    }
+    if (demoModelSelect && demoModelGroup) {
+      demoModelSelect.innerHTML = '';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label || m.id;
+        demoModelSelect.appendChild(opt);
+      });
+      demoModelGroup.style.display = 'flex';
+      demoModelSelect.addEventListener('change', () => {
+        loadAndSelectDemoModel(demoModelSelect.value);
+      });
+    }
+    let initialId = models[0].id;
+    try {
+      const saved = localStorage.getItem('mod3d_demo_model_id');
+      if (saved && models.some(m => m.id === saved)) initialId = saved;
+    } catch (_) {}
+    loadAndSelectDemoModel(initialId);
+  }
+
   function init() {
     setupControls();
     drawColorbar();
-    syncData(trainingData);
+    if (IS_DEMO_MODE && Array.isArray(window.DEMO_MODELS) && window.DEMO_MODELS.length) {
+      initDemoModels();
+    } else {
+      syncData(trainingData);
+    }
     if (!IS_DEMO_MODE) setRefreshInterval(getInitialRefreshSec(), false);
   }
 
@@ -3746,7 +3837,7 @@ void main() {
     const activeSeries = allDefs.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
     renderLossCompLegend(activeSeries, currentIndex);
     const visibleSeries = activeSeries.filter(s => !compHiddenKeys.has(s.id));
-    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 165);
+    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 220, true);
   }
 
   function formatChartTick(val, useLog) {
@@ -3759,7 +3850,7 @@ void main() {
     return val.toFixed(val < 10 ? 2 : 0);
   }
 
-  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125) {
+  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125, showGrid = false) {
     const svg = document.getElementById(svgId);
     const epochs = getEpochs();
     if (!svg || !epochs.length) return;
@@ -3823,6 +3914,38 @@ void main() {
         if (gy > padT + 14 && gy < padT + ph - 10) {
           gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="${pal.axisText}" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, true)}</text>`;
         }
+      }
+      if (showGrid) {
+        for (let k = Math.floor(lMin) - 1; k <= Math.ceil(lMax); ++k) {
+          [2, 5].forEach(m => {
+            const sub = m * Math.pow(10, k);
+            if (sub > yMin * 1.05 && sub < yMax * 0.95) {
+              const gy = yCoord(sub).toFixed(1);
+              gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="${pal.gridLine}" stroke-width="0.6" stroke-opacity="0.45" stroke-dasharray="2,3"/>`;
+            }
+          });
+        }
+      }
+    } else if (showGrid) {
+      const nTicks = 5;
+      for (let t = 1; t < nTicks; ++t) {
+        const tick = yMin + (yMax - yMin) * (t / nTicks);
+        const gy = yCoord(tick).toFixed(1);
+        gridSvg += `<line x1="${padL}" y1="${gy}" x2="${w - padR}" y2="${gy}" stroke="${pal.gridLine}" stroke-width="1" stroke-dasharray="2,2"/>`;
+        if (gy > padT + 12 && gy < padT + ph - 10) {
+          gridSvg += `<text x="${padL - 4}" y="${(+gy + 3).toFixed(1)}" fill="${pal.axisText}" font-size="8" text-anchor="end" font-family="monospace">${formatChartTick(tick, false)}</text>`;
+        }
+      }
+    }
+    if (showGrid && N > 1) {
+      const step = Math.max(1, Math.ceil((N - 1) / 10));
+      for (let i = 0; i < N; i += step) {
+        const gx = xCoord(i).toFixed(1);
+        if (i > 0 && i < N - 1) {
+          gridSvg += `<line x1="${gx}" y1="${padT}" x2="${gx}" y2="${padT + ph}" stroke="${pal.gridLine}" stroke-width="0.8" stroke-opacity="0.6" stroke-dasharray="2,3"/>`;
+        }
+        const epNum = epochs[i].epoch != null ? epochs[i].epoch : (i + 1);
+        gridSvg += `<text x="${gx}" y="${padT + ph + 13}" fill="${pal.axisText}" font-size="8" text-anchor="middle" font-family="monospace">${epNum}</text>`;
       }
     }
 

@@ -15,7 +15,7 @@ from dataset import CELL, NX, NY, NZ
 from vol3d_io import write_vol3d_sidecars
 
 
-def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
+def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1", demo_models=None):
     default_refresh = max(0, int(refresh_sec))
     page_title = (
         "Mod3D .inv \u2014 Swin-3D Virtual Inversion Preview"
@@ -46,7 +46,12 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
 </header>"""
     )
     playback_controls_html = (
-        """  <div class="btn-group">
+        """  <div class="slider-group" id="demoModelGroup" style="display:none;flex:0 0 auto;min-width:0;">
+    <span style="font-size:0.85rem;color:var(--text-secondary);font-weight:600;">Model</span>
+    <select id="demoModelSelect" title="Select inversion model dataset" style="max-width:250px;"></select>
+  </div>
+
+  <div class="btn-group">
     <button id="btnSamplePrev" class="playback-btn" title="Previous Sample (&larr;)">&lsaquo; Prev</button>
     <button id="btnSampleNext" class="playback-btn" title="Next Sample (&rarr;)">Next &rsaquo;</button>
   </div>
@@ -205,17 +210,24 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1"):
     )
     meta_name = f"vol3d_{version_tag}_meta.js" if (demo_mode and version_tag) else "vol3d_meta.js"
     best_name = f"vol3d_{version_tag}_best.js" if (demo_mode and version_tag) else "vol3d_best.js"
-    data_scripts_html = (
-        f"""<script src="preview_2d.js"></script>
+    if demo_mode and demo_models:
+        default_bundle_file = demo_models[0]["file"]
+        data_scripts_html = (
+            '<script src="demo_models.js"></script>\n'
+            f'<script src="{default_bundle_file}"></script>'
+        )
+    elif demo_mode:
+        data_scripts_html = (
+            f"""<script src="preview_2d.js"></script>
 <script src="{meta_name}"></script>
 <script src="{best_name}"></script>"""
-        if demo_mode else
-        """<script src="training_history.js"></script>
+        )
+    else:
+        data_scripts_html = """<script src="training_history.js"></script>
 <script src="vol3d_meta.js"></script>
 <script src="vol3d_index.js"></script>
 <script src="vol3d_latest.js"></script>
 <script src="vol3d_best.js"></script>"""
-    )
 
     html = """<!DOCTYPE html>
 <html lang="en" data-theme="light">
@@ -1124,6 +1136,8 @@ __DATA_SCRIPTS_HTML__
   const sampleSlider = document.getElementById('sampleSlider');
   const sampleDisplay = document.getElementById('sampleDisplay');
   const sampleSelect = document.getElementById('sampleSelect');
+  const demoModelGroup = document.getElementById('demoModelGroup');
+  const demoModelSelect = document.getElementById('demoModelSelect');
   const btnSamplePrev = document.getElementById('btnSamplePrev');
   const btnSampleNext = document.getElementById('btnSampleNext');
   const sampleSliderGroup = document.getElementById('sampleSliderGroup');
@@ -1324,10 +1338,92 @@ __DATA_SCRIPTS_HTML__
     updateLiveStatusBadge();
   }
 
+  function activateDemoBundle(entry, bundle) {
+    if (!bundle) return;
+    window.PREVIEW_2D = bundle.preview_2d;
+    window.VOL3D_META = bundle.vol3d_meta;
+    window.VOL3D_EPOCHS = {};
+    if (bundle.vol3d_best) {
+      const ep = bundle.best_epoch || bundle.vol3d_best.epoch || 1;
+      window.VOL3D_EPOCHS[ep] = bundle.vol3d_best;
+      window.VOL3D_BEST_EPOCH = ep;
+    }
+    vol3dCache.clear();
+    terr3dCache.clear();
+    field3dCache.clear();
+    field3dTexCache.clear();
+    if (sampleSelect) sampleSelect.innerHTML = '';
+    if (statusText && entry) {
+      const epTag = bundle.best_epoch ? ` \u00b7 Ep ${bundle.best_epoch}` : '';
+      statusText.textContent = `${entry.label || entry.id}${epTag}`;
+    }
+    currentIndex = -1;
+    syncData(window.PREVIEW_2D);
+  }
+
+  function loadAndSelectDemoModel(modelId) {
+    const models = Array.isArray(window.DEMO_MODELS) ? window.DEMO_MODELS : [];
+    if (!models.length) return;
+    const entry = models.find(m => m.id === modelId) || models[0];
+    if (demoModelSelect) demoModelSelect.value = entry.id;
+    try { localStorage.setItem('mod3d_demo_model_id', entry.id); } catch (_) {}
+    const bundles = window.DEMO_BUNDLES || {};
+    if (bundles[entry.id]) {
+      activateDemoBundle(entry, bundles[entry.id]);
+      return;
+    }
+    if (statusText) statusText.textContent = `LOADING ${entry.label || entry.id}...`;
+    if (demoModelSelect) demoModelSelect.disabled = true;
+    const s = document.createElement('script');
+    s.src = entry.file;
+    s.onload = () => {
+      if (demoModelSelect) demoModelSelect.disabled = false;
+      const b = (window.DEMO_BUNDLES || {})[entry.id];
+      if (b) activateDemoBundle(entry, b);
+      else if (statusText) statusText.textContent = `FAILED TO LOAD ${entry.id}`;
+    };
+    s.onerror = () => {
+      if (demoModelSelect) demoModelSelect.disabled = false;
+      if (statusText) statusText.textContent = `FAILED TO LOAD ${entry.file}`;
+    };
+    document.head.appendChild(s);
+  }
+
+  function initDemoModels() {
+    const models = Array.isArray(window.DEMO_MODELS) ? window.DEMO_MODELS : [];
+    if (!models.length) {
+      syncData(trainingData);
+      return;
+    }
+    if (demoModelSelect && demoModelGroup) {
+      demoModelSelect.innerHTML = '';
+      models.forEach(m => {
+        const opt = document.createElement('option');
+        opt.value = m.id;
+        opt.textContent = m.label || m.id;
+        demoModelSelect.appendChild(opt);
+      });
+      demoModelGroup.style.display = 'flex';
+      demoModelSelect.addEventListener('change', () => {
+        loadAndSelectDemoModel(demoModelSelect.value);
+      });
+    }
+    let initialId = models[0].id;
+    try {
+      const saved = localStorage.getItem('mod3d_demo_model_id');
+      if (saved && models.some(m => m.id === saved)) initialId = saved;
+    } catch (_) {}
+    loadAndSelectDemoModel(initialId);
+  }
+
   function init() {
     setupControls();
     drawColorbar();
-    syncData(trainingData);
+    if (IS_DEMO_MODE && Array.isArray(window.DEMO_MODELS) && window.DEMO_MODELS.length) {
+      initDemoModels();
+    } else {
+      syncData(trainingData);
+    }
     if (!IS_DEMO_MODE) setRefreshInterval(getInitialRefreshSec(), false);
   }
 
