@@ -204,17 +204,18 @@ def _evaluate_checkpoint_to_bundle(
     op = TerrainGravityOperator(*grid, h_min=h_min).to(device)
     clr_clamp = CLEARANCE_CLAMP_V6 if is_v6_variant else 4.0
     best_epoch = int(ck.get("epoch") or 1)
+    eff_samples_per_cat = samples_per_category if samples_per_category is not None else (4 if is_v6_variant else 8)
 
     print(
         f"Generating 3D volume snapshot for '{model_id}' from {checkpoint} "
         f"(variant={variant}, v3_data={v3_data}, ep={best_epoch}, "
-        f"samples_per_cat={samples_per_category}, random_val={random_val})..."
+        f"samples_per_cat={eff_samples_per_cat}, random_val={random_val})..."
     )
     with tempfile.TemporaryDirectory(prefix=f"demo_{model_id}_") as tmp_dir:
         export_vol3d_snapshot(
             model, op, device, grid, tmp_dir,
             epoch=best_epoch, is_best=True, clearance_clamp=clr_clamp,
-            samples_per_category=samples_per_category,
+            samples_per_category=eff_samples_per_cat,
             random_val=random_val,
             include_base=include_base,
             v6_physics=is_v6_variant,
@@ -361,8 +362,8 @@ def main():
     p.add_argument(
         "--samples-per-category",
         type=int,
-        default=8,
-        help="Number of random validation samples per category (default: 8 -> 64 total)",
+        default=None,
+        help="Random validation samples per category (default: 4 for 16-cat v6+ models, 8 for 8-cat v3 models -> 64 total)",
     )
     p.add_argument(
         "--fixed-seed",

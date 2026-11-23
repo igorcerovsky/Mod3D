@@ -518,9 +518,10 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
     whose peak slice ``iy`` exhibits the target category, falling back gracefully on tiny test grids.
     """
     from dataset import (
-        CLEARANCE, NOISE_FRAC, RHO_AIR, RHO_LIGHT_MAX, RHO_LIGHT_MIN,
-        RHO_MAFIC_MIN, RHO_WATER, build_v5_input, build_v7_input, random_bodies, random_terrain,
-        simulate_batch, terrain_channel,
+        CLEARANCE, CLEARANCE_AIRBORNE_V6, GROUND_PROB_V6, NOISE_FRAC, RHO_AIR,
+        RHO_LIGHT_MAX, RHO_LIGHT_MIN, RHO_MAFIC_MIN, RHO_SEDIMENT_MAX, RHO_SEDIMENT_MIN,
+        RHO_WATER, build_v5_input, build_v7_input, random_bodies, random_bodies_v6,
+        random_terrain, simulate_batch, terrain_channel, _sample_clearance,
     )
 
     nx, ny, nz, dx, dy, dz = grid
@@ -538,7 +539,7 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
         nz_vals = sl[sl != 0]
         return len(np.unique(np.round(nz_vals, 2))) if nz_vals.size else 0
 
-    specs = (
+    base_specs = (
         ("Cavities", None,
          lambda sl: ((np.isclose(sl, RHO_AIR, atol=0.05) | np.isclose(sl, RHO_WATER, atol=0.05)).any()
                      and sl.max() <= 0.05)),
@@ -552,6 +553,21 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
         ("Abutting Contact", "abutting_contact", lambda sl: _n_distinct(sl) >= 2),
         ("Vertical Stack", "vertical_stack", lambda sl: _n_distinct(sl) >= 2),
     )
+    if v6_physics and can_hard:
+        specs = base_specs + (
+            ("Sediment / Waste", None,
+             lambda sl: (((sl <= RHO_SEDIMENT_MAX + 0.02) & (sl >= RHO_SEDIMENT_MIN - 0.02)).any()
+                         and sl.max() <= 0.05)),
+            ("Landfill / Plume", "landfill_plume", lambda sl: np.count_nonzero(sl) >= 24),
+            ("Basin / Pluton", "broad_basin_pluton", lambda sl: np.count_nonzero(sl) >= 24),
+            ("Folded Horizons", "folded_horizons", lambda sl: np.count_nonzero(sl) >= 20),
+            ("Listric Graben", "listric_graben", lambda sl: np.count_nonzero(sl) >= 20),
+            ("Intrusive Plumbing", "intrusive_plumbing", lambda sl: np.count_nonzero(sl) >= 20),
+            ("Basement / Cover", "basement_cover", lambda sl: np.count_nonzero(sl) >= 20),
+            ("Graded Halo", "graded_halo", lambda sl: np.count_nonzero(sl) >= 20),
+        )
+    else:
+        specs = base_specs
 
     rhos, terrains, clearances, noise_fracs, noise_seeds = [], [], [], [], []
     for _, scene_type, pred in specs:
@@ -559,9 +575,18 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
             chosen = None
             for _ in range(max_tries):
                 t = random_terrain(rng, nx, ny, nz * dz)
-                rho = random_bodies(rng, t, nz, dz, dx, hard_prob=0.0,
-                                    scene_type=scene_type if can_hard else None)
-                c = np.float32(rng.uniform(*CLEARANCE))
+                if v6_physics and can_hard:
+                    rho, _ = random_bodies_v6(rng, t, nz, dz, dx, hard_prob=0.0, large_prob=0.0,
+                                              scene_type=scene_type or "isolated")
+                else:
+                    rho = random_bodies(rng, t, nz, dz, dx, hard_prob=0.0,
+                                        scene_type=scene_type if can_hard else None)
+                if v6_physics:
+                    c = np.float32(rng.uniform(0.30, 2.0) if rng.random() < GROUND_PROB_V6
+                                   else float(np.exp(rng.uniform(np.log(CLEARANCE_AIRBORNE_V6[0]),
+                                                                 np.log(CLEARANCE_AIRBORNE_V6[1])))))
+                else:
+                    c = np.float32(rng.uniform(*CLEARANCE))
                 nf = np.float32(rng.uniform(*NOISE_FRAC))
                 ns = int(rng.integers(0, 2**31 - 1))
                 chosen = (rho, t, c, nf, ns)
