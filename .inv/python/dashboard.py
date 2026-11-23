@@ -175,6 +175,22 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1", de
     <h4>
       <span>Final Loss Components (Weighted Sum = Total Loss)</span>
       <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="display:inline-flex;align-items:center;gap:4px;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:0.68rem;" title="Slide to zoom into the last N epochs (rightmost = All)">
+          <span style="color:var(--text-secondary);">Window:</span>
+          <input type="range" id="compLastSlider" min="5" max="100" value="100" style="width:92px;height:14px;margin:0;cursor:pointer;">
+          <span id="compLastVal" style="min-width:48px;text-align:right;font-family:ui-monospace,monospace;font-weight:600;">All</span>
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:2px;">
+          <button type="button" class="playback-btn comp-win-btn" data-comp-last="0" style="padding:1px 5px;font-size:0.66rem;" title="Show all epochs">All</button>
+          <button type="button" class="playback-btn comp-win-btn" data-comp-last="100" style="padding:1px 5px;font-size:0.66rem;" title="Show last 100 epochs">100</button>
+          <button type="button" class="playback-btn comp-win-btn" data-comp-last="50" style="padding:1px 5px;font-size:0.66rem;" title="Show last 50 epochs">50</button>
+          <button type="button" class="playback-btn comp-win-btn" data-comp-last="25" style="padding:1px 5px;font-size:0.66rem;" title="Show last 25 epochs">25</button>
+        </span>
+        <span style="display:inline-flex;align-items:center;gap:2px;">
+          <button type="button" id="btnCompAll" class="playback-btn" style="padding:1px 5px;font-size:0.66rem;" title="Show all loss curves">Show All</button>
+          <button type="button" id="btnCompNoTotal" class="playback-btn" style="padding:1px 5px;font-size:0.66rem;" title="Hide Total curve to zoom into components">No Total</button>
+          <button type="button" id="btnCompNone" class="playback-btn" style="padding:1px 5px;font-size:0.66rem;" title="Hide all loss curves">None</button>
+        </span>
         <span style="display:inline-flex;align-items:center;background:var(--surface-inset);border:1px solid var(--border);border-radius:4px;padding:1px 2px;gap:2px;font-size:0.68rem;">
           <label id="lblCompVal" style="cursor:pointer;padding:1px 5px;border-radius:3px;background:var(--btn-active-bg);color:var(--btn-active-fg);" title="Validation weighted loss components">
             <input type="radio" name="compSplit" value="val" id="radCompVal" checked style="display:none;">Val
@@ -191,7 +207,7 @@ def build_dashboard_html(demo_mode=False, refresh_sec=60, version_tag="v6.1", de
             <input type="radio" name="compScale" value="lin" id="radCompLin" style="display:none;">Lin
           </label>
         </span>
-        <span style="font-size:0.72rem;color:var(--text-secondary);">Click legend to toggle &bull; Click chart to seek</span>
+        <span style="font-size:0.68rem;color:var(--text-secondary);">Click legend to toggle &bull; Shift/Dbl-click to solo</span>
       </span>
     </h4>
     <div id="legLossComp" class="chart-legend"></div>
@@ -969,6 +985,23 @@ __METRICS_HTML__
     <div id="voxelHoverPill" class="hover-pill">Hover over any voxel cell to inspect numerical values</div>
   </div>
 
+  <div class="vol3d-toolbar" id="slice2dToolbar">
+    <div class="vol3d-group">
+      <span style="font-weight:600;" title="2D cross-section orientation for the active sample">Profile:</span>
+      <button type="button" class="vol3d-btn active" id="btnSliceEW" title="East-West cross-section (X-Z at fixed Y)">E&ndash;W (X-Z)</button>
+      <button type="button" class="vol3d-btn" id="btnSliceSN" title="South-North cross-section (Y-Z at fixed X)">S&ndash;N (Y-Z)</button>
+      <span style="width:1px;height:14px;background:var(--border);margin:0 2px;"></span>
+      <button type="button" class="vol3d-btn" id="btnSlicePrev" title="Previous profile (&minus;1 cell)">&lsaquo;</button>
+      <input type="range" id="slice2dSlider" class="vol3d-slider" min="0" max="63" value="32" style="width:160px;" title="Scroll across all profiles for this sample">
+      <button type="button" class="vol3d-btn" id="btnSliceNext" title="Next profile (+1 cell)">&rsaquo;</button>
+      <span class="vol3d-val" id="slice2dCoordVal" style="min-width:118px;text-align:left;">Y = -- km</span>
+      <button type="button" class="vol3d-btn" id="btnSliceReset" title="Reset this sample's profile to peak anomaly">Peak</button>
+    </div>
+    <div class="vol3d-group">
+      <span style="font-size:0.68rem;color:var(--text-secondary);">Per-sample profile &bull; Scroll wheel over 2D section to step</span>
+    </div>
+  </div>
+
   <div class="vol3d-toolbar" id="vol3dToolbar">
     <div class="vol3d-group">
       <span style="font-weight:600;">View:</span>
@@ -1112,7 +1145,14 @@ __DATA_SCRIPTS_HTML__
   let lossLogScale = true;
   let compSplit = 'val';
   let compLogScale = true;
+  let compLastN = 0; // 0 = show all epochs; >0 = show last N epochs
   const compHiddenKeys = new Set();
+  try {
+    const savedHidden = JSON.parse(localStorage.getItem('mod3d_comp_hidden') || '[]');
+    if (Array.isArray(savedHidden)) savedHidden.forEach(k => compHiddenKeys.add(String(k)));
+    const savedLast = parseInt(localStorage.getItem('mod3d_comp_last_n') || '0', 10);
+    if (isFinite(savedLast) && savedLast >= 0) compLastN = savedLast;
+  } catch (_) {}
   let isPlaying = false;
   let playTimer = null;
   let pollTimer = null;
@@ -1123,10 +1163,12 @@ __DATA_SCRIPTS_HTML__
   const vol3dOpts = { thresh: 0.14, opacity: 1.2, style: 'composite', showTerrain: true, showSlice: true, truthReliefMode: 'topo', predReliefMode: 'inv', fieldMode: 'inv', epMode: 'best' };
   const vol3dCache = new Map();
   const terr3dCache = new Map();
+  const terrDepthCache = new Map();
   const terr3dRanges = new WeakMap();
   const terr3dContours = new WeakMap();
   const field3dCache = new Map();
   const field3dTexCache = new Map();
+  const slice2dStateBySample = new Map();
   const vol3dFetching = new Set();
   let vol3dRafId = 0;
   let suppressCardClickUntil = 0;
@@ -1143,6 +1185,14 @@ __DATA_SCRIPTS_HTML__
   const sampleSliderGroup = document.getElementById('sampleSliderGroup');
   const canvasContainer = document.getElementById('canvasContainer');
   const sectionMainTitle = document.getElementById('sectionMainTitle');
+  const slice2dToolbar = document.getElementById('slice2dToolbar');
+  const btnSliceEW = document.getElementById('btnSliceEW');
+  const btnSliceSN = document.getElementById('btnSliceSN');
+  const btnSlicePrev = document.getElementById('btnSlicePrev');
+  const btnSliceNext = document.getElementById('btnSliceNext');
+  const btnSliceReset = document.getElementById('btnSliceReset');
+  const slice2dSlider = document.getElementById('slice2dSlider');
+  const slice2dCoordVal = document.getElementById('slice2dCoordVal');
   const vol3dToolbar = document.getElementById('vol3dToolbar');
   const vol3dStatusPill = document.getElementById('vol3dStatusPill');
   const radRender2D = document.getElementById('radRender2D');
@@ -1350,8 +1400,11 @@ __DATA_SCRIPTS_HTML__
     }
     vol3dCache.clear();
     terr3dCache.clear();
+    terrDepthCache.clear();
     field3dCache.clear();
     field3dTexCache.clear();
+    slice2dStateBySample.clear();
+    if (overviewGrid && overviewGrid.dataset) overviewGrid.dataset.rangeKey = '';
     if (sampleSelect) sampleSelect.innerHTML = '';
     if (statusText && entry) {
       const epTag = bundle.best_epoch ? ` \u00b7 Ep ${bundle.best_epoch}` : '';
@@ -1497,6 +1550,7 @@ __DATA_SCRIPTS_HTML__
       });
       if (canvasContainer) canvasContainer.classList.toggle('mode-3d', renderMode === '3d');
       if (vol3dToolbar) vol3dToolbar.classList.toggle('visible', renderMode === '3d');
+      syncSlice2dToolbar();
       if (overviewGrid && overviewGrid.dataset) overviewGrid.dataset.rangeKey = '';
     }
 
@@ -1829,6 +1883,52 @@ __DATA_SCRIPTS_HTML__
     if (radCompLog) radCompLog.addEventListener('change', () => setCompScale(true));
     if (radCompLin) radCompLin.addEventListener('change', () => setCompScale(false));
 
+    const compLastSlider = document.getElementById('compLastSlider');
+    const btnCompAll = document.getElementById('btnCompAll');
+    const btnCompNoTotal = document.getElementById('btnCompNoTotal');
+    const btnCompNone = document.getElementById('btnCompNone');
+    function persistCompPrefs() {
+      try {
+        localStorage.setItem('mod3d_comp_hidden', JSON.stringify(Array.from(compHiddenKeys)));
+        localStorage.setItem('mod3d_comp_last_n', String(compLastN));
+      } catch (_) {}
+    }
+    function setCompLastN(nVal) {
+      const totalN = getEpochs().length;
+      const n = parseInt(nVal, 10) || 0;
+      compLastN = (n <= 0 || (totalN > 0 && n >= totalN)) ? 0 : Math.max(2, n);
+      persistCompPrefs();
+      renderLossCompChart();
+    }
+    if (compLastSlider) {
+      compLastSlider.addEventListener('input', () => {
+        const maxV = parseInt(compLastSlider.max, 10) || 100;
+        const v = parseInt(compLastSlider.value, 10) || maxV;
+        setCompLastN(v >= maxV ? 0 : v);
+      });
+    }
+    document.querySelectorAll('.comp-win-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        setCompLastN(parseInt(btn.getAttribute('data-comp-last') || '0', 10));
+      });
+    });
+    if (btnCompAll) btnCompAll.addEventListener('click', () => {
+      compHiddenKeys.clear();
+      persistCompPrefs();
+      renderLossCompChart();
+    });
+    if (btnCompNoTotal) btnCompNoTotal.addEventListener('click', () => {
+      compHiddenKeys.clear();
+      compHiddenKeys.add('total');
+      persistCompPrefs();
+      renderLossCompChart();
+    });
+    if (btnCompNone) btnCompNone.addEventListener('click', () => {
+      getLossCompSeriesDefs().forEach(s => compHiddenKeys.add(s.id));
+      persistCompPrefs();
+      renderLossCompChart();
+    });
+
     if (btnFirst) btnFirst.addEventListener('click', () => { stopPlayback(); showEpoch(0); });
     if (btnPrev) btnPrev.addEventListener('click', () => { stopPlayback(); if (currentIndex > 0) showEpoch(currentIndex - 1); });
     if (btnNext) btnNext.addEventListener('click', () => { stopPlayback(); if (currentIndex < getEpochs().length - 1) showEpoch(currentIndex + 1); });
@@ -1852,6 +1952,26 @@ __DATA_SCRIPTS_HTML__
         renderProfileCanvas();
       });
     });
+
+    [cvsTruth, cvsPred, cvsDiff].forEach(cvs => {
+      if (!cvs) return;
+      cvs.addEventListener('wheel', e => {
+        if (renderMode !== '2d' || !hasVol3dSamples()) return;
+        e.preventDefault();
+        stepSampleSlice2d(currentSampleIndex, e.deltaY > 0 ? 1 : -1);
+      }, { passive: false });
+    });
+
+    if (btnSliceEW) btnSliceEW.addEventListener('click', () => setSampleSlice2dAxis(currentSampleIndex, 'ew'));
+    if (btnSliceSN) btnSliceSN.addEventListener('click', () => setSampleSlice2dAxis(currentSampleIndex, 'sn'));
+    if (btnSlicePrev) btnSlicePrev.addEventListener('click', () => stepSampleSlice2d(currentSampleIndex, -1));
+    if (btnSliceNext) btnSliceNext.addEventListener('click', () => stepSampleSlice2d(currentSampleIndex, 1));
+    if (btnSliceReset) btnSliceReset.addEventListener('click', () => resetSampleSlice2d(currentSampleIndex));
+    if (slice2dSlider) {
+      slice2dSlider.addEventListener('input', () => {
+        setSampleSlice2dIndex(currentSampleIndex, parseInt(slice2dSlider.value, 10) || 0);
+      });
+    }
 
     window.addEventListener('keydown', e => {
       if ((e.target.tagName === 'INPUT' && e.target.type !== 'range') || e.target.tagName === 'SELECT') return;
@@ -1986,18 +2106,32 @@ __DATA_SCRIPTS_HTML__
     const meta = getMeta();
     const sm = getActiveSampleMeta();
     if (sm) {
-      if (profileYVal) profileYVal.textContent = sm.tag ? `Y = ${sm.y_km} km (${sm.tag})` : `Y = ${sm.y_km} km`;
+      const epochs = getEpochs();
+      const entry = (currentIndex >= 0 && epochs[currentIndex]) ? epochs[currentIndex] : null;
+      const sd = (renderMode === '2d') ? getSample2DSliceData(currentSampleIndex, entry) : null;
+      if (profileYVal) {
+        if (sd && sd.coordLabel) {
+          profileYVal.textContent = sm.tag ? `${sd.coordLabel} (${sm.tag})` : sd.coordLabel;
+        } else {
+          profileYVal.textContent = sm.tag ? `Y = ${sm.y_km} km (${sm.tag})` : `Y = ${sm.y_km} km`;
+        }
+      }
       if (gridDimVal) {
         const nx = meta ? meta.nx : 64, ny = meta ? meta.ny : 64, nz = meta ? meta.nz : 32;
         const cell = meta ? meta.cell : 50;
-        gridDimVal.textContent = renderMode === '3d'
-          ? `${nx} \u00d7 ${ny} \u00d7 ${nz} Voxels (${cell} m cube)`
-          : `${nx} \u00d7 ${nz} Voxels (dx = ${cell} m, dz = ${cell} m)`;
+        if (renderMode === '3d') {
+          gridDimVal.textContent = `${nx} \u00d7 ${ny} \u00d7 ${nz} Voxels (${cell} m cube)`;
+        } else if (sd && sd.axis === 'sn') {
+          gridDimVal.textContent = `${ny} \u00d7 ${nz} Voxels S\u2013N (dy = ${cell} m, dz = ${cell} m)`;
+        } else {
+          gridDimVal.textContent = `${nx} \u00d7 ${nz} Voxels E\u2013W (dx = ${cell} m, dz = ${cell} m)`;
+        }
       }
       const vm = sm.vmax || 0.6;
       if (cbarMin) cbarMin.textContent = `-${vm.toFixed(2)}`;
       if (cbarMax) cbarMax.textContent = `+${vm.toFixed(2)}`;
     }
+    syncSlice2dToolbar();
   }
 
   function syncData(data) {
@@ -2473,6 +2607,276 @@ __DATA_SCRIPTS_HTML__
       }
     }
     return new Float32Array(segs);
+  }
+
+  function decodeTerrainDepthMCached(sampleIdx, b64, nx, ny, depthTotalM) {
+    if (!b64) return null;
+    const key = `${sampleIdx}:${nx}x${ny}:${depthTotalM}`;
+    if (terrDepthCache.has(key)) return terrDepthCache.get(key);
+    const raw = decodeBase64ToBytes(b64);
+    const n = nx * ny;
+    const out = new Float32Array(n);
+    const scale = depthTotalM / 65535.0;
+    for (let i = 0; i < n && (i * 2 + 1) < raw.length; ++i) {
+      const u16 = raw[i * 2] | (raw[i * 2 + 1] << 8);
+      out[i] = u16 * scale;
+    }
+    terrDepthCache.set(key, out);
+    return out;
+  }
+
+  function hasVol3dSamples() {
+    const vMeta = window.VOL3D_META;
+    return Boolean(vMeta && Array.isArray(vMeta.samples) && vMeta.samples.length > 0);
+  }
+
+  function findPeakSliceIndices(tBytes, nx, ny, nz, defaultIy) {
+    let bestIy = defaultIy;
+    let bestIx = Math.floor(nx / 2);
+    if (!tBytes || tBytes.length < nx * ny * nz) {
+      return { ew: Math.max(0, Math.min(ny - 1, bestIy)), sn: Math.max(0, Math.min(nx - 1, bestIx)) };
+    }
+    let maxScoreX = -1;
+    for (let ix = 0; ix < nx; ++ix) {
+      let s = 0;
+      for (let iz = 0; iz < nz; ++iz) {
+        const zOff = iz * ny * nx + ix;
+        for (let iy = 0; iy < ny; ++iy) {
+          s += Math.abs(tBytes[zOff + iy * nx] - 128);
+        }
+      }
+      if (s > maxScoreX) { maxScoreX = s; bestIx = ix; }
+    }
+    return { ew: Math.max(0, Math.min(ny - 1, bestIy)), sn: Math.max(0, Math.min(nx - 1, bestIx)) };
+  }
+
+  function getSampleSlice2dState(sampleIdx) {
+    const meta = getMeta() || {};
+    const vMeta = window.VOL3D_META;
+    const nx = (vMeta && vMeta.nx) || meta.nx || 64;
+    const ny = (vMeta && vMeta.ny) || meta.ny || 64;
+    const nz = (vMeta && vMeta.nz) || meta.nz || 32;
+    const existing = slice2dStateBySample.get(sampleIdx);
+    if (existing) {
+      existing.ew = Math.max(0, Math.min(ny - 1, existing.ew));
+      existing.sn = Math.max(0, Math.min(nx - 1, existing.sn));
+      return existing;
+    }
+    const sm = (meta.samples && meta.samples[sampleIdx]) || meta;
+    const vs = (vMeta && Array.isArray(vMeta.samples) && vMeta.samples[sampleIdx]) || null;
+    const defIy = (vs && vs.iy != null) ? vs.iy : ((sm && sm.iy != null) ? sm.iy : Math.floor(ny / 2));
+    const tBytes = (vs && vs.truth_b64) ? decodeVol3dRleCached(`truth:${sampleIdx}`, vs.truth_b64, nx, ny, nz) : null;
+    const peaks = findPeakSliceIndices(tBytes, nx, ny, nz, defIy);
+    const st = { axis: 'ew', ew: peaks.ew, sn: peaks.sn, defaultEw: peaks.ew, defaultSn: peaks.sn };
+    slice2dStateBySample.set(sampleIdx, st);
+    return st;
+  }
+
+  function syncSlice2dToolbar() {
+    if (!slice2dToolbar) return;
+    const show = (renderMode === '2d') && hasVol3dSamples();
+    slice2dToolbar.classList.toggle('visible', show);
+    if (!show) return;
+    const meta = getMeta() || {};
+    const vMeta = window.VOL3D_META;
+    const nx = (vMeta && vMeta.nx) || meta.nx || 64;
+    const ny = (vMeta && vMeta.ny) || meta.ny || 64;
+    const cell = (vMeta && vMeta.cell) || meta.cell || 50.0;
+    const st = getSampleSlice2dState(currentSampleIndex);
+    const isEW = (st.axis !== 'sn');
+    const maxIdx = (isEW ? ny : nx) - 1;
+    const curIdx = isEW ? st.ew : st.sn;
+    if (btnSliceEW) btnSliceEW.classList.toggle('active', isEW);
+    if (btnSliceSN) btnSliceSN.classList.toggle('active', !isEW);
+    if (slice2dSlider) {
+      slice2dSlider.min = 0;
+      slice2dSlider.max = maxIdx;
+      slice2dSlider.value = curIdx;
+    }
+    if (btnSlicePrev) btnSlicePrev.disabled = curIdx <= 0;
+    if (btnSliceNext) btnSliceNext.disabled = curIdx >= maxIdx;
+    if (slice2dCoordVal) {
+      const km = ((curIdx + 0.5) * cell / 1000.0).toFixed(2);
+      slice2dCoordVal.textContent = `${isEW ? 'Y' : 'X'} = ${km} km (${curIdx}/${maxIdx})`;
+    }
+  }
+
+  function setSampleSlice2dAxis(sampleIdx, axis) {
+    const st = getSampleSlice2dState(sampleIdx);
+    st.axis = (axis === 'sn') ? 'sn' : 'ew';
+    hoverCell = null;
+    updateMetaDisplay();
+    renderCurrentVoxelData();
+    renderProfileCanvas();
+  }
+
+  function setSampleSlice2dIndex(sampleIdx, idx) {
+    const meta = getMeta() || {};
+    const vMeta = window.VOL3D_META;
+    const nx = (vMeta && vMeta.nx) || meta.nx || 64;
+    const ny = (vMeta && vMeta.ny) || meta.ny || 64;
+    const st = getSampleSlice2dState(sampleIdx);
+    const maxIdx = (st.axis === 'sn' ? nx : ny) - 1;
+    const clamped = Math.max(0, Math.min(maxIdx, idx));
+    if (st.axis === 'sn') st.sn = clamped;
+    else st.ew = clamped;
+    updateMetaDisplay();
+    renderCurrentVoxelData();
+    renderProfileCanvas();
+  }
+
+  function stepSampleSlice2d(sampleIdx, delta) {
+    const st = getSampleSlice2dState(sampleIdx);
+    const cur = (st.axis === 'sn') ? st.sn : st.ew;
+    setSampleSlice2dIndex(sampleIdx, cur + delta);
+  }
+
+  function resetSampleSlice2d(sampleIdx) {
+    const st = getSampleSlice2dState(sampleIdx);
+    if (st.axis === 'sn') st.sn = st.defaultSn;
+    else st.ew = st.defaultEw;
+    updateMetaDisplay();
+    renderCurrentVoxelData();
+    renderProfileCanvas();
+  }
+
+  function extractVol3dSlice2d(bytes, nx, ny, nz, vmax, axis, sliceIdx) {
+    if (!bytes || bytes.length < nx * ny * nz) return [];
+    const scale = vmax / 127.0;
+    const out = new Array(nz);
+    if (axis === 'sn') {
+      const ix = Math.max(0, Math.min(nx - 1, sliceIdx));
+      for (let iz = 0; iz < nz; ++iz) {
+        const row = new Array(ny);
+        const zBase = iz * ny * nx + ix;
+        for (let iy = 0; iy < ny; ++iy) {
+          row[iy] = (bytes[zBase + iy * nx] - 128) * scale;
+        }
+        out[iz] = row;
+      }
+    } else {
+      const iy = Math.max(0, Math.min(ny - 1, sliceIdx));
+      for (let iz = 0; iz < nz; ++iz) {
+        const row = new Array(nx);
+        const base = (iz * ny + iy) * nx;
+        for (let ix = 0; ix < nx; ++ix) {
+          row[ix] = (bytes[base + ix] - 128) * scale;
+        }
+        out[iz] = row;
+      }
+    }
+    return out;
+  }
+
+  function extractMap1dProfile(arr2d, nx, ny, axis, sliceIdx) {
+    if (!arr2d || arr2d.length < nx * ny) return [];
+    if (axis === 'sn') {
+      const ix = Math.max(0, Math.min(nx - 1, sliceIdx));
+      const out = new Array(ny);
+      for (let iy = 0; iy < ny; ++iy) out[iy] = arr2d[iy * nx + ix];
+      return out;
+    }
+    const iy = Math.max(0, Math.min(ny - 1, sliceIdx));
+    const out = new Array(nx);
+    const base = iy * nx;
+    for (let ix = 0; ix < nx; ++ix) out[ix] = arr2d[base + ix];
+    return out;
+  }
+
+  function getSample2DSliceData(sampleIdx, entry) {
+    const meta = getMeta() || {};
+    const sm = (meta.samples && meta.samples[sampleIdx]) || meta;
+    const vMeta = window.VOL3D_META;
+    const vs = (vMeta && Array.isArray(vMeta.samples) && vMeta.samples[sampleIdx]) || null;
+    const nx = (vMeta && vMeta.nx) || meta.nx || 64;
+    const ny = (vMeta && vMeta.ny) || meta.ny || 64;
+    const nz = (vMeta && vMeta.nz) || meta.nz || 32;
+    const cell = (vMeta && vMeta.cell) || meta.cell || 50.0;
+    const vmax = (vs && vs.vmax) || (sm && sm.vmax) || (entry && entry.slice && entry.slice.vmax) || meta.vmax || 0.6;
+
+    if (vs && vs.truth_b64) {
+      const st = getSampleSlice2dState(sampleIdx);
+      const axis = st.axis;
+      const sliceIdx = (axis === 'sn') ? st.sn : st.ew;
+      const tBytes = decodeVol3dRleCached(`truth:${sampleIdx}`, vs.truth_b64, nx, ny, nz);
+      const truthSlice = extractVol3dSlice2d(tBytes, nx, ny, nz, vmax, axis, sliceIdx);
+
+      const ep = (entry && entry.epoch) || (currentIndex + 1);
+      const ep3dKey = resolveVol3dEpoch(ep);
+      const ep3d = (window.VOL3D_EPOCHS && window.VOL3D_EPOCHS[ep3dKey]) || null;
+      const pB64 = (ep3d && Array.isArray(ep3d.pred_b64)) ? ep3d.pred_b64[sampleIdx] : null;
+      const vmaxP = (ep3d && Array.isArray(ep3d.vmax_preds) && ep3d.vmax_preds[sampleIdx]) || vmax;
+      let predSlice = [];
+      if (pB64) {
+        const pBytes = decodeVol3dRleCached(`pred:${ep3dKey}:${sampleIdx}`, pB64, nx, ny, nz);
+        predSlice = extractVol3dSlice2d(pBytes, nx, ny, nz, vmaxP, axis, sliceIdx);
+      } else if (axis === 'ew' && sliceIdx === st.defaultEw && entry) {
+        if (entry.pred_slices && Array.isArray(entry.pred_slices) && entry.pred_slices[sampleIdx]) {
+          predSlice = entry.pred_slices[sampleIdx];
+        } else if (sampleIdx === 0) {
+          predSlice = entry.pred_slice || (entry.slice && entry.slice.pred) || [];
+        }
+      }
+
+      const terr2d = vs.terrain_b64 ? decodeTerrainDepthMCached(sampleIdx, vs.terrain_b64, nx, ny, nz * cell) : null;
+      const terrain = terr2d ? extractMap1dProfile(terr2d, nx, ny, axis, sliceIdx) : ((sm && sm.terrain) || meta.terrain || []);
+
+      const obsObj = vs.obs_field_b64 ? decodeFieldI16Cached(`obs:${sampleIdx}`, vs.obs_field_b64, nx, ny, vs.obs_field_vmax || 1.0) : null;
+      const obsProfile = obsObj ? extractMap1dProfile(obsObj.data, nx, ny, axis, sliceIdx) : ((sm && sm.obs_profile) || meta.obs_profile || []);
+
+      const pfB64 = (ep3d && Array.isArray(ep3d.pred_field_b64)) ? ep3d.pred_field_b64[sampleIdx] : null;
+      const pfVmax = (ep3d && Array.isArray(ep3d.pred_field_vmax) && ep3d.pred_field_vmax[sampleIdx]) || (obsObj ? obsObj.vmax : 1.0);
+      const predObj = pfB64 ? decodeFieldI16Cached(`inv:${ep3dKey}:${sampleIdx}`, pfB64, nx, ny, pfVmax) : null;
+      const predProfile = predObj
+        ? extractMap1dProfile(predObj.data, nx, ny, axis, sliceIdx)
+        : ((axis === 'ew' && sliceIdx === st.defaultEw && sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : []);
+
+      const coordKm = ((sliceIdx + 0.5) * cell / 1000.0).toFixed(2);
+      return {
+        from3d: true,
+        axis,
+        sliceIdx,
+        nHoriz: axis === 'sn' ? ny : nx,
+        nz,
+        cell,
+        vmax,
+        truthSlice,
+        predSlice,
+        terrain,
+        obsProfile,
+        predProfile,
+        horizAxisChar: axis === 'sn' ? 'Y' : 'X',
+        coordLabel: axis === 'sn' ? `X = ${coordKm} km (S\u2013N)` : `Y = ${coordKm} km (E\u2013W)`,
+        shortCoord: axis === 'sn' ? `X=${coordKm}km` : `Y=${coordKm}km`,
+      };
+    }
+
+    // Legacy fallback (no 3D sidecar)
+    const truthSlice = (sm && sm.truth_slice) || (entry && entry.slice && entry.slice.truth) || meta.truth_slice || [];
+    let predSlice = [];
+    if (entry && entry.pred_slices && Array.isArray(entry.pred_slices) && entry.pred_slices[sampleIdx]) {
+      predSlice = entry.pred_slices[sampleIdx];
+    } else if (sampleIdx === 0 && entry) {
+      predSlice = entry.pred_slice || (entry.slice && entry.slice.pred) || [];
+    }
+    const yKm = (sm && sm.y_km != null) ? sm.y_km : '--';
+    return {
+      from3d: false,
+      axis: 'ew',
+      sliceIdx: (sm && sm.iy != null) ? sm.iy : Math.floor(ny / 2),
+      nHoriz: nx,
+      nz,
+      cell,
+      vmax,
+      truthSlice,
+      predSlice,
+      terrain: (sm && sm.terrain) || (entry && entry.slice && entry.slice.terrain) || meta.terrain || [],
+      obsProfile: (sm && sm.obs_profile) || meta.obs_profile || [],
+      predProfile: (sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : [],
+      horizAxisChar: 'X',
+      coordLabel: `Y = ${yKm} km`,
+      shortCoord: `Y=${yKm}km`,
+    };
   }
 
   function decodeTerrainU16ToU8Cached(sampleIdx, b64, nx, ny) {
@@ -3462,15 +3866,11 @@ void main() {
     updatePredEpochBadge(entry.epoch || (currentIndex + 1), null, true);
     updateVol3dStatusPill(0, null, true);
     updateFieldScaleBadge(null);
-    const vmax = (sm && sm.vmax) || (entry.slice && entry.slice.vmax) || (meta && meta.vmax) || 0.6;
-    const terrain = (sm && sm.terrain) || (entry.slice && entry.slice.terrain) || (meta && meta.terrain) || [];
-    const truthSlice = (sm && sm.truth_slice) || (entry.slice && entry.slice.truth) || (meta && meta.truth_slice) || [];
-    let predSlice = [];
-    if (entry.pred_slices && Array.isArray(entry.pred_slices) && entry.pred_slices[currentSampleIndex]) {
-      predSlice = entry.pred_slices[currentSampleIndex];
-    } else if (currentSampleIndex === 0) {
-      predSlice = entry.pred_slice || (entry.slice && entry.slice.pred) || [];
-    }
+    const sd = getSample2DSliceData(currentSampleIndex, entry);
+    const vmax = sd.vmax;
+    const terrain = sd.terrain;
+    const truthSlice = sd.truthSlice;
+    const predSlice = sd.predSlice;
 
     if (truthSlice.length) {
       drawVoxelSection(cvsTruth, truthSlice, terrain, vmax, hoverCell, false);
@@ -3523,10 +3923,18 @@ void main() {
         card.className = 'sample-card-item' + (i === currentSampleIndex ? ' selected' : '');
         card.dataset.index = i;
         const cardTitle = s.tag ? `#${i} \u00b7 ${s.tag}` : `Sample #${i}`;
+        const show2dSliceCtrl = (renderMode === '2d') && hasVol3dSamples();
+        const cardSliceHtml = show2dSliceCtrl
+          ? `<span style="display:inline-flex;align-items:center;gap:3px;flex-shrink:0;" onclick="event.stopPropagation();">
+               <button type="button" class="vol3d-btn" id="cardAxis_${i}" style="padding:0 4px;font-size:0.60rem;line-height:1.35;" title="Toggle E-W / S-N profile for Sample #${i}">E-W</button>
+               <input type="range" id="cardSlice_${i}" min="0" max="63" value="32" style="width:52px;height:12px;margin:0;cursor:pointer;" title="Scroll profiles for Sample #${i}">
+               <span class="tag-pill" id="cardY_${i}">Y=-- km</span>
+             </span>`
+          : `<span class="tag-pill" id="cardY_${i}">Y=-- km</span>`;
         card.innerHTML = `
           <div class="sample-card-header">
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${cardTitle}</span>
-            <span class="tag-pill" id="cardY_${i}">Y=-- km</span>
+            ${cardSliceHtml}
           </div>
           <div class="sample-subpair">
             <div class="sample-subcol">
@@ -3553,6 +3961,33 @@ void main() {
         if (renderMode === '3d') {
           bind3dPointerEvents(document.getElementById(`miniTruth_${i}`));
           bind3dPointerEvents(document.getElementById(`miniPred_${i}`));
+        } else if (show2dSliceCtrl) {
+          const btnAx = document.getElementById(`cardAxis_${i}`);
+          const slC = document.getElementById(`cardSlice_${i}`);
+          if (btnAx) {
+            btnAx.addEventListener('click', (ev) => {
+              ev.stopPropagation();
+              currentSampleIndex = i;
+              const st = getSampleSlice2dState(i);
+              setSampleSlice2dAxis(i, st.axis === 'sn' ? 'ew' : 'sn');
+            });
+          }
+          if (slC) {
+            slC.addEventListener('input', (ev) => {
+              ev.stopPropagation();
+              currentSampleIndex = i;
+              setSampleSlice2dIndex(i, parseInt(slC.value, 10) || 0);
+            });
+          }
+          [document.getElementById(`miniTruth_${i}`), document.getElementById(`miniPred_${i}`)].forEach(mc => {
+            if (!mc) return;
+            mc.addEventListener('wheel', (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              currentSampleIndex = i;
+              stepSampleSlice2d(i, ev.deltaY > 0 ? 1 : -1);
+            }, { passive: false });
+          });
         }
       }
     } else {
@@ -3611,21 +4046,26 @@ void main() {
     updateFieldScaleBadge(null);
     // Paint each visible sample's truth and predicted cross-sections
     for (let i = start; i < end; ++i) {
-      const s = samples[i];
+      const sd = getSample2DSliceData(i, entry);
       const yTag = document.getElementById(`cardY_${i}`);
-      if (yTag) yTag.textContent = `Y=${s.y_km != null ? s.y_km : '--'} km`;
+      if (yTag) yTag.textContent = sd.shortCoord;
+      const btnAx = document.getElementById(`cardAxis_${i}`);
+      if (btnAx) {
+        btnAx.textContent = sd.axis === 'sn' ? 'S-N' : 'E-W';
+        btnAx.classList.toggle('active', sd.axis === 'sn');
+      }
+      const slC = document.getElementById(`cardSlice_${i}`);
+      if (slC) {
+        slC.max = Math.max(0, sd.nHoriz - 1);
+        slC.value = sd.sliceIdx;
+      }
 
       const cvsT = document.getElementById(`miniTruth_${i}`);
       const cvsP = document.getElementById(`miniPred_${i}`);
-      const vmax = s.vmax || 0.6;
-      const terrain = s.terrain || [];
-      const tSlice = s.truth_slice || [];
-      let pSlice = [];
-      if (entry.pred_slices && Array.isArray(entry.pred_slices) && entry.pred_slices[i]) {
-        pSlice = entry.pred_slices[i];
-      } else if (i === 0) {
-        pSlice = entry.pred_slice || (entry.slice && entry.slice.pred) || [];
-      }
+      const vmax = sd.vmax;
+      const terrain = sd.terrain;
+      const tSlice = sd.truthSlice;
+      const pSlice = sd.predSlice;
 
       if (cvsT && tSlice.length) {
         drawVoxelSection(cvsT, tSlice, terrain, vmax, null, false);
@@ -3718,10 +4158,13 @@ void main() {
     const pal = getThemePalette();
     const meta = getMeta();
     const sm = getActiveSampleMeta();
+    const epochs = getEpochs();
+    const entry = (currentIndex >= 0 && epochs[currentIndex]) ? epochs[currentIndex] : null;
+    const sd = (renderMode === '2d') ? getSample2DSliceData(currentSampleIndex, entry) : null;
     const ctx = cvsProfile.getContext('2d');
     const w = cvsProfile.width, h = cvsProfile.height;
-    const prof = (sm && sm.obs_profile) || (meta && meta.obs_profile) || [];
-    const predProf = (sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : [];
+    const prof = (sd && sd.obsProfile && sd.obsProfile.length) ? sd.obsProfile : ((sm && sm.obs_profile) || (meta && meta.obs_profile) || []);
+    const predProf = (sd && sd.predProfile && sd.predProfile.length) ? sd.predProfile : ((sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : []);
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = pal.surfaceBg;
     ctx.fillRect(0, 0, w, h);
@@ -3838,11 +4281,12 @@ void main() {
     const epochs = getEpochs();
     if (!meta || !epochs.length || currentIndex < 0 || !epochs[currentIndex]) return;
     const entry = epochs[currentIndex];
+    const sd = getSample2DSliceData(currentSampleIndex, entry);
     const rect = e.target.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    const nx = meta.nx, nz = meta.nz;
-    const cellM = meta.cell || 50.0;
+    const nx = sd.nHoriz, nz = sd.nz;
+    const cellM = sd.cell || 50.0;
     const totalDepth = nz * cellM;
 
     let ix = Math.min(nx - 1, Math.max(0, Math.floor((x / rect.width) * nx)));
@@ -3857,21 +4301,17 @@ void main() {
 
     hoverCell = { ix, iz };
 
-    const tSlice = (sm && sm.truth_slice) || meta.truth_slice || (entry.slice && entry.slice.truth) || [];
-    let pSlice = [];
-    if (entry.pred_slices && Array.isArray(entry.pred_slices) && entry.pred_slices[currentSampleIndex]) {
-      pSlice = entry.pred_slices[currentSampleIndex];
-    } else if (currentSampleIndex === 0) {
-      pSlice = entry.pred_slice || (entry.slice && entry.slice.pred) || [];
-    }
+    const tSlice = sd.truthSlice || [];
+    const pSlice = sd.predSlice || [];
     const tVal = (tSlice[iz] && tSlice[iz][ix] != null) ? tSlice[iz][ix] : 0.0;
     const pVal = (pSlice[iz] && pSlice[iz][ix] != null) ? pSlice[iz][ix] : 0.0;
     const diffVal = pVal - tVal;
 
+    const hAxis = sd.horizAxisChar || 'X';
     const xKm = ((ix + 0.5) * cellM / 1000.0).toFixed(2);
     const zM = Math.round((iz + 0.5) * cellM);
-    const terr = (sm && sm.terrain) || meta.terrain;
-    const terrM = terr ? Math.round(terr[ix]) : 0;
+    const terr = sd.terrain;
+    const terrM = (terr && terr[ix] != null) ? Math.round(terr[ix]) : 0;
     const isAir = zM < terrM;
 
     function getLithologyName(val) {
@@ -3885,22 +4325,22 @@ void main() {
     }
 
     if (isAir) {
-      voxelHoverPill.textContent = `X = ${xKm} km | Depth = ${zM} m (AIR above relief: surface at ${terrM} m)`;
+      voxelHoverPill.textContent = `${hAxis} = ${xKm} km | Depth = ${zM} m (AIR above relief: surface at ${terrM} m)`;
     } else if (!pSlice.length) {
       const lithoTag = (colormapMode === 'lithology') ? ` [${getLithologyName(tVal)}]` : '';
-      voxelHoverPill.textContent = `X = ${xKm} km, Depth = ${zM} m | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3${lithoTag}`;
+      voxelHoverPill.textContent = `${hAxis} = ${xKm} km, Depth = ${zM} m | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3${lithoTag}`;
     } else {
       const pLitho = (colormapMode === 'lithology') ? ` [${getLithologyName(pVal)}]` : '';
       const tLitho = (colormapMode === 'lithology') ? ` [${getLithologyName(tVal)}]` : '';
-      voxelHoverPill.textContent = `X = ${xKm} km, Depth = ${zM} m | Pred: ${pVal > 0 ? '+' : ''}${pVal.toFixed(3)} g/cm\u00b3${pLitho} | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3${tLitho} | Diff: ${diffVal > 0 ? '+' : ''}${diffVal.toFixed(3)}`;
+      voxelHoverPill.textContent = `${hAxis} = ${xKm} km, Depth = ${zM} m | Pred: ${pVal > 0 ? '+' : ''}${pVal.toFixed(3)} g/cm\u00b3${pLitho} | Truth: ${tVal > 0 ? '+' : ''}${tVal.toFixed(3)} g/cm\u00b3${tLitho} | Diff: ${diffVal > 0 ? '+' : ''}${diffVal.toFixed(3)}`;
     }
 
-    const obsProf = (sm && sm.obs_profile) || meta.obs_profile;
-    const predProf = (sm && Array.isArray(sm.pred_profile)) ? sm.pred_profile : null;
+    const obsProf = sd.obsProfile;
+    const predProf = (sd.predProfile && sd.predProfile.length) ? sd.predProfile : null;
     if (obsProf && obsProf.length) {
       const gzVal = obsProf[ix] != null ? obsProf[ix].toFixed(2) : '--';
       const predTxt = (predProf && predProf[ix] != null) ? ` | Inv gz = ${predProf[ix].toFixed(2)} mGal` : '';
-      profileHoverVal.textContent = `Profile X = ${xKm} km | Obs gz = ${gzVal} mGal${predTxt} | Relief Depth = ${terrM} m`;
+      profileHoverVal.textContent = `Profile ${hAxis} = ${xKm} km | Obs gz = ${gzVal} mGal${predTxt} | Relief Depth = ${terrM} m`;
     }
 
     renderCurrentVoxelData();
@@ -4015,15 +4455,63 @@ void main() {
         }
       }
       const cls = 'chart-legend-item interactive' + (hidden ? ' muted' : '');
-      return `<span class="${cls}" data-comp-id="${s.id}" title="Click to toggle ${s.label}"><span class="chart-legend-swatch" style="${dash}"></span>${s.label}${valTxt}</span>`;
+      const chk = hidden ? '\u2610' : '\u2611';
+      return `<span class="${cls}" data-comp-id="${s.id}" title="Click to toggle ${s.label} • Shift-click or double-click to solo"><span style="font-size:0.72rem;line-height:1;">${chk}</span><span class="chart-legend-swatch" style="${dash}"></span>${s.label}${valTxt}</span>`;
     }).join('');
     el.querySelectorAll('[data-comp-id]').forEach(node => {
-      node.onclick = () => {
-        const cid = node.getAttribute('data-comp-id');
-        if (compHiddenKeys.has(cid)) compHiddenKeys.delete(cid);
-        else compHiddenKeys.add(cid);
+      const soloComp = (cid) => {
+        const visibleIds = activeSeries.filter(s => !compHiddenKeys.has(s.id)).map(s => s.id);
+        if (visibleIds.length === 1 && visibleIds[0] === cid) {
+          compHiddenKeys.clear();
+        } else {
+          activeSeries.forEach(s => {
+            if (s.id === cid) compHiddenKeys.delete(s.id);
+            else compHiddenKeys.add(s.id);
+          });
+        }
+        try { localStorage.setItem('mod3d_comp_hidden', JSON.stringify(Array.from(compHiddenKeys))); } catch (_) {}
         renderLossCompChart();
       };
+      node.onclick = (e) => {
+        const cid = node.getAttribute('data-comp-id');
+        if (e.shiftKey) { soloComp(cid); return; }
+        if (compHiddenKeys.has(cid)) compHiddenKeys.delete(cid);
+        else compHiddenKeys.add(cid);
+        try { localStorage.setItem('mod3d_comp_hidden', JSON.stringify(Array.from(compHiddenKeys))); } catch (_) {}
+        renderLossCompChart();
+      };
+      node.ondblclick = (e) => {
+        e.preventDefault();
+        soloComp(node.getAttribute('data-comp-id'));
+      };
+    });
+  }
+
+  function getCompStartIdx(totalN) {
+    if (!compLastN || compLastN <= 0 || compLastN >= totalN) return 0;
+    return Math.max(0, totalN - compLastN);
+  }
+
+  function syncCompWindowControls(totalN) {
+    const sl = document.getElementById('compLastSlider');
+    const lbl = document.getElementById('compLastVal');
+    const maxN = Math.max(5, totalN);
+    const effN = (compLastN > 0 && compLastN < totalN) ? compLastN : maxN;
+    if (sl) {
+      sl.min = Math.min(5, maxN);
+      sl.max = maxN;
+      sl.value = effN;
+      sl.disabled = totalN <= 5;
+    }
+    if (lbl) {
+      lbl.textContent = (compLastN > 0 && compLastN < totalN) ? `Last ${compLastN}` : `All (${totalN})`;
+    }
+    document.querySelectorAll('.comp-win-btn').forEach(btn => {
+      const target = parseInt(btn.getAttribute('data-comp-last') || '0', 10);
+      const isAct = (target === 0 && (compLastN <= 0 || compLastN >= totalN)) || (target > 0 && compLastN === target && target < totalN);
+      btn.style.background = isAct ? '#0284c7' : '';
+      btn.style.color = isAct ? '#fff' : '';
+      btn.style.borderColor = isAct ? '#0369a1' : '';
     });
   }
 
@@ -4037,11 +4525,13 @@ void main() {
       return;
     }
     card.style.display = 'block';
+    syncCompWindowControls(epochs.length);
+    const startIdx = getCompStartIdx(epochs.length);
     const allDefs = getLossCompSeriesDefs();
     const activeSeries = allDefs.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
     renderLossCompLegend(activeSeries, currentIndex);
     const visibleSeries = activeSeries.filter(s => !compHiddenKeys.has(s.id));
-    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 220, true);
+    renderSvgChart('svgLossComp', null, visibleSeries, null, null, compLogScale, 860, 220, true, startIdx);
   }
 
   function formatChartTick(val, useLog) {
@@ -4054,10 +4544,12 @@ void main() {
     return val.toFixed(val < 10 ? 2 : 0);
   }
 
-  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125, showGrid = false) {
+  function renderSvgChart(svgId, legendId, series, fixedMin = null, fixedMax = null, useLog = false, w = 420, h = 125, showGrid = false, startIdx = 0) {
     const svg = document.getElementById(svgId);
-    const epochs = getEpochs();
-    if (!svg || !epochs.length) return;
+    const allEpochs = getEpochs();
+    if (!svg || !allEpochs.length) return;
+    const sIdx = Math.max(0, Math.min(startIdx || 0, Math.max(0, allEpochs.length - 1)));
+    const epochs = sIdx > 0 ? allEpochs.slice(sIdx) : allEpochs;
     const activeSeries = series.filter(s => epochs.some(r => r[s.key] != null && isFinite(r[s.key])));
     if (legendId) renderChartLegend(legendId, activeSeries);
     const N = epochs.length;
@@ -4177,8 +4669,10 @@ void main() {
     });
 
     // Vertical Scrubber Line
-    const curX = xCoord(currentIndex);
-    content += `<line id="${svgId}_scrubber" x1="${curX}" y1="${padT}" x2="${curX}" y2="${padT + ph}" stroke="${pal.scrubber}" stroke-width="1.5" stroke-dasharray="3,3"/>`;
+    const localCur = currentIndex - sIdx;
+    const showCur = (localCur >= 0 && localCur < N);
+    const curX = xCoord(Math.max(0, Math.min(N - 1, localCur)));
+    content += `<line id="${svgId}_scrubber" x1="${curX}" y1="${padT}" x2="${curX}" y2="${padT + ph}" stroke="${pal.scrubber}" stroke-width="1.5" stroke-dasharray="3,3"${showCur ? '' : ' visibility="hidden"'}/>`;
 
     svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
     svg.innerHTML = content;
@@ -4187,7 +4681,7 @@ void main() {
       const rect = svg.getBoundingClientRect();
       const clickX = e.clientX - rect.left;
       const frac = Math.max(0, Math.min(1, (clickX - (padL / w * rect.width)) / ((pw / w) * rect.width)));
-      const targetIdx = Math.round(frac * (epochs.length - 1));
+      const targetIdx = sIdx + Math.round(frac * (epochs.length - 1));
       stopPlayback();
       showEpoch(targetIdx);
     };
@@ -4207,10 +4701,18 @@ void main() {
     });
     const compScrub = document.getElementById('svgLossComp_scrubber');
     if (compScrub) {
-      const pwWide = 860 - padL - padR;
-      const xWide = padL + (N > 1 ? (idx / (N - 1)) * pwWide : pwWide * 0.5);
-      compScrub.setAttribute('x1', xWide);
-      compScrub.setAttribute('x2', xWide);
+      const sIdx = getCompStartIdx(N);
+      const winN = Math.max(1, N - sIdx);
+      const localIdx = idx - sIdx;
+      if (localIdx < 0 || localIdx >= winN) {
+        compScrub.setAttribute('visibility', 'hidden');
+      } else {
+        const pwWide = 860 - padL - padR;
+        const xWide = padL + (winN > 1 ? (localIdx / (winN - 1)) * pwWide : pwWide * 0.5);
+        compScrub.setAttribute('x1', xWide);
+        compScrub.setAttribute('x2', xWide);
+        compScrub.setAttribute('visibility', 'visible');
+      }
     }
     const cardComp = document.getElementById('cardLossComp');
     if (cardComp && cardComp.style.display !== 'none') {
