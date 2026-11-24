@@ -4865,6 +4865,9 @@ class TrainingMonitor:
         rec_entry["pred_slice"] = pred_slices[0]
         rec_entry["pred_slices"] = pred_slices
         rec_entry["vmax_pred"] = round(float(np.abs(p_vol[:, :, iy_pk]).max()), 3)
+        cur_ep = rec_entry.get("epoch")
+        if cur_ep is not None:
+            self.hist = [r for r in self.hist if r.get("epoch", -1) < cur_ep]
         self.hist.append(rec_entry)
 
         payload = {"meta": self.meta, "epochs": self.hist}

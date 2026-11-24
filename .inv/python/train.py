@@ -977,6 +977,8 @@ def main():
             ck = {"epoch": epoch, "model_state_dict": eval_model.state_dict(),
                   "raw_model_state_dict": model.state_dict(), "val_loss": vloss, "metrics": std_m,
                   "hard_prob": hard_prob,
+                  "sched_state_dict": sched.state_dict(),
+                  "optimizer_state_dict": opt.state_dict(),
                   "grid": {"nx": NX, "ny": NY, "nz": NZ, "cell": CELL}, "arch": arch}
             if hard_m is not None:
                 ck["val_std_loss"] = std_loss

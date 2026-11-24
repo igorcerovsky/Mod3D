@@ -241,6 +241,7 @@ def test_v9_1_train_cli_v3data_cpu_smoke():
         assert (Path(td) / "best_swin3d.pt").is_file()
         ck = torch.load(Path(td) / "best_swin3d.pt", map_location="cpu")
         assert ck["arch"]["variant"] == "v9.1"
+        assert "optimizer_state_dict" in ck and "sched_state_dict" in ck
         with open(Path(td) / "training_history.json", encoding="utf-8") as f:
             hist = json.load(f)
         ep0 = hist["epochs"][0]
