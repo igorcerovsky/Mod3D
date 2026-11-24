@@ -11,7 +11,7 @@ import os
 import numpy as np
 import torch
 
-from dataset import CELL, NX, NY, NZ
+from dataset import CELL, NX, NY, NZ, align_pred_field_to_obs_detrend
 from vol3d_io import write_vol3d_sidecars
 
 
@@ -4796,7 +4796,7 @@ class TrainingMonitor:
             f.write(build_dashboard_html(refresh_sec=self.refresh_sec))
         os.replace(tmp_path, html_path)
 
-    def update(self, rec, vx, vtrue, vpred, vclean, vz, sample_labels=None, is_best=False):
+    def update(self, rec, vx, vtrue, vpred, vclean, vz, sample_labels=None, is_best=False, detrend_modes=None):
         # Extract slices across up to 16 representative validation samples (val + curated categories)
         n_samples = min(16, vtrue.shape[0])
         x_km = np.arange(NX) * CELL / 1000.0
@@ -4885,6 +4885,12 @@ class TrainingMonitor:
             with torch.no_grad():
                 pf_chunks = [self.forward_op(vpred[i:i + 8], vz[i:i + 8]) for i in range(0, n_samples, 8)]
                 pf_cat = torch.cat(pf_chunks, dim=0)
+                if detrend_modes is not None:
+                    pf_cat = align_pred_field_to_obs_detrend(
+                        pf_cat,
+                        vx[:n_samples, 0:1].to(device=pf_cat.device, dtype=pf_cat.dtype),
+                        list(detrend_modes)[:n_samples],
+                    )
                 pred_fields = [pf_cat[i, 0].detach().cpu().numpy() for i in range(n_samples)]
         write_vol3d_sidecars(
             self.save_dir, rec["epoch"], NX, NY, NZ, CELL,

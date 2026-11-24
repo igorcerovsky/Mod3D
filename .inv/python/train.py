@@ -638,6 +638,7 @@ def main():
 
     v6_buckets = None
     vx = vtrue = vclean = vz = hard_val = None
+    mon_detrend_modes = None
     if use_v6_data:
         eff_n_val = 128 if args.n_val == 64 else args.n_val
         n_per_bucket = max(8, eff_n_val // 4)
@@ -650,6 +651,9 @@ def main():
         n_gc = min(4, v6_buckets["ground_clean"][0]["truth"].shape[0])
         n_hl = min(4, v6_buckets["ground_hard_large_detrend"][0]["truth"].shape[0])
         mon_labels = ("Ground",) * n_gc + ("HardLarge",) * n_hl + show_labels
+        gc_dm = list(v6_buckets["ground_clean"][0].get("detrend_modes") or (["raw"] * n_gc))[:n_gc]
+        hl_dm = list(v6_buckets["ground_hard_large_detrend"][0].get("detrend_modes") or (["raw"] * n_hl))[:n_hl]
+        mon_detrend_modes = gc_dm + hl_dm + ["raw"] * len(show_labels)
     else:
         vx, vtrue, vclean, vz = make_fixed_set(
             args.n_val, 2024, op, dev, grid, hard_prob=0.0, in_channels=val_ch,
@@ -962,7 +966,7 @@ def main():
             if acc.get("loss_coherence", 0.0) > 0.0:
                 rec_mon["train_coherence"] = acc["loss_coherence"] / n
             _record_loss_components(rec_mon, acc, "train_", denom=n)
-            monitor.update(rec_mon, *mon_t, sample_labels=mon_labels, is_best=is_best)
+            monitor.update(rec_mon, *mon_t, sample_labels=mon_labels, is_best=is_best, detrend_modes=mon_detrend_modes)
         else:
             vloss, vm, std_loss, std_m, hard_loss, hard_m, mon_t = validate()
             tr = " ".join(f"{k[5:]} {v / n:.3f}" for k, v in acc.items() if k.startswith("loss_"))
@@ -1001,7 +1005,7 @@ def main():
                 rec_mon["val_hard_loss"] = hard_loss
                 rec_mon["hard_iou"] = hard_m["iou"]
                 rec_mon["hard_dz"] = hard_m["centroid_dz"]
-            monitor.update(rec_mon, *mon_t, sample_labels=mon_labels, is_best=is_best)
+            monitor.update(rec_mon, *mon_t, sample_labels=mon_labels, is_best=is_best, detrend_modes=mon_detrend_modes)
     print(f"Done. Best val loss {best:.4f}. Checkpoint: {os.path.join(args.save_dir, 'best_swin3d.pt')}")
 
 

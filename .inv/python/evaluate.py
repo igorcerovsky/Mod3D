@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 from scipy.ndimage import distance_transform_edt, label
 
-from dataset import apply_mod3d_detrend
+from dataset import align_pred_field_to_obs_detrend, apply_mod3d_detrend
 from losses import _dilate3d
 from vol3d_io import write_vol3d_sidecars
 
@@ -340,7 +340,7 @@ def compute_calibration_metrics(pred, truth, log_var, terrain=None, dz=50.0, log
 
 def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
                    fault_prob=0.0, clearance_range=None, dropout_prob=0.0,
-                   clearance_clamp=4.0, v6_mode=False):
+                   clearance_clamp=4.0, v6_mode=False, return_detrend_modes=False):
     """Deterministic validation tensors on ``device``: obs (B,C,H,W), truth, clean, z_obs."""
     from dataset import (
         CLEARANCE, BodyTerrainDataset, build_v5_input, build_v7_input, simulate_batch, terrain_channel,
@@ -365,10 +365,17 @@ def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
             clearance_clamp=clearance_clamp, detrend_modes=dmodes,
         )
     elif in_channels >= 5 or dropout_prob > 0.0:
-        obs, clean, z_obs, vm = simulate_batch(
-            op, rho, t, c, nf, ns, dropout_prob=dropout_prob, return_mask=True,
-            v6_physics=v6_mode,
-        )
+        if v6_mode:
+            obs, clean, z_obs, vm, dmodes = simulate_batch(
+                op, rho, t, c, nf, ns, dropout_prob=dropout_prob, return_mask=True,
+                v6_physics=True, return_detrend_modes=True,
+            )
+        else:
+            obs, clean, z_obs, vm = simulate_batch(
+                op, rho, t, c, nf, ns, dropout_prob=dropout_prob, return_mask=True,
+                v6_physics=False,
+            )
+            dmodes = ["raw"] * n
         if in_channels >= 5:
             x = build_v5_input(
                 obs, t, nz * dz, valid_mask=vm, aspect=dz / dx, clearance=c,
@@ -377,8 +384,16 @@ def make_fixed_set(n, seed, op, device, grid, hard_prob=0.0, in_channels=2,
         else:
             x = torch.cat([obs, terrain_channel(t, nz * dz)], dim=1)
     else:
-        obs, clean, z_obs = simulate_batch(op, rho, t, c, nf, ns)
+        if v6_mode:
+            obs, clean, z_obs, dmodes = simulate_batch(
+                op, rho, t, c, nf, ns, v6_physics=True, return_detrend_modes=True,
+            )
+        else:
+            obs, clean, z_obs = simulate_batch(op, rho, t, c, nf, ns)
+            dmodes = ["raw"] * n
         x = torch.cat([obs, terrain_channel(t, nz * dz)], dim=1)
+    if return_detrend_modes:
+        return x, rho, clean, z_obs, list(dmodes)
     return x, rho, clean, z_obs
 
 
@@ -511,7 +526,7 @@ def make_v6_val_buckets(
 
 def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channels=2,
                            clearance_clamp=4.0, samples_per_category=1, random_val=False,
-                           v6_physics=False):
+                           v6_physics=False, return_detrend_modes=False):
     """Curate showcase samples spanning all lithology & hard-scene categories.
 
     Returns ``(obs_x, truth, clean, z_obs, labels)`` with ``8 * samples_per_category`` samples
@@ -614,7 +629,13 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
             clearance_clamp=clearance_clamp, detrend_modes=dmodes,
         )
     else:
-        obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=v6_physics)
+        if v6_physics:
+            obs, clean, z_obs, dmodes = simulate_batch(
+                op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=True, return_detrend_modes=True,
+            )
+        else:
+            obs, clean, z_obs = simulate_batch(op, rho_t, terr_t, clear_t, nf_t, ns_t, v6_physics=False)
+            dmodes = ["raw"] * len(rhos)
         if in_channels >= 5:
             x = build_v5_input(
                 obs, terr_t, nz * dz, aspect=dz / dx, clearance=clear_t,
@@ -626,6 +647,8 @@ def make_category_showcase(op, device, grid, seed=4024, max_tries=120, in_channe
         labels = tuple(name for name, _, _ in specs)
     else:
         labels = tuple(name for name, _, _ in specs for _ in range(int(samples_per_category)))
+    if return_detrend_modes:
+        return x, rho_t, clean, z_obs, labels, list(dmodes)
     return x, rho_t, clean, z_obs, labels
 
 
@@ -768,20 +791,22 @@ def export_vol3d_snapshot(
     if v6_physics is not None:
         is_v6 = bool(v6_physics)
 
-    cx, ct, _, cz, show_labels = make_category_showcase(
+    cx, ct, _, cz, show_labels, c_dmodes = make_category_showcase(
         op, device, grid, seed=seed, in_channels=in_ch, clearance_clamp=clr_clamp,
         samples_per_category=samples_per_category, random_val=random_val, v6_physics=is_v6,
+        return_detrend_modes=True,
     )
 
     if include_base:
         n_base = max(4, int(samples_per_category)) if int(samples_per_category) > 1 else 4
         s_seed = None if random_val else (seed - 2000 if seed else 2024)
         h_seed = None if random_val else (seed - 1000 if seed else 3024)
-        sx, st, _, sz = make_fixed_set(n_base, s_seed, op, device, grid, hard_prob=0.0, in_channels=in_ch, clearance_clamp=clr_clamp, v6_mode=is_v6)
-        hx, ht, _, hz = make_fixed_set(n_base, h_seed, op, device, grid, hard_prob=1.0, in_channels=in_ch, clearance_clamp=clr_clamp, v6_mode=is_v6)
+        sx, st, _, sz, s_dmodes = make_fixed_set(n_base, s_seed, op, device, grid, hard_prob=0.0, in_channels=in_ch, clearance_clamp=clr_clamp, v6_mode=is_v6, return_detrend_modes=True)
+        hx, ht, _, hz, h_dmodes = make_fixed_set(n_base, h_seed, op, device, grid, hard_prob=1.0, in_channels=in_ch, clearance_clamp=clr_clamp, v6_mode=is_v6, return_detrend_modes=True)
         all_x = torch.cat([sx, hx, cx], dim=0)
         all_t = torch.cat([st, ht, ct], dim=0)
         all_z = torch.cat([sz, hz, cz], dim=0)
+        all_dmodes = list(s_dmodes) + list(h_dmodes) + list(c_dmodes)
         base_tag_a = "Ground" if is_v6 else "Std"
         base_tag_b = "HardLarge" if is_v6 else "Hard"
         labels = (base_tag_a,) * n_base + (base_tag_b,) * n_base + show_labels
@@ -789,6 +814,7 @@ def export_vol3d_snapshot(
         all_x = cx
         all_t = ct
         all_z = cz
+        all_dmodes = list(c_dmodes)
         labels = show_labels
 
     preds = []
@@ -801,6 +827,9 @@ def export_vol3d_snapshot(
     for i in range(0, len(all_p), chunk_sz):
         pred_f_chunks.append(op(all_p[i:i + chunk_sz], all_z[i:i + chunk_sz]))
     all_pf = torch.cat(pred_f_chunks, dim=0)
+    all_pf = align_pred_field_to_obs_detrend(
+        all_pf, all_x[:, 0:1].to(device=all_pf.device, dtype=all_pf.dtype), all_dmodes,
+    )
 
     n_samples = len(all_x)
     vtrue_vols = [all_t[i, 0].detach().cpu().numpy() for i in range(n_samples)]

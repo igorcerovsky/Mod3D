@@ -2022,6 +2022,32 @@ def apply_mod3d_detrend(obs: torch.Tensor, modes) -> torch.Tensor:
     return out[:, 0] if squeeze_ch else out
 
 
+def align_pred_field_to_obs_detrend(pred_field: torch.Tensor, obs_field: torch.Tensor, detrend_modes) -> torch.Tensor:
+    """Apply the matching detrend operator to ``pred_field`` so it lies in the same basis as ``obs_field``."""
+    if detrend_modes is None:
+        return pred_field
+    squeeze_ch = pred_field.ndim == 3
+    p = pred_field.unsqueeze(1) if squeeze_ch else pred_field
+    o = obs_field.unsqueeze(1) if obs_field.ndim == 3 else obs_field
+    b = p.shape[0]
+    modes_in = [detrend_modes] * b if isinstance(detrend_modes, str) else list(detrend_modes)
+    if len(modes_in) != b:
+        raise ValueError(f"Expected {b} detrend modes, got {len(modes_in)}")
+    exec_modes = []
+    for i, m in enumerate(modes_in):
+        nm = _normalize_detrend_mode(m)
+        if nm == "planar":
+            exec_modes.append("cpp_border_eval")
+        elif nm == "border_planar":
+            oi = o[i, 0]
+            scale = oi.abs().max().clamp_min(1e-4)
+            exec_modes.append("cpp_border_eval" if float(oi.mean().abs()) < 1e-3 * float(scale) else "border_planar")
+        else:
+            exec_modes.append(nm)
+    aligned = apply_mod3d_detrend(p, exec_modes)
+    return aligned[:, 0] if squeeze_ch else aligned
+
+
 def _apply_oblique_line_mask(vm: torch.Tensor, rng_np) -> None:
     nx, ny = vm.shape
     theta = float(_rand_uniform(rng_np, 0.25, math.pi - 0.25, (1,), vm.device, vm.dtype).item())
