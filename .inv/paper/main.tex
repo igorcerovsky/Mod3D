@@ -1,0 +1,322 @@
+\ifdefined\XeTeXversion\else\pdfoutput=1\fi
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage[T1]{fontenc}
+\ifdefined\XeTeXversion\else\usepackage[utf8]{inputenc}\fi
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{xcolor}
+\usepackage{enumitem}
+\usepackage[authoryear,round]{natbib}
+\usepackage[colorlinks=true,linkcolor=blue!55!black,citecolor=blue!55!black,urlcolor=blue!55!black]{hyperref}
+
+\input{macros_results}
+
+\title{\textbf{Transformers Are All You Need for Potential Field Inversion}}
+
+\author{
+  Igor Cerovsk\'y\thanks{Independent Researcher; developer of Mod3D and Inv3D. E-mail: \href{mailto:igor.cerovsky@gmail.com}{\texttt{igor.cerovsky@gmail.com}}. Source code and reproducibility scripts: \url{https://github.com/igorcerovsky/Mod3D/tree/main/.inv}; interactive WebGL2 modeling environment: \url{https://igorcerovsky.github.io/Mod3D/}.}
+}
+
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Three-dimensional potential field inversion is fundamentally ill-posed due to analytical non-uniqueness (Gauss's theorem) and rapid geometric sensitivity decay with depth. Classical $L_2$ Tikhonov solvers mitigate this non-uniqueness by introducing smooth minimum-norm stabilizers that blur sharp geological boundaries and concentrate anomalous mass unphysically close to the observation surface. Conversely, iteratively reweighted focusing algorithms sharpen compact targets but remain computationally expensive and sensitive to regularization hyperparameters, while existing 3D convolutional neural networks (CNNs) possess strictly local receptive fields that struggle to unify high-wavenumber anomaly edges with broad regional flanks. We introduce \texttt{Swin3D v9.1}, a physics-informed hierarchical 3D Shifted-Window (Swin) and axial Transformer designed for 3D gravity inversion over undulating topography, extended here from the author's doctoral research (\texttt{Inv3D}) into the open \texttt{Mod3D} modeling engine. The network pairs a 19-channel geophysical derivative stem and domain-scale conditioning MLP with 3D Swin blocks augmented by analytical Green's-function vertical attention biases, 7-class lithology prototype cross-attention, and two embedded coarse-to-fine differential forward/adjoint residual refinement stages. Simultaneously predicting a 3D density contrast volume $\Delta\hat{\rho}$ and calibrated heteroscedastic aleatoric uncertainty $\hat{\sigma}_\rho$, \texttt{Swin3D v9.1} (\valVNineOneParams{} parameters) achieves a composite Smooth 3D IoU of \valCompIoU{}, a vertical mass-centroid error $|\Delta z|$ of \valCompDz{}\,m, a 3D SSIM of \valCompSSIM{}, and \valCompMisfit{}\% relative gravity misfit across \valNBucketTotal{} stratified synthetic benchmarks spanning flat, terrain-draped, multi-aspect, and regionally detrended surveys. On canonical discrete ore, dipping dyke, bipolar, and sedimentary basin models, \texttt{Swin3D v9.1} outperforms Tikhonov $L_2$ (\valCanonMeanSwinIoU{} vs.\ \valCanonMeanTikIoU{} mean IoU) and Portniaguine--Zhdanov focusing IRLS (\valCanonMeanFocIoU{}) while running in \valTimeOnnxCpuMs{}\,ms on CPU (\valSpeedupOnnxVsFoc{} speedup) and \valTimeCoremlMs{}\,ms via ONNX CoreML Neural Engine execution (\valSpeedupCoremlVsFoc{} speedup). Furthermore, we couple $\Delta\hat{\rho}$ and $1/\hat{\sigma}_\rho^2$ with a deterministic C++ focusing IRLS solver, halving iterative runtime while driving mean data misfit down to \valCanonMeanHybMisfit{}\%. Despite solving 3D volumetric inversion, the compact parameterization enabled the entire development, FP32 training, and benchmarking pipeline to execute on a single consumer MacBook Air (Apple~M4, 10-core CPU, 32\,GB unified memory) without data-center GPU clusters. This work is presented explicitly as a theoretical and synthetic study because calibrated field gravity datasets were inaccessible to the author; magnetic and gradiometric inversions follow the same linear Green's formulation and represent natural extensions beyond the present scope.
+\end{abstract}
+
+\noindent\textbf{Keywords:} gravity inversion, Swin Transformer, potential fields, focusing regularization, physics-informed deep learning, aleatoric uncertainty.
+
+%======================================================================
+\section{Introduction}
+%======================================================================
+
+Inverting surface potential field observations to recover three-dimensional subsurface physical property distributions lies at the heart of mineral exploration, basin characterization, tectonic imaging, and geotechnical void detection \citep{blakely1995,zhdanov2002}. Yet potential field inversion is famously non-unique and ill-posed: by Gauss's theorem and Green's equivalent layer principle, infinitely many distinct 3D density contrast distributions $\Delta\rho(\mathbf{r})$ reproduce a finite set of noisy surface vertical gravity observations $\Delta g_z(\mathbf{x})$ within measurement precision \citep{blakely1995,pohanka1988}. Moreover, because the gravitational kernel decays inversely with squared distance ($1/r^2$), unconstrained minimum-norm solutions inherently compress mass toward the shallowest model cells immediately beneath the survey stations \citep{li1998}. Although magnetic total-field ($\Delta T \mapsto \chi$) and full-tensor gravity gradiometry inversions suffer from closely analogous algebraic non-uniqueness and dipole/tensor attenuation \citep{li1996,portniaguine2002}, the present study restricts its scope strictly to vertical gravity inversion ($\Delta g_z \mapsto \Delta\rho$), noting that the architectural and mathematical framework extends directly to any linear potential field Green's operator.
+
+Classical geophysical practice overcomes non-uniqueness through variational Tikhonov regularization \citep{tikhonov1977}, balancing data misfit against a stabilizing model functional scaled by explicit depth weighting $(z + z_0)^{-\beta/2}$ \citep{li1998} or harmonic smoothing constraints \citep{pohanka1998}. Smooth quadratic stabilizers ($L_2$), however, inevitably smear sharp geological contacts into broad gradational halos and underestimate true peak density contrasts. Compactness and image-focusing stabilizers---pioneered by minimum-support \citep{last1983} and minimum gradient support (MGS) functionals \citep{portniaguine1999,zhdanov2002}---restore blocky boundaries and steep dips through Iteratively Reweighted Least Squares (IRLS), as implemented in research solvers such as \texttt{Inv3D} \citep{cerovsky_inv3d}. Nevertheless, IRLS remains sensitivity-driven at each linearized step: it can stall in shallow local minima when opposite-sign bodies interfere, demands careful cooling of focusing thresholds and damping parameters per survey, and consumes tens of seconds to minutes per 3D grid due to repeated forward and adjoint PDE/integral sweeps.
+
+Deep learning promises amortized sub-second 3D inversion by learning geological priors across vast structural ensembles \citep{huang2021deep,yang2022gravity}. Early 3D convolutional architectures (e.g., V-Net / U-Net style volumetric decoders), however, inherit an inductive bias toward spatially stationary local kernels. In potential field physics, this bias creates a scale conflict: shallow contacts and high-gradient dyke edges produce narrow lateral signatures, whereas deep basements and large basins radiate smooth long-wavelength gravity skirts extending across the entire survey aperture. Without global receptive fields capable of linking distant horizontal skirts to specific depth horizons via the $1/r^2$ dispersion relation, purely convolutional encoders systematically misplace deep mass centroids and struggle when topographic drape, partial survey masks, anisotropic voxel spacing, or regional plane detrending alter the surface expression.
+
+Attention-based Transformers \citep{vaswani2017} and Vision Transformers \citep{dosovitskiy2021} replace stationary local filters with content-dependent pairwise token interactions across extended receptive fields. To overcome the quadratic $O(N^2)$ complexity of dense global self-attention on high-resolution 3D volumes, the Shifted-Window (Swin) Transformer \citep{liu2021swin} partitions space into non-overlapping local windows and alternates window shifts between consecutive layers to establish cross-window global connectivity in linear time with voxel count. Related 3D hierarchical Transformers and global graph/attention weather models have recently transformed volumetric geophysical forecasting \citep{bi2023pangu,lam2023graphcast,nguyen2023climax}, and physics-constrained 3D Swin variants have begun appearing in gravity inversion \citep{yu2025swin}. Whereas \citet{yu2025swin} adapt a 3D Swin U-Net for fixed-grid gravity inversion by injecting prior-gradient constraints solely through the training loss, our \texttt{Swin3D v9.1} embeds analytical physics directly into the forward computation itself---via a 19-channel derivative stem, explicit $1/d^2$ depth lifting, Green's vertical attention biases, and two closed-loop differential forward/adjoint residual stages (\texttt{Odd\-Pyramid\-Gravity}). Beyond loss-only Swin architectures, \texttt{Swin3D v9.1} conditions a single compact model continuously across undulating topographic drapes, variable survey clearances, station masks, anisotropic aspect ratios, and border-planar regional detrending; resolves bipolar targets through 7-class lithology prototype cross-attention; and outputs calibrated $\beta$-NLL aleatoric uncertainty $\hat{\sigma}_\rho$ to warm-start deterministic C++ focusing IRLS closure. Extending the author's prior doctoral research on 3D potential field focusing inversion (\texttt{Inv3D}; \citealp{cerovsky_inv3d}) using modern computer-vision Transformer principles inside the open-source \texttt{Mod3D} platform \citep{cerovsky_mod3d}, we show how this tight physics--attention coupling substantially advances depth localization, sharp structural IoU, and runtime robustness.
+
+We state candidly at the outset that calibrated proprietary or benchmark \emph{field} gravity datasets were not accessible to the author during this study. Consequently, this manuscript is framed rigorously as a \textbf{theoretical and synthetic methodological investigation}: all quantitative accuracy, ablation, noise, clearance, and runtime benchmarks are evaluated on physically exact analytical gravity responses and procedural 3D geological ensembles, accompanied by a concrete hybrid IRLS and survey-conditioning protocol to prepare the method for future field validation. Our primary contributions are summarized as follows:
+
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.35em]
+  \item \textbf{Physics-Coupled 3D Swin Architecture (\texttt{Swin3D v9.1}):} We introduce the \valVNineOneParams{}-parameter \texttt{Swin3D v9.1} model (\texttt{Potential\-Field\-Transformer\-3DV9}), integrating a 19-channel potential-field derivative stem, a 9-D survey/scale conditioning MLP, a 2D-to-3D $1/d^2$ depth lifter, 3D Swin+axial blocks equipped with analytical Green's vertical attention biases (\texttt{Greens\-Vertical\-Bias}), 7-class lithology prototype cross-attention, and two closed-loop coarse-to-fine differential forward/adjoint residual stages (\texttt{Odd\-Pyramid\-Gravity}).
+  \item \textbf{Lithology-Coherent Loss \& Calibrated Uncertainty:} Using a heteroscedastic $\beta$-NLL formulation \citep{kendall2017,seitzer2022betanll} alongside Smooth 3D IoU, Zhdanov MS/MGS compactness terms, Euclidean distance interior losses, forward data misfit, and \texttt{v9.1} lithology-density coherence constraints, the model predicts calibrated voxel-wise aleatoric uncertainties $\hat{\sigma}_\rho$ suitable for selective risk screening and inverse-variance prior weighting.
+  \item \textbf{Systematic Synthetic \& Classical Benchmarking:} Across a \valNBucketTotal{}-scene multi-regime test suite (ground, hard-detrended, airborne relief drape, and multi-aspect anisotropy), \texttt{v3}--\texttt{v9.1} architectural ablations, four canonical models compared against classical Tikhonov $L_2$ and Focusing IRLS solvers, and controlled noise/depth/clearance sweeps, we quantify exact strengths and failure modes (notably elevated sensitivity to spatially correlated surface noise).
+  \item \textbf{Hybrid Focusing Refinement \& Real-Time C++/ONNX Integration:} By seeding a pure C++ \texttt{FocusingSolver} with the neural density $\Delta\hat{\rho}$ weighted by $1/\hat{\sigma}_\rho^2$, hybrid refinement cuts IRLS wall time nearly in half while tightening gravity misfit to \valCanonMeanHybMisfit{}\%. The standalone neural model exports cleanly to ONNX Runtime and CoreML Neural Engine execution with sub-second inference (\valSpeedupOnnxVsFoc{}--\valSpeedupCoremlVsFoc{} speedup over classical IRLS).
+\end{enumerate}
+
+The remainder of this paper is organized as follows. Section~\ref{sec:method} derives the forward gravity physics, the \texttt{Swin3D v9.1} architecture, the compound loss, and the procedural synthetic data generator. Section~\ref{sec:experiments} presents all quantitative results across the multi-regime suite, ablations, classical solver comparisons, noise/clearance/depth sweeps, and uncertainty calibration. Section~\ref{sec:hybrid_field} analyzes the uncertainty-weighted hybrid IRLS pipeline, ONNX/CoreML deployment performance, and the practical conditioning protocol for future field data integration. Section~\ref{sec:discussion} discusses physical interpretability, scaling, and key limitations, and Section~\ref{sec:conclusion} concludes with full code availability and one-command reproducibility details.
+
+%======================================================================
+\section{Methodology}
+\label{sec:method}
+%======================================================================
+
+\subsection{Forward Gravity Physics and Discretized Inverse Problem}
+
+Consider a three-dimensional subsurface model domain $\Omega \subset \mathbb{R}^3$ discretized into $N_m = N_z \times N_y \times N_x$ right rectangular prisms of uniform horizontal spacing $(\Delta x, \Delta y)$ and vertical thickness $\Delta z$ (canonically $N_x = N_y = 64$, $N_z = 32$, $\Delta x = \Delta y = \Delta z = 50$\,m, spanning $3.2 \times 3.2 \times 1.6\;\text{km}$, with continuous scale conditioning supporting anisotropic cells and varied apertures). Let $\mathbf{m} = \Delta\boldsymbol{\rho} \in \mathbb{R}^{N_m}$ denote the anomalous density contrast vector in $\text{g/cm}^3$ relative to a homogeneous reference background ($\rho_{\mathrm{bg}} = 2.67\;\text{g/cm}^3$ for crustal terrain; air cells above undulating ground topography $z_{\mathrm{terr}}(x,y)$ carry mask contrast $-2.67\;\text{g/cm}^3$ zeroed out prior to gravity integration, and water layers $-1.67\;\text{g/cm}^3$ when present).
+
+Measured on a topographic drape surface $z_{\mathrm{obs}}(x_i, y_i) = z_{\mathrm{terr}}(x_i, y_i) - h$ located at clearance height $h > 0$ above local ground (with $+z$ oriented downward), the vertical gravitational anomaly vector $\mathbf{d} = \Delta\mathbf{g}_z \in \mathbb{R}^{N_d}$ ($N_d = 64 \times 64 = 4{,}096$ stations) in $\text{mGal}$ satisfies the linear forward system:
+\begin{equation}
+\begin{aligned}
+  \mathbf{d} &= \mathbf{G}\mathbf{m} + \boldsymbol{\epsilon}, \\
+  G_{ij} &= \gamma_{\mathrm{mGal}} \sum_{u,v,w \in \{1,2\}} (-1)^{u+v+w}
+  \left[
+    \tilde{x}_u \ln(\tilde{y}_v + r_{uvw}) + \tilde{y}_v \ln(\tilde{x}_u + r_{uvw})
+    - \tilde{z}_w \arctan\!\left(\frac{\tilde{x}_u \tilde{y}_v}{\tilde{z}_w r_{uvw}}\right)
+  \right],
+\end{aligned}
+  \label{eq:forward_nagy}
+\end{equation}
+where $\gamma_{\mathrm{mGal}} = 6.6743 \times 10^{-3}\;\text{mGal}\cdot\text{cm}^3/(\text{g}\cdot\text{m})$ is Newton's gravitational constant in exploration units, $(\tilde{x}_u, \tilde{y}_v, \tilde{z}_w)$ denote the signed Cartesian distances from observation station $i$ to the eight corners of prism $j$, $r_{uvw} = (\tilde{x}_u^2 + \tilde{y}_v^2 + \tilde{z}_w^2)^{1/2}$, and $\boldsymbol{\epsilon}$ represents measurement noise \citep{nagy1966,blakely1995}. For terrain-draped observations with vertical relief bounded within $25\%$ of total model thickness, both our differentiable neural physics stages (\texttt{OddPyramidGravity}) and classical FFT solver accelerate~\eqref{eq:forward_nagy} on horizontal layers via 2D FFT Toeplitz convolution over exact lateral prism kernels, interpolating across discrete observation elevation levels for rapid terrain-draped forward modeling $\mathbf{G}\mathbf{m}$ and exact analytical conjugate-kernel adjoint evaluations $\mathbf{G}^T \mathbf{r}$ (verified in Section~\ref{sec:classical} via dot-product test $|\langle\mathbf{G}\mathbf{m},\mathbf{r}\rangle - \langle\mathbf{m},\mathbf{G}^T\mathbf{r}\rangle|/|\langle\mathbf{G}\mathbf{m},\mathbf{r}\rangle| = 1.08 \times 10^{-7}$). Note that in global-scale or large-aperture \texttt{Mod3D} applications where Earth curvature becomes significant, planar vertical-prism kernels generalize seamlessly to spherical polyhedral surface integrals via the vertical-facet invariant formulation of \citet{pohanka1988,pohanka1998}, though neural training in this work stays within the flat-Earth local/regional regime.
+
+In realistic gravity surveys, a regional linear field $a_0 + a_1 x + a_2 y$ or smooth background trend often obscures local target anomalies. To handle regional contamination consistently, we define a \texttt{BorderPlanar} detrending operator $\mathcal{P}_{\mathrm{det}}$ that fits a least-squares linear plane to the perimeter ring (width 4 stations) of $\Delta g_z$ and projects out the same boundary-fitted plane during both input conditioning and physics residual evaluation. More generally, our C++ focusing solver exposes a 4-mode \texttt{BackgroundBasis} spanning DC offset, planar tilts, and quadratic trend basis vectors.
+
+\subsection{\texttt{Swin3D v9.1} Architecture}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig1_architecture.pdf}
+  \caption{End-to-end schematic of \texttt{PotentialFieldTransformer3DV9} (\texttt{Swin3D v9.1} Base, \valVNineOneParamsExact{} parameters) and optional C++ hybrid focusing refinement. Physics knowledge enters at four points: the 19-channel derivative stem, $1/d^2$ depth lifting, analytical Green's vertical attention bias $B_z$, and two closed-loop frozen differential forward/adjoint residual stages (\texttt{OddPyramidGravity}).}
+  \label{fig:arch}
+\end{figure*}
+
+Figure~\ref{fig:arch} illustrates the complete \texttt{Swin3D v9.1} (\texttt{Potential\-Field\-Transformer\-3DV9}) pipeline. Rather than treating gravity inversion as a generic 2D-to-3D image translation task, the architecture weaves analytical potential-field operators directly into a multi-scale Transformer backbone:
+
+\paragraph{Multi-Channel Survey Conditioning and Physics Stem.}
+The network accepts a 6-channel $(B, 6, 64, 64)$ surface tensor encoding: (1) observed or border-detrended $\Delta g_z$ $[\text{mGal}]$, (2) terrain elevation relative to the domain datum, (3) valid observation station mask $\in [0,1]$, (4) log cell aspect ratio $\ln(\Delta z / \sqrt{\Delta x \Delta y})$, (5) normalized sensor clearance $h / 50\;\text{m}$, and (6) detrending indicator flag ($\text{dt}\in\{0,1\}$). Concurrently, a 9-dimensional continuous metadata vector describing domain physical extent, voxel spacing, aspect, mean clearance, and topographic relief feeds a 2-layer conditioning MLP (\texttt{scale\_mlp}) whose affine FiLM-style scale/shift embeddings modulate subsequent 2D and 3D stages. A fixed/learned 19-channel potential-field stem transforms $\Delta g_z$ into signed logarithmic compression ($\operatorname{asinh}$), multi-scale low-pass regional/residual bands, an FFT vertical-derivative proxy $g_{zz}$, Euler-deconvolution structural depth indicators, and horizontal structure-tensor edge descriptors, providing translation-equivariant cues across variable anomaly amplitudes.
+
+\paragraph{2D Encoder, $1/d^2$ Depth Lifter, and 3D Swin + Axial Backbone.}
+A 2D U-Net + Global Self-Attention encoder compresses spatial features from $64 \times 64$ (\texttt{enc0}) to $16 \times 16$ (\texttt{enc2}), preserving multi-resolution skip tensors (\texttt{f0}, \texttt{f1}). A learned 2D-to-3D Depth Lifter expands \texttt{enc2} across 8 coarse depth slabs into a $(8 \times 16 \times 16 \times 128)$ volumetric token grid, explicitly conditioned by analytical vertical distance-decay embeddings ($\propto 1/d^2$ sensitivity relative to draped terrain depth $d_{\mathrm{surf}}$). Six alternating 3D Swin Transformer blocks (\texttt{W-MSA} and shifted \texttt{SW-MSA}; \citealp{liu2021swin}) interleaved with separable axial global attention layers (\texttt{AxialGlobalBlock3D}) then exchange information both locally across 3D contacts and globally across depth and lateral boundaries. Crucially, every vertical self-attention logit receives a physics-informed additive bias (\texttt{GreensVerticalBias}, $B_z$) parameterized by pairwise voxel depth offsets and horizontal separation, encoding the known vertical coupling profile of Newtonian potential fields.
+
+\paragraph{7-Class Lithology Prototype Cross-Attention.}
+To capture geological sparsity and multimodal density clustering without sacrificing continuous contrast freedom, volumetric tokens cross-attend against $21$ learnable lithological prototypes partitioned evenly across 7 canonical subsurface regimes: background host rock ($\Delta\rho = 0$), air above topography ($-2.67\;\text{g/cm}^3$), water ($-1.67$), light/evaporite/cavity zones ($[-1.55, -0.85]$), sedimentary infill ($[-0.80, -0.10]$), mafic/intermediate intrusions ($[0.15, 0.75]$), and high-density ore bodies ($[0.80, 1.85]\;\text{g/cm}^3$).
+
+\paragraph{Two-Stage Coarse-to-Fine Physics Residual Refinement.}
+A core design insight discovered across architectural iterations (\texttt{v6}--\texttt{v9.1}) is decoupling structural Transformer reasoning from \emph{unified} full-resolution volumetric decoding while embedding closed-loop physics feedback:
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.25em]
+  \item \emph{Stage-1 Residual:} A coarse $(16\times 32\times 32)$ decoder (\texttt{SepSubpixelUp3D} + \texttt{DepthConditionedSkip} receiving \texttt{f1}) predicts preliminary occupancy and coarse density $\hat{\rho}_1$. A frozen differentiable half-resolution gravity operator (\texttt{OddPyramidGravity}) computes the residual $\mathbf{r}_{\mathrm{mid}} = \mathbf{d}_{\mathrm{obs}} - \mathcal{P}_{\mathrm{det}}^{\mathrm{dt}}\tilde{\mathbf{G}}_1\hat{\rho}_1$ (equipped with a learnable boundary compensation projector \texttt{BorderProjectorConv}) and feeds back the adjoint sensitivity back-projection $\tilde{\mathbf{G}}_1^T \mathbf{r}_{\mathrm{mid}}$.
+  \item \emph{Stage-2 Unified Decoding \& Physics Back-Projection:} Unlike earlier 3-tier slab-split decoders (\texttt{v7}, \texttt{v8}), \texttt{v9.1} decodes directly in a unified $(32\times 64\times 64)$ grid using \texttt{f0} skips to obtain $\rho_{\mathrm{init}}$, evaluates full-resolution gravity residual $\mathbf{r}_{64} = \mathbf{d}_{\mathrm{obs}} - \mathcal{P}_{\mathrm{det}}^{\mathrm{dt}}\tilde{\mathbf{G}}\rho_{\mathrm{init}}$, and injects sensitivity-normalized, depth-amplified adjoint gradients modulated by a 2D surface residual gate:
+  \begin{equation}
+    \Delta_{\mathrm{phys}} = D_1^{-1}\tilde{\mathbf{G}}^T(\mathbf{r}_{64}) \cdot w_{\mathrm{bp}}(z), \qquad
+    w_{\mathrm{bp}}(z) = 1 + \operatorname{softplus}(\beta_{\mathrm{bp}})\,d_{\mathrm{surf}}(z)\bigl(1 + 2\,d_{\mathrm{surf}}(z)\bigr),
+    \label{eq:bp_weight}
+  \end{equation}
+  where $D_1$ denotes diagonal column-sum sensitivity normalization and $\beta_{\mathrm{bp}}$ is learned. Final \texttt{SepConv25DBlock} refinement yields the predicted density volume $\Delta\hat{\rho}$ bounded gently within occupancy-gated lithology mixture bands alongside an 8-cue Gaussian heteroscedastic log-variance head predicting voxel-wise standard deviation $\hat{\sigma}_\rho = \exp(\hat{s}/2)$.
+\end{enumerate}
+
+The base configuration evaluated throughout this paper contains \valVNineOneParamsExact{} (\valVNineOneParams{}) trainable parameters; modular channel presets additionally define \texttt{slim} (\valVNineOneSlimParams{}) and \texttt{heavy} (\valVNineOneHeavyParams{}) variants.
+
+\subsection{Compound Physics-Informed Loss and Uncertainty Objective}
+
+Training an amortized 3D gravity inverter solely with voxel-wise $L_2$ MSE collapses predictions toward overly smooth low-amplitude blobs. Using the deep-supervision objective~\eqref{eq:loss_total}, we optimize a physics-informed compound loss combining structural geometry, lithology semantics, forward data consistency, deep intermediate supervision, and calibrated uncertainty~\eqref{eq:betanll}:
+\begin{equation}
+  \mathcal{L}_{\mathrm{total}} = \mathcal{L}_{\mathrm{struct}}(\hat{\rho}, \rho)
+  + \mathcal{L}_{\mathrm{lith}}(\hat{\mathbf{p}}_{\mathrm{cls}}, \hat{\rho}, \mathbf{c}, \rho)
+  + \mathcal{L}_{\mathrm{deep}}(\hat{\rho}_1, \rho_{\mathrm{init}}, \rho)
+  + \mathcal{L}_{\mathrm{data}}(\tilde{\mathbf{G}}\hat{\rho}, \mathbf{d}_{\mathrm{obs}})
+  + \mathcal{L}_{\beta\text{-NLL}}(\hat{\rho}, \hat{s}, \rho).
+  \label{eq:loss_total}
+\end{equation}
+Specifically:
+\begin{itemize}[leftmargin=1.4em,itemsep=0.25em]
+  \item $\mathcal{L}_{\mathrm{struct}}$ aggregates global weighted $L_1$, foreground active-zone RMSE, body-normalized relative $L_1$, opposite-sign halo penalties outside active targets, multi-threshold Smooth 3D IoU, 3D Sobel gradient edge matching, band consistency, amplitude conservation, Zhdanov compactness terms (MS and MGS), and interior Euclidean distance transform (EDT) weighting to prevent hollow centers in large basins.
+  \item $\mathcal{L}_{\mathrm{lith}}$ applies cross-entropy + Dice loss against ground-truth 7-class lithology maps $\mathbf{c}$, together with \texttt{v9.1}'s \emph{lithology coherence penalty} tying continuous predicted $\Delta\hat{\rho}$ softly toward the expected class probability density centroids so predicted amplitudes remain physically plausible inside multi-body scenes.
+  \item $\mathcal{L}_{\mathrm{deep}}$ enforces intermediate reconstruction quality on both Stage-1 coarse density $\hat{\rho}_1$ and Stage-2 pre-refinement $\rho_{\mathrm{init}}$.
+  \item $\mathcal{L}_{\mathrm{data}}$ penalizes forward-simulated gravity residual relative to observed terrain-draped data (applying border detrend projection $\mathcal{P}_{\mathrm{det}}$ identically whenever $\text{dt}=1$), ensuring predictions honor Gauss's integral conservation.
+  \item $\mathcal{L}_{\beta\text{-NLL}}$ adopts the $\beta$-NLL Gaussian heteroscedastic objective of \citet{seitzer2022betanll} building on \citet{kendall2017}:
+  \begin{equation}
+    \mathcal{L}_{\beta\text{-NLL}} = \frac{1}{|\Omega_{\mathrm{sub}}|} \sum_{j \in \Omega_{\mathrm{sub}}} \operatorname{sg}\!\left(\hat{\sigma}_{\rho,j}^{2\beta}\right) \left[\frac{(\hat{\rho}_j - \rho_j)^2}{2\hat{\sigma}_{\rho,j}^2} + \frac{1}{2}\ln\hat{\sigma}_{\rho,j}^2\right], \qquad \beta = 0.5,
+    \label{eq:betanll}
+  \end{equation}
+  where $\operatorname{sg}(\cdot)$ stops gradients through the variance weighting factor so high-error anomaly boundaries cannot silently down-weight mean density supervision. Figure~\ref{fig:train_abl}(b) displays the empirical share of each objective component in validation at best epoch~\valVNineOneEp{}.
+\end{itemize}
+
+\subsection{Procedural 3D Geological Synthesis and Classical Comparison Solvers}
+\label{sec:classical}
+
+To train and test generalization without relying on small static datasets, an on-the-fly procedural generator synthesizes 3D lithology and density volumes inside active terrain subvolumes ($\le 25\%$ relief fraction). Random scenes draw 1--4 interacting geological archetypes from compact blocks, elliptical lenses, dipping mafic dykes, subvertical stocks, buried basins, cavities, folded undulating strata, and nested core-halo complexes across the 7 lithology density ranges. Survey geometry spans flat ground clearance ($h=0.35$\,m), elevated airborne relief drapes ($h$ up to $160$\,m), missing boundary station masks, anisotropic cell aspect ratios, and both raw and \texttt{BorderPlanar}-detrended regional modes, augmented during training by exact dihedral $D_4$ reflections/rotations \citep{cerovsky_mod3d}. All model development, on-the-fly procedural simulation, and FP32 PyTorch MPS training execute on a single fanless consumer MacBook Air (Apple~M4, 10-core CPU, 32\,GB unified memory) using decoupled AdamW \citep{loshchilov2019adamw}, cosine learning-rate annealing, and an exponential moving average (EMA) weight shadow; the evaluated checkpoint represents epoch \valVNineOneEp{} from the multi-regime hard curriculum run.
+
+For rigorous benchmarking on identical $64\times 64\times 32$ draped operators, we implement an exact Python/PyTorch FFT mirror of our C++ \texttt{FocusingSolver} minimizing the regularized Zhdanov objective \citep{tikhonov1977,last1983,li1998,portniaguine1999,zhdanov2002}:
+\begin{equation}
+  \Phi(\mathbf{m}) = \left\|\mathbf{W}_d (\mathbf{G}\mathbf{m} - \mathbf{d}_{\mathrm{obs}})\right\|_2^2 + \alpha \left\|\mathbf{W}_z \mathbf{W}_e(\mathbf{m}) (\mathbf{m} - \mathbf{m}_0)\right\|_2^2 + \gamma_{\mathrm{MGS}} \sum_{j} \frac{\|\nabla m_j\|_2^2}{\|\nabla m_j\|_2^2 + \beta^2},
+  \label{eq:focusing_obj}
+\end{equation}
+solved via conjugate-gradient normal equations with Morozov/discrepancy cooling until $\chi^2_{\mathrm{red}} \approx 1$ (up to 6 damped linear iterations for Tikhonov $L_2$ with $\mathbf{W}_e = \mathbf{I}$, and 12 reweighted iterations for Focusing IRLS using sensitivity exponent $0.75$ and MS+MGS focusing weights). When detrending is active, both classical solvers subtract border-planar trends consistently within the forward/residual operator. In \textbf{Hybrid \texttt{v9.1}+Focus} mode (Section~\ref{sec:hybrid_field}), we warm-start~\eqref{eq:focusing_obj} with $\mathbf{m}_0 = \Delta\hat{\rho}_{\mathrm{Swin}}$ and modulate local prior stiffness inversely with predicted neural variance $\hat{\sigma}_{\rho,j}^2$, locking well-constrained voxels while allowing IRLS to sharpen or adjust uncertain regions against data residuals.
+
+%======================================================================
+\section{Synthetic Experiments}
+\label{sec:experiments}
+%======================================================================
+
+\subsection{Evaluation Protocol and Quantitative Metrics}
+
+Unless otherwise specified, all quantitative results are computed strictly on CPU from seeded deterministic synthetic realizations excluded from model parameter updates. Following volumetric and geophysical conventions \citep{wang2004ssim,zhdanov2002}, we track:
+\begin{itemize}[leftmargin=1.4em,itemsep=0.25em]
+  \item \textbf{Smooth 3D IoU} ($\uparrow$): Soft intersection-over-union of absolute active contrast $|\Delta\rho|$ normalized across active thresholds, measuring 3D geometric support fidelity without brittle single-cutoff artifacts.
+  \item \textbf{Global RMSE \& FG-RMSE} ($\downarrow$, $[\text{g/cm}^3]$): Root-mean-square density error over all subsurface rock voxels (RMSE) and restricted to ground-truth anomalous target bodies (FG-RMSE), eliminating background sparsity bias.
+  \item \textbf{3D SSIM \& $\text{SSIM}_{d_3}$} ($\uparrow$): Volumetric structural similarity index \citep{wang2004ssim} computed directly over the full 3D volume ($\text{SSIM}_{\mathrm{3D}}$) and with depth-weighted amplitude compensation ($\text{SSIM}_{d_3}$), directly penalizing shallow-bias distortion in deep zones.
+  \item \textbf{Vertical Centroid Error $|\Delta z|$} ($\downarrow$, $[\text{m}]$): Absolute vertical difference between true and predicted mass-weighted $|\Delta\rho|$ centroids beneath surface topography.
+  \item \textbf{Amplitude Ratio} ($\to 1$): Ratio of predicted vs.\ true 98th-percentile active anomaly magnitude ($\mathrm{Amp.}$), diagnosing Tikhonov-like amplitude underestimation.
+  \item \textbf{Relative Gravity Misfit \& $\chi^2_{\mathrm{red}}$}: Relative surface misfit $\|\mathbf{r}\|_2 / \|\mathbf{d}_{\mathrm{eff}}\|_2$ [\%] evaluated under the exact forward and detrending operator, plus reduced chi-squared $\chi^2_{\mathrm{red}} = \frac{1}{N_d}\|\mathbf{r} / \sigma_d\|_2^2$ when true noise standard deviation $\sigma_d > 0$ is known.
+  \item \textbf{Aleatoric Calibration Metrics}: Rank correlation $\rho_{\mathrm{Spearman}}(\hat{\sigma}_\rho, |\hat{\rho}-\rho|)$ over active/boundary zones, empirical $1$-$\sigma$ coverage percentage within $|\hat{\rho}-\rho| \le \hat{\sigma}_\rho$ (ideal Gaussian target $68.3\%$), Area Under the Risk--Coverage Curve ($\mathrm{AURC} \downarrow$) when retaining lowest-$\hat{\sigma}_\rho$ voxels progressively from $0\%$ to $100\%$, and boundary-to-interior $\hat{\sigma}_\rho$/error ratio.
+\end{itemize}
+
+\subsection{Multi-Regime Validation and Architectural Ablation}
+
+\input{table_v91_buckets}
+
+Table~\ref{tab:v91_buckets} summarizes \texttt{Swin3D v9.1} performance across our four stratified evaluation regimes totaling $N=\valNBucketTotal{}$ scenes. The network achieves a weighted composite Smooth 3D IoU of \valCompIoU{}, $|\Delta z|$ of \valCompDz{}\,m (sub-voxel relative to the 50\,m grid spacing), 3D SSIM of \valCompSSIM{} ($\text{SSIM}_{d_3} = \valCompSSIMd{}$), amplitude recovery of \valCompAmp{}, FG-RMSE of \valCompFGRMSE{}\,g/cm$^3$, global RMSE of \valCompRMSE{}\,g/cm$^3$, opposite-sign spurious halo energy of $\valCompHalo{}\times 10^{-4}$, and \valCompMisfit{}\% gravity misfit. Across individual buckets, \texttt{v9.1} excels even on the most challenging \emph{Hard-Large Detrended} regime (IoU \valHLIoU{}, $|\Delta z| = \valHLDz{}$\,m), where multiple dense/light bodies interact under border-planar regional removal. Under \emph{Airborne Relief Drape} ($h \in [40, 160]$\,m over up to 25\% topography) and \emph{Multi-Aspect} anisotropy, geometric fidelity holds at \valAirIoU{} and \valMAIoU{} IoU, with modest depth-centroid expansion (\valAirDz{}\,m and \valMADz{}\,m) reflecting the physically unavoidable smoothing imposed by higher clearance.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig2_training_ablation.pdf}
+  \caption{Training dynamics and controlled architectural ablation. (a) Validation IoU, total loss, and vertical centroid error $|\Delta z|$ over multi-regime training of \texttt{Swin3D v9.1} up to best checkpoint epoch~\valVNineOneEp{}. (b) Relative shares of the compound validation loss components at epoch~\valVNineOneEp{}. (c) Controlled evaluation on the identical $N=\valNAblBucket{}$ 4-bucket validation suite tracking iterative advances from \texttt{v6} through \texttt{v9.1}.}
+  \label{fig:train_abl}
+\end{figure*}
+
+\input{table_ablation}
+
+To isolate what drives \texttt{v9.1}'s accuracy, Table~\ref{tab:ablation} and Figure~\ref{fig:train_abl}(c) evaluate chronological generations across identical random seeds without post-hoc tuning. On the realistic 4-regime suite (Panel~A, $N=\valNAblBucket{}$):
+\begin{itemize}[leftmargin=1.4em,itemsep=0.25em]
+  \item Introducing \texttt{GreensVerticalBias} and Smooth 3D IoU (\texttt{v6} $\to$ \texttt{v6.1}) increases IoU from \valAblVSixIoU{} to \valAblVSixOneIoU{} while trimming gravity misfit from $11.85\%$ to $9.92\%$.
+  \item Adding 6-channel survey conditioning with a 3-tier slab-split decoder (\texttt{v7}, \texttt{v8}) lowers misfit further to $7.75\%$ and improves $|\Delta z|$ to \valAblVSevenDz{}--\valAblVEightDz{}\,m, yet IoU plateaus at \valAblVSevenIoU{}--\valAblVEightIoU{} because artificial horizontal slab boundaries impede smooth vertical continuity across dipping interfaces.
+  \item Unifying Stage-2 decoding into a full $(32\times 64\times 64)$ grid with depth-amplified sensitivity feedback and lithology-density coherence (\texttt{v9.1}) unlocks a sharp leap: IoU jumps by $+0.052$ to \valAblVNineOneIoU{}, depth centroid error drops by $>11$\,m to \valAblVNineOneDz{}\,m, $\text{SSIM}_{d_3}$ rises to $0.563$, and gravity misfit drops to $5.37\%$.
+\end{itemize}
+Panel~B compares clean-ground-trained models across $N=\valNCleanStd{}$ standard + $\valNCleanHard{}$ composite clean scenes. Notably, the slab-split \texttt{v8} variant suffers severe instability on sparse clean scenes (\valCleanVEightIoU{} IoU, \valCleanVEightDz{}\,m error), whereas unified \texttt{v9} (\valCleanVNineIoU{}) and \texttt{v9.1} (\valCleanVNineOneIoU{}, \valCleanVNineOneDz{}\,m centroid error, \valCleanVNineOneMisfit{}\% misfit) outperform both \texttt{v3} (\valCleanVThreeIoU{}) and \texttt{v5.2} (\valCleanVFiveTwoIoU{}) across nearly every structural metric while holding zero-shot cross-regime transfer of \valCleanHardXferIoU{} IoU (\valCleanHardXferDz{}\,m depth error) even when trained solely on multi-regime hard scenarios.
+
+\subsection{Comparison Against Classical Tikhonov and Focusing Solvers}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig3_canonical_comparison.pdf}
+  \caption{Visual cross-section comparison on four canonical 3D benchmarks (2\% Gaussian surface noise). Column 1 shows surface map $\Delta g_z$ and profile trace (dashed line). Columns 2--6 display vertical $X$--$Z$ density cross-sections ($Z=0\text{--}1.6$\,km, grey shading indicates air above topography) for ground truth, Tikhonov $L_2$, Focusing IRLS, standalone \texttt{Swin3D v9.1}, and Hybrid \texttt{v9.1}+Focus refinement.}
+  \label{fig:canonical}
+\end{figure*}
+
+\input{table_canonical}
+
+Figure~\ref{fig:canonical} and Table~\ref{tab:canonical} benchmark \texttt{Swin3D v9.1} and Hybrid \texttt{v9.1}+Focus directly against classical Tikhonov $L_2$ and Portniaguine--Zhdanov Focusing IRLS on four canonical 3D models at 2\% surface noise:
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.25em]
+  \item \textbf{Compact Ore Block:} Centered dense prism ($\Delta\rho = +1.20\;\text{g/cm}^3$) spanning $250\text{--}550$\,m depth under gentle topographic relief. Tikhonov $L_2$ diffuses contrast broadly from the surface downward (IoU $0.084$, $|\Delta z| = 244.9$\,m), and Focusing IRLS pulls a vertically elongated plume to the top boundary (IoU $0.222$, $|\Delta z| = 128.0$\,m). \texttt{Swin3D v9.1} isolates the buried block accurately in depth (IoU $0.457$, $|\Delta z| = 18.7$\,m, $\text{SSIM}_{d_3} = 0.526$, $\chi^2_{\mathrm{red}} = 0.99$, misfit $1.01\%$) in $0.53$\,s.
+  \item \textbf{Dipping Mafic Dyke ($45^\circ$):} Slanted intrusive sheet under sloping terrain. Both Tikhonov ($376.0$\,m error) and Focusing IRLS ($78.4$\,m error, IoU $0.288$) revert toward subvertical shallow streaks under minimum-norm bias. \texttt{Swin3D v9.1} resolves the true $45^\circ$ plunge cleanly (IoU $0.510$, $|\Delta z| = 49.6$\,m), while Hybrid refinement tightens gravity misfit from $3.35\%$ to $2.96\%$ ($\chi^2_{\mathrm{red}} = 1.12$).
+  \item \textbf{Cavity + Deep Ore (Bipolar Target):} Shallow air cavity ($\Delta\rho = -2.67\;\text{g/cm}^3$) paired with a deeper dense orebody ($\Delta\rho = +1.35\;\text{g/cm}^3$) under undulating relief. Classical IRLS latches almost exclusively onto the high-amplitude shallow void (IoU $0.081$, misfit $14.73\%$), missing the weak deep partner. \texttt{Swin3D v9.1} recovers both opposing polarities simultaneously (IoU $0.534$, $|\Delta z| = 27.0$\,m, $\text{SSIM}_{d_3} = 0.643$), and Hybrid refinement further reduces misfit to $5.12\%$ ($\chi^2_{\mathrm{red}} = 1.07$).
+  \item \textbf{Sedimentary Basin (Detrended):} Concave synformal basin beneath \texttt{BorderPlanar} trend removal. Because the basin crops out right near the ground surface, minimum-gradient focusing encounters no depth-ambiguity trap and excels here (Focusing IRLS IoU $0.730$, $|\Delta z| = 14.3$\,m in $28.13$\,s). \texttt{Swin3D v9.1} yields slightly higher amplitude fidelity ($0.869$ vs.\ $0.854$) and IoU $0.673$ in $0.57$\,s ($49\times$ faster), whereas Hybrid refinement pushes data misfit lowest ($1.99\%$) at a mild IoU trade-off ($0.620$) caused by IRLS erosion along the basin bottom.
+\end{enumerate}
+
+Averaged across all four canonical scenarios, standalone \texttt{Swin3D v9.1} raises mean IoU from \valCanonMeanTikIoU{} (Tikhonov $L_2$) and \valCanonMeanFocIoU{} (Focusing IRLS) to \valCanonMeanSwinIoU{}, boosts $\text{SSIM}_{d_3}$ from \valCanonMeanTikSSIM{} and \valCanonMeanFocSSIM{} to \valCanonMeanSwinSSIM{}, and collapses vertical centroid error by $10\times$ relative to Tikhonov (\valCanonMeanSwinDz{}\,m vs.\ \valCanonMeanTikDz{}\,m) and nearly $3\times$ relative to Focusing IRLS (\valCanonMeanFocDz{}\,m).
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig4_showcase_composite.pdf}
+  \caption{Six diverse geological archetypes inverted by \texttt{Swin3D v9.1} under draped terrain and 2\% noise: Draped gravity profile fit (Col.~1), Ground Truth $X$--$Z$ (Col.~2), Predicted $\Delta\hat{\rho}$ (Col.~3), and Aleatoric Uncertainty $\hat{\sigma}_\rho$ (Col.~4). Uncertainty rings trace deep structural margins and abutting lithology interfaces.}
+  \label{fig:showcase}
+\end{figure*}
+
+Figure~\ref{fig:showcase} complements the canonical study across six realistic multi-lithology phenotypes: shallow cavities ($\text{IoU }0.45, |\Delta z|=27\,$m), light coal seams ($\text{IoU }0.62, |\Delta z|=17\,$m), nested core--halo alteration ($\text{IoU }0.63, |\Delta z|=3\,$m), directly abutting positive/negative contacts ($\text{IoU }0.51, |\Delta z|=14\,$m), vertically stacked opposing targets ($\text{IoU }0.60, |\Delta z|=43\,$m), and undulating folded strata ($\text{IoU }0.46, |\Delta z|=7\,$m). Notice two informative diagnostic patterns: (i) predicted aleatoric uncertainty $\hat{\sigma}_\rho$ (Col.~4) outlines contact halos and deeper weakly constrained undersides rather than firing uniformly over background rock, and (ii) in \emph{Folded Horizons} (Row~6), gravity profile discrepancy appears at $X < 0.8\,$km where dense folds approach the domain edge and truncated lateral continuation interacts with perimeter planar detrending.
+
+\subsection{Noise Sensitivity, Depth Resolution, Clearance, and Uncertainty Calibration}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig5_sensitivity_depth.pdf}
+  \caption{Robustness and physical resolution limits of \texttt{Swin3D v9.1}. (a) Sensitivity to white Gaussian noise vs.\ spatially correlated colored noise ($\sigma_c = 1.5\,\Delta x$) across $N=\valNNoise{}$ ground scenes. (b) Performance grouped by true mass-weighted target depth quartile ($N=\valNBucketTotal{}$). (c) Paired survey sensor-clearance sweep from ground ($0.35$\,m) to airborne ($160$\,m) at fixed 1.5\% noise ($N=\valNNoise{}$).}
+  \label{fig:sens_depth}
+\end{figure*}
+
+\input{table_noise}
+\input{table_depth_clearance}
+
+\paragraph{White vs.\ Spatially Correlated Noise.}
+Table~\ref{tab:noise} and Figure~\ref{fig:sens_depth}(a) test $N=\valNNoise{}$ ground surveys perturbed by zero-mean white Gaussian noise versus spatially smoothed colored noise ($\sigma_c = 1.5\,\Delta x = 75$\,m Gaussian blur prior to variance normalization). Under white noise from $0\%$ to $10\%$ of peak signal amplitude, \texttt{Swin3D v9.1} degrades gracefully: IoU decreases monotonically from \valNoiseZeroIoU{} ($0\%$) to \valNoiseFiveWhiteIoU{} ($5\%$) and \valNoiseTenWhiteIoU{} ($10\%$), while $|\Delta z|$ remains bounded within \valNoiseTenWhiteDz{}\,m ($<1.3$ voxels). In stark contrast, \textbf{spatially correlated noise proves far more damaging}: while $1\text{--}2\%$ colored noise stays serviceable (IoU $0.483\text{--}0.428$, $|\Delta z| = 38.0\text{--}48.7\,$m), at $5\%$ and $10\%$ colored noise IoU drops sharply to $0.138$ and \valNoiseTenColoredIoU{}, and $|\Delta z|$ balloons to $167.3$\,m and \valNoiseTenColoredDz{}\,m. Physically, smooth lateral noise perturbations ($75$\,m half-width) mimic genuine intermediate-wavelength gravitational anomalies from deep bodies, underscoring that spatial correlation suppression and variogram-aware pre-whitening are essential prior to field inference.
+
+\paragraph{Depth-Quartile Resolution and Sensor Clearance.}
+Table~\ref{tab:depth_clearance} and Figure~\ref{fig:sens_depth}(b)--(c) isolate pure geometric attenuation effects. Stratified by mass-weighted target depth beneath terrain across all $N=\valNBucketTotal{}$ validation scenes, shallow quartile Q1 (\valQOneRange{}\,m) reaches IoU \valQOneIoU{}, $|\Delta z| = \valQOneDz{}$\,m, and amplitude ratio $0.810$, decaying smoothly due to Newtonian sensitivity loss down to Q4 (\valQFourRange{}\,m) at IoU \valQFourIoU{}, $|\Delta z| = \valQFourDz{}$\,m, and amplitude \valQFourAmp{}, while $\text{SSIM}_{d_3}$ stays remarkably stable ($0.551\text{--}0.615$). Across paired sensor clearances ($h=0.35\text{--}160$\,m at fixed $1.5\%$ noise, Panel~B), \texttt{Swin3D v9.1} maintains virtually constant IoU from $0.35$\,m (\valClrGroundIoU{}) through $20$\,m ($0.605$) and degrades mildly to \valClrHighIoU{} IoU and \valClrHighDz{}\,m depth error at $160$\,m flight altitude, validating the clearance conditioning channel.
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{figures/fig6_uncertainty_calib.pdf}
+  \caption{Uncertainty quantification and depth recovery across $N=\valNBucketTotal{}$ validation volumes. (a) Selective-prediction Risk--Coverage curve sorted by predicted aleatoric uncertainty $\hat{\sigma}_\rho$ compared to oracle ordering ($\mathrm{AURC} = \valCompAURC{}$). (b) Binned empirical active-zone RMSE and MAE versus predicted $\hat{\sigma}_\rho$ ($1$-$\sigma$ coverage \valCompFgCov{}\%, Spearman $\rho=\valCompUncSp{}$). (c) Predicted vs.\ true mass-centroid depth across all 4 validation regimes ($\pm 50$\,m single-cell tolerance band shaded).}
+  \label{fig:calib}
+\end{figure*}
+
+\paragraph{Uncertainty Calibration and Selective Risk Filtering.}
+Figure~\ref{fig:calib} evaluates the heteroscedastic $\beta$-NLL uncertainty head across all $N=\valNBucketTotal{}$ multi-regime volumes. Sorting subsurface voxels by predicted $\hat{\sigma}_\rho$ (Figure~\ref{fig:calib}(a)) separates confident host background from uncertain contact fringes almost as tightly as the post-hoc error oracle, achieving $\mathrm{AURC} = \valCompAURC{}\;\text{g/cm}^3$. Within foreground target bodies and boundary margins (Figure~\ref{fig:calib}(b)), predicted $\hat{\sigma}_\rho$ correlates monotonically with empirical RMSE (Spearman rank $\rho = \valCompUncSp{}$), attains $1$-$\sigma$ coverage of \valCompFgCov{}\% (close to the ideal Gaussian $68.3\%$), and yields a boundary-to-interior error consistency ratio of \valCompBdRatio{}. Notably, empirical RMSE slightly exceeds $\hat{\sigma}_\rho$ in the highest-variance decile ($\hat{\sigma}_\rho \approx 0.39\;\text{g/cm}^3$), reflecting mild under-dispersion on extreme density discontinuities. Finally, Figure~\ref{fig:calib}(c) confirms unbiased centroid depth alignment from $200$\,m down to $1{,}000$\,m across all four validation regimes, with the majority of scenes falling within the shaded $\pm 1$-voxel ($\pm 50$\,m) corridor.
+
+%======================================================================
+\section{Hybrid Focusing Refinement, Deployment Readiness, and Pathways to Field Application}
+\label{sec:hybrid_field}
+%======================================================================
+
+Because access to proprietary or benchmark field gravity surveys was unavailable during this research, Section~\ref{sec:experiments} provides a controlled theoretical validation. Turning a synthetic neural inverter into a reliable geophysical instrument nevertheless demands tight integration with classical deterministic physics solvers, verified runtime deployment across hardware targets, and explicit preprocessing guidelines for future real-world application. Both capabilities are implemented directly inside the C++/ONNX \texttt{Mod3D/.inv} engine \citep{cerovsky_mod3d}.
+
+\subsection{Uncertainty-Weighted Hybrid Focusing IRLS}
+
+Standalone neural priors achieve rapid volumetric localization but cannot guarantee arbitrary station-level residual tolerances when unseen survey noise spectra or local structural outliers occur. Conversely, classical Focusing IRLS converges accurately near the ground surface yet gets trapped on deep dipping or bipolar anomalies and suffers slow cold-start convergence. Our hybrid scheme feeds the \texttt{Swin3D v9.1} density volume $\Delta\hat{\rho}$ as the initial reference model $\mathbf{m}_0$ in~\eqref{eq:focusing_obj} and inversely weights local model stiffness using the aleatoric variance head ($\propto \hat{\sigma}_{\rho,j}^{-2}$, floored cleanly for numerical conditioning). As demonstrated in Table~\ref{tab:canonical}, running 6 hybrid IRLS refinement iterations cuts classical IRLS runtime nearly in half (\valTimeHybridS{}\,s vs.\ \valTimeFocS{}\,s averaged in Table~\ref{tab:timing}; $8.98$\,s vs.\ $16.60$\,s across the 4 canonical benchmarks) while strictly improving gravity misfit over standalone \texttt{Swin3D v9.1} across \emph{every} benchmark: \valCanonMeanHybMisfit{}\% mean misfit (vs.\ $3.28\%$ neural and $7.46\%$ standalone IRLS) and nearly ideal $\chi^2_{\mathrm{red}} = 1.03$. Geometrically, hybrid refinement preserves all deep centroid accuracy ($\valCanonMeanHybDz{}$\,m) while allowing deterministic data consistency to govern final residual closure.
+
+\subsection{Deterministic ONNX and CoreML Production Performance}
+
+\input{table_timing}
+
+Table~\ref{tab:timing} benchmarks single-volume ($64\times 64\times 32$) inference throughput and numerical parity on the same MacBook Air (Apple~M4, 10-core CPU, 32\,GB unified memory) without GPU contention. Exporting \texttt{PotentialFieldTransformer3DV9} (via PyTorch opset-17 wrapper producing dual $(\Delta\hat{\rho}, \hat{s})$ tensors) to ONNX Runtime CPU yields \valTimeOnnxCpuMs{}\,ms median latency---\valSpeedupOnnxVsFoc{} faster than 12-iteration Focusing IRLS (\valTimeFocS{}\,s)---at near machine-precision numerical agreement against native PyTorch (\valTimeOnnxCpuDiff{} maximum relative difference). Enabling Apple's \texttt{CoreMLExecutionProvider} configured with \texttt{CPUAndNeuralEngine} offloads $1{,}449$ of $1{,}508$ ONNX graph nodes across 17 Neural Engine/CPU subgraphs, accelerating inference further to \valTimeCoremlMs{}\,ms (\valSpeedupCoremlVsFoc{} speedup over Focusing IRLS) while retaining \valTimeCoremlDiff{} maximum relative parity under FP16 accelerator arithmetic. Sub-second inference enables interactive geologist-in-the-loop scenario testing directly inside the \texttt{Mod3D} desktop/WebAssembly workspace \citep{cerovsky_mod3d}.
+
+\subsection{Operational Conditioning Protocol for Future Field Surveys}
+
+When calibrated real-world field gravity datasets become available, the following four-step conditioning protocol bridges the synthetic training distribution to field practice:
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.25em]
+  \item \textbf{Regional--Residual \& Datum Alignment:} Subtract Earth-normal, free-air, and complete Bouguer terrain effects using a representative crustal reduction density, then remove local regional drift consistently with \texttt{BorderPlanar} / \texttt{BackgroundBasis} modes and map observation stations onto a local padded Cartesian grid matching \texttt{scale\_mlp} domain metadata.
+  \item \textbf{Correlated Noise Pre-Whitening:} Estimate the empirical noise semivariogram along repeat lines or high-pass residual grids. Given the sensitivity drop above $2\%$ colored noise observed in Figure~\ref{fig:sens_depth}(a), high-amplitude spatially coherent survey drift must be filtered prior to standalone neural inference or absorbed through data-covariance weighting $\mathbf{W}_d$ inside the Hybrid IRLS pass.
+  \item \textbf{Scale \& Clearance Rescaling:} Supply accurate survey clearance $h$ (e.g., ground vs.\ fixed-wing barometric drape) and grid anisotropy to the 6-channel survey tensor and 9-D metadata vector, keeping topographic relief $\le 25\%$ of total vertical grid depth.
+  \item \textbf{Petrophysical Borehole Locking:} Where drill-core density logs or seismic horizons exist, enforce hard spatial constraints directly inside the Hybrid C++ \texttt{FocusingSolver} refinement stage alongside neural $\hat{\sigma}_\rho$-weighted priors, ensuring geological tie-points are strictly satisfied.
+\end{enumerate}
+
+%======================================================================
+\section{Discussion}
+\label{sec:discussion}
+%======================================================================
+
+\paragraph{Why 3D Swin + Physics Feedback Outperforms 3D U-Nets and Slab Splits.}
+Purely local 3D CNNs struggle with potential field inversion because the vertical Green's kernel couples broad surface tails directly to deep body centroids across dozens of grid spacings \citep{huang2021deep,yang2022gravity}. Replacing convolutional bottlenecks with 3D shifted-window Swin blocks, axial global mixing, and \texttt{GreensVerticalBias} enables single-hop attention between shallow edge responses and deep basement strata while remaining memory-compact (\valVNineOneParams{} parameters, \valTimeOnnxCpuMs{}\,ms CPU inference). Equally notable for independent research accessibility, this compact memory footprint allowed the entire development, procedural synthesis, and training run to execute end-to-end on a single consumer MacBook Air (Apple~M4, 32\,GB unified memory) rather than multi-GPU data-center clusters. Equally instructive is our internal ablation between 3-tier slab-split decoders (\texttt{v7}/\texttt{v8}) and \texttt{v9.1}'s unified full-resolution Stage-2 decoder (Table~\ref{tab:ablation}): splitting depth bands into disjoint prediction heads caused brittle degradation on sparse clean targets (\texttt{v8} dropped to \valCleanVEightIoU{} IoU), whereas unified decoding coupled with depth-amplified physics back-projection~\eqref{eq:bp_weight} restored clean performance to \valCleanVNineOneIoU{} while pushing multi-regime IoU to \valAblVNineOneIoU{}.
+
+\paragraph{Generalization vs.\ Correlated-Noise Ambiguity.}
+The stark divergence between white-noise resilience (\valNoiseTenWhiteIoU{} IoU at 10\% noise) and colored-noise vulnerability (\valNoiseTenColoredIoU{} IoU at 10\%, $\sigma_c=1.5\,\Delta x$) highlights a fundamental physical symmetry rather than an arbitrary neural artifact: smooth correlated noise on a surface plane closely mimics a true deep-source Laplace harmonic field. Unlike Tikhonov regularization, which indiscriminately smooths both signal and noise, a learned neural prior expects plausible gravity coherence along the $1/r^2$ dispersion manifold; when fed broad artificial bumps, its depth-lifting layers map that long-wavelength energy downward into phantom deep bodies (driving $|\Delta z|$ above $200$\,m). Hybrid IRLS equipped with variogram-informed $\mathbf{W}_d$ or prior bandpass conditioning therefore remains vital whenever correlated drift contaminates field surveys.
+
+\paragraph{Calibration Strengths and Remaining Discontinuities.}
+Through $\beta$-NLL supervision \citep{seitzer2022betanll}, \texttt{Swin3D v9.1} avoids variance collapse and achieves strong selective prediction performance ($\mathrm{AURC} = \valCompAURC{}$, Spearman $\rho = \valCompUncSp{}$). Interestingly, standalone runs on sparse clean scenes yielded lower raw active-zone Spearman rank correlation ($0.15\text{--}0.19$) than multi-regime evaluation (\valCompUncSp{}) because background regions in simple single-block scenes exhibit near-zero variance error, concentrating variance signal narrowly around sharp voxel contact shells. At extreme contrast jumps (upper decile of $\hat{\sigma}_\rho$, Figure~\ref{fig:calib}(b)), empirical RMSE rises above $\hat{\sigma}_\rho$, suggesting future potential for deep ensembles or conformal calibration multipliers prior to quantitative risk budgeting.
+
+\paragraph{Limitations and Scope for Future Extensions.}
+Several important limitations define boundaries for future work:
+\begin{enumerate}[leftmargin=1.4em,itemsep=0.25em]
+  \item \emph{Absence of Field Validation:} Because no calibrated field datasets were accessible here, real-world geological complexities---such as strong remanent lateral heterogeneity outside synthetic lithology priors, non-Gaussian gridding artifacts, or regional gravity interference beyond linear border planes---remain untested empirically.
+  \item \emph{Planar-Earth Approximation \& Padding Edges:} Embedded FFT physics assumes flat Cartesian layers within local/regional apertures ($3.2\text{--}10\;\text{km}$) and relies on zero-padded convolutions; as illustrated by \emph{Folded Horizons} in Figure~\ref{fig:showcase}, anomalies extending directly to domain edges suffer edge truncation artifacts when paired with boundary-ring detrending. Large continental extents require transitioning to spherical/polyhedral forward operators \citep{pohanka1988,cerovsky_mod3d}.
+  \item \emph{Contrast Bounds \& Baselines:} Current 7-class lithology prototypes bias reconstructions softly toward contrasts inside $[-2.67, +1.85]\;\text{g/cm}^3$; extreme salt diapirs, dense ultramafic complexes, or metallic ores outside this envelope rely more heavily on hybrid IRLS extrapolation. Additionally, while we compare closely against classical $L_2$ and focusing IRLS plus chronological internal architectures (\texttt{v3}--\texttt{v9.1}), a re-trained 3D U-Net/CNN baseline under our exact terrain-draped multi-regime curriculum remains a valuable direct comparison target for future open benchmarks.
+  \item \emph{Magnetic \& Tensor Gradiometry Extensions:} Although demonstrated exclusively on vertical gravity $\Delta g_z$, replacing the scalar Nagy kernel in~\eqref{eq:forward_nagy} with the vector dipole kernel (with inclination/declination metadata concatenated into \texttt{scale\_mlp}) or multi-component gravity gradient tensors enables identical Swin Transformer and hybrid IRLS architectures for 3D magnetic susceptibility and multi-physics joint inversion.
+\end{enumerate}
+
+%======================================================================
+\section{Conclusion and Code Availability}
+\label{sec:conclusion}
+%======================================================================
+
+We presented \texttt{Swin3D v9.1}, a physics-informed hierarchical 3D Shifted-Window and axial Transformer unifying domain-conditioned visual attention, Green's vertical biases, lithology prototype cross-attention, closed-loop coarse-to-fine forward/adjoint gravity residual feedback, and calibrated $\beta$-NLL uncertainty estimation. Extending the author's doctoral focusing-inversion work (\texttt{Inv3D}) into \texttt{Mod3D}, this theoretical synthetic study demonstrates that Transformer architectures resolve deep mass centroids (\valCompDz{}\,m mean error) and complex undulating multi-body shapes (\valCompIoU{} Smooth 3D IoU) far more accurately than smooth Tikhonov $L_2$ and stand-alone focusing IRLS solvers across variable clearances and regional trends, while running \valSpeedupOnnxVsFoc{} faster on CPU and \valSpeedupCoremlVsFoc{} faster on Neural Engine silicon. Coupling neural predictions and uncertainty weights to deterministic C++ focusing refinement closes data residuals cleanly to \valCanonMeanHybMisfit{}\% misfit at half classical solver cost, offering a practical blueprint once calibrated field gravity datasets become available.
+
+\paragraph{Reproducibility, Code, and Live Software Availability.}
+All neural architectures, synthetic physics simulators, C++/ONNX inference wrappers, and classical focusing solvers are released openly as part of the \texttt{Mod3D} project at \url{https://github.com/igorcerovsky/Mod3D/tree/main/.inv} (with background research code in \citealp{cerovsky_inv3d}), alongside an interactive browser-based 3D WebGL2 environment at \url{https://igorcerovsky.github.io/Mod3D/}. Every table, macro, and vector figure reported in this manuscript is generated deterministically from saved evaluation scripts inside \texttt{.inv/paper/scripts/} (\texttt{eval\_paper\_v9\_1.py} followed by \texttt{generate\_tables\_and\_figures.py} and \texttt{verify\_latex.py}, chained in \texttt{scripts/update\_paper.sh}), enabling one-command regeneration as improved training checkpoints emerge.
+
+\section*{Acknowledgments}
+The author extends sincere thanks to colleagues in potential-field geophysics and computer vision whose foundational work inspired the synthesis of \texttt{Inv3D} focusing theory with hierarchical 3D Swin Transformers inside \texttt{Mod3D}. No external funding was received for this independent study.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}

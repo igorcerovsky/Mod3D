@@ -1,0 +1,21 @@
+\begin{table}[t]
+\centering
+\caption{Multi-regime validation performance of \texttt{Swin3D v9.1} (\valVNineOneParams{} parameters, epoch \valVNineOneEp{}) across the four stratified benchmarks ($N=\valNBucketTotal{}$ total scenes).}
+\label{tab:v91_buckets}
+\small
+\setlength{\tabcolsep}{4.5pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lccccccccc}
+\toprule
+Regime Bucket & Wt. & IoU $\uparrow$ & RMSE $\downarrow$ & FG-RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & 1-$\sigma$ Cov. \\
+\midrule
+Ground Clean & 0.35 & 0.545 & 0.048 & 0.404 & 0.615 & 33.1 & 0.646 & 4.18 & 71.5\% \\
+Hard-Large Detrended & 0.35 & 0.692 & 0.076 & 0.238 & 0.574 & 30.8 & 0.810 & 5.99 & 64.4\% \\
+Airborne Relief Drape & 0.15 & 0.590 & 0.082 & 0.333 & 0.568 & 51.1 & 0.709 & 6.46 & 56.1\% \\
+Multi-Aspect ($dz/dx$) & 0.15 & 0.580 & 0.087 & 0.363 & 0.515 & 42.6 & 0.706 & 7.34 & 61.0\% \\
+\midrule
+\textbf{Weighted Composite} & 1.00 & \textbf{0.608} & \textbf{0.069} & \textbf{0.329} & \textbf{0.579} & \textbf{36.4} & \textbf{0.722} & \textbf{5.63} & \textbf{65.1\%} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}

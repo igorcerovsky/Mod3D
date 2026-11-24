@@ -1,0 +1,19 @@
+\begin{table}[t]
+\centering
+\caption{Single-volume ($64\times 64\times 32$) wall-clock runtime and ONNX numerical parity on a MacBook Air (Apple~M4, 32\,GB unified memory) CPU/Neural Engine.}
+\label{tab:timing}
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Solver / Execution Backend & Median Runtime & Speedup vs.\ IRLS & Max Rel.\ Parity Diff \\
+\midrule
+\texttt{Swin3D v9.1} (ONNX CoreML ANE/CPU) & 257.0\,ms & 68$\times$ & 9.45e-03 \\
+\texttt{Swin3D v9.1} (ONNX Runtime CPU) & 526.0\,ms & 33$\times$ & 5.20e-06 \\
+\texttt{Swin3D v9.1} (PyTorch CPU) & 521.0\,ms & 33$\times$ & Reference \\
+Hybrid \texttt{v9.1} + Focusing IRLS (6 iters) & 9.55\,s & 1.8$\times$ & --- \\
+Classical Tikhonov $L_2$ (6 iters) & 10.96\,s & 1.6$\times$ & --- \\
+Classical Focusing IRLS (12 iters) & 17.37\,s & 1.0$\times$ & --- \\
+\bottomrule
+\end{tabular}
+\end{table}

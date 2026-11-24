@@ -1,0 +1,25 @@
+\begin{table}[t]
+\centering
+\caption{Sensitivity of \texttt{Swin3D v9.1} to surface measurement noise level and spatial correlation ($N=\valNNoise{}$ ground-survey scenes).}
+\label{tab:noise}
+\small
+\setlength{\tabcolsep}{5pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccccc}
+\toprule
+Noise Type & $\sigma / \max|d|$ & IoU $\uparrow$ & RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & $\chi^2_{\mathrm{red}}$ \\
+\midrule
+\multirow{5}{*}{White Gaussian} & 0\% & 0.531 & 0.056 & 0.648 & 30.9 & 0.650 & 4.88 & --- \\
+ & 1\% & 0.524 & 0.057 & 0.642 & 27.4 & 0.651 & 3.62 & 1.62 \\
+ & 2\% & 0.509 & 0.058 & 0.628 & 29.6 & 0.635 & 3.75 & 1.16 \\
+ & 5\% & 0.446 & 0.062 & 0.572 & 40.1 & 0.573 & 5.10 & 1.03 \\
+ & 10\% & 0.359 & 0.069 & 0.492 & 63.9 & 0.474 & 8.45 & 1.02 \\
+\midrule
+\multirow{4}{*}{Correlated ($\sigma_c=1.5\Delta x$)} & 1\% & 0.483 & 0.059 & 0.608 & 38.0 & 0.613 & 5.27 & 2.13 \\
+ & 2\% & 0.428 & 0.063 & 0.559 & 48.7 & 0.567 & 8.49 & 1.78 \\
+ & 5\% & 0.138 & 0.087 & 0.316 & 167.3 & 0.250 & 29.17 & 1.68 \\
+ & 10\% & 0.062 & 0.102 & 0.239 & 216.0 & 0.138 & 62.39 & 1.30 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
