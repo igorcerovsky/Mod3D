@@ -393,7 +393,7 @@ def write_tables(res: dict) -> None:
     t1 = [
         r"\begin{table}[t]",
         r"\centering",
-        r"\caption{Held-out multi-regime test performance of \texttt{Swin3D v9.1} (\valVNineOneParams{} parameters, epoch~\valVNineOneEp{}) across four stratified survey regimes ($N=\valNBucketTotal{}$ scenes, disjoint test seed~\valTestSeed{}). Columns report regime weight (Wt.), Smooth 3D IoU (mean\,$\pm$\,std), subsurface RMSE and foreground target RMSE (FG-RMSE), 3-voxel dilated foreground SSIM ($\text{SSIM}_{d_3}$), vertical centroid error $|\Delta z|$ (mean\,$\pm$\,std), foreground mass recovery ratio (Amp.), effective gravity misfit, and Laplace $1$-$b$ coverage (ideal $63.2\%$).}",
+        r"\caption{Held-out multi-regime test performance of \texttt{Swin3D v9.1} (\valVNineOneParams{} parameters, epoch~\valVNineOneEp{}) across four stratified survey regimes ($N=\valNBucketTotal{}$ scenes, 32 per regime, disjoint test seed~\valTestSeed{}). Columns report regime weight (Wt.), Smooth 3D IoU (mean\,$\pm$\,std), subsurface RMSE and foreground target RMSE (FG-RMSE), 3-voxel dilated foreground SSIM ($\text{SSIM}_{d_3}$), vertical centroid error $|\Delta z|$ (mean\,$\pm$\,std), foreground mass recovery ratio (Amp.), effective gravity misfit, and Laplace $1$-$b$ coverage (ideal $63.2\%$).}",
         r"\label{tab:v91_buckets}",
         r"\small",
         r"\setlength{\tabcolsep}{4pt}",
@@ -463,7 +463,7 @@ def write_tables(res: dict) -> None:
     t2 = [
         r"\begin{table}[t]",
         r"\centering",
-        r"\caption{Chronological architecture progression evaluated on identical held-out test sets (disjoint seed~\valTestSeed{}). Panel~A evaluates the 4-bucket realistic survey suite ($N=\valNAblBucket{}$); Panel~B evaluates the clean ground benchmark ($N=\valNCleanStd{}$ standard + $\valNCleanHard{}$ hard scenes). Columns include best checkpoint epoch (Ep.), parameter count, input channels (Ch.), Green's Vertical Bias (GVB), and lithology coherence (Coh.). $^\dagger$\texttt{v6.1} was warm-started from \texttt{v6} epoch~236. Because training budgets differ across historical runs, Section~\ref{sec:experiments} also compares \texttt{v9.1} at matched epoch~\valMatchedEp{} (IoU~\valMatchedIoU{}, $|\Delta z|=\valMatchedDz{}$\,m) to separate architectural gains from longer training. Bold marks best per panel (ties after rounding both bolded).}",
+        r"\caption{Chronological architecture progression evaluated on identical held-out test sets (disjoint seed~\valTestSeed{}). Panel~A evaluates the 4-bucket realistic survey suite ($N=\valNAblBucket{}$, 16 scenes per bucket); Panel~B evaluates the clean ground benchmark ($N=\valNCleanStd{}$ standard + $\valNCleanHard{}$ hard scenes). Columns include best checkpoint epoch (Ep.), parameter count, input channels (Ch.), Green's Vertical Bias (GVB), and lithology coherence (Coh.). $^\dagger$\texttt{v6.1} was warm-started from \texttt{v6} epoch~236. Because training budgets differ across historical runs, Section~\ref{sec:experiments} also compares \texttt{v9.1} at matched epoch~\valMatchedEp{} (IoU~\valMatchedIoU{}, $|\Delta z|=\valMatchedDz{}$\,m) to separate architectural gains from longer training. Bold marks best per panel (ties after rounding both bolded).}",
         r"\label{tab:ablation}",
         r"\small",
         r"\setlength{\tabcolsep}{3.5pt}",
