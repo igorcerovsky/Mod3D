@@ -317,6 +317,7 @@ def solve_focusing_or_tikhonov(
     max_density: float = 1.95,
     density_scale: float = 1.0,
     valid_mask: torch.Tensor | None = None,
+    chi_band: float = 0.08,
 ) -> tuple[torch.Tensor, dict]:
     """Run depth-weighted Tikhonov L2, Portniaguine-Zhdanov Focusing IRLS, or Hybrid refinement.
 
@@ -469,7 +470,7 @@ def solve_focusing_or_tikhonov(
         chi = math.sqrt(ss * inv_sigma2 / float(n_valid))
         rms_mgal = math.sqrt(ss / float(n_valid))
 
-        in_band = (0.85 * target_chi < chi < 1.15 * target_chi)
+        in_band = ((1.0 - float(chi_band)) * target_chi < chi < (1.0 + float(chi_band)) * target_chi)
         prev_e_rel = e_rel
         rem = max(1, iters - 1 - k)
         if chi <= 1.6 * target_chi:
@@ -507,6 +508,28 @@ def solve_focusing_or_tikhonov(
         "bg_field": bg_final.detach().cpu(),
     }
     return m_cur.detach(), stats
+
+
+def run_adjoint_dot_product_test(seed: int = 0) -> dict:
+    """Verify exact linear adjoint identity <G m, r> == <m, G^T r> under undulating terrain."""
+    gen = torch.Generator().manual_seed(int(seed))
+    nx, ny, nz = 64, 64, 32
+    dx = dy = dz = 50.0
+    op = TerrainGravityOperator(nx, ny, nz, dx, dy, dz, h_min=-220.0)
+    xx = np.linspace(-1.0, 1.0, nx)[:, None]
+    yy = np.linspace(-1.0, 1.0, ny)[None, :]
+    terr_np = (120.0 * (0.5 + 0.5 * np.sin(2.5 * xx) * np.cos(2.0 * yy))).astype(np.float32)
+    terr = torch.from_numpy(terr_np).unsqueeze(0)
+    z_obs = terr - 0.35
+
+    m_rand = torch.randn((1, 1, nz, nx, ny), generator=gen, dtype=torch.float32)
+    r_rand = torch.randn((1, 1, nx, ny), generator=gen, dtype=torch.float32)
+    gm = apply_forward(op, m_rand, z_obs)
+    gtr = apply_transpose(op, r_rand, z_obs)
+    lhs = float((gm * r_rand).sum().item())
+    rhs = float((m_rand * gtr).sum().item())
+    rel_err = abs(lhs - rhs) / max(abs(lhs), 1e-12)
+    return {"lhs": lhs, "rhs": rhs, "rel_err": float(rel_err)}
 
 
 def _self_test() -> None:

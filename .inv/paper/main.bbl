@@ -1,0 +1,226 @@
+\begin{thebibliography}{31}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Bi et~al.(2023)Bi, Xie, Zhang, Chen, Gu, and Tian]{bi2023pangu}
+K.~Bi, L.~Xie, H.~Zhang, X.~Chen, X.~Gu, and Q.~Tian.
+\newblock Accurate medium-range global weather forecasting with {3D} neural
+  networks.
+\newblock \emph{Nature}, 619:\penalty0 533--538, 2023.
+\newblock \doi{10.1038/s41586-023-06185-3}.
+
+\bibitem[Blakely(1995)]{blakely1995}
+R.~J. Blakely.
+\newblock \emph{Potential Theory in Gravity and Magnetic Applications}.
+\newblock Cambridge University Press, Cambridge, 1995.
+
+\bibitem[Cerovsk{\'y}(2026)]{cerovsky_mod3d}
+I.~Cerovsk{\'y}.
+\newblock {Mod3D}: Interactive {3D} potential field modeling and neural
+  inversion engine (\texttt{.inv}).
+\newblock \url{https://github.com/igorcerovsky/Mod3D/tree/main/.inv}, 2026.
+
+\bibitem[Dong et~al.(2023)Dong, Jiao, Zhou, Lu, and Zeng]{dong2023dualunet}
+S.~Dong, J.~Jiao, S.~Zhou, P.~Lu, and Z.~Zeng.
+\newblock {3-D} gravity data inversion based on enhanced dual {U-Net}
+  framework.
+\newblock \emph{IEEE Transactions on Geoscience and Remote Sensing},
+  61:\penalty0 1--11, 2023.
+\newblock \doi{10.1109/TGRS.2023.3306980}.
+
+\bibitem[Dosovitskiy et~al.(2021)Dosovitskiy, Beyer, Kolesnikov, Weissenborn,
+  Zhai, Unterthiner, Dehghani, Minderer, Heigold, Gelly, Uszkoreit, and
+  Houlsby]{dosovitskiy2021}
+A.~Dosovitskiy, L.~Beyer, A.~Kolesnikov, D.~Weissenborn, X.~Zhai,
+  T.~Unterthiner, M.~Dehghani, M.~Minderer, G.~Heigold, S.~Gelly, J.~Uszkoreit,
+  and N.~Houlsby.
+\newblock An image is worth 16x16 words: {T}ransformers for image recognition
+  at scale.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2021.
+
+\bibitem[Huang et~al.(2021)Huang, Liu, Qi, and Zhang]{huang2021deep}
+R.~Huang, S.~Liu, R.~Qi, and Y.~Zhang.
+\newblock Deep learning {3D} sparse inversion of gravity data.
+\newblock \emph{Journal of Geophysical Research: Solid Earth}, 126:\penalty0
+  e2021JB022476, 2021.
+\newblock \doi{10.1029/2021JB022476}.
+
+\bibitem[Kendall and Gal(2017)]{kendall2017}
+A.~Kendall and Y.~Gal.
+\newblock What uncertainties do we need in {B}ayesian deep learning for
+  computer vision?
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, volume~30, pages 5574--5584, 2017.
+
+\bibitem[Lam et~al.(2023)Lam, Sanchez-Gonzalez, Willson, Wirnsberger,
+  Fortunato, Alet, Ravuri, Ewalds, Eaton-Rosen, Hu, et~al.]{lam2023graphcast}
+R.~Lam, A.~Sanchez-Gonzalez, M.~Willson, P.~Wirnsberger, M.~Fortunato, F.~Alet,
+  S.~Ravuri, T.~Ewalds, Z.~Eaton-Rosen, W.~Hu, et~al.
+\newblock Learning skillful medium-range global weather forecasting.
+\newblock \emph{Science}, 382\penalty0 (6677):\penalty0 1416--1421, 2023.
+\newblock \doi{10.1126/science.adi2336}.
+
+\bibitem[Last and Kubik(1983)]{last1983}
+B.~J. Last and K.~Kubik.
+\newblock Compact gravity inversion.
+\newblock \emph{Geophysics}, 48\penalty0 (6):\penalty0 713--721, 1983.
+\newblock \doi{10.1190/1.1441501}.
+
+\bibitem[Li and Oldenburg(1996)]{li1996}
+Y.~Li and D.~W. Oldenburg.
+\newblock {3-D} inversion of magnetic data.
+\newblock \emph{Geophysics}, 61\penalty0 (2):\penalty0 394--408, 1996.
+\newblock \doi{10.1190/1.1443968}.
+
+\bibitem[Li and Oldenburg(1998)]{li1998}
+Y.~Li and D.~W. Oldenburg.
+\newblock {3-D} inversion of gravity data.
+\newblock \emph{Geophysics}, 63\penalty0 (1):\penalty0 109--119, 1998.
+\newblock \doi{10.1190/1.1444302}.
+
+\bibitem[Li et~al.(2022)Li, Jia, and Lu]{li2022selfsup}
+Y.~Li, Z.~Jia, and W.~Lu.
+\newblock Self-supervised deep learning for {3D} gravity inversion.
+\newblock \emph{IEEE Transactions on Geoscience and Remote Sensing},
+  60:\penalty0 5924311, 2022.
+\newblock \doi{10.1109/TGRS.2022.3225449}.
+
+\bibitem[Liu et~al.(2021)Liu, Lin, Cao, Hu, Wei, Zhang, Lin, and
+  Guo]{liu2021swin}
+Z.~Liu, Y.~Lin, Y.~Cao, H.~Hu, Y.~Wei, Z.~Zhang, S.~Lin, and B.~Guo.
+\newblock {S}win {T}ransformer: Hierarchical vision {T}ransformer using shifted
+  windows.
+\newblock In \emph{Proceedings of the IEEE/CVF International Conference on
+  Computer Vision (ICCV)}, pages 10012--10022, 2021.
+\newblock \doi{10.1109/ICCV48922.2021.00986}.
+
+\bibitem[Loshchilov and Hutter(2019)]{loshchilov2019adamw}
+I.~Loshchilov and F.~Hutter.
+\newblock Decoupled weight decay regularization.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2019.
+
+\bibitem[Nagy(1966)]{nagy1966}
+D.~Nagy.
+\newblock The gravitational attraction of a right rectangular prism.
+\newblock \emph{Geophysics}, 31\penalty0 (2):\penalty0 362--371, 1966.
+\newblock \doi{10.1190/1.1439779}.
+
+\bibitem[Nguyen et~al.(2023)Nguyen, Brandstetter, Kapoor, Gupta, and
+  Grover]{nguyen2023climax}
+T.~Nguyen, J.~Brandstetter, A.~Kapoor, J.~K. Gupta, and A.~Grover.
+\newblock {C}lima{X}: A foundation model for weather and climate.
+\newblock In \emph{Proceedings of the International Conference on Machine
+  Learning (ICML)}, volume 202 of \emph{PMLR}, pages 25909--25938, 2023.
+
+\bibitem[Parker(1994)]{parker1994}
+R.~L. Parker.
+\newblock \emph{Geophysical Inverse Theory}.
+\newblock Princeton University Press, Princeton, NJ, 1994.
+
+\bibitem[Poh{\'a}nka(1988)]{pohanka1988}
+V.~Poh{\'a}nka.
+\newblock Optimum expression for computation of the gravity field of a
+  homogeneous polyhedral body.
+\newblock \emph{Geophysical Prospecting}, 36\penalty0 (7):\penalty0 733--751,
+  1988.
+\newblock \doi{10.1111/j.1365-2478.1988.tb02190.x}.
+
+\bibitem[Poh{\'a}nka(1998)]{pohanka1998}
+V.~Poh{\'a}nka.
+\newblock Optimum expression for computation of the gravity field of a
+  polyhedral body with linearly increasing density.
+\newblock \emph{Geophysical Prospecting}, 46\penalty0 (4):\penalty0 391--404,
+  1998.
+\newblock \doi{10.1046/j.1365-2478.1998.00096.x}.
+
+\bibitem[Portniaguine and Zhdanov(1999)]{portniaguine1999}
+O.~Portniaguine and M.~S. Zhdanov.
+\newblock Focusing geophysical inversion images.
+\newblock \emph{Geophysics}, 64\penalty0 (3):\penalty0 874--887, 1999.
+\newblock \doi{10.1190/1.1444596}.
+
+\bibitem[Portniaguine and Zhdanov(2002)]{portniaguine2002}
+O.~Portniaguine and M.~S. Zhdanov.
+\newblock {3-D} magnetic inversion with data compression and image focusing.
+\newblock \emph{Geophysics}, 67\penalty0 (5):\penalty0 1532--1541, 2002.
+\newblock \doi{10.1190/1.1512749}.
+
+\bibitem[Seitzer et~al.(2022)Seitzer, Tavakoli, Anti{\'c}, and
+  Martius]{seitzer2022betanll}
+M.~Seitzer, A.~Tavakoli, D.~Anti{\'c}, and G.~Martius.
+\newblock On the pitfalls of heteroscedastic uncertainty estimation with
+  probabilistic neural networks.
+\newblock In \emph{International Conference on Learning Representations
+  (ICLR)}, 2022.
+
+\bibitem[Tikhonov and Arsenin(1977)]{tikhonov1977}
+A.~N. Tikhonov and V.~Y. Arsenin.
+\newblock \emph{Solutions of Ill-Posed Problems}.
+\newblock V. H. Winston \& Sons, Washington, D.C., 1977.
+
+\bibitem[Uieda et~al.(2016)Uieda, Barbosa, and Braitenberg]{uieda2016}
+L.~Uieda, V.~C.~F. Barbosa, and C.~Braitenberg.
+\newblock Tesseroids: Forward-modeling gravitational fields in spherical
+  coordinates.
+\newblock \emph{Geophysics}, 81\penalty0 (5):\penalty0 F41--F48, 2016.
+\newblock \doi{10.1190/geo2015-0204.1}.
+
+\bibitem[Vaswani et~al.(2017)Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez,
+  Kaiser, and Polosukhin]{vaswani2017}
+A.~Vaswani, N.~Shazeer, N.~Parmar, J.~Uszkoreit, L.~Jones, A.~N. Gomez,
+  {\L}.~Kaiser, and I.~Polosukhin.
+\newblock Attention is all you need.
+\newblock In \emph{Advances in Neural Information Processing Systems
+  (NeurIPS)}, volume~30, pages 5998--6008, 2017.
+
+\bibitem[Wang et~al.(2004)Wang, Bovik, Sheikh, and Simoncelli]{wang2004ssim}
+Z.~Wang, A.~C. Bovik, H.~R. Sheikh, and E.~P. Simoncelli.
+\newblock Image quality assessment: From error visibility to structural
+  similarity.
+\newblock \emph{IEEE Transactions on Image Processing}, 13\penalty0
+  (4):\penalty0 600--612, 2004.
+\newblock \doi{10.1109/TIP.2003.819861}.
+
+\bibitem[Xu et~al.(2023)Xu, Wang, Zhdanov, Wang, Li, Zhang, Liang, and
+  Wang]{xu2023resunet}
+Z.~Xu, R.~Wang, M.~S. Zhdanov, X.~Wang, J.~Li, B.~Zhang, S.~Liang, and Y.~Wang.
+\newblock Inversion of the gravity gradiometry data by {ResUnet} network: An
+  application in {N}ordkapp {B}asin, {B}arents {S}ea.
+\newblock \emph{IEEE Transactions on Geoscience and Remote Sensing},
+  61:\penalty0 4502410, 2023.
+\newblock \doi{10.1109/TGRS.2023.3271606}.
+
+\bibitem[Yang et~al.(2022)Yang, Hu, Liu, Jie, Wang, and Chen]{yang2022gravity}
+Q.~Yang, X.~Hu, S.~Liu, Q.~Jie, H.~Wang, and Q.~Chen.
+\newblock {3-D} gravity inversion based on deep convolution neural networks.
+\newblock \emph{IEEE Geoscience and Remote Sensing Letters}, 19:\penalty0
+  3001305, 2022.
+\newblock \doi{10.1109/LGRS.2020.3047131}.
+
+\bibitem[Yu et~al.(2025)Yu, Zhou, Zhou, Jiao, Huang, and Lu]{yu2025swin}
+P.~Yu, L.~Zhou, S.~Zhou, J.~Jiao, G.~Huang, and P.~Lu.
+\newblock Physics-constrained three-dimensional {S}win {T}ransformer for
+  gravity data inversion.
+\newblock \emph{Remote Sensing}, 17\penalty0 (1):\penalty0 113, 2025.
+\newblock \doi{10.3390/rs17010113}.
+
+\bibitem[Zhdanov(2002)]{zhdanov2002}
+M.~S. Zhdanov.
+\newblock \emph{Geophysical Inverse Theory and Regularization Problems},
+  volume~36 of \emph{Methods in Geochemistry and Geophysics}.
+\newblock Elsevier, Amsterdam, 2002.
+
+\bibitem[Zhou et~al.(2023)Zhou, Chen, Lv, and Wang]{zhou2023unet}
+X.~Zhou, Z.~Chen, Y.~Lv, and S.~Wang.
+\newblock {3-D} gravity intelligent inversion by {U-Net} network with data
+  augmentation.
+\newblock \emph{IEEE Transactions on Geoscience and Remote Sensing},
+  61:\penalty0 5902713, 2023.
+\newblock \doi{10.1109/TGRS.2023.3241310}.
+
+\end{thebibliography}

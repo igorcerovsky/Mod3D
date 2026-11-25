@@ -1,20 +1,20 @@
 \begin{table}[t]
 \centering
-\caption{Multi-regime validation performance of \texttt{Swin3D v9.1} (\valVNineOneParams{} parameters, epoch \valVNineOneEp{}) across the four stratified benchmarks ($N=\valNBucketTotal{}$ total scenes).}
+\caption{Held-out multi-regime test performance of \texttt{Swin3D v9.1} (\valVNineOneParams{} parameters, epoch~\valVNineOneEp{}) across four stratified survey regimes ($N=\valNBucketTotal{}$ scenes, disjoint test seed~\valTestSeed{}). Columns report regime weight (Wt.), Smooth 3D IoU (mean\,$\pm$\,std), subsurface RMSE and foreground target RMSE (FG-RMSE), 3-voxel dilated foreground SSIM ($\text{SSIM}_{d_3}$), vertical centroid error $|\Delta z|$ (mean\,$\pm$\,std), foreground mass recovery ratio (Amp.), effective gravity misfit, and Laplace $1$-$b$ coverage (ideal $63.2\%$).}
 \label{tab:v91_buckets}
 \small
-\setlength{\tabcolsep}{4.5pt}
+\setlength{\tabcolsep}{4pt}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lccccccccc}
 \toprule
-Regime Bucket & Wt. & IoU $\uparrow$ & RMSE $\downarrow$ & FG-RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & 1-$\sigma$ Cov. \\
+Regime Bucket & Wt. & IoU $\uparrow$ & RMSE $\downarrow$ & FG-RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & $1$-$b$ Cov. \\
 \midrule
-Ground Clean & 0.35 & 0.545 & 0.048 & 0.404 & 0.615 & 33.1 & 0.646 & 4.18 & 71.5\% \\
-Hard-Large Detrended & 0.35 & 0.692 & 0.076 & 0.238 & 0.574 & 30.8 & 0.810 & 5.99 & 64.4\% \\
-Airborne Relief Drape & 0.15 & 0.590 & 0.082 & 0.333 & 0.568 & 51.1 & 0.709 & 6.46 & 56.1\% \\
-Multi-Aspect ($dz/dx$) & 0.15 & 0.580 & 0.087 & 0.363 & 0.515 & 42.6 & 0.706 & 7.34 & 61.0\% \\
+Ground Clean & 0.35 & 0.531\,$\pm$\,0.109 & 0.043 & 0.360 & 0.591 & 29.3\,$\pm$\,24.1 & 0.653 & 3.98 & 63.0\% \\
+Hard-Large Detrended & 0.35 & 0.658\,$\pm$\,0.176 & 0.091 & 0.283 & 0.569 & 46.4\,$\pm$\,40.5 & 0.755 & 6.83 & 63.0\% \\
+Airborne Relief Drape & 0.15 & 0.633\,$\pm$\,0.164 & 0.067 & 0.308 & 0.593 & 36.7\,$\pm$\,23.2 & 0.734 & 5.97 & 73.7\% \\
+Multi-Aspect ($\Delta z/\Delta x$) & 0.15 & 0.702\,$\pm$\,0.169 & 0.072 & 0.257 & 0.608 & 39.2\,$\pm$\,53.4 & 0.807 & 4.86 & 65.1\% \\
 \midrule
-\textbf{Weighted Composite} & 1.00 & \textbf{0.608} & \textbf{0.069} & \textbf{0.329} & \textbf{0.579} & \textbf{36.4} & \textbf{0.722} & \textbf{5.63} & \textbf{65.1\%} \\
+\textbf{Weighted Composite} & 1.00 & \textbf{0.617\,$\pm$\,0.164} & \textbf{0.067} & \textbf{0.310} & \textbf{0.586} & \textbf{37.9\,$\pm$\,36.0} & \textbf{0.724} & \textbf{5.41} & \textbf{64.9\%} \\
 \bottomrule
 \end{tabular}%
 }

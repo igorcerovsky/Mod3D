@@ -1,28 +1,28 @@
 \begin{table}[t]
 \centering
-\caption{Controlled architectural ablation across identical seeded validation sets. Panel~A evaluates the 4-bucket realistic survey suite ($N=\valNAblBucket{}$); Panel~B evaluates the clean ground benchmark ($N=\valNCleanStd{}$ standard + $\valNCleanHard{}$ hard scenes). Bold marks best per panel.}
+\caption{Chronological architecture progression evaluated on identical held-out test sets (disjoint seed~\valTestSeed{}). Panel~A evaluates the 4-bucket realistic survey suite ($N=\valNAblBucket{}$); Panel~B evaluates the clean ground benchmark ($N=\valNCleanStd{}$ standard + $\valNCleanHard{}$ hard scenes). Columns include best checkpoint epoch (Ep.), parameter count, input channels (Ch.), Green's Vertical Bias (GVB), and lithology coherence (Coh.). $^\dagger$\texttt{v6.1} was warm-started from \texttt{v6} epoch~236. Because training budgets differ across historical runs, Section~\ref{sec:experiments} also compares \texttt{v9.1} at matched epoch~\valMatchedEp{} (IoU~\valMatchedIoU{}, $|\Delta z|=\valMatchedDz{}$\,m) to separate architectural gains from longer training. Bold marks best per panel (ties after rounding both bolded).}
 \label{tab:ablation}
 \small
-\setlength{\tabcolsep}{4pt}
+\setlength{\tabcolsep}{3.5pt}
 \resizebox{\textwidth}{!}{%
-\begin{tabular}{lcllcccccc}
+\begin{tabular}{lccllcccccc}
 \toprule
-Model & Params & Ch. & Key Configuration & IoU $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ \\
+Model & Ep. & Params & Ch. & Key Configuration & IoU (mean\,$\pm$\,std) $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ \\
 \midrule
-\multicolumn{10}{l}{\textit{Panel A: Multi-Regime Realistic Survey Suite (ground, hard-detrended, airborne drape, multi-aspect)}} \\
-\texttt{v6} & 2.73M & 5 & 5-ch + 2-Stage Unified & 0.541 & 49.2 & 0.648 & 11.85 & 0.074 & 0.499 \\
-\texttt{v6.1} & 2.73M & 5 & 5-ch + GVB + Smooth IoU & 0.557 & 47.8 & 0.684 & 9.92 & 0.073 & 0.520 \\
-\texttt{v7} & 2.86M & 6 & 6-ch + 3-Tier Slab & 0.556 & 45.1 & 0.682 & 9.36 & 0.072 & 0.524 \\
-\texttt{v8} & 2.86M & 6 & 6-ch + 3-Tier Unrolled & 0.557 & 46.2 & 0.675 & 7.75 & 0.071 & 0.527 \\
-\textbf{\texttt{v9.1}} (ours) & 2.73M & 6 & 6-ch + Unified + Coh. & \textbf{0.609} & \textbf{34.7} & \textbf{0.721} & \textbf{5.37} & \textbf{0.067} & \textbf{0.563} \\
+\multicolumn{11}{l}{\textit{Panel A: Multi-Regime Realistic Survey Suite (ground, hard-detrended, airborne drape, multi-aspect)}} \\
+\texttt{v6} & 236 & 2.73M & 5 & 5-ch + 2-Stage Unified & 0.559\,$\pm$\,0.194 & 50.2 & 0.677 & 10.49 & 0.068 & 0.535 \\
+\texttt{v6.1}$^\dagger$ & 323 & 2.73M & 5 & 5-ch + GVB + Smooth IoU & 0.567\,$\pm$\,0.183 & 54.5 & 0.696 & 8.58 & 0.068 & 0.546 \\
+\texttt{v7} & 99 & 2.86M & 6 & 6-ch + 3-Tier Slab & 0.573\,$\pm$\,0.187 & 52.0 & 0.705 & 8.03 & 0.066 & 0.555 \\
+\texttt{v8} & 97 & 2.86M & 6 & 6-ch + 3-Tier Unrolled & 0.572\,$\pm$\,0.184 & 48.2 & 0.693 & 6.49 & 0.067 & 0.555 \\
+\textbf{\texttt{v9.1}} (ours) & 498 & 2.73M & 6 & 6-ch + Unified + Coh. & \textbf{0.623}\,$\pm$\,0.165 & \textbf{36.5} & \textbf{0.731} & \textbf{6.14} & \textbf{0.063} & \textbf{0.598} \\
 \midrule
-\multicolumn{10}{l}{\textit{Panel B: Clean Ground Survey Benchmark (standard + hard composite targets)}} \\
-\texttt{v3} & 2.70M & 2 & 2-ch + Prototypes & 0.566 & 22.4 & 0.738 & 7.28 & 0.048 & 0.661 \\
-\texttt{v5.2} & 2.73M & 5 & 5-ch + GVB + NLL & 0.575 & 22.2 & \textbf{0.751} & 6.56 & 0.048 & 0.669 \\
-\texttt{v8} (clean) & 2.86M & 6 & 6-ch + 3-Tier Unrolled & 0.369 & 58.9 & 0.485 & 9.94 & 0.060 & 0.504 \\
-\texttt{v9} (clean) & 2.73M & 6 & 6-ch + Unified Decoder & 0.567 & 23.0 & 0.733 & 4.38 & 0.048 & 0.664 \\
-\textbf{\texttt{v9.1}} (clean) & 2.73M & 6 & 6-ch + Unified + Coh. & \textbf{0.576} & \textbf{21.5} & 0.742 & \textbf{4.09} & \textbf{0.047} & \textbf{0.673} \\
-\texttt{v9.1} (zero-shot xfer) & 2.73M & 6 & 6-ch Hard Zero-Shot & 0.541 & 23.2 & 0.677 & 4.30 & 0.048 & 0.646 \\
+\multicolumn{11}{l}{\textit{Panel B: Clean Ground Survey Benchmark (standard + hard composite targets)}} \\
+\texttt{v3} & 118 & 2.70M & 2 & 2-ch + Prototypes & 0.547\,$\pm$\,0.151 & 22.8 & 0.718 & 7.43 & 0.048 & 0.658 \\
+\texttt{v5.2} & 148 & 2.73M & 5 & 5-ch + GVB + NLL & 0.546\,$\pm$\,0.147 & 24.1 & 0.714 & 6.21 & 0.047 & 0.661 \\
+\texttt{v8} (clean) & 35 & 2.86M & 6 & 6-ch + 3-Tier Unrolled & 0.358\,$\pm$\,0.170 & 65.6 & 0.465 & 11.99 & 0.057 & 0.519 \\
+\texttt{v9} (clean) & 119 & 2.73M & 6 & 6-ch + Unified Decoder & 0.554\,$\pm$\,0.146 & 23.1 & 0.715 & 4.41 & 0.047 & 0.666 \\
+\textbf{\texttt{v9.1}} (clean) & 153 & 2.73M & 6 & 6-ch + Unified + Coh. & \textbf{0.571}\,$\pm$\,0.143 & \textbf{19.5} & \textbf{0.737} & \textbf{4.15} & \textbf{0.046} & \textbf{0.678} \\
+\texttt{v9.1} (zero-shot xfer) & 498 & 2.73M & 6 & 6-ch Hard Zero-Shot & 0.541\,$\pm$\,0.137 & 23.8 & 0.673 & 4.54 & 0.047 & 0.655 \\
 \bottomrule
 \end{tabular}%
 }

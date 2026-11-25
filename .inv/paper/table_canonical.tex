@@ -1,6 +1,6 @@
 \begin{table}[t]
 \centering
-\caption{Head-to-head comparison against classical Tikhonov $L_2$ and Portniaguine--Zhdanov focusing IRLS inversion on four canonical 3D benchmarks (2\% surface noise). Bold marks best method per benchmark.}
+\caption{Head-to-head comparison against depth-weighted Tikhonov $L_2$ ($\gamma=0.50$, up to 10 cooling iterations) and Portniaguine--Zhdanov Focusing IRLS ($\gamma=0.75$, 12 iterations) on four canonical 3D benchmarks (single deterministic realizations, 2\% white Gaussian noise, \valCpuThreads{} CPU threads). Bold marks best method per benchmark (ties after rounding both bolded; closest to $1.0$ for Amp.\ and $\chi^2_{\mathrm{red}}$).}
 \label{tab:canonical}
 \small
 \setlength{\tabcolsep}{4pt}
@@ -9,30 +9,25 @@
 \toprule
 Benchmark & Method & IoU $\uparrow$ & RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & $\chi^2_{\mathrm{red}}$ $\to 1$ & Time [s] $\downarrow$ \\
 \midrule
-\multirow{4}{*}{Compact Ore Block} & Tikhonov $L_2$ & 0.084 & 0.060 & 0.168 & 244.9 & 0.202 & 4.65 & 0.66 & 2.49 \\
- & Focusing IRLS & 0.222 & 0.056 & 0.213 & 128.0 & 0.194 & 7.64 & 1.43 & 3.55 \\
- & \texttt{Swin3D v9.1} & \textbf{0.457} & \textbf{0.040} & \textbf{0.526} & 18.7 & 0.548 & 1.01 & 0.99 & \textbf{0.53} \\
- & Hybrid \texttt{v9.1}+Focus & 0.456 & \textbf{0.040} & 0.526 & \textbf{18.7} & \textbf{0.548} & \textbf{0.96} & 0.99 & 2.02 \\
+\multirow{3}{*}{Compact Ore Block} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.091 & 0.060 & 0.124 & 29.5 & 0.154 & 3.60 & 0.76 & 0.76 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.220 & 0.056 & 0.208 & 127.4 & 0.192 & 7.26 & 1.39 & 1.45 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.457} & \textbf{0.039} & \textbf{0.528} & \textbf{17.7} & \textbf{0.551} & \textbf{1.00} & \textbf{0.99} & \textbf{0.19} \\
 \midrule
-\multirow{4}{*}{Dipping Mafic Dyke ($45^\circ$)} & Tikhonov $L_2$ & 0.125 & 0.054 & 0.187 & 376.0 & 0.304 & 3.65 & 0.61 & 10.33 \\
- & Focusing IRLS & 0.288 & 0.047 & 0.203 & 78.4 & 0.291 & 5.31 & 1.37 & 15.67 \\
- & \texttt{Swin3D v9.1} & \textbf{0.510} & 0.039 & 0.405 & 49.6 & 0.536 & 3.35 & 1.15 & \textbf{0.39} \\
- & Hybrid \texttt{v9.1}+Focus & 0.508 & \textbf{0.039} & \textbf{0.406} & \textbf{49.5} & \textbf{0.536} & \textbf{2.96} & 1.12 & 7.79 \\
+\multirow{3}{*}{Dipping Mafic Dyke ($45^\circ$)} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.144 & 0.051 & 0.149 & 165.5 & 0.247 & 3.06 & 0.71 & 2.59 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.290 & 0.047 & 0.199 & 73.3 & 0.292 & 4.25 & 1.23 & 8.38 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.520} & \textbf{0.039} & \textbf{0.420} & \textbf{44.4} & \textbf{0.549} & \textbf{3.03} & \textbf{1.12} & \textbf{0.20} \\
 \midrule
-\multirow{4}{*}{Cavity + Deep Ore} & Tikhonov $L_2$ & 0.055 & 0.087 & 0.272 & 189.4 & 0.220 & 9.90 & 0.63 & 12.37 \\
- & Focusing IRLS & 0.081 & 0.079 & 0.351 & 149.5 & 0.177 & 14.73 & 1.44 & 19.06 \\
- & \texttt{Swin3D v9.1} & \textbf{0.534} & 0.059 & \textbf{0.643} & 27.0 & 0.602 & 5.81 & 1.09 & \textbf{0.45} \\
- & Hybrid \texttt{v9.1}+Focus & 0.531 & \textbf{0.059} & 0.643 & \textbf{26.9} & \textbf{0.602} & \textbf{5.12} & 1.07 & 11.31 \\
+\multirow{3}{*}{Cavity + Deep Ore} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.064 & 0.080 & 0.302 & \textbf{14.6} & 0.195 & 9.79 & 0.72 & 7.15 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.091 & 0.080 & 0.372 & 93.6 & 0.223 & 15.24 & 1.45 & 11.96 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.540} & \textbf{0.062} & \textbf{0.645} & 30.1 & \textbf{0.601} & \textbf{8.53} & \textbf{1.17} & \textbf{0.19} \\
 \midrule
-\multirow{4}{*}{Sedimentary Basin (Detrended)} & Tikhonov $L_2$ & 0.099 & 0.116 & 0.047 & 597.3 & 0.467 & 3.56 & 0.63 & 11.60 \\
- & Focusing IRLS & \textbf{0.730} & \textbf{0.029} & \textbf{0.632} & \textbf{14.3} & 0.854 & 2.17 & 1.01 & 28.13 \\
- & \texttt{Swin3D v9.1} & 0.673 & 0.049 & 0.509 & 44.7 & \textbf{0.869} & 2.95 & 1.10 & \textbf{0.57} \\
- & Hybrid \texttt{v9.1}+Focus & 0.620 & 0.049 & 0.489 & 44.8 & 0.861 & \textbf{1.99} & 0.93 & 14.80 \\
+\multirow{3}{*}{Sedimentary Basin (Detrended)} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.176 & 0.084 & 0.143 & 449.3 & 0.538 & 3.24 & 0.73 & 4.69 \\
+ & Focusing IRLS ($\gamma=0.75$) & \textbf{0.726} & \textbf{0.030} & \textbf{0.618} & \textbf{17.9} & 0.846 & \textbf{2.65} & \textbf{1.06} & 13.85 \\
+ & \texttt{Swin3D v9.1} & 0.669 & 0.050 & 0.497 & 44.0 & \textbf{0.874} & 2.94 & 1.10 & \textbf{0.19} \\
 \midrule
-\multirow{4}{*}{\textbf{Mean (4 Benchmarks)}} & Tikhonov $L_2$ & 0.091 & 0.079 & 0.169 & 351.9 & 0.298 & 5.44 & 0.63 & 9.20 \\
- & Focusing IRLS & 0.330 & 0.053 & 0.350 & 92.5 & 0.379 & 7.46 & 1.31 & 16.60 \\
- & \texttt{Swin3D v9.1} & \textbf{0.543} & \textbf{0.047} & \textbf{0.521} & 35.0 & \textbf{0.639} & 3.28 & 1.08 & \textbf{0.48} \\
- & Hybrid \texttt{v9.1}+Focus & 0.529 & 0.047 & 0.516 & \textbf{35.0} & 0.637 & \textbf{2.76} & 1.03 & 8.98 \\
+\multirow{3}{*}{\textbf{Mean (4 Benchmarks)}} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.119 & 0.069 & 0.180 & 164.7 & 0.284 & 4.92 & 0.73 & 3.80 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.332 & 0.053 & 0.349 & 78.0 & 0.388 & 7.35 & 1.28 & 8.91 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.547} & \textbf{0.047} & \textbf{0.522} & \textbf{34.0} & \textbf{0.644} & \textbf{3.88} & \textbf{1.10} & \textbf{0.19} \\
 \bottomrule
 \end{tabular}%
 }

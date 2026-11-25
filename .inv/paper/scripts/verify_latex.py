@@ -193,6 +193,9 @@ def main() -> int:
     missing_macros = sorted(used_in_body - defined_macros)
     if missing_macros:
         errors.append(f"Undefined \\val macros used in manuscript/tables: {missing_macros}")
+    unused_macros = sorted(defined_macros - used_in_body)
+    if unused_macros:
+        warnings.append(f"Unused \\val macros in macros_results.tex ({len(unused_macros)}): {unused_macros}")
 
     print(
         f"Verified {len(tex_files)} .tex files, {len(labels)} labels, "

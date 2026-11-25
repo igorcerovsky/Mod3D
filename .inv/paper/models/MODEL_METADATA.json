@@ -1,0 +1,362 @@
+{
+  "archived_at": "2026-11-25T10:22:38",
+  "description": "Frozen PyTorch checkpoints archived from .inv/python for exact arXiv paper reproducibility.",
+  "hardware_trained_on": "Apple MacBook Air (Apple M4, 10-core CPU, 32 GB unified memory, PyTorch MPS FP32)",
+  "models": {
+    "v9.1_hard_best.pt": {
+      "filename": "v9.1_hard_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v9.1_hard/best_swin3d.pt",
+      "description": "Flagship multi-regime model (Swin3D v9.1, trained on 4-regime hard curriculum)",
+      "sha256": "7848112c9a080badd62e02c5af47332fd5dc07d3f2bf04ae9ef2571b89649260",
+      "size_bytes": 44182767,
+      "best_epoch": 498,
+      "trainable_params": 2729729,
+      "val_loss_at_best_epoch": 0.9084829334169626,
+      "arch": {
+        "variant": "v9.1",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+        "in_channels": 6
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 34,
+        "epoch_max": 514,
+        "num_logged_epochs": 481
+      }
+    },
+    "v6_best.pt": {
+      "filename": "v6_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v6/best_swin3d.pt",
+      "description": "Progression Panel A: 5-ch + 2-Stage Unified",
+      "sha256": "5a17c04acb225d0cc540d90e0b43f758475fabefdb81d97e3c5634793527e757",
+      "size_bytes": 22091823,
+      "best_epoch": 236,
+      "trainable_params": 2731580,
+      "val_loss_at_best_epoch": 1.184884736314416,
+      "arch": {
+        "variant": "v6",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 300,
+        "num_logged_epochs": 300
+      }
+    },
+    "v6.1_best.pt": {
+      "filename": "v6.1_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v6.1/best_swin3d.pt",
+      "description": "Progression Panel A: 5-ch + GVB + Smooth IoU (warm-started from v6 ep 236)",
+      "sha256": "3ad926de0fe0a7e3d0feb6f0c575141cf6fd2beccf11d34545de9963d2822dd3",
+      "size_bytes": 44277287,
+      "best_epoch": 323,
+      "trainable_params": 2734852,
+      "val_loss_at_best_epoch": 1.1685251185670495,
+      "arch": {
+        "variant": "v6",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 237,
+        "epoch_max": 330,
+        "num_logged_epochs": 94
+      }
+    },
+    "v7_best.pt": {
+      "filename": "v7_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v7/best_swin3d.pt",
+      "description": "Progression Panel A: 6-ch + 3-Tier Slab",
+      "sha256": "0b69df890669a83ae82018c32c3464c5c0476204aabf03349e6530960c22802c",
+      "size_bytes": 46427067,
+      "best_epoch": 99,
+      "trainable_params": 2857651,
+      "val_loss_at_best_epoch": 1.2606584241613745,
+      "arch": {
+        "variant": "v7",
+        "model_size": "base",
+        "in_channels": 6,
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 32,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 116,
+        "num_logged_epochs": 116
+      }
+    },
+    "v8_best.pt": {
+      "filename": "v8_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v8/best_swin3d.pt",
+      "description": "Progression Panel A: 6-ch + 3-Tier Unrolled",
+      "sha256": "9885d120fd8dbf229f2f902a8c31061ca87827f60d7c7c8f734e93681f2e62d3",
+      "size_bytes": 46437324,
+      "best_epoch": 97,
+      "trainable_params": 2857752,
+      "val_loss_at_best_epoch": 1.4169206760358064,
+      "arch": {
+        "variant": "v8",
+        "model_size": "base",
+        "in_channels": 6,
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 32,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+        "n_iters": 3
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 100,
+        "num_logged_epochs": 100
+      }
+    },
+    "v3_clean_best.pt": {
+      "filename": "v3_clean_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v3/best_swin3d.pt",
+      "description": "Progression Panel B: 2-ch + Prototypes (clean ground)",
+      "sha256": "9163615d31c046ebd1bc2844c3d17c6eb2efeb0436e87040d921f9261045a136",
+      "size_bytes": 21787735,
+      "best_epoch": 118,
+      "trainable_params": 2699043,
+      "val_loss_at_best_epoch": 0.6898660063743591,
+      "arch": {
+        "variant": "v3",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "num_classes": 7
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 125,
+        "num_logged_epochs": 125
+      }
+    },
+    "v5.2_clean_best.pt": {
+      "filename": "v5.2_clean_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v5.2/best_swin3d.pt",
+      "description": "Progression Panel B: 5-ch + GVB + NLL (clean ground)",
+      "sha256": "43f4689e69ea90dd6138682193ee9d4afe3e1ef5c167a6fcb8a5065caf852798",
+      "size_bytes": 22057031,
+      "best_epoch": 148,
+      "trainable_params": 2728457,
+      "val_loss_at_best_epoch": 0.9184750020503998,
+      "arch": {
+        "variant": "v5",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 148,
+        "num_logged_epochs": 148
+      }
+    },
+    "v8_clean_best.pt": {
+      "filename": "v8_clean_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v8_v3data/best_swin3d.pt",
+      "description": "Progression Panel B: 6-ch + 3-Tier Unrolled (clean ground)",
+      "sha256": "3d13bf6ba1dcc57df2afa3d3c02e84c769fd522f579d65fee8137e652f3048f9",
+      "size_bytes": 23209727,
+      "best_epoch": 35,
+      "trainable_params": 2857752,
+      "val_loss_at_best_epoch": 1.8903762102127075,
+      "arch": {
+        "variant": "v8",
+        "model_size": "base",
+        "in_channels": 6,
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 32,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+        "n_iters": 3
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 37,
+        "num_logged_epochs": 37
+      }
+    },
+    "v9_clean_best.pt": {
+      "filename": "v9_clean_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v9_v3data/best_swin3d.pt",
+      "description": "Progression Panel B: 6-ch + Unified Decoder (clean ground)",
+      "sha256": "d00af62991d5aff7f7313eacd8024fc7595190e0ca12c446e944194ead26fca7",
+      "size_bytes": 22081751,
+      "best_epoch": 119,
+      "trainable_params": 2729729,
+      "val_loss_at_best_epoch": 0.9339523553848267,
+      "arch": {
+        "variant": "v9",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+        "in_channels": 6
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 120,
+        "num_logged_epochs": 120
+      }
+    },
+    "v9.1_clean_best.pt": {
+      "filename": "v9.1_clean_best.pt",
+      "source_relative_path": ".inv/python/checkpoints_v9.1_v3data/best_swin3d.pt",
+      "description": "Progression Panel B: 6-ch + Unified + Coherence (clean ground)",
+      "sha256": "3c025ec628e1ec20fc7da47c8bc408751e3301d8760cfca637ce673a6aeb84d0",
+      "size_bytes": 44181103,
+      "best_epoch": 153,
+      "trainable_params": 2729729,
+      "val_loss_at_best_epoch": 0.8950568199157716,
+      "arch": {
+        "variant": "v9.1",
+        "model_size": "base",
+        "embed_dim": 128,
+        "num_heads": 4,
+        "depth": 6,
+        "ch_mid": 40,
+        "ch_vox": 24,
+        "n_sub": 3,
+        "dec_depth": 2,
+        "num_classes": 7,
+        "dropout": 0.05,
+        "in_channels": 6
+      },
+      "grid": {
+        "nx": 64,
+        "ny": 64,
+        "nz": 32,
+        "cell": 50.0
+      },
+      "training_history_summary": {
+        "epoch_min": 1,
+        "epoch_max": 153,
+        "num_logged_epochs": 153
+      }
+    }
+  },
+  "training_history_file": {
+    "filename": "training_history_v9.1_hard.json",
+    "source_relative_path": ".inv/python/checkpoints_v9.1_hard/training_history.json",
+    "sha256": "1e0e39b4bb42d9661486fe42e0a988ef1254dcf20f28be53defd31631f53bdb1",
+    "num_epochs": 481,
+    "epoch_range": [
+      34,
+      514
+    ]
+  }
+}

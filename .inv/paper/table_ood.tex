@@ -1,0 +1,30 @@
+\begin{table}[t]
+\centering
+\caption{Independent non-inverse-crime out-of-distribution (OOD) benchmark comparison (2\% white Gaussian noise). Forward anomalies are synthesized without the $50$\,m training operator: an exact closed-form analytical sphere and two continuous curved/depth-graded structures integrated via direct exact Nagy prism summation on a $2\times$ finer $25$\,m mesh ($128\times 128\times 64$) at exact station elevations. Bold marks best per benchmark.}
+\label{tab:ood}
+\small
+\setlength{\tabcolsep}{4pt}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{llcccccccc}
+\toprule
+Benchmark & Method & IoU $\uparrow$ & RMSE $\downarrow$ & $\text{SSIM}_{d_3}$ $\uparrow$ & $|\Delta z|$ [m] $\downarrow$ & Amp. $\to 1$ & Misfit [\%] $\downarrow$ & $\chi^2_{\mathrm{red}}$ $\to 1$ & Time [s] $\downarrow$ \\
+\midrule
+\multirow{3}{*}{Analytical Sphere (Grid-Free)} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.094 & 0.065 & 0.111 & 21.4 & 0.177 & 3.33 & 0.72 & 2.18 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.068 & 0.062 & 0.183 & 22.8 & 0.190 & 6.04 & 1.26 & 7.03 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.532} & \textbf{0.030} & \textbf{0.728} & \textbf{5.9} & \textbf{0.779} & \textbf{1.65} & \textbf{0.98} & \textbf{0.19} \\
+\midrule
+\multirow{3}{*}{Graded Antiform (25 m Exact)} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.186 & 0.089 & 0.181 & 35.6 & 0.336 & 2.52 & 0.72 & 2.90 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.344 & 0.072 & 0.375 & 14.3 & 0.648 & 4.24 & 1.32 & 9.19 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.625} & \textbf{0.057} & \textbf{0.664} & \textbf{1.5} & \textbf{0.937} & \textbf{1.34} & \textbf{1.05} & \textbf{0.24} \\
+\midrule
+\multirow{3}{*}{Curved Bipolar (25 m Exact)} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.095 & 0.083 & 0.245 & 32.8 & 0.254 & \textbf{3.11} & 0.72 & 4.53 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.162 & 0.079 & 0.354 & 20.2 & 0.277 & 5.53 & 1.35 & 10.49 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.670} & \textbf{0.047} & \textbf{0.795} & \textbf{1.4} & \textbf{0.976} & 4.22 & \textbf{1.23} & \textbf{0.20} \\
+\midrule
+\multirow{3}{*}{\textbf{Mean (3 Benchmarks)}} & Tikhonov $L_2$ ($\gamma=0.50$) & 0.125 & 0.079 & 0.179 & 29.9 & 0.255 & 2.99 & 0.72 & 3.20 \\
+ & Focusing IRLS ($\gamma=0.75$) & 0.192 & 0.071 & 0.304 & 19.1 & 0.372 & 5.27 & 1.31 & 8.90 \\
+ & \texttt{Swin3D v9.1} & \textbf{0.609} & \textbf{0.045} & \textbf{0.729} & \textbf{2.9} & \textbf{0.897} & \textbf{2.40} & \textbf{1.09} & \textbf{0.21} \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
